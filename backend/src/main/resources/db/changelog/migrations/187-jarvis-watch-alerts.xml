@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-230 / SF-230-03 - LES VEILLES JARVIS : ELLE T'INTERPELLE.
+
+      jarvis_watch_alerts : une ligne par changement signale au PO. sentence = la phrase redigee par
+      l'IA a partir du diff SEUL (ou la phrase deterministe si budget, quota ou fournisseur font
+      defaut) ; changes_json = le diff ; cost_usd = cout reel de l'appel (0 sans IA) ; opened_at = le
+      PO a ouvert l'alerte (mesure d'adoption D8). Lue par Jarvis (F-231 / SF-231-05) via
+      GET /api/jarvis/alerts/{id}.
+
+      Isolation : user_id + workspace_id sur chaque ligne ; lectures par id + user_id. Les lignes suivent
+      la veille (cle etrangere, cascade).
+      Rollback : la table se retire.
+    -->
+
+    <changeSet id="187-jarvis-watch-alerts" author="claude-gateway">
+        <createTable tableName="jarvis_watch_alerts">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="watch_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_jarvis_watch_alerts_watch"
+                             references="jarvis_watches(id)" deleteCascade="true"/>
+            </column>
+            <column name="run_id" type="uuid"/>
+            <column name="chantier_number" type="int"/>
+            <column name="sentence" type="varchar(500)"><constraints nullable="false"/></column>
+            <column name="changes_json" type="varchar(1000000)"><constraints nullable="false"/></column>
+            <column name="change_count" type="int"><constraints nullable="false"/></column>
+            <column name="ai_written" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="cost_usd" type="numeric(12,6)" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="opened_at" type="timestamptz"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="jarvis_watch_alerts" indexName="idx_jarvis_watch_alerts_user">
+            <column name="user_id"/>
+            <column name="created_at"/>
+        </createIndex>
+        <createIndex tableName="jarvis_watch_alerts" indexName="idx_jarvis_watch_alerts_watch">
+            <column name="watch_id"/>
+            <column name="created_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="jarvis_watch_alerts"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

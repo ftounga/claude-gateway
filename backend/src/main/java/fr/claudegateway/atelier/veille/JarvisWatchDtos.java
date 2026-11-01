@@ -1,5 +1,7 @@
 package fr.claudegateway.atelier.veille;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -23,9 +25,18 @@ public final class JarvisWatchDtos {
             String scope, String command, String scriptPath, List<String> runTimes, String timeZone, String days,
             boolean active, boolean proposed, String origin, OffsetDateTime testedAt, Integer testItemCount,
             String testSummary, OffsetDateTime nextRunAt, OffsetDateTime createdAt, OffsetDateTime updatedAt,
-            OffsetDateTime lastRunAt, String lastRunStatus, boolean broken, int consecutiveFailures) {
+            OffsetDateTime lastRunAt, String lastRunStatus, boolean broken, int consecutiveFailures,
+            BigDecimal monthlyBudgetEur, BigDecimal monthSpentEur) {
 
         static JarvisWatchView of(JarvisWatch watch, OffsetDateTime now) {
+            return of(watch, now, DEFAULT_USD_TO_EUR, null);
+        }
+
+        /** SF-230-03 : budget et dépense du mois, en euros (F-224) — {@code spentUsd} nul si inconnu. */
+        static JarvisWatchView of(JarvisWatch watch, OffsetDateTime now, BigDecimal usdToEur, BigDecimal spentUsd) {
+            BigDecimal rate = usdToEur == null ? DEFAULT_USD_TO_EUR : usdToEur;
+            BigDecimal budget = watch.getMonthlyBudgetUsd() == null ? JarvisWatchService.DEFAULT_MONTHLY_BUDGET_USD
+                    : watch.getMonthlyBudgetUsd();
             return new JarvisWatchView(watch.getId(), watch.getWorkspaceId(), watch.getChantierNumber(),
                     watch.getName(), watch.getPlatform(), watch.getScope(), watch.getProbeCommand(),
                     watch.getProbeScriptPath(), JarvisWatchSlots.times(watch.getRunTimes()), watch.getTimeZone(), DAYS,
@@ -33,8 +44,19 @@ public final class JarvisWatchDtos {
                     watch.getTestItemCount(), watch.getTestSummary(),
                     watch.isScheduled() ? JarvisWatchSlots.nextSlot(watch, now).orElse(null) : null,
                     watch.getCreatedAt(), watch.getUpdatedAt(), watch.getLastRunAt(), watch.getLastRunStatus(),
-                    watch.isBroken(), watch.getConsecutiveFailures());
+                    watch.isBroken(), watch.getConsecutiveFailures(),
+                    budget.multiply(rate).setScale(2, RoundingMode.HALF_UP),
+                    spentUsd == null ? null : spentUsd.multiply(rate).setScale(2, RoundingMode.HALF_UP));
         }
+    }
+
+    /** Le taux de lecture en euros quand la grille n'est pas branchée (F-224). */
+    public static final BigDecimal DEFAULT_USD_TO_EUR = new BigDecimal("0.92");
+
+    /** Une alerte de veille (SF-230-03) — le contrat que lit Jarvis (F-231 / SF-231-05). */
+    public record JarvisAlertView(UUID id, UUID watchId, String watchName, String platform, UUID workspaceId,
+            Integer chantierNumber, String sentence, List<JarvisWatchDiff.Change> changes, boolean aiWritten,
+            BigDecimal costEur, OffsetDateTime createdAt, OffsetDateTime openedAt, String link) {
     }
 
     /** Un passage (SF-230-02) : sans contenu. */

@@ -522,4 +522,17 @@ class PushNotificationServiceTest {
         Thread.sleep(200);
         verify(repository, never()).findByUserId(any());
     }
+
+    @Test
+    void aWatchAlertOpensItsOwnLinkAndStaysNeutral() throws Exception {
+        // F-230 / SF-230-03 : l'alerte d'une veille ouvre Jarvis (ou le fil du sujet) sur CETTE alerte.
+        String link = "/atelier/" + workspaceId + "?alerte=" + UUID.randomUUID();
+        com.fasterxml.jackson.databind.JsonNode n = new ObjectMapper()
+                .readTree(service.buildPayload(PushEvent.WATCH_CHANGED, workspaceId, link)).get("notification");
+        assertThat(n.get("data").get("url").asText()).isEqualTo(link);
+        assertThat(n.get("data").get("onActionClick").get("default").get("url").asText()).isEqualTo(link);
+        assertThat(n.get("title").asText()).isEqualTo(PushEvent.WATCH_CHANGED.title());
+        assertThat(PushEvent.WATCH_CHANGED.alwaysDelivered()).isTrue();
+        assertThat(PushEvent.WATCH_CHANGED.requiresAction()).isFalse();
+    }
 }

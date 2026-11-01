@@ -87,7 +87,13 @@ public enum PushEvent {
      * Une veille Jarvis est en panne : sa sonde a échoué deux fois de suite (F-230 / SF-230-02, D6) — une veille
      * muette ne doit pas passer pour « rien de neuf ». Émise même terminal regardé.
      */
-    WATCH_BROKEN("Une veille est en panne", "Sa sonde ne répond plus : ouvrez le sujet pour la faire réparer.", true);
+    WATCH_BROKEN("Une veille est en panne", "Sa sonde ne répond plus : ouvrez le sujet pour la faire réparer.", true),
+
+    /**
+     * Une veille Jarvis a vu bouger quelque chose (F-230 / SF-230-03, D4). Corps neutre : la phrase reste dans
+     * l'application ; le clic ouvre Jarvis (F-231) ou, avant lui, le fil du sujet. Émise même terminal regardé.
+     */
+    WATCH_CHANGED("Une veille a vu du changement", "Ouvrez Jarvis pour l'écouter.", true);
 
     private final String title;
     private final String body;

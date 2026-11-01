@@ -62,6 +62,7 @@ class JarvisWatchRunApiIntegrationTest {
     @Autowired private JarvisWatchRepository watchRepository;
     @Autowired private JarvisWatchRunRepository runRepository;
     @Autowired private AtelierMessageRepository messageRepository;
+    @Autowired private JarvisWatchAlertRepository alertRepository;
     @Autowired private JarvisWatchService service;
 
     @MockitoBean private RunnerToolGateway gateway;
@@ -132,7 +133,17 @@ class JarvisWatchRunApiIntegrationTest {
                 .andExpect(jsonPath("$[0].status").value("CHANGED"));
         mockMvc.perform(as(get(base()), aliceToken))
                 .andExpect(jsonPath("$[0].lastRunStatus").value("CHANGED"))
-                .andExpect(jsonPath("$[0].broken").value(false));
+                .andExpect(jsonPath("$[0].broken").value(false))
+                .andExpect(jsonPath("$[0].monthlyBudgetEur").value(5.0));
+        // SF-230-03 : le changement — et lui seul — a produit une alerte et une ligne dans le fil du chantier.
+        assertThat(alertRepository.findAll()).singleElement().satisfies(alert -> {
+            assertThat(alert.getUserId()).isEqualTo(alice.getId());
+            assertThat(alert.getChangeCount()).isEqualTo(1);
+            assertThat(alert.getChantierNumber()).isEqualTo(3);
+            assertThat(alert.getSentence()).isNotBlank();
+        });
+        assertThat(messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(subject.getId(), alice.getId()))
+                .anySatisfy(m -> assertThat(m.getContent()).startsWith("Veille Jarvis « Agenor » — "));
     }
 
     @Test

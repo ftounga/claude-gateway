@@ -105,10 +105,23 @@ public class PushNotificationService {
         }
         // F-185 / SF-185-04 : même sans push configuré, l'événement va au centre de notifications.
         // Tout part sur l'exécuteur dédié : le fil du tour n'attend ni la base ni le réseau.
-        executor.execute(() -> deliver(userId, workspaceId, event));
+        executor.execute(() -> deliver(userId, workspaceId, event, null));
     }
 
-    private void deliver(UUID userId, UUID workspaceId, PushEvent event) {
+    /**
+     * Même chose, avec un <b>lien propre</b> à l'occurrence (F-230 / SF-230-03) : l'alerte d'une veille ouvre
+     * Jarvis ou le fil du sujet sur CETTE alerte. Le lien est un chemin de l'application aux identifiants opaques
+     * (jamais un nom ni un contenu, D4 de F-153) ; un lien qui n'est pas un chemin interne est ignoré.
+     */
+    public void notify(UUID userId, UUID workspaceId, PushEvent event, String url) {
+        if (userId == null || event == null) {
+            return;
+        }
+        String link = url != null && url.startsWith("/") && !url.startsWith("//") ? url : null;
+        executor.execute(() -> deliver(userId, workspaceId, event, link));
+    }
+
+    private void deliver(UUID userId, UUID workspaceId, PushEvent event, String url) {
         try {
             if (duplicate(userId, workspaceId, event)) {
                 return;
@@ -122,7 +135,7 @@ public class PushNotificationService {
             if (subscriptions.isEmpty()) {
                 return;
             }
-            sendAll(subscriptions, buildPayload(event, workspaceId), PushDelivery.forEvent(event));
+            sendAll(subscriptions, buildPayload(event, workspaceId, url), PushDelivery.forEvent(event));
         } catch (RuntimeException e) {
             // L'émission est best-effort : jamais fatale. Aucune donnée sensible dans le log.
             log.warn("Émission Web Push interrompue : {}", e.getMessage());
@@ -245,7 +258,12 @@ public class PushNotificationService {
      * ({@code NOTIFICATION_OPTION_NAMES}).</p>
      */
     String buildPayload(PushEvent event, UUID workspaceId) {
-        String url = workspaceId != null ? "/atelier/" + workspaceId : "/forge";
+        return buildPayload(event, workspaceId, null);
+    }
+
+    /** F-230 / SF-230-03 : {@code link} non nul remplace le lien du terminal (l'alerte d'une veille). */
+    String buildPayload(PushEvent event, UUID workspaceId, String link) {
+        String url = link != null ? link : workspaceId != null ? "/atelier/" + workspaceId : "/forge";
         long timestamp = clock.millis();
         String tag = "cg-" + (workspaceId != null ? workspaceId : "forge") + "-" + event.name()
                 + (event.requiresAction() ? "-" + timestamp : "");

@@ -245,8 +245,32 @@ public class JarvisWatchService {
     /** Passages rendus par l'historique. */
     public static final int HISTORY = 20;
 
+    /** Les alertes (SF-230-03), pour la dépense du mois ; le taux d'affichage en euros (F-224). */
+    private JarvisWatchAlertRepository alerts;
+    private BigDecimal usdToEur = JarvisWatchDtos.DEFAULT_USD_TO_EUR;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setAlertStore(JarvisWatchAlertRepository alerts) {
+        this.alerts = alerts;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setPricing(fr.claudegateway.quota.ProviderPricingProperties pricing) {
+        if (pricing != null && pricing.usdToEur() != null) {
+            this.usdToEur = pricing.usdToEur();
+        }
+    }
+
+    /** Le début du mois courant (UTC) : la fenêtre du plafond mensuel d'une veille. */
+    static OffsetDateTime monthStart(OffsetDateTime now) {
+        return now.withOffsetSameInstant(java.time.ZoneOffset.UTC).withDayOfMonth(1).withHour(0).withMinute(0)
+                .withSecond(0).withNano(0);
+    }
+
     JarvisWatchView view(JarvisWatch watch, OffsetDateTime now) {
-        return JarvisWatchView.of(watch, now);
+        BigDecimal spent = alerts == null || watch.getId() == null ? null
+                : alerts.spentSince(watch.getId(), watch.getUserId(), monthStart(now));
+        return JarvisWatchView.of(watch, now, usdToEur, spent);
     }
 
     private JarvisWatchView save(JarvisWatch watch) {
