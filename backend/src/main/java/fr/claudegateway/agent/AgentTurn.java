@@ -51,13 +51,28 @@ import java.util.List;
  *                     appel (F-172 / SF-172-05, D5) — historique modifié depuis leur production, ou
  *                     changement de modèle. C'est la mesure qui dira s'il faut un historique
  *                     « append-only »
+ * @param contextEdited vrai si le fournisseur a <b>écarté</b> des résultats d'outils de la requête
+ *                     pour cet appel (politique {@link AgentContextPolicy}, F-229 / SF-229-01) : ce
+ *                     qu'il a mis en cache n'est alors plus ce qui a été envoyé. Fait neutre — le nom
+ *                     du mécanisme reste chez le fournisseur
  * @see #truncated()
  */
 public record AgentTurn(String text, List<AgentToolCall> toolCalls, boolean finished,
         int inputTokens, int outputTokens, boolean truncated, List<AgentContentBlock> reasoning,
         int cacheReadTokens, int cacheWriteTokens, int webSearchRequests, boolean refused,
         String refusalCategory, String servedModel, List<ModelUsage> usageByModel, String narration,
-        int droppedThinkingBlocks, boolean paused) {
+        int droppedThinkingBlocks, boolean paused, boolean contextEdited) {
+
+    /** Forme sans édition de contexte signalée (F-229 / SF-229-01 additif). */
+    public AgentTurn(String text, List<AgentToolCall> toolCalls, boolean finished,
+            int inputTokens, int outputTokens, boolean truncated, List<AgentContentBlock> reasoning,
+            int cacheReadTokens, int cacheWriteTokens, int webSearchRequests, boolean refused,
+            String refusalCategory, String servedModel, List<ModelUsage> usageByModel, String narration,
+            int droppedThinkingBlocks, boolean paused) {
+        this(text, toolCalls, finished, inputTokens, outputTokens, truncated, reasoning,
+                cacheReadTokens, cacheWriteTokens, webSearchRequests, refused, refusalCategory,
+                servedModel, usageByModel, narration, droppedThinkingBlocks, paused, false);
+    }
 
     /**
      * Forme sans pause (F-188 / SF-188-01 additif) : {@code paused} vrai seulement quand le

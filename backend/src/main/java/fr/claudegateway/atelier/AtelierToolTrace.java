@@ -152,22 +152,145 @@ public record AtelierToolTrace(List<Step> steps) {
      *         échoue — un défaut de mémoire ne doit jamais faire perdre la réponse de l'agent
      */
     public String toJson() {
+        return store(false).json();
+    }
+
+    /**
+     * Ce qui est rangé en base, et ce que le rangement a retiré (F-229 / SF-229-01).
+     *
+     * @param json         le document, exactement celui de {@link #toJson()} quand rien n'est à signaler
+     * @param droppedSteps étapes les plus anciennes abandonnées au plafond {@link #MAX_TRACE_CHARS}
+     * @param droppedChars caractères envoyés pendant le tour que portaient ces étapes (raisonnements,
+     *                     textes, arguments, résultats déjà bornés) — le surplus des résultats coupés à
+     *                     {@link #MAX_RESULT_CHARS} est compté à part, là où le résultat entier est connu
+     */
+    public record Stored(String json, int droppedSteps, long droppedChars) {
+    }
+
+    /**
+     * Range la trajectoire comme {@link #toJson()} — <b>même sélection d'étapes, même document</b> — et
+     * dit ce que le rangement a retiré (F-229 / SF-229-01). Deux faits <b>sans contenu</b> sont ajoutés
+     * au document seulement s'ils sont vrais : {@code droppedSteps} (étapes abandonnées) et
+     * {@code contextEdited} (le fournisseur a écarté des résultats d'outils pendant le tour). Le rejeu
+     * les ignore ({@link #replay()} ne lit que les étapes) : la requête du tour suivant est inchangée à
+     * l'octet ; la mesure du tour suivant, elle, y lit pourquoi son ruban diverge.
+     *
+     * @param contextEdited vrai si le fournisseur a écarté des résultats d'outils pendant le tour
+     */
+    public Stored store(boolean contextEdited) {
         if (isEmpty()) {
-            return null;
+            return new Stored(null, 0, 0L);
         }
         List<Step> kept = new ArrayList<>(steps);
+        int dropped = 0;
+        long droppedChars = 0L;
         while (!kept.isEmpty()) {
             try {
                 String json = MAPPER.writeValueAsString(new AtelierToolTrace(List.copyOf(kept)));
                 if (json.length() <= MAX_TRACE_CHARS) {
-                    return json;
+                    return new Stored(withFacts(json, dropped, contextEdited), dropped, droppedChars);
                 }
             } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
-                return null;
+                return new Stored(null, dropped, droppedChars);
             }
-            kept.remove(0);
+            droppedChars += sentChars(kept.remove(0));
+            dropped++;
         }
-        return null;
+        return new Stored(null, dropped, droppedChars);
+    }
+
+    /** Le document, augmenté des faits du rangement — inchangé s'il n'y a rien à dire. */
+    private static String withFacts(String json, int dropped, boolean contextEdited) {
+        if (dropped == 0 && !contextEdited) {
+            return json;
+        }
+        try {
+            com.fasterxml.jackson.databind.node.ObjectNode node =
+                    (com.fasterxml.jackson.databind.node.ObjectNode) MAPPER.readTree(json);
+            if (dropped > 0) {
+                node.put(DROPPED_STEPS_FIELD, dropped);
+            }
+            if (contextEdited) {
+                node.put(CONTEXT_EDITED_FIELD, true);
+            }
+            return MAPPER.writeValueAsString(node);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException | ClassCastException ex) {
+            return json; // Un fait de mesure perdu ne coûte jamais la mémoire du tour.
+        }
+    }
+
+    /** Caractères qu'une étape portait dans la requête : raisonnements, texte, arguments et résultats. */
+    private static long sentChars(Step step) {
+        long chars = step.text() == null ? 0L : step.text().length();
+        for (Thought thought : step.thoughts()) {
+            if (thought != null) {
+                chars += length(thought.text()) + length(thought.signature()) + length(thought.redacted());
+            }
+        }
+        for (Call call : step.calls() == null ? List.<Call>of() : step.calls()) {
+            if (call != null) {
+                chars += (call.input() == null ? 0 : call.input().toString().length()) + length(call.result());
+            }
+        }
+        return chars;
+    }
+
+    private static long length(String value) {
+        return value == null ? 0L : value.length();
+    }
+
+    /** Champ du document : étapes abandonnées au rangement (F-229 / SF-229-01). */
+    static final String DROPPED_STEPS_FIELD = "droppedSteps";
+    /** Champ du document : résultats d'outils écartés par le fournisseur pendant le tour (F-229 / SF-229-01). */
+    static final String CONTEXT_EDITED_FIELD = "contextEdited";
+
+    /**
+     * Surplus retiré d'un résultat par {@link #boundResult(String)} (F-229 / SF-229-01) : ce que le tour
+     * a envoyé et que le rejeu ne renverra pas. Zéro pour un résultat qui tient dans la borne.
+     */
+    static long cutChars(String content) {
+        return content == null ? 0L : Math.max(0L, content.length() - (long) MAX_RESULT_CHARS);
+    }
+
+    /** Vrai si ce résultat rejoué a été coupé au stockage : il finit par le marqueur de coupe. */
+    public static boolean isTruncatedResult(String content) {
+        return content != null && content.endsWith(TRUNCATION_MARK);
+    }
+
+    /**
+     * Ce qu'un document rangé dit de son tour (F-229 / SF-229-01) : des faits, jamais de contenu.
+     *
+     * @param stepsDropped     des étapes ont été abandonnées au plafond {@link #MAX_TRACE_CHARS}
+     * @param reasoningDropped un raisonnement présent pendant le tour n'est pas rejoué
+     *                         ({@link Step#reasoningReplayable()})
+     * @param contextEdited    le fournisseur a écarté des résultats d'outils pendant le tour
+     */
+    public record Facts(boolean stepsDropped, boolean reasoningDropped, boolean contextEdited) {
+
+        static final Facts NONE = new Facts(false, false, false);
+    }
+
+    /** Relit les faits d'un document rangé ; un document illisible ou absent n'en porte aucun. */
+    public static Facts factsOf(String json) {
+        if (json == null || json.isBlank()) {
+            return Facts.NONE;
+        }
+        try {
+            JsonNode node = MAPPER.readTree(json);
+            boolean reasoningDropped = false;
+            AtelierToolTrace trace = fromJson(json);
+            for (Step step : trace.isEmpty() ? List.<Step>of() : trace.steps()) {
+                if (step != null && !step.reasoningReplayable()
+                        && step.thoughts().stream().anyMatch(t -> t != null && !t.isEmpty())) {
+                    reasoningDropped = true;
+                    break;
+                }
+            }
+            return new Facts(node.path(DROPPED_STEPS_FIELD).asInt(0) > 0, reasoningDropped,
+                    node.path(CONTEXT_EDITED_FIELD).asBoolean(false));
+        } catch (com.fasterxml.jackson.core.JacksonException | RuntimeException ex) {
+            return Facts.NONE;
+        }
     }
 
     /**

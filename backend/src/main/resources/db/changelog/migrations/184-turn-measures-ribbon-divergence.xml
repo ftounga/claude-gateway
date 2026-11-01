@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-229 / SF-229-01 - OU ET POURQUOI LE RUBAN DIVERGE D'UN TOUR A L'AUTRE.
+
+      atelier_turn_measures.ribbon_fingerprint : empreinte de la derniere requete du tour, JSON
+      [[hachage, taille], ...] (hachage = SHA-256 tronque a 16 caracteres hexadecimaux). Aucun contenu.
+      prefix_divergence_index : premier bloc du ruban precedent qui n'est pas prolonge (-1 = prolonge).
+      prefix_lost_chars : caracteres du ruban precedent situes apres la divergence (reecrits).
+      prefix_divergence_cause : cause classee (8 valeurs fermees), jamais de texte libre.
+      replay_cut_chars : caracteres retires au stockage par rapport a ce qui a ete envoye.
+
+      Toutes nullables : aucune reprise, aucun code existant n'en depend.
+      Rollback : les cinq colonnes se retirent.
+    -->
+
+    <changeSet id="184-turn-measures-ribbon-divergence" author="claude-gateway">
+        <addColumn tableName="atelier_turn_measures">
+            <column name="ribbon_fingerprint" type="text"/>
+            <column name="prefix_divergence_index" type="int"/>
+            <column name="prefix_lost_chars" type="bigint"/>
+            <column name="prefix_divergence_cause" type="varchar(32)"/>
+            <column name="replay_cut_chars" type="bigint"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="atelier_turn_measures" columnName="ribbon_fingerprint"/>
+            <dropColumn tableName="atelier_turn_measures" columnName="prefix_divergence_index"/>
+            <dropColumn tableName="atelier_turn_measures" columnName="prefix_lost_chars"/>
+            <dropColumn tableName="atelier_turn_measures" columnName="prefix_divergence_cause"/>
+            <dropColumn tableName="atelier_turn_measures" columnName="replay_cut_chars"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

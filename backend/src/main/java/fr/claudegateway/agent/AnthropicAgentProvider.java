@@ -1185,7 +1185,8 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         int webSearches = usage.path("server_tool_use").path("web_search_requests").asInt(0);
         return new AgentTurn(text.toString(), toolCalls, finished, inputTokens, outputTokens, truncated,
                 reasoning, cacheRead, cacheCreation, webSearches, false, null, servedModel,
-                reading.parts(), narration.toString(), droppedThinkingBlocks(response, requestedModel), paused);
+                reading.parts(), narration.toString(), droppedThinkingBlocks(response, requestedModel), paused,
+                contextEdited(response));
     }
 
     /**
@@ -1344,6 +1345,23 @@ public class AnthropicAgentProvider implements AiAgentProvider {
             // Rendue telle quelle : un type inconnu d'une version future se lit encore.
             log.debug("Édition de contexte appliquée : {}", edit);
         }
+    }
+
+    /**
+     * Vrai si le fournisseur a réellement écarté des résultats d'outils pour cet appel (F-229 /
+     * SF-229-01) : ce qu'il a mis en cache n'est alors plus le ruban envoyé, et le tour suivant le
+     * réécrira. Une édition rapportée sans compteurs compte comme appliquée ; une édition à compteurs
+     * nuls, non.
+     */
+    static boolean contextEdited(JsonNode response) {
+        for (JsonNode edit : response.path("context_management").path("applied_edits")) {
+            JsonNode tools = edit.path("cleared_tool_uses");
+            JsonNode tokens = edit.path("cleared_input_tokens");
+            if ((tools.isMissingNode() && tokens.isMissingNode()) || tools.asInt(0) > 0 || tokens.asInt(0) > 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Clé BYOK fournie pour l'appel, sinon clé plateforme. Jamais journalisée. */

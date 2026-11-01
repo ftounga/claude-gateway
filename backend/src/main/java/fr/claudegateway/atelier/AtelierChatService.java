@@ -3289,11 +3289,16 @@ public class AtelierChatService implements RelayInterruptTarget {
         // F-176 — LE PARCOURS DU SUJET, joint à la CONSIGNE du tour (jamais au système, même patron).
         // Libre : rien, consigne inchangée à l'octet près (Q4). Best-effort.
 
-        List<AgentMessage> messages = buildReplayMessages(userId, workspace);
+        ReplayFacts replayFacts = turnMeasureWriter == null ? null : new ReplayFacts();
+        List<AgentMessage> messages = buildReplayMessages(userId, workspace, replayFacts);
         // F-176 / SF-176-02 : aucun tour rejoué = premier message du sujet (ou nouveau départ) — l'agent
         // y qualifie la demande. Posé APRÈS la relecture de l'historique pour le savoir.
         consigne = withJourney(userId, workspace, consigne, messages.isEmpty());
         messages.add(AgentMessage.userText(consigne));
+        // F-229 / SF-229-01 : le ruban du premier appel comparé à celui du dernier appel du tour précédent
+        // du même fil. Lecture seule : la requête n'en dépend pas. Best-effort.
+        fr.claudegateway.atelier.measure.RibbonDivergence ribbonDivergence =
+                ribbonDivergence(userId, workspace, messages, replayFacts);
 
         AtelierMessage savedUserMessage = messageRepository.save(AtelierMessage.builder()
                 .workspaceId(workspaceId).userId(userId).role("USER").content(userText)
@@ -3425,6 +3430,12 @@ public class AtelierChatService implements RelayInterruptTarget {
         long totalContextTokens = 0L;
         long firstPassCacheWrite = 0L;
         long laterCacheWrite = 0L;
+        // F-229 / SF-229-01 : la dernière requête de la boucle principale (son ruban est celui que le
+        // fournisseur a mis en cache), l'édition de contexte qu'il a pu y appliquer, et le surplus des
+        // résultats coupés au stockage.
+        List<AgentMessage> lastSentMessages = null;
+        boolean contextEditedInTurn = false;
+        long resultCutChars = 0L;
         boolean interrupted = false;
         boolean spendCapReached = false;
         // Arrêt sur refus du fournisseur (F-172 / SF-172-01), pour le journal de fin de tour.
@@ -3642,6 +3653,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                 AgentTurnRequest turnRequest =
                         new AgentTurnRequest(model, system, messages, tools, apiKey, sent,
                                 contextPolicy, turnMode);
+                if (turnMeasureWriter != null) {
+                    // Copie des références seulement : la liste vivante s'allonge après l'appel.
+                    lastSentMessages = new ArrayList<>(messages);
+                }
                 try {
                     if (streaming) {
                         turn = agentProvider.nextTurn(turnRequest, delta -> {
@@ -3713,6 +3728,7 @@ public class AtelierChatService implements RelayInterruptTarget {
             cacheReadTokens += turn.cacheReadTokens();
             cacheWriteTokens += turn.cacheWriteTokens();
             webSearchRequests += turn.webSearchRequests();
+            contextEditedInTurn |= turn.contextEdited();
             collectOtherModelShares(turn, model, otherModelShares, lastServedModel);
             largestIterationTokens =
                     Math.max(largestIterationTokens, (long) turn.inputTokens() + turn.outputTokens());
@@ -4267,6 +4283,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                 // refuse un tool_use orphelin au rejeu.
                 tracedCalls.add(new AtelierToolTrace.Call(callId, call.name(), call.input(),
                         AtelierToolTrace.boundResult(modelContent), outcome.isError()));
+                resultCutChars += AtelierToolTrace.cutChars(modelContent);
                 // Transcription du tour (SF-39-17) : ce que l'écran relit après un rechargement.
                 // Elle ne l'était pas, et une coupure de connexion effaçait tout ce qui s'était
                 // passé — l'acquis §4 n°7 de F-30 ne valait pas pour le moteur qui exécute.
@@ -4421,6 +4438,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                 refusalStop ? "refus du fournisseur" : stopCause(interrupted, spendCapReached, finalText));
         // F-188 / SF-188-03 : la même fin de tour, en base — des nombres, jamais de contenu.
         int[] runnerCounts = turnRunnerCounters.remove(turnKey(userId, workspace));
+        // La trajectoire rangée, calculée une fois ici : la mesure y lit ce que le rangement retire
+        // (F-229 / SF-229-01), le message assistant la persiste plus bas. Même document qu'avant,
+        // augmenté de faits sans contenu seulement quand il y a lieu.
+        AtelierToolTrace.Stored storedTrace = new AtelierToolTrace(List.copyOf(trace)).store(contextEditedInTurn);
         if (turnMeasureWriter != null) {
             turnMeasureWriter.write(new fr.claudegateway.atelier.measure.TurnMeasure(userId,
                     workspaceId, workspace.getHostId(), model, java.time.Instant.now(),
@@ -4430,7 +4451,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                     maxContextTokens, totalContextTokens, firstPassCacheWrite, laterCacheWrite,
                     inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens,
                     webSearchRequests, runnerCounts == null ? 0 : runnerCounts[0],
-                    runnerCounts == null ? 0 : runnerCounts[1], workspace.getTurnChantier()));
+                    runnerCounts == null ? 0 : runnerCounts[1], workspace.getTurnChantier(),
+                    ribbonOfTurn(lastSentMessages, ribbonDivergence,
+                            resultCutChars + storedTrace.droppedChars())));
         }
         // F-125 / SF-125-01 : le marqueur de fin de tour parle au produit, pas au lecteur. Les
         // contrôles de fin de tour l'ont déjà lu sur `finalText` (plus haut, et en rejeu sur un
@@ -4510,7 +4533,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                 .workspaceId(workspaceId).userId(userId).role("ASSISTANT")
                 .chantierNumber(workspace.getTurnChantier())
                 .content(reply)
-                .toolTrace(new AtelierToolTrace(List.copyOf(trace)).toJson())
+                .toolTrace(storedTrace.json())
                 .terminalJson(fr.claudegateway.atelier.questions.TurnQuestions.attachTo(
                         fr.claudegateway.atelier.nextsteps.NextStepsBlock.attachTo(report.toJson(),
                                 nextSteps, anchoredSteps.chantier()), questionsSnapshot))
@@ -4724,6 +4747,14 @@ public class AtelierChatService implements RelayInterruptTarget {
      * résultat est celui d'avant F-117 — seule la frontière filtre le rejeu (SF-39-04).
      */
     private List<AgentMessage> buildReplayMessages(UUID userId, Workspace workspace) {
+        return buildReplayMessages(userId, workspace, null);
+    }
+
+    /**
+     * Même rejeu, en relevant au passage ce que la mesure du ruban doit savoir (F-229 / SF-229-01).
+     * {@code facts} ne change rien à la liste rendue ; {@code null} = rien à relever.
+     */
+    private List<AgentMessage> buildReplayMessages(UUID userId, Workspace workspace, ReplayFacts facts) {
         List<AgentMessage> messages = new ArrayList<>();
         AgentMessage summary = AtelierCompactionService.summaryPrefix(workspace);
         if (summary != null) {
@@ -4734,9 +4765,96 @@ public class AtelierChatService implements RelayInterruptTarget {
                 : messageRepository.findByWorkspaceIdAndUserIdAndCreatedAtGreaterThanEqualOrderByCreatedAtAsc(
                         workspace.getId(), userId, workspace.getChatThreadStartedAt());
         // F-221 / SF-221-01 : le fil du tour ne relit que le passé commun et le sien, regroupé par tour.
-        messages.addAll(replayableHistory(threadOf(userId, workspace.getId(), workspace.getTurnChantier(), past),
-                replayedTraceTurns));
+        List<AtelierMessage> thread = threadOf(userId, workspace.getId(), workspace.getTurnChantier(), past);
+        int offset = messages.size();
+        messages.addAll(replayableHistory(thread, replayedTraceTurns, facts));
+        if (facts != null) {
+            facts.summaryPresent = summary != null;
+            if (facts.lastTurnStart >= 0) {
+                facts.lastTurnStart += offset;
+            }
+            facts.windowMoved = replayWindowMoved(thread, replayedTraceTurns);
+        }
         return messages;
+    }
+
+    /**
+     * Où et pourquoi le ruban du premier appel quitte celui du tour précédent du même fil (F-229 /
+     * SF-229-01). Ne modifie jamais {@code messages}. Rend {@code null} sans mesure ou sur panne.
+     */
+    private fr.claudegateway.atelier.measure.RibbonDivergence ribbonDivergence(UUID userId, Workspace workspace,
+            List<AgentMessage> messages, ReplayFacts facts) {
+        if (turnMeasureWriter == null || facts == null) {
+            return null;
+        }
+        try {
+            fr.claudegateway.atelier.measure.RibbonFingerprint previous =
+                    fr.claudegateway.atelier.measure.RibbonFingerprint.parse(turnMeasureWriter.previousFingerprint(
+                            userId, workspace.getId(), workspace.getTurnChantier()));
+            if (previous == null) {
+                return fr.claudegateway.atelier.measure.RibbonDivergence.noPrevious();
+            }
+            fr.claudegateway.atelier.measure.RibbonFingerprint current =
+                    fr.claudegateway.atelier.measure.RibbonFingerprint.of(messages);
+            AtelierToolTrace.Facts traceFacts = AtelierToolTrace.factsOf(facts.lastTrace);
+            int turnStartBlock = facts.lastTurnStart < 0 ? -1
+                    : fr.claudegateway.atelier.measure.RibbonFingerprint.of(
+                            messages.subList(0, Math.min(facts.lastTurnStart, messages.size()))).size();
+            return fr.claudegateway.atelier.measure.RibbonDivergence.compare(previous, current,
+                    new fr.claudegateway.atelier.measure.RibbonDivergence.Signals(turnStartBlock,
+                            traceFacts.stepsDropped(), traceFacts.reasoningDropped(), traceFacts.contextEdited(),
+                            facts.summaryPresent, facts.windowMoved));
+        } catch (RuntimeException ex) {
+            log.debug("Divergence du ruban non mesurée (best-effort) : {}", ex.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Le ruban du tour à ranger (F-229 / SF-229-01) : l'empreinte de la dernière requête envoyée, la
+     * divergence relevée au premier appel et ce que le rangement retire. Jamais d'exception.
+     */
+    private static fr.claudegateway.atelier.measure.TurnMeasure.Ribbon ribbonOfTurn(List<AgentMessage> lastSent,
+            fr.claudegateway.atelier.measure.RibbonDivergence divergence, long replayCutChars) {
+        String fingerprint = null;
+        try {
+            if (lastSent != null) {
+                fingerprint = fr.claudegateway.atelier.measure.RibbonFingerprint.of(lastSent).toJson();
+            }
+        } catch (RuntimeException ex) {
+            log.debug("Empreinte du ruban non calculée (best-effort) : {}", ex.getMessage());
+        }
+        return new fr.claudegateway.atelier.measure.TurnMeasure.Ribbon(fingerprint, divergence,
+                Math.max(0L, replayCutChars));
+    }
+
+    /**
+     * Ce que le rejeu relève pour classer la divergence du ruban (F-229 / SF-229-01). Local au tour,
+     * jamais partagé : le service est un singleton.
+     */
+    static final class ReplayFacts {
+        /** Le rejeu commence par un résumé de compaction. */
+        boolean summaryPresent;
+        /** La fenêtre des tours rejoués avec leur trajectoire a avancé depuis le tour précédent. */
+        boolean windowMoved;
+        /** Position, dans la liste rejouée, du premier message du dernier tour achevé ; -1 si aucun. */
+        int lastTurnStart = -1;
+        /** Trajectoire rangée du dernier tour achevé (document brut), ou {@code null}. */
+        String lastTrace;
+    }
+
+    /**
+     * Vrai si la fenêtre de rejeu des trajectoires (F-134 / SF-134-01) a franchi un palier entre le tour
+     * précédent et celui-ci : le tour précédent s'est rejoué avec un assistant de moins dans le fil.
+     */
+    static boolean replayWindowMoved(List<AtelierMessage> thread, int traceTurns) {
+        int assistants = 0;
+        for (AtelierMessage message : thread) {
+            if ("ASSISTANT".equalsIgnoreCase(message.getRole())) {
+                assistants++;
+            }
+        }
+        return assistants > 0 && untracedTurns(assistants, traceTurns) != untracedTurns(assistants - 1, traceTurns);
     }
 
     /**
@@ -4755,9 +4873,14 @@ public class AtelierChatService implements RelayInterruptTarget {
         return ChantierThread.byTurn(ChantierThread.visibleTo(past, chantier, openedAt));
     }
 
-    private static List<AgentMessage> replayableHistory(List<AtelierMessage> past, int traceTurns) {
+    private static List<AgentMessage> replayableHistory(List<AtelierMessage> past, int traceTurns,
+            ReplayFacts facts) {
         int traceFrom = firstTracedIndex(past, traceTurns);
         List<AgentMessage> messages = new ArrayList<>(past.size());
+        // F-229 / SF-229-01 : où commence chaque tour dans la liste rejouée — un message utilisateur
+        // qui suit une réponse (ou ouvre le fil). Relevé seulement, la liste n'en dépend pas.
+        int turnStart = -1;
+        boolean afterAnswer = true;
         for (int index = 0; index < past.size(); index++) {
             AtelierMessage message = past.get(index);
             String content = message.getContent();
@@ -4767,6 +4890,16 @@ public class AtelierChatService implements RelayInterruptTarget {
             boolean assistant = "ASSISTANT".equalsIgnoreCase(message.getRole());
             if (assistant && messages.isEmpty()) {
                 continue;
+            }
+            if (facts != null) {
+                if (!assistant && afterAnswer) {
+                    turnStart = messages.size();
+                    afterAnswer = false;
+                } else if (assistant) {
+                    facts.lastTurnStart = turnStart;
+                    facts.lastTrace = message.getToolTrace();
+                    afterAnswer = true;
+                }
             }
             if (assistant && index >= traceFrom) {
                 // Trajectoire du tour (SF-39-03) rejouée AVANT sa réponse finale : l'agent retrouve
@@ -4821,12 +4954,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                 assistants++;
             }
         }
-        if (assistants <= traceTurns) {
-            return 0;
-        }
-        // Le palier : combien de tours, en partant du DÉBUT, sont laissés en texte seul. Il ne
-        // change qu'aux multiples de la fenêtre — c'est là, et seulement là, que le préfixe mute.
-        int untraced = ((assistants - traceTurns) / traceTurns) * traceTurns;
+        int untraced = untracedTurns(assistants, traceTurns);
         if (untraced == 0) {
             return 0;
         }
@@ -4840,6 +4968,18 @@ public class AtelierChatService implements RelayInterruptTarget {
             }
         }
         return 0;
+    }
+
+    /**
+     * Le palier (F-134 / SF-134-01) : combien de tours, en partant du DÉBUT, sont laissés en texte
+     * seul. Il ne change qu'aux multiples de la fenêtre — c'est là, et seulement là, que le préfixe
+     * mute. Zéro pour une fenêtre absurde ou un fil plus court qu'elle.
+     */
+    static int untracedTurns(int assistants, int traceTurns) {
+        if (traceTurns <= 0 || assistants <= traceTurns) {
+            return 0;
+        }
+        return ((assistants - traceTurns) / traceTurns) * traceTurns;
     }
 
     /**
@@ -6437,7 +6577,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                         Math.max(0L, System.currentTimeMillis() - startedAt), iterationsUsed,
                         "coupé (" + cut.getClass().getSimpleName() + ")", 0L, 0L, 0L, 0L,
                         inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, webSearchRequests, 0, 0,
-                        workspace.getTurnChantier()));
+                        workspace.getTurnChantier(), null));
             }
             log.info("Tour d'atelier coupé : {} étape(s), {} tokens inscrits ({})", iterationsUsed,
                     inputTokens + outputTokens, cut.getClass().getSimpleName());
