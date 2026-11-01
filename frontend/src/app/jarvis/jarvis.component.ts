@@ -42,6 +42,8 @@ function readWakeOn(): boolean {
 
 /** SF-231-04 — ce que Jarvis dit quand la réponse n'est ni « oui » ni « non ». */
 export const DOUBT_PHRASE = 'Je n’ai pas compris : je ne fais rien. Vous pouvez confirmer depuis le terminal.';
+/** F-235 / SF-235-05 (D13) — une annonce attend une pause d'au moins ce délai. */
+export const ANNOUNCE_PAUSE_MS = 800;
 /** SF-231-04 — ce que Jarvis dit quand personne ne répond. */
 export const NO_ANSWER_PHRASE = 'Sans réponse, je ne fais rien.';
 import {
@@ -58,6 +60,9 @@ import { JarvisSceneBus } from './scenes/jarvis-scene-bus.service';
 import { JarvisSceneComponent } from './scenes/jarvis-scene.component';
 import { JarvisConstellationComponent } from './scenes/jarvis-constellation.component';
 import { isShowDismiss, stripShowLines } from './scenes/jarvis-show';
+import {
+  ASK_SUBJECT, AnnouncementQueue, FastDelegation, JarvisFastBrainClient, announcementText, isRepeatCommand,
+} from './jarvis-fast-brain';
 
 /** Le sujet retenu sur cet appareil, d'une ouverture de Jarvis à l'autre. */
 export const JARVIS_SUBJECT_KEY = 'cg.jarvis.subject';
@@ -176,6 +181,18 @@ export class JarvisComponent implements OnInit, OnDestroy {
   /** F-232 / SF-232-03 — sur Android, l'appairage des annonces téléphone verrouillé est proposé. */
   readonly android = /Android/i.test(this.userAgent);
 
+  // ---- F-235 / SF-235-05 : deux cerveaux — le cerveau rapide converse, Opus agit ----
+  private readonly fastBrain = inject(JarvisFastBrainClient);
+  /** Le cerveau rapide est-il allumé (coupe-circuit D17) ? Éteint : l'écran fait exactement ce qu'il faisait. */
+  readonly fastBrainOn = signal(false);
+  /** Les délégations vivantes, visibles sous l'orbe. */
+  readonly delegations = signal<{ id: string; label: string; subjectId: string }[]>([]);
+  /** La file des fins de délégation à annoncer (D13). */
+  private readonly announcements = new AnnouncementQueue();
+  private announceTimer: ReturnType<typeof setInterval> | null = null;
+  /** Le sujet de la délégation qui attend « oui » : la réponse va directement au tour Opus (D8). */
+  private verbalSubject: string | null = null;
+
   // ---- F-235 / SF-235-09 (D18) : la personnalité, réglage d'humour par compte ----
   /** Le réglage d'humour du compte (léger par défaut, tant que la passerelle n'a pas répondu). */
   readonly humour = signal<JarvisHumour>('LIGHT');
@@ -253,18 +270,21 @@ export class JarvisComponent implements OnInit, OnDestroy {
       next: (list) => {
         this.subjects.set(list);
         const stored = readStoredSubject();
-        const pick = [wanted, stored].find((id) => id && list.some((s) => s.id === id)) ?? list[0]?.id ?? null;
+        // F-235 / SF-235-05 (D19) — Jarvis est global : aucun « premier sujet » par défaut ; le sélecteur n'indique que
+        // le dernier sujet engagé (demandé, mémorisé, ou ouvert par une alerte).
+        const pick = [wanted, stored].find((id) => id && list.some((s) => s.id === id)) ?? null;
         this.subjectId.set(pick);
-        if (!pick) {
+        if (list.length === 0) {
           this.notice.set('Aucun sujet : ouvre d’abord un terminal.');
         }
+        void this.fastBrain.warm(pick).then((on) => this.fastBrainOn.set(on));
         if (alertId) {
           this.readAlert(alertId);
-        } else if (fromCompanion && pick) {
+        } else if (fromCompanion && list.length > 0) {
           // Le PO vient de dire « Jarvis » au téléphone : on l'écoute, et le réveil compte (D9). SF-233-11 : la
           // conversation démarre directement en mains libres.
           void this.onWake();
-        } else if (pick && canAutoStart()) {
+        } else if (list.length > 0 && canAutoStart()) {
           // SF-233-11 — le premier geste a déjà eu lieu : la conversation démarre seule.
           this.startConversation();
         }
@@ -287,6 +307,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    if (this.announceTimer) {
+      clearInterval(this.announceTimer);
+      this.announceTimer = null;
+    }
     this.conversation.rest();
     this.clearRelisten();
     this.clearAck();
@@ -407,6 +431,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
       return;
     }
     this.jarvis.usage('WAKE');
+    if (this.fastBrainOn()) {
+      // F-235 / SF-235-05 (D6) — le mot d'éveil pré-chauffe le cache du cerveau rapide (au plus toutes les 4 min).
+      void this.fastBrain.warm(this.subjectId());
+    }
     if (this.state() === 'parole') {
       this.voice.stop();
     }
@@ -863,12 +891,26 @@ export class JarvisComponent implements OnInit, OnDestroy {
       await this.answerToolConfirmation(this.pendingConfirm, text);
       return;
     }
+    // F-235 / SF-235-05 (D8) — une confirmation attendue court-circuite le cerveau rapide : la réponse va DIRECTEMENT
+    // au tour Opus qui l'a demandée.
+    let directToOpus = false;
     if (this.awaitingVerbal) {
       // SF-231-04 — l'agent a demandé « Tu confirmes ? » : seul un « oui » ou un « non » nets repartent au cerveau ;
       // une réponse ambiguë n'est jamais envoyée (une erreur de transcription ne déclenche rien).
       this.awaitingVerbal = false;
       if (classifyConfirmation(text) === 'doute') {
         await this.say(DOUBT_PHRASE);
+        return;
+      }
+      directToOpus = true;
+    }
+    const verbalSubject = this.verbalSubject;
+    this.verbalSubject = null;
+    if (isRepeatCommand(text)) {
+      // F-235 / SF-235-05 (D13) — « redis-moi » : la dernière annonce, telle quelle.
+      const last = this.announcements.repeat();
+      if (last) {
+        await this.say(announcementText(last));
         return;
       }
     }
@@ -887,7 +929,14 @@ export class JarvisComponent implements OnInit, OnDestroy {
     if (isStopCommand(text)) {
       // SF-231-03 — l'interruption par la parole : « stop » arrête le travail en cours, comme le bouton du terminal.
       const id = this.subjectId();
-      if (this.turnRunning && id) {
+      const running = this.delegations();
+      if (running.length > 0) {
+        // F-235 / SF-235-05 (D8) — « annule » arrête la DERNIÈRE délégation vivante (chemin d'interruption existant).
+        const last = running[running.length - 1];
+        this.delegations.set(running.slice(0, -1));
+        this.atelier.interruptChat(last.subjectId).subscribe({ error: () => undefined });
+        await this.say(`J’arrête la recherche sur ${last.label}.`);
+      } else if (this.turnRunning && id) {
         this.turnRunning = false;
         this.clearAck();
         this.atelier.interruptChat(id).subscribe({ error: () => undefined });
@@ -903,13 +952,216 @@ export class JarvisComponent implements OnInit, OnDestroy {
       await this.say(`Je passe sur ${target.name}.`);
       return;
     }
-    const subjectId = this.subjectId();
+    if (this.fastBrainOn() && !directToOpus) {
+      // F-235 / SF-235-05 — le cerveau rapide converse ; il délègue à Opus dès qu'il faut agir ou vérifier.
+      void this.converse(text);
+      return;
+    }
+    const subjectId = (directToOpus ? verbalSubject : null) ?? this.subjectId();
     if (!subjectId) {
-      this.state.set('repos');
+      // F-235 / SF-235-05 (D19) — aucun sujet engagé : Jarvis demande, il ne choisit jamais au hasard.
       this.notice.set('Choisis d’abord un sujet.');
+      await this.say(ASK_SUBJECT);
       return;
     }
     this.send(subjectId, text);
+  }
+
+  /**
+   * F-235 / SF-235-05 — **un échange avec le cerveau rapide**. Chaque phrase reçue (déjà contrôlée par le serveur) est
+   * dite aussitôt ; une délégation dit son annonce puis ouvre le tour Opus du fil cible (tour normal, inchangé) ; le
+   * repli (plafond, quota) ou le coupe-circuit (503) rendent exactement le mode actuel. Jamais muet.
+   */
+  private async converse(text: string): Promise<void> {
+    this.state.set('reflexion');
+    this.detail.set(null);
+    this.spoken.set(null);
+    const heardBeforeCut = this.heardBeforeCut;
+    const subjectId = this.subjectId();
+    const seq = ++this.sendSeq;
+    const latest = () => seq === this.sendSeq;
+    this.startClock();
+    this.armFastFiller(latest);
+    let said = '';
+    let fellBack = false;
+    const sayNow = (sentence: string) => {
+      if (!latest()) {
+        return;
+      }
+      this.filler.answered();
+      this.clearAck();
+      const first = said === '';
+      said = first ? sentence : `${said} ${sentence}`;
+      this.spoken.set(said);
+      this.state.set('parole');
+      if (first) {
+        this.clock?.mark('firstToken');
+        this.clock?.mark('firstOralSentence');
+        this.voice.resetHeard();
+      }
+      this.voice.enqueue(sentence, subjectId ?? '', first ? this.clockHooks() : undefined);
+    };
+    const outcome = await this.fastBrain.converse({ subjectId, text, heardBeforeCut }, {
+      onText: (sentence) => this.zone.run(() => sayNow(sentence)),
+      onDelegated: (delegation) => this.zone.run(() => {
+        sayNow(delegation.announce);
+        this.startDelegation(delegation, text, heardBeforeCut);
+      }),
+      onFallback: () => {
+        fellBack = true;
+      },
+      onDone: () => undefined,
+    });
+    await this.zone.run(async () => {
+      if (outcome === 'unavailable') {
+        this.fastBrainOn.set(false);
+      }
+      if (outcome !== 'ok' || fellBack) {
+        // Mode actuel : tout à Opus, comme avant le cerveau rapide (D15, D17).
+        this.clearAck();
+        if (!latest()) {
+          return;
+        }
+        const target = subjectId;
+        if (!target) {
+          await this.say(ASK_SUBJECT);
+          return;
+        }
+        this.send(target, text);
+        return;
+      }
+      this.clearAck();
+      this.clock?.mark('done');
+      this.reportClock();
+      await this.voice.idle();
+      if (latest() && (this.state() === 'parole' || this.state() === 'reflexion')) {
+        this.state.set('repos');
+      }
+      this.flushAnnouncements();
+    });
+  }
+
+  /** F-235 / SF-235-05 (D11) — la formule d'attente : seulement si rien n'est parti 1,2 s après la parole. */
+  private armFastFiller(latest: () => boolean): void {
+    this.clearAck();
+    this.filler.begin();
+    const clock = this.clock;
+    const delay = clock ? Math.max(0, FILLER_DELAY_MS - (performance.now() - clock.t0)) : FILLER_DELAY_MS;
+    this.ackTimer = setTimeout(() => {
+      this.ackTimer = null;
+      if (!latest() || this.state() !== 'reflexion' || !this.filler.take()) {
+        return;
+      }
+      const clip = this.formulas.pick('filler', (id) => this.voice.hasClip(id));
+      if (clip) {
+        this.spoken.set(clip.text);
+        void this.voice.playClip(clip.id, { onPlaying: () => clock?.mark('reaction') });
+      }
+    }, delay);
+  }
+
+  /**
+   * F-235 / SF-235-05 (D10, D13) — **la délégation** : un tour Opus normal dans le fil cible (`via=JARVIS`, chemin
+   * existant ; le serveur y joint la demande reformulée). Il tourne pendant que le PO continue de converser ; ses
+   * lignes 🎙 intermédiaires restent muettes (l'annonce a déjà été dite) ; sa fin rejoint la file d'annonces.
+   */
+  private startDelegation(delegation: FastDelegation, text: string, heardBeforeCut: string | null): void {
+    const subjectId = delegation.subjectId;
+    if (!subjectId) {
+      return;
+    }
+    const label = (delegation.label ?? '').trim() || 'votre demande';
+    const entry = { id: delegation.delegationId, label, subjectId };
+    this.delegations.update((list) => [...list, entry]);
+    // Le sélecteur indique le dernier sujet engagé (D19).
+    this.subjectId.set(subjectId);
+    this.scenes.setSubject(subjectId);
+    this.scenes.turnStarted();
+    let finished = false;
+    const finish = (reply: string | null, failed: boolean) => this.zone.run(() => {
+      if (finished) {
+        return;
+      }
+      finished = true;
+      this.delegations.update((list) => list.filter((d) => d.id !== entry.id));
+      if (reply) {
+        this.detail.set(stripShowLines(reply));
+      }
+      const phrase = failed ? 'La recherche n’a pas abouti ; le détail est au terminal.'
+        : oralPhrase(reply) || 'C’est fait. Le détail est à l’écran.';
+      this.announcements.push({ label, phrase, subjectId, confirm: !failed && asksConfirmation(phrase) });
+      this.flushAnnouncements();
+    });
+    void this.atelier.streamChat(subjectId, text, {
+      onAction: (action) => this.scenes.action(action),
+      onOutput: (chunk) => this.scenes.output(chunk),
+      // Lignes 🎙 intermédiaires muettes en délégation (D13) : seulement la scène.
+      onText: (delta) => this.scenes.text(delta),
+      onDone: (done) => {
+        if (done.followUp === true) {
+          return;
+        }
+        this.scenes.done(done.costEur ?? null);
+        finish(done.reply ?? null, false);
+      },
+      onError: (code) => {
+        this.scenes.aborted(code);
+        finish(null, true);
+      },
+      onConfirmRequest: (request) => this.zone.run(() => {
+        this.scenes.confirm(request.detail, request.timeoutMs);
+        this.subjectId.set(subjectId);
+        void this.askToolConfirmation(request);
+      }),
+      onConfirmResolved: (resolved) => this.zone.run(() => {
+        this.scenes.confirmResolved();
+        if (this.pendingConfirm?.toolUseId === resolved.toolUseId) {
+          this.pendingConfirm = null;
+        }
+      }),
+      onQuestionRequest: (request) => this.zone.run(() => {
+        this.scenes.question(request.timeoutMs);
+        void this.say('J’ai une question pour vous, à l’écran du terminal.');
+      }),
+      onQuestionResolved: () => this.scenes.questionResolved(),
+      onClosed: () => {
+        this.scenes.aborted();
+        finish(null, true);
+      },
+    }, 'ACT', false, [], delegation.chantier ?? null, false, 'JARVIS', heardBeforeCut);
+  }
+
+  /**
+   * F-235 / SF-235-05 (D13) — dit la prochaine fin de délégation si le moment est libre : ni pendant que le PO
+   * parle, ni pendant une autre phrase de Jarvis, ni pendant une réflexion ; sinon on réessaie à la pause suivante.
+   */
+  private flushAnnouncements(): void {
+    const state = this.state();
+    const free = state !== 'parole' && state !== 'reflexion' && !this.heardText() && !this.pendingConfirm;
+    const item = this.announcements.next(free);
+    if (!item) {
+      if (this.announcements.size > 0 && !this.announceTimer) {
+        this.announceTimer = setInterval(() => this.zone.run(() => {
+          if (this.announcements.size === 0 && this.announceTimer) {
+            clearInterval(this.announceTimer);
+            this.announceTimer = null;
+            return;
+          }
+          this.flushAnnouncements();
+        }), ANNOUNCE_PAUSE_MS);
+      }
+      return;
+    }
+    void this.say(announcementText(item)).then(() => this.zone.run(() => {
+      if (item.confirm) {
+        // La délégation finit sur « Vous confirmez ? » : la réponse ira directement à son tour Opus (D8).
+        this.awaitingVerbal = true;
+        this.verbalSubject = item.subjectId;
+        void this.listen();
+        return;
+      }
+      this.flushAnnouncements();
+    }));
   }
 
   /** Envoie dans le fil du sujet, marqué « via Jarvis » (SF-231-06). */

@@ -18,6 +18,7 @@ import { AtelierService } from '../core/services/atelier.service';
 import { DictationService } from '../core/services/dictation.service';
 import { JarvisVoiceService } from '../core/services/jarvis-voice.service';
 import { JarvisService } from '../core/services/jarvis.service';
+import { FastBrainHandlers, FastBrainOutcome, JarvisFastBrainClient } from './jarvis-fast-brain';
 import { VeilleService } from '../core/services/veille.service';
 import { JarvisStreamOpener, StreamHandlers } from './jarvis-stream-listener';
 import { JarvisVadService, VadHandlers } from './jarvis-barge-in';
@@ -37,6 +38,8 @@ function subject(id: string, name: string): WorkspaceSummary {
   return { id, name, createdAt: '2026-11-01T08:00:00Z', source: 'LOCAL', gitRepo: null } as WorkspaceSummary;
 }
 
+let fastDone: ((outcome: FastBrainOutcome) => void) | null = null;
+
 /** **L'écran Jarvis** (F-231 / SF-231-02) : le même cerveau, à la voix. */
 describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
   let atelier: jasmine.SpyObj<AtelierService>;
@@ -50,6 +53,8 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
   let vadService: jasmine.SpyObj<JarvisVadService>;
   let vad: VadHandlers | null;
   let vadStop: jasmine.Spy;
+  let fastBrain: jasmine.SpyObj<JarvisFastBrainClient>;
+  let fast: FastBrainHandlers | null;
 
   beforeEach(() => {
     try {
@@ -58,6 +63,14 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       // ignoré
     }
     handlers = null;
+    fast = null;
+    // F-235 / SF-235-05 — par défaut, le cerveau rapide est éteint (503) : l'écran garde le mode actuel.
+    fastBrain = jasmine.createSpyObj<JarvisFastBrainClient>('JarvisFastBrainClient', ['warm', 'converse']);
+    fastBrain.warm.and.resolveTo(false);
+    fastBrain.converse.and.callFake((_body, h) => {
+      fast = h;
+      return new Promise<FastBrainOutcome>((resolve) => fastDone = resolve);
+    });
     atelier = jasmine.createSpyObj<AtelierService>('AtelierService',
       ['listWorkspaces', 'streamChat', 'interruptChat', 'confirmChatToolUse']);
     atelier.interruptChat.and.returnValue(of(undefined));
@@ -116,6 +129,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
         { provide: VeilleService, useValue: veilles },
         { provide: JarvisStreamOpener, useValue: opener },
         { provide: JarvisVadService, useValue: vadService },
+        { provide: JarvisFastBrainClient, useValue: fastBrain },
         { provide: JARVIS_USER_AGENT, useFactory: () => userAgent },
         { provide: NotificationCenterService, useValue: notificationCenter },
         { provide: LiveTerminalService, useValue: liveTerminals },
@@ -771,6 +785,160 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(voice.enqueue).not.toHaveBeenCalled();
     expect(atelier.interruptChat).not.toHaveBeenCalled();
     expect(jarvis.state()).toBe('repos');
+    jarvis.ngOnDestroy();
+  }));
+
+  // ---------------------------------------------------------------- F-235 / SF-235-05 : deux cerveaux
+
+  function fastOn(): JarvisComponent {
+    fastBrain.warm.and.resolveTo(true);
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    return fixture.componentInstance;
+  }
+
+  it('F-235 / SF-235-05 — cerveau rapide : la réponse est dite phrase par phrase, aucun tour Opus', fakeAsync(() => {
+    const jarvis = fastOn();
+    expect(jarvis.fastBrainOn()).toBeTrue();
+
+    void jarvis.handle('Où en est le chantier 3 ?');
+    flushMicrotasks();
+    expect(fastBrain.converse).toHaveBeenCalledWith(
+      jasmine.objectContaining({ subjectId: 'w-2', text: 'Où en est le chantier 3 ?' }), jasmine.any(Object));
+    fast!.onText('Le chantier 3 en est aux tests.');
+    fast!.onDone({ brain: 'FAST', spokenText: 'Le chantier 3 en est aux tests.', firstTokenMs: 300, model: 'm' });
+    fastDone!('ok');
+    flushMicrotasks();
+
+    expect(voice.enqueue.calls.mostRecent().args.slice(0, 2)).toEqual(['Le chantier 3 en est aux tests.', 'w-2']);
+    expect(atelier.streamChat).not.toHaveBeenCalled();
+    expect(jarvis.state()).toBe('repos');
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-235 / SF-235-05 — délégation : annonce dite, tour Opus dans le fil cible, 🎙 intermédiaires muettes, fin annoncée avec son label',
+    fakeAsync(() => {
+      const jarvis = fastOn();
+      void jarvis.handle('Regarde les tickets bloqués d’AGENOR');
+      flushMicrotasks();
+      fast!.onDelegated({
+        delegationId: 'd-1', subjectId: 'w-1', chantier: null, label: 'tickets bloqués d’AGENOR',
+        announce: 'Je regarde les tickets bloqués d’AGENOR, Monsieur.', demande: 'x', automatic: false, reason: null,
+      });
+      fastDone!('ok');
+      flushMicrotasks();
+
+      expect(voice.enqueue.calls.mostRecent().args.slice(0, 2))
+        .toEqual(['Je regarde les tickets bloqués d’AGENOR, Monsieur.', 'w-2']);
+      expect(atelier.streamChat).toHaveBeenCalledWith('w-1', 'Regarde les tickets bloqués d’AGENOR',
+        jasmine.any(Object), 'ACT', false, [], null, false, 'JARVIS', null);
+      expect(jarvis.delegations().map((d) => d.label)).toEqual(['tickets bloqués d’AGENOR']);
+
+      voice.enqueue.calls.reset();
+      handlers!.onText('🎙 Je lance la recherche Jira.');
+      expect(voice.enqueue).not.toHaveBeenCalled();
+
+      handlers!.onDone({ reply: '🎙 Deux tickets sont bloqués.\n\nDétail…', actions: [], messageId: 'm-1' });
+      flushMicrotasks();
+      expect(voice.speak).toHaveBeenCalledWith('Pour tickets bloqués d’AGENOR : Deux tickets sont bloqués.', 'w-1');
+      expect(jarvis.delegations()).toEqual([]);
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-235 / SF-235-05 — deux fins proches sont dites dans l’ordre de fin, jamais pendant une autre phrase',
+    fakeAsync(() => {
+      const jarvis = fastOn();
+      const streams: AtelierStreamHandlers[] = [];
+      atelier.streamChat.and.callFake((_id: string, _text: string, h: AtelierStreamHandlers) => {
+        streams.push(h);
+        return Promise.resolve();
+      });
+      for (const [id, label] of [['d-1', 'premier'], ['d-2', 'second']]) {
+        void jarvis.handle(`Lance ${label}`);
+        flushMicrotasks();
+        fast!.onDelegated({ delegationId: id, subjectId: 'w-1', chantier: null, label, announce: `Je lance ${label}.`,
+          demande: label, automatic: false, reason: null });
+        fastDone!('ok');
+        flushMicrotasks();
+      }
+      let release: () => void = () => undefined;
+      voice.speak.and.callFake(() => new Promise<void>((resolve) => release = resolve));
+      streams[1].onDone({ reply: '🎙 Second fini.', actions: [], messageId: 'm-2' });
+      streams[0].onDone({ reply: '🎙 Premier fini.', actions: [], messageId: 'm-1' });
+      flushMicrotasks();
+      expect(voice.speak.calls.allArgs().map((a) => a[0])).toEqual(['Pour second : Second fini.']);
+      release();
+      flushMicrotasks();
+      expect(voice.speak.calls.allArgs().map((a) => a[0])).toEqual(['Pour second : Second fini.',
+        'Pour premier : Premier fini.']);
+      release();
+      flushMicrotasks();
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-235 / SF-235-05 — cerveau rapide éteint en route (503) ou repli : exactement le mode actuel', fakeAsync(() => {
+    const jarvis = fastOn();
+    void jarvis.handle('Bonjour');
+    flushMicrotasks();
+    fastDone!('unavailable');
+    flushMicrotasks();
+    expect(jarvis.fastBrainOn()).toBeFalse();
+    expect(atelier.streamChat).toHaveBeenCalledWith('w-2', 'Bonjour', jasmine.any(Object), 'ACT', false, [], null,
+      false, 'JARVIS', null);
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-235 / SF-235-05 — une confirmation attendue va directement à Opus, sans cerveau rapide', fakeAsync(() => {
+    const jarvis = fastOn();
+    void jarvis.handle('Envoie le compte rendu');
+    flushMicrotasks();
+    fast!.onDelegated({ delegationId: 'd-1', subjectId: 'w-1', chantier: null, label: 'compte rendu',
+      announce: 'Je prépare l’envoi du compte rendu.', demande: 'x', automatic: false, reason: null });
+    fastDone!('ok');
+    flushMicrotasks();
+    handlers!.onDone({ reply: '🎙 J’envoie le compte rendu à Paul. Vous confirmez ?', actions: [], messageId: 'm' });
+    flushMicrotasks();
+    fastBrain.converse.calls.reset();
+    atelier.streamChat.calls.reset();
+
+    void jarvis.handle('oui');
+    flushMicrotasks();
+    expect(fastBrain.converse).not.toHaveBeenCalled();
+    expect(atelier.streamChat).toHaveBeenCalledWith('w-1', 'oui', jasmine.any(Object), 'ACT', false, [], null, false,
+      'JARVIS', null);
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-235 / SF-235-05 — « annule » arrête la dernière délégation vivante et le dit', fakeAsync(() => {
+    const jarvis = fastOn();
+    void jarvis.handle('Regarde les tickets');
+    flushMicrotasks();
+    fast!.onDelegated({ delegationId: 'd-1', subjectId: 'w-1', chantier: null, label: 'tickets bloqués',
+      announce: 'Je regarde les tickets bloqués.', demande: 'x', automatic: false, reason: null });
+    fastDone!('ok');
+    flushMicrotasks();
+
+    void jarvis.handle('annule');
+    flushMicrotasks();
+    expect(atelier.interruptChat).toHaveBeenCalledWith('w-1');
+    expect(voice.speak).toHaveBeenCalledWith('J’arrête la recherche sur tickets bloqués.', 'w-1');
+    expect(jarvis.delegations()).toEqual([]);
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-235 / SF-235-05 (D19) — aucun sujet présélectionné ; sans sujet, le mode actuel demande lequel', fakeAsync(() => {
+    configure({});
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    const jarvis = fixture.componentInstance;
+    expect(jarvis.subjectId()).toBeNull();
+
+    void jarvis.handle('Où en est la migration ?');
+    flushMicrotasks();
+    expect(atelier.streamChat).not.toHaveBeenCalled();
+    expect(voice.speak).toHaveBeenCalledWith('Pour quel client ou quel sujet, Monsieur ?', null);
     jarvis.ngOnDestroy();
   }));
 });

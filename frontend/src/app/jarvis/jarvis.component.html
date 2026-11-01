@@ -34,6 +34,14 @@
       <mat-icon aria-hidden="true">{{ sober() ? 'blur_on' : 'blur_off' }}</mat-icon>
       {{ sober() ? 'Écran complet' : 'Mode sobre' }}
     </button>
+    <!-- F-235 / SF-235-05 — les délégations vivantes à Opus, sous l'orbe : le PO continue de converser. -->
+    @if (delegations().length > 0) {
+      <ul class="jv__delegations" aria-label="Recherches en cours">
+        @for (d of delegations(); track d.id) {
+          <li class="jv__delegation"><mat-icon aria-hidden="true">sync</mat-icon> {{ d.label }}</li>
+        }
+      </ul>
+    }
     <!-- F-234 — la scène en cours (une à la fois), déduite à l'écran des événements du tour. -->
     <app-jarvis-scene class="jv__scene" />
   </section>
