@@ -85,6 +85,31 @@ class JarvisAdoptionApiIntegrationTest {
     }
 
     @Test
+    @DisplayName("F-234 / SF-234-11 — scènes par famille, part de la générique, nœuds, touchers, mode sobre, Montrer ; isolés")
+    void scenesMeasure() throws Exception {
+        event(adminToken, "{\"event\":\"SCENES\",\"scenes\":{\"S3\":3,\"GENERIQUE\":1},\"lit\":4,\"shows\":1}")
+                .andExpect(status().isNoContent());
+        event(adminToken, "{\"event\":\"SCENES\",\"scenes\":{\"S3\":1,\"S5\":3},\"lit\":2}")
+                .andExpect(status().isNoContent());
+        event(adminToken, "{\"event\":\"TOUCH\"}").andExpect(status().isNoContent());
+        event(adminToken, "{\"event\":\"SOBER\"}").andExpect(status().isNoContent());
+        // Aucun contenu ne passe : un identifiant de scène qui n'en est pas un est refusé.
+        event(adminToken, "{\"event\":\"SCENES\",\"scenes\":{\"Zahi Ben\":1}}").andExpect(status().isBadRequest());
+        event(adminToken, "{\"event\":\"SCENES\",\"scenes\":{\"S3\":100000}}").andExpect(status().isBadRequest());
+
+        measure(adminToken).andExpect(status().isOk())
+                .andExpect(jsonPath("$.scenes.shown").value(8))
+                .andExpect(jsonPath("$.scenes.genericSharePct").value(12.5))
+                .andExpect(jsonPath("$.scenes.perScene.S3").value(4))
+                .andExpect(jsonPath("$.scenes.perScene.S5").value(3))
+                .andExpect(jsonPath("$.scenes.nodesLit").value(6))
+                .andExpect(jsonPath("$.scenes.nodeTouches").value(1))
+                .andExpect(jsonPath("$.scenes.soberOn").value(1))
+                .andExpect(jsonPath("$.scenes.showRequests").value(1));
+        measure(otherAdminToken).andExpect(status().isOk()).andExpect(jsonPath("$.scenes.shown").value(0));
+    }
+
+    @Test
     @DisplayName("400 événement inconnu ; 403 mesure pour un non-ADMIN ; 401 sans jeton")
     void errors() throws Exception {
         event(adminToken, "{\"event\":\"DANCE\"}").andExpect(status().isBadRequest())

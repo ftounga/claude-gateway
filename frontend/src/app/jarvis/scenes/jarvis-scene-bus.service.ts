@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, NgZone, OnDestroy, computed, inject, signal } from '@angular/core';
 
 import { NameIndex } from './jarvis-name-matcher';
-import { JarvisSceneReader, ReaderAction, ReaderState } from './jarvis-scene-reader';
+import { JarvisSceneReader, ReaderAction, ReaderState, SceneStats } from './jarvis-scene-reader';
 import { ShowFocus, resolveShow } from './jarvis-show';
 import { JarvisUniverse, clientKey } from './jarvis-universe.models';
 
@@ -37,7 +37,20 @@ export const JARVIS_UNIVERSE_URL = '/api/jarvis/universe';
  */
 const TICK_MS = 250;
 
-const EMPTY: ReaderState = { lit: [], scene: null, pulses: 0, toSendAdded: 0, show: null, stepsDone: {} };
+const EMPTY: ReaderState = {
+  lit: [], scene: null, pulses: 0, toSendAdded: 0, show: null, stepsDone: {}, frozen: false, said: [],
+};
+
+/** SF-234-11 (D9) — le mode sobre, par appareil. */
+export const SOBER_KEY = 'jarvis.sobre';
+
+function readSober(): boolean {
+  try {
+    return typeof localStorage !== 'undefined' && localStorage.getItem(SOBER_KEY) === '1';
+  } catch {
+    return false; // stockage indisponible : l'écran complet
+  }
+}
 
 /**
  * **Le fil des scènes** (F-234 / SF-234-02) — l'unique point d'accroche entre l'écran Jarvis (F-231/F-233) et
@@ -59,6 +72,9 @@ export class JarvisSceneBus implements OnDestroy {
   readonly state = signal<ReaderState>(EMPTY);
   /** Le sujet courant de l'écran. */
   readonly subjectId = signal<string | null>(null);
+  /** SF-234-11 (D9) — mode sobre : orbe et fil d'Ariane seuls (constellation et scènes retirées). */
+  readonly sober = signal(readSober());
+
   /** Un tour tourne (D14 : aucune ambiance pendant un tour, sauf la veille qui sonne). */
   readonly turnActive = signal(false);
   private readonly hostDownKey = signal<string | null>(null);
@@ -299,6 +315,35 @@ export class JarvisSceneBus implements OnDestroy {
     }
   }
 
+  /** SF-234-11 (D9) — allume ou éteint le mode sobre (gardé sur l'appareil ; sans stockage, pour l'ouverture). */
+  setSober(on: boolean): void {
+    this.sober.set(on);
+    try {
+      localStorage.setItem(SOBER_KEY, on ? '1' : '0');
+    } catch {
+      // stockage indisponible : le choix vaut pour cette ouverture
+    }
+  }
+
+  /** SF-234-11 (D13) — la voix est coupée : la scène se fige 1 s, puis s'efface. */
+  cut(): void {
+    this.reader.cut(this.now());
+    this.publish();
+    this.ensureTimer();
+  }
+
+  /** SF-234-11 (D13) — une phrase commence à être dite : ses noms passent en surbrillance. */
+  saying(sentence: string): void {
+    this.reader.saying(sentence, this.now());
+    this.publish();
+    this.ensureTimer();
+  }
+
+  /** SF-234-11 (D16) — ce que l'écran a montré pendant le tour (puis remis à zéro). */
+  takeStats(): SceneStats {
+    return this.reader.takeStats();
+  }
+
   /** SF-234-10 / A2 — les terminaux vivants du registre déjà relevé (F-70), lus sans nouvel appel. */
   liveTerminals(workspaceIds: readonly string[]): void {
     this.liveTerminalIds.set(new Set(workspaceIds));
@@ -345,7 +390,7 @@ export class JarvisSceneBus implements OnDestroy {
       this.publish();
     }
     const state = this.reader.state();
-    if (!this.turnRunning && !state.scene && state.lit.length === 0) {
+    if (!this.turnRunning && !state.scene && state.lit.length === 0 && !state.frozen) {
       this.stopTimer();
     }
   }

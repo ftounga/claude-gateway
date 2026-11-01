@@ -70,6 +70,41 @@ public class JarvisUsageService {
         return sum == null ? BigDecimal.ZERO : sum;
     }
 
+    /**
+     * F-234 / SF-234-11 (D16) — les scènes d'un tour : compte par identifiant de scène (déjà validé par l'appelant),
+     * nœuds allumés, demandes « Montrer ». Aucun contenu.
+     */
+    public void addScenes(UUID userId, java.util.Map<String, Integer> counts, int lit, int shows) {
+        bump(userId, day -> {
+            java.util.Map<String, Integer> merged = SceneCounts.parse(day.getSceneCounts());
+            int shown = 0;
+            int generic = 0;
+            for (var e : counts.entrySet()) {
+                int n = Math.max(0, e.getValue() == null ? 0 : e.getValue());
+                merged.merge(e.getKey(), n, Integer::sum);
+                shown += n;
+                if (SceneCounts.GENERIC.equals(e.getKey())) {
+                    generic += n;
+                }
+            }
+            day.setSceneCounts(SceneCounts.format(merged));
+            day.setScenesShown(day.getScenesShown() + shown);
+            day.setScenesGeneric(day.getScenesGeneric() + generic);
+            day.setNodesLit(day.getNodesLit() + Math.max(0, lit));
+            day.setShowRequests(day.getShowRequests() + Math.max(0, shows));
+        });
+    }
+
+    /** F-234 / SF-234-11 — un toucher de nœud de la constellation (« passe sur X »). */
+    public void addNodeTouch(UUID userId) {
+        bump(userId, day -> day.setNodeTouches(day.getNodeTouches() + 1));
+    }
+
+    /** F-234 / SF-234-11 — le mode sobre activé sur un appareil. */
+    public void addSoberOn(UUID userId) {
+        bump(userId, day -> day.setSoberOn(day.getSoberOn() + 1));
+    }
+
     /** SF-231-05 — une ouverture de l'écran Jarvis (mesure d'adoption, D9). */
     public void addSession(UUID userId) {
         bump(userId, day -> day.setSessions(day.getSessions() + 1));

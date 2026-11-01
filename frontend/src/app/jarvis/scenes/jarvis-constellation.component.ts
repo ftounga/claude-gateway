@@ -42,7 +42,7 @@ interface LitMark {
   selector: 'app-jarvis-constellation',
   template: `
     <div class="cst">
-      <svg class="cst__map" [class.is-showing]="!!focus()" viewBox="-100 -100 200 200"
+      <svg class="cst__map" [class.is-showing]="!!focus()" [class.is-sober]="sober()" viewBox="-100 -100 200 200"
            preserveAspectRatio="xMidYMid meet">
         <g aria-hidden="true">
           <circle class="cst__orbit" r="62" />
@@ -61,6 +61,7 @@ interface LitMark {
           @for (c of layout().clients; track c.key) {
             <g class="cst__client" [class.is-current]="c.current" [class.is-off]="!c.connected"
                [class.is-lit]="isLit(c.key)" [class.is-shown]="isShown(c.key)" [attr.data-key]="c.key"
+               [class.is-said]="isSaid(c.key)"
                [class.is-down]="ambient().hostDown?.clientKey === c.key"
                [class.is-ringing]="ambient().alert?.clientKey === c.key">
               @if (ambient().alert?.clientKey === c.key) {
@@ -110,7 +111,7 @@ interface LitMark {
           }
           @for (m of lit(); track m.key) {
             @if (m.own) {
-              <g class="cst__mark is-lit" [attr.data-kind]="m.kind" [attr.data-key]="m.key">
+              <g class="cst__mark is-lit" [class.is-said]="isSaid(m.key)" [attr.data-kind]="m.kind" [attr.data-key]="m.key">
                 @switch (m.kind) {
                   @case ('chantier') {
                     <rect [attr.x]="m.x - 2.6" [attr.y]="m.y - 2.6" width="5.2" height="5.2"
@@ -159,6 +160,10 @@ interface LitMark {
     .cst__client.is-current circle { stroke: var(--cg-cream); stroke-width: 0.9; }
     .cst__client.is-current text { font-weight: 600; fill: var(--cg-cream); }
     .cst__client.is-off { opacity: 0.55; }
+    /* SF-234-11 — mode sobre (D9) : l'orbe et le fil d'Ariane seuls. */
+    .cst__map.is-sober { display: none; }
+    /* SF-234-11 (D13) — le nom de la phrase en train d'être dite. */
+    .is-said text, .cst__mark.is-said text { text-decoration: underline; text-underline-offset: 1.5px; }
     /* SF-234-13 — « Montrer » : le demandé au premier plan, le reste estompé. */
     .cst__map.is-showing .cst__client:not(.is-shown), .cst__map.is-showing .cst__subject:not(.is-shown) {
       opacity: 0.22;
@@ -353,6 +358,14 @@ export class JarvisConstellationComponent implements OnInit {
 
   isLit(key: string): boolean {
     return this.litKeys().has(key);
+  }
+
+  /** SF-234-11 — mode sobre. */
+  readonly sober = computed(() => this.bus.sober());
+
+  /** SF-234-11 (D13) — le nœud est nommé dans la phrase en train d'être dite. */
+  isSaid(key: string): boolean {
+    return this.bus.state().said.includes(key);
   }
 
   isShown(key: string): boolean {

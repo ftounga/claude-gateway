@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-234 / SF-234-11 - LA MESURE D'INTERET DE L'ECRAN VIVANT (D16), SANS CONTENU.
+
+      jarvis_usage_days + compteurs du jour : scenes montrees (dont generiques), detail par
+      famille de scene ("S3=12;S5=4;GENERIQUE=2", identifiants de scene seulement), noeuds
+      allumes, touchers de noeud, mode sobre active, demandes "Montrer". Aucun nom, aucun texte.
+      Colonnes additives avec defaut : les lignes existantes valent 0 / chaine vide.
+
+      Numero 234 = numero de la feature (evite toute collision avec les vagues paralleles).
+      Rollback : les colonnes se retirent.
+    -->
+
+    <changeSet id="234-jarvis-usage-scenes" author="claude-gateway">
+        <addColumn tableName="jarvis_usage_days">
+            <column name="scenes_shown" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="scenes_generic" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="scene_counts" type="varchar(1000)" defaultValue="">
+                <constraints nullable="false"/>
+            </column>
+            <column name="nodes_lit" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="node_touches" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="sober_on" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="show_requests" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="jarvis_usage_days" columnName="show_requests"/>
+            <dropColumn tableName="jarvis_usage_days" columnName="sober_on"/>
+            <dropColumn tableName="jarvis_usage_days" columnName="node_touches"/>
+            <dropColumn tableName="jarvis_usage_days" columnName="nodes_lit"/>
+            <dropColumn tableName="jarvis_usage_days" columnName="scene_counts"/>
+            <dropColumn tableName="jarvis_usage_days" columnName="scenes_generic"/>
+            <dropColumn tableName="jarvis_usage_days" columnName="scenes_shown"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

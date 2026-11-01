@@ -43,7 +43,9 @@ public class JarvisAdoptionService {
 
     /** Ce que l'écran déclare. */
     public enum Event {
-        SESSION, SPOKEN, WAKE, IDLE_END;
+        SESSION, SPOKEN, WAKE, IDLE_END,
+        /** F-234 / SF-234-11 — les scènes d'un tour, un toucher de nœud, le mode sobre activé. */
+        SCENES, TOUCH, SOBER;
 
         static Event parse(String raw) {
             if (raw == null) {
@@ -63,13 +65,40 @@ public class JarvisAdoptionService {
      * @throws IllegalArgumentException événement inconnu
      */
     public void record(UUID userId, String event, Long seconds) {
+        record(userId, event, seconds, null, null, null);
+    }
+
+    /** Au plus autant de nœuds allumés ou de « Montrer » par tour déclaré. */
+    static final int MAX_PER_TURN = 500;
+
+    /**
+     * Inscrit un événement, dont {@code SCENES} (F-234 / SF-234-11) : {@code scenes} = compte par identifiant de
+     * scène, {@code lit} = nœuds allumés, {@code shows} = demandes « Montrer ». Aucun contenu.
+     *
+     * @throws IllegalArgumentException événement inconnu, identifiant de scène ou nombre hors bornes
+     */
+    public void record(UUID userId, String event, Long seconds, java.util.Map<String, Integer> scenes, Integer lit,
+            Integer shows) {
         switch (Event.parse(event)) {
+            case SCENES -> usage.addScenes(userId, SceneCounts.validate(scenes), bounded(lit), bounded(shows));
+            case TOUCH -> usage.addNodeTouch(userId);
+            case SOBER -> usage.addSoberOn(userId);
             case SESSION -> usage.addSession(userId);
             case WAKE -> usage.addWake(userId);
             case IDLE_END -> usage.addIdleEnd(userId);
             case SPOKEN -> usage.addSpoken(userId,
                     Math.min(MAX_SPOKEN_SECONDS, Math.max(0L, seconds == null ? 0L : seconds)));
         }
+    }
+
+    private static int bounded(Integer n) {
+        if (n == null) {
+            return 0;
+        }
+        if (n < 0 || n > MAX_PER_TURN) {
+            throw new IllegalArgumentException("Nombre hors bornes.");
+        }
+        return n;
     }
 
     /** La mesure sur {@code days} jours (1 à 90), pour ce compte. */
@@ -82,7 +111,21 @@ public class JarvisAdoptionService {
         int idleEnds = 0;
         long chars = 0;
         BigDecimal usd = BigDecimal.ZERO;
+        int scenesShown = 0;
+        int scenesGeneric = 0;
+        int nodesLit = 0;
+        int nodeTouches = 0;
+        int soberOn = 0;
+        int showRequests = 0;
+        java.util.Map<String, Integer> families = new java.util.TreeMap<>();
         for (JarvisUsageDay d : usage.lastDays(userId, window)) {
+            scenesShown += d.getScenesShown();
+            scenesGeneric += d.getScenesGeneric();
+            nodesLit += d.getNodesLit();
+            nodeTouches += d.getNodeTouches();
+            soberOn += d.getSoberOn();
+            showRequests += d.getShowRequests();
+            SceneCounts.parse(d.getSceneCounts()).forEach((k, v) -> families.merge(k, v, Integer::sum));
             rows.add(new Day(d.getDay(), d.getSessions(), minutes(d.getSpokenSeconds()), d.getWakes(),
                     d.getCharsSpoken(), eur(d.totalCostUsd())));
             sessions += d.getSessions();
@@ -93,7 +136,10 @@ public class JarvisAdoptionService {
             usd = usd.add(d.totalCostUsd());
         }
         int activeDays = (int) rows.stream().filter(r -> r.sessions() > 0).count();
-        return new Measure(window, activeDays, sessions, minutes(spoken), wakes, chars, eur(usd), rows, idleEnds);
+        BigDecimal genericShare = scenesShown == 0 ? BigDecimal.ZERO
+                : BigDecimal.valueOf(100L * scenesGeneric).divide(BigDecimal.valueOf(scenesShown), 1, RoundingMode.HALF_UP);
+        return new Measure(window, activeDays, sessions, minutes(spoken), wakes, chars, eur(usd), rows, idleEnds,
+                new SceneMeasure(scenesShown, genericShare, families, nodesLit, nodeTouches, soberOn, showRequests));
     }
 
     private BigDecimal eur(BigDecimal usd) {
@@ -111,6 +157,14 @@ public class JarvisAdoptionService {
 
     /** La mesure d'adoption : totaux de la fenêtre et détail par jour. */
     public record Measure(int days, int activeDays, int sessions, BigDecimal spokenMinutes, int wakes,
-            long charsSpoken, BigDecimal voiceCostEur, List<Day> perDay, int idleEnds) {
+            long charsSpoken, BigDecimal voiceCostEur, List<Day> perDay, int idleEnds, SceneMeasure scenes) {
+    }
+
+    /**
+     * F-234 / SF-234-11 (D16) — l'intérêt de l'écran vivant : scènes montrées, part de la générique (%), détail par
+     * scène, nœuds allumés, touchers de nœud, mode sobre activé, demandes « Montrer ». Aucun contenu.
+     */
+    public record SceneMeasure(int shown, BigDecimal genericSharePct, java.util.Map<String, Integer> perScene,
+            int nodesLit, int nodeTouches, int soberOn, int showRequests) {
     }
 }
