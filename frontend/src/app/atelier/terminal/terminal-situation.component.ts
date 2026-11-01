@@ -6,19 +6,27 @@ import {
   SITUATION_IDLE_CHOICES,
   SITUATION_IDLE_KEY,
   Situation,
+  SituationAttente,
   SituationEnvoi,
+  SituationEnvoiGroup,
+  groupEnvois,
   situationIdleThreshold,
 } from '../../core/models/situation.models';
 import { SituationService } from '../../core/services/situation.service';
-import { SituationAttente } from '../../core/models/situation.models';
+import { MessageSendsService } from '../../core/services/message-sends.service';
 import { humanFileSize } from '../../shared/http-error.util';
 import { splitEssentialWithFallback } from './essential';
 
+/** Le filtre de la carte (SF-225-03) : tout, un chantier, ou ce qui n'en a pas (« Au fil de l'eau »). */
+export type SituationFilter = 'all' | 'loose' | number;
+
 /**
- * **Le point de situation** (F-225 / SF-225-02) — « où on en était » : les chantiers et leur étape, ce qui attend
- * (qui, à qui, depuis quand), les mails et messages proposés — envoyés ou non —, la dernière demande et l'essentiel
- * de la réponse, les pièces fournies, les suites. Une lecture, aucun tour. Rendu dans le cadre SOMBRE d'un panneau du
- * fil : encres du terminal sombre (DESIGN_SYSTEM §21), contrastes AA.
+ * **Le point de situation** (F-225 / SF-225-02, correctif SF-225-03) — « où on en était » : les chantiers et leur
+ * étape, ce qui attend (qui, à qui, depuis quand) rangé par chantier, les mails et messages proposés — regroupés
+ * par type, destinataire et objet, envoyés ou non, le geste [Marquer envoyé] annulable —, la dernière demande et
+ * l'essentiel de la réponse, les pièces fournies, les suites. Un filtre par chantier resserre les trois listes qui
+ * en dépendent. Une lecture, aucun tour. Rendu dans le cadre SOMBRE d'un panneau du fil : encres du terminal sombre
+ * (DESIGN_SYSTEM §21), contrastes AA.
  */
 @Component({
   selector: 'app-terminal-situation',
@@ -31,16 +39,27 @@ import { splitEssentialWithFallback } from './essential';
     } @else {
     @if (data(); as s) {
       @if (s.lastActivityAt) {
-        <p class="sit__lede">Dernier échange {{ ago(s.idleHours) }}.</p>
+        <p class="sit__lede">Dernier échange {{ ago(hoursSince(s.lastActivityAt)) }}.</p>
       } @else {
         <p class="sit__lede">Rien encore dans ce terminal.</p>
       }
 
-      @if (s.chantiers.length > 0) {
+      @if (filters().length > 1) {
+        <div class="sit__filters" role="group" aria-label="Filtrer par chantier">
+          @for (f of filters(); track f.key) {
+            <button type="button" class="sit__chip" [class.sit__chip--on]="isFilter(f.value)"
+              [attr.aria-pressed]="isFilter(f.value)" [attr.data-filter]="f.key" (click)="filter.set(f.value)">
+              {{ f.label }}
+            </button>
+          }
+        </div>
+      }
+
+      @if (shownChantiers().length > 0) {
         <section class="sit__block" aria-label="Chantiers ouverts">
           <h4 class="sit__title">Chantiers</h4>
           <ul class="sit__list">
-            @for (c of s.chantiers; track c.number) {
+            @for (c of shownChantiers(); track c.number) {
               <li class="sit__item">
                 <strong>Chantier {{ c.number }}{{ c.title ? ' — ' + c.title : '' }}</strong>
                 <span class="sit__muted"> · {{ c.phaseLabel }} · {{ c.done }}/{{ c.total }}{{ c.stale ? ' · en sommeil' : '' }}</span>
@@ -63,38 +82,54 @@ import { splitEssentialWithFallback } from './essential';
       @if (pending().length > 0 || done().length > 0) {
         <section class="sit__block" aria-label="Mails et messages proposés">
           <h4 class="sit__title">Mails et messages (7 jours)</h4>
+          @if (sendError(); as message) {
+            <p class="sit__note sit__note--error" role="alert">{{ message }}</p>
+          }
           <ul class="sit__list">
-            @for (e of pending(); track key(e)) {
-              <li class="sit__item sit__item--pending" [attr.data-send]="key(e)">
-                <span>{{ envoiLabel(e) }} : <strong class="sit__warn">pas marqué envoyé</strong></span>
-                @if (e.attenteStatus) {
-                  <span class="sit__muted"> · attente {{ attenteLabel(e.attenteStatus) }}</span>
+            @for (g of pending(); track g.key) {
+              <li class="sit__item sit__item--pending" [attr.data-send]="g.key">
+                <span>{{ envoiLabel(g.latest) }} : <strong class="sit__warn">pas marqué envoyé</strong></span>
+                @if (g.count > 1) {
+                  <span class="sit__muted"> · proposé {{ g.count }} fois</span>
+                }
+                @if (g.latest.attenteStatus) {
+                  <span class="sit__muted"> · attente {{ attenteLabel(g.latest.attenteStatus) }}</span>
                 }
                 <span class="sit__actions">
                   @if (!readOnly()) {
-                    <button mat-stroked-button type="button" class="sit__mark" (click)="mark(e)">Marquer envoyé</button>
+                    <button mat-stroked-button type="button" class="sit__mark" [disabled]="busy() === g.key"
+                      (click)="mark(g)">Marquer envoyé</button>
                   }
-                  <button mat-button type="button" class="sit__see" [attr.aria-expanded]="shown() === key(e)"
-                    (click)="toggle(e)">Voir</button>
+                  <button mat-button type="button" class="sit__see" [attr.aria-expanded]="shown() === g.key"
+                    (click)="toggle(g)">Voir</button>
                 </span>
-                @if (shown() === key(e)) {
-                  <p class="sit__excerpt">{{ e.subject ? 'Objet : ' + e.subject + ' — ' : '' }}{{ e.excerpt || '(texte vide)' }}</p>
+                @if (shown() === g.key) {
+                  <p class="sit__excerpt">{{ g.latest.subject ? 'Objet : ' + g.latest.subject + ' — ' : '' }}{{ g.latest.excerpt || '(texte vide)' }}</p>
                 }
               </li>
             }
-            @for (e of done(); track key(e)) {
-              <li class="sit__item sit__muted">{{ envoiLabel(e) }} : envoyé</li>
+            @for (g of done(); track g.key) {
+              <li class="sit__item sit__item--sent" [attr.data-send]="g.key">
+                <span class="sit__muted">{{ envoiLabel(g.latest) }} : envoyé{{ g.count > 1 ? ' · proposé ' + g.count + ' fois' : '' }}</span>
+                @if (!readOnly()) {
+                  <span class="sit__actions">
+                    <button mat-button type="button" class="sit__undo" [disabled]="busy() === g.key"
+                      [attr.aria-label]="'Annuler « envoyé » pour ' + envoiLabel(g.latest)"
+                      (click)="undo(g)">Annuler</button>
+                  </span>
+                }
+              </li>
             }
           </ul>
         </section>
       }
 
-      @if (s.attentes.length > 0) {
+      @if (shownAttenteGroups().length > 0) {
         <section class="sit__block" aria-label="Ce qui attend">
           <h4 class="sit__title">Ce qui attend</h4>
           <!-- F-227 / SF-227-03 : groupé par chantier, puis « Au fil de l'eau » — comme le tableau du client. -->
-          @for (g of attenteGroups(); track g.key) {
-            @if (attenteGroups().length > 1 || g.chantier !== null) {
+          @for (g of shownAttenteGroups(); track g.key) {
+            @if (shownAttenteGroups().length > 1 || g.chantier !== null) {
               <h5 class="sit__sub" [attr.data-group]="g.key">{{ g.label }}</h5>
             }
             <ul class="sit__list">
@@ -150,7 +185,7 @@ import { splitEssentialWithFallback } from './essential';
               <option [value]="choice.hours" [selected]="choice.hours === threshold()">{{ choice.label }}</option>
             }
           </select>
-          d'inactivité
+          d'inactivité (votre dernier message ou votre dernière visite sur cet appareil)
         </label>
       </p>
     }
@@ -160,11 +195,16 @@ import { splitEssentialWithFallback } from './essential';
     :host { display: block; color: var(--cg-divider); font-size: 13px; }
     .sit__note, .sit__lede { margin: 0 0 var(--cg-space-2); color: var(--cg-terminal-ink-2); }
     .sit__note--error { color: var(--cg-orange-2); }
+    .sit__filters { display: flex; flex-wrap: wrap; gap: var(--cg-space-1); margin: 0 0 var(--cg-space-2); }
+    .sit__chip { padding: var(--cg-space-1) var(--cg-space-2); border: 1px solid var(--cg-terminal-ink-2); border-radius: 999px;
+      background: transparent; color: var(--cg-divider); font: inherit; font-size: 12px; cursor: pointer; }
+    .sit__chip:focus-visible { outline: 2px solid var(--cg-orange-2); outline-offset: 2px; }
+    .sit__chip--on { border-color: var(--cg-orange-2); color: var(--cg-orange-2); font-weight: 600; }
     .sit__block { margin: 0 0 var(--cg-space-3); }
     .sit__title { margin: 0 0 var(--cg-space-1); font: 600 13px var(--cg-font-body); color: var(--cg-surface); }
     .sit__list { margin: 0; padding: 0; list-style: none; }
     .sit__sub { margin: var(--cg-space-1) 0; font: 600 12px var(--cg-font-body); color: var(--cg-terminal-ink-2); }
-    .sit__item { margin: 0 0 var(--cg-space-1); }
+    .sit__item { margin: 0 0 var(--cg-space-1); overflow-wrap: anywhere; }
     .sit__muted { color: var(--cg-terminal-ink-2); }
     .sit__await, .sit__warn { color: var(--cg-orange-2); }
     .sit__actions { display: inline-flex; flex-wrap: wrap; gap: var(--cg-space-1); margin-left: var(--cg-space-2); }
@@ -177,18 +217,32 @@ import { splitEssentialWithFallback } from './essential';
 })
 export class TerminalSituationComponent {
   private readonly service = inject(SituationService);
+  private readonly sends = inject(MessageSendsService);
 
   readonly workspaceId = input<string | null>(null);
   readonly readOnly = input(false);
+  /** Le chantier du fil affiché (volet du split) : le filtre s'y place d'emblée (SF-225-03). */
+  readonly chantier = input<number | null>(null);
 
-  /** [Marquer envoyé] : le terminal fait le geste existant (F-211) — la carte se met à jour aussitôt. */
-  readonly markSent = output<{ messageId: string; index: number }>();
+  /**
+   * Un envoi vient d'être marqué ou annulé ICI (SF-225-03) : le terminal relit ses envois marqués et le compte
+   * des attentes — la bulle du fil dit la même chose que la carte.
+   */
+  readonly sendsChanged = output<void>();
 
   readonly state = signal<'loading' | 'ready' | 'error'>('loading');
   readonly data = signal<Situation | null>(null);
   readonly shown = signal<string | null>(null);
+  readonly busy = signal<string | null>(null);
+  readonly sendError = signal<string | null>(null);
   readonly threshold = signal<number>(situationIdleThreshold());
   readonly choices = SITUATION_IDLE_CHOICES;
+  readonly filter = signal<SituationFilter>('all');
+
+  private readonly initialFilter = effect(() => {
+    const chantier = this.chantier();
+    untracked(() => this.filter.set(chantier ?? 'all'));
+  });
 
   /**
    * « Ce qui attend », groupé (F-227 / SF-227-03) : un groupe par chantier ouvert qui a des attentes, dans l'ordre des
@@ -216,8 +270,53 @@ export class TerminalSituationComponent {
     return groups;
   });
 
-  readonly pending = computed(() => (this.data()?.envois ?? []).filter((e) => !e.sentAt));
-  readonly done = computed(() => (this.data()?.envois ?? []).filter((e) => !!e.sentAt));
+  /** Les numéros des chantiers ouverts : un mail proposé dans un chantier clos se range au fil de l'eau. */
+  private readonly openNumbers = computed(() => new Set((this.data()?.chantiers ?? []).map((c) => c.number)));
+
+  /** Les mails et messages, regroupés par type, destinataire et objet (SF-225-03). */
+  readonly envoiGroups = computed(() => groupEnvois(this.data()?.envois ?? []));
+
+  /** Les filtres offerts : Tout, chaque chantier ouvert, et « Au fil de l'eau » s'il y a de quoi. */
+  readonly filters = computed<{ key: string; label: string; value: SituationFilter }[]>(() => {
+    const s = this.data();
+    if (!s || s.chantiers.length === 0) {
+      return [];
+    }
+    const list: { key: string; label: string; value: SituationFilter }[] = [{ key: 'all', label: 'Tout', value: 'all' }];
+    for (const c of s.chantiers) {
+      list.push({ key: `c${c.number}`, label: `Ch.${c.number}${c.title ? ' · ' + c.title : ''}`, value: c.number });
+    }
+    const hasLoose = this.attenteGroups().some((g) => g.chantier === null)
+      || this.envoiGroups().some((g) => this.isLoose(g));
+    if (hasLoose) {
+      list.push({ key: 'loose', label: 'Au fil de l’eau', value: 'loose' });
+    }
+    return list;
+  });
+
+  readonly shownChantiers = computed(() => {
+    const f = this.filter();
+    const chantiers = this.data()?.chantiers ?? [];
+    return f === 'all' ? chantiers : f === 'loose' ? [] : chantiers.filter((c) => c.number === f);
+  });
+
+  readonly shownAttenteGroups = computed(() => {
+    const f = this.filter();
+    const groups = this.attenteGroups();
+    return f === 'all' ? groups : groups.filter((g) => (f === 'loose' ? g.chantier === null : g.chantier === f));
+  });
+
+  private readonly shownEnvoiGroups = computed(() => {
+    const f = this.filter();
+    const groups = this.envoiGroups();
+    if (f === 'all') {
+      return groups;
+    }
+    return groups.filter((g) => (f === 'loose' ? this.isLoose(g) : g.chantiers.includes(f)));
+  });
+
+  readonly pending = computed(() => this.shownEnvoiGroups().filter((g) => !g.sent));
+  readonly done = computed(() => this.shownEnvoiGroups().filter((g) => !!g.sent));
 
   /** L'essentiel de la dernière réponse (F-126 : marqueurs, sinon premier paragraphe). */
   readonly essential = computed(() => {
@@ -247,8 +346,8 @@ export class TerminalSituationComponent {
     });
   });
 
-  key(e: SituationEnvoi): string {
-    return `${e.messageId}#${e.blockIndex}`;
+  isFilter(value: SituationFilter): boolean {
+    return this.filter() === value;
   }
 
   envoiLabel(e: SituationEnvoi): string {
@@ -260,17 +359,65 @@ export class TerminalSituationComponent {
     return status === 'DEMANDE' ? 'demandée' : status === 'A_FAIRE' ? 'à faire' : status === 'FAIT' ? 'faite' : 'close';
   }
 
-  toggle(e: SituationEnvoi): void {
-    this.shown.set(this.shown() === this.key(e) ? null : this.key(e));
+  toggle(g: SituationEnvoiGroup): void {
+    this.shown.set(this.shown() === g.key ? null : g.key);
   }
 
-  mark(e: SituationEnvoi): void {
-    this.markSent.emit({ messageId: e.messageId, index: e.blockIndex });
-    const now = new Date().toISOString();
+  /** [Marquer envoyé] : la proposition la plus récente du groupe, le geste F-211 — la carte suit la réponse. */
+  mark(g: SituationEnvoiGroup): void {
+    const id = this.workspaceId();
+    if (!id || this.readOnly() || this.busy()) {
+      return;
+    }
+    const target = g.latest;
+    this.busy.set(g.key);
+    this.sendError.set(null);
+    this.sends.mark(id, target.messageId, target.blockIndex).subscribe({
+      next: (send) => {
+        this.busy.set(null);
+        this.patchSent(target, send.sentAt ?? new Date().toISOString());
+        this.sendsChanged.emit();
+      },
+      error: () => {
+        this.busy.set(null);
+        this.sendError.set('Impossible de marquer ce message comme envoyé.');
+      },
+    });
+  }
+
+  /** [Annuler] : retire la marque « envoyé » (geste F-211 existant) ; l'attente liée revient si elle n'a pas bougé. */
+  undo(g: SituationEnvoiGroup): void {
+    const id = this.workspaceId();
+    const target = g.sent;
+    if (!id || !target || this.readOnly() || this.busy()) {
+      return;
+    }
+    this.busy.set(g.key);
+    this.sendError.set(null);
+    this.sends.cancel(id, target.messageId, target.blockIndex).subscribe({
+      next: () => {
+        this.busy.set(null);
+        this.patchSent(target, null);
+        this.sendsChanged.emit();
+      },
+      error: () => {
+        this.busy.set(null);
+        this.sendError.set('Impossible d’annuler.');
+      },
+    });
+  }
+
+  private patchSent(target: SituationEnvoi, sentAt: string | null): void {
     this.data.update((s) => s ? {
       ...s,
-      envois: s.envois.map((x) => (this.key(x) === this.key(e) ? { ...x, sentAt: now } : x)),
+      envois: s.envois.map((x) => (x.messageId === target.messageId && x.blockIndex === target.blockIndex
+        ? { ...x, sentAt } : x)),
     } : s);
+  }
+
+  /** Proposé au fil commun, ou dans un chantier qui n'est plus ouvert : « Au fil de l'eau ». */
+  private isLoose(g: SituationEnvoiGroup): boolean {
+    return g.chantiers.some((lane) => lane === null || !this.openNumbers().has(lane));
   }
 
   setThreshold(raw: string): void {
@@ -281,6 +428,11 @@ export class TerminalSituationComponent {
     } catch {
       // stockage indisponible : le réglage vaut pour la page
     }
+  }
+
+  hoursSince(iso: string | null): number | null {
+    const at = iso ? Date.parse(iso) : NaN;
+    return isNaN(at) ? null : Math.max(0, Math.floor((Date.now() - at) / 3_600_000));
   }
 
   ago(hours: number | null): string {

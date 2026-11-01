@@ -85,7 +85,12 @@ import { MatDialog } from '@angular/material/dialog';
 import { DepositPreviewData, DepositPreviewDialogComponent } from './deposit-preview-dialog.component';
 import { previewKindOf } from './deposit-preview';
 import { SituationService } from '../../core/services/situation.service';
-import { situationIdleThreshold, situationOpensOnEntry } from '../../core/models/situation.models';
+import {
+  readLastVisit,
+  recordVisit,
+  situationIdleThreshold,
+  situationOpensOnEntry,
+} from '../../core/models/situation.models';
 import { AtelierSlashRecallComponent } from './atelier-slash-recall.component';
 import { AtelierSlashActionComponent } from './atelier-slash-action.component';
 import { AtelierSlashRoutinesComponent } from './atelier-slash-routines.component';
@@ -407,6 +412,10 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     const previous = this.projectIdValue();
     this.projectIdValue.set(value ?? null);
     if (value !== previous) {
+      // F-225 / SF-225-03 : quitter un terminal compte comme sa dernière visite sur cet appareil.
+      if (previous) {
+        this.noteVisit(previous);
+      }
       // F-223 / SF-223-01 : une reprise différée appartient au sujet quitté — jamais envoyée ailleurs.
       this.deferredResume.set(null);
       // F-193 : Plume appartient au terminal ouvert ; changer de terminal le referme.
@@ -2687,6 +2696,9 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    if (this.projectId) {
+      this.noteVisit(this.projectId);
+    }
     this.clearQrailTimer();
     this.clearTopDrawerTimer();
     this.clearDockTimer();
@@ -3154,27 +3166,74 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     });
   }
 
-  /** À l'entrée : inactif depuis au moins le seuil réglé (défaut 4 h) → la carte s'ouvre. Jamais en lecture seule. */
+  /**
+   * À l'entrée : inactif depuis au moins le seuil réglé (défaut 4 h) → la carte s'ouvre. Jamais en lecture seule.
+   *
+   * <p>SF-225-03 : l'inactivité part du plus récent de votre dernier message ÉCRIT et de votre dernière visite sur
+   * cet appareil (lue AVANT d'inscrire celle-ci) ; jamais dans un volet du split, jamais par-dessus un tour qui
+   * tourne (signalé par le serveur, ou déjà visible ici : tour, autorisation, question).</p>
+   */
   private openSituationIfIdle(workspaceId: string): void {
-    const threshold = situationIdleThreshold();
-    if (this.readOnly || threshold <= 0) {
-      return;
-    }
-    this.situations.situation(workspaceId).subscribe({
-      next: (situation) => {
-        if (this.projectId === workspaceId && situationOpensOnEntry(situation, threshold)) {
-          this.openSituationPanel();
-        }
-      },
-      error: () => {
-        // Best-effort : sans lecture, rien ne s'ouvre ; le menu et `/situation` restent là.
-      },
+    // Les entrées du volet (`laneChantier`, `paneTitle`) sont toutes posées au tour suivant.
+    void Promise.resolve().then(() => {
+      if (this.isLanePane() || this.projectId !== workspaceId) {
+        return;
+      }
+      const lastVisit = readLastVisit(workspaceId);
+      this.noteVisit(workspaceId);
+      const threshold = situationIdleThreshold();
+      if (this.readOnly || threshold <= 0) {
+        return;
+      }
+      this.situations.situation(workspaceId).subscribe({
+        next: (situation) => {
+          if (this.projectId === workspaceId && !this.turnVisibleHere()
+              && situationOpensOnEntry(situation, threshold, lastVisit)) {
+            this.openSituationPanel();
+          }
+        },
+        error: () => {
+          // Best-effort : sans lecture, rien ne s'ouvre ; le menu et `/situation` restent là.
+        },
+      });
     });
   }
 
-  /** [Marquer envoyé] depuis le point de situation : le geste F-211 existant, sans tour. */
-  onSituationMarkSent(event: { messageId: string; index: number }): void {
-    this.onMarkSent({ id: event.messageId } as AtelierThreadItem, event.index);
+  /** Un volet du split (F-221) : jamais d'ouverture d'elle-même, et ce n'est pas lui qui note la visite. */
+  private isLanePane(): boolean {
+    return this.laneChantier !== null || this.paneTitle !== null;
+  }
+
+  /** Un tour, une autorisation ou une question déjà visibles ici : la carte ne s'impose pas par-dessus. */
+  private turnVisibleHere(): boolean {
+    return this.submittingValue || !!this.streaming || !!this.pendingQuestion || !!this.pendingConfirmation;
+  }
+
+  /** La dernière visite de ce terminal sur cet appareil (SF-225-03) — l'écran principal seul la note. */
+  private noteVisit(workspaceId: string): void {
+    if (!this.isLanePane()) {
+      recordVisit(workspaceId);
+    }
+  }
+
+  /** L'onglet passe en arrière-plan : c'est aussi une fin de visite. */
+  @HostListener('document:visibilitychange')
+  onVisibilityChange(): void {
+    if (typeof document !== 'undefined' && document.hidden && this.projectId) {
+      this.noteVisit(this.projectId);
+    }
+  }
+
+  /**
+   * [Marquer envoyé] / [Annuler] faits depuis le point de situation (SF-225-03) : la carte a fait le geste F-211 ;
+   * le fil relit ses envois marqués et le compte des attentes, pour que la bulle dise la même chose.
+   */
+  onSituationSendsChanged(): void {
+    const workspaceId = this.projectId;
+    if (workspaceId) {
+      this.loadSentBlocks(workspaceId);
+      this.loadActionCount(workspaceId);
+    }
   }
 
   /** F-117 / SF-117-09 — la passation vient d'être corrigée : le panneau montre le texte enregistré. */

@@ -9,6 +9,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,6 +26,7 @@ import fr.claudegateway.atelier.Workspace;
 import fr.claudegateway.atelier.WorkspaceService;
 import fr.claudegateway.atelier.actions.TerminalAction;
 import fr.claudegateway.atelier.actions.TerminalActionService;
+import fr.claudegateway.atelier.autonomy.ChantierLanesService;
 import fr.claudegateway.atelier.deposit.AtelierDepositedFile;
 import fr.claudegateway.atelier.deposit.AtelierDepositedFileRepository;
 import fr.claudegateway.atelier.journey.SubjectJourney;
@@ -55,6 +58,18 @@ public class SituationService {
     static final int MAX_ITEMS = 30;
     /** Au plus autant de caractères de la dernière demande / de la dernière réponse. */
     static final int MAX_TEXT = 4_000;
+    /** Les derniers messages utilisateur relus pour trouver le dernier écrit par lui (SF-225-03). */
+    static final int USER_LOOKBACK = 20;
+    /**
+     * La marque des demandes AUTOMATIQUES enregistrées au rôle utilisateur : course autonome (F-219,
+     * {@code AutonomyTurnRunner.header…}) et routine (F-180, {@code RoutineTurnRunner.demandOf}). Elles ne sont
+     * pas une activité de l'utilisateur et ne remettent pas l'inactivité à zéro.
+     */
+    static final String AUTOMATIC_MARK = "sans écran ouvert";
+    /** Ouverture et fermeture de l'essentiel (F-126), tolérantes comme à l'écran. */
+    private static final Pattern ESSENTIAL_OPEN = Pattern.compile("<<\\s*essentiel\\s*>>", Pattern.CASE_INSENSITIVE);
+    private static final Pattern ESSENTIAL_CLOSE =
+            Pattern.compile("<<\\s*/\\s*essentiel\\s*>>", Pattern.CASE_INSENSITIVE);
 
     private final WorkspaceService workspaces;
     private final SubjectJourneyService journeys;
@@ -62,17 +77,19 @@ public class SituationService {
     private final MessageBlockSendService sends;
     private final AtelierMessageRepository messages;
     private final AtelierDepositedFileRepository deposits;
+    private final ChantierLanesService lanes;
     private final Clock clock;
 
     public SituationService(WorkspaceService workspaces, SubjectJourneyService journeys, TerminalActionService actions,
             MessageBlockSendService sends, AtelierMessageRepository messages, AtelierDepositedFileRepository deposits,
-            Clock clock) {
+            ChantierLanesService lanes, Clock clock) {
         this.workspaces = workspaces;
         this.journeys = journeys;
         this.actions = actions;
         this.sends = sends;
         this.messages = messages;
         this.deposits = deposits;
+        this.lanes = lanes;
         this.clock = clock;
     }
 
@@ -85,15 +102,57 @@ public class SituationService {
         List<AtelierMessage> recent = new ArrayList<>(
                 messages.findTop12ByWorkspaceIdAndUserIdOrderByCreatedAtDesc(workspaceId, userId));
         OffsetDateTime last = recent.isEmpty() ? null : recent.get(0).getCreatedAt();
-        Long idleHours = last == null ? null : Math.max(0L, Duration.between(last, now).toHours());
+        // SF-225-03 : l'inactivité court depuis le dernier message ÉCRIT PAR L'UTILISATEUR — une course autonome qui
+        // a répondu cette nuit ne fait pas croire qu'il était là.
+        OffsetDateTime lastUser = lastUserMessage(userId, workspaceId);
+        Long idleHours = lastUser == null ? null : Math.max(0L, Duration.between(lastUser, now).toHours());
 
         SubjectJourney journey = journeys.forTurn(userId, workspaceId);
         Map<String, WaitInfo> waits = journeys.waitInfos(userId, workspace, journey);
         SubjectJourneyResponse view = SubjectJourneyResponse.fromWaits(journey, waits, 0, false);
+        Integer focus = journey != null && journey.hasOpenFocus() ? journey.getChantierNumber() : null;
 
         return new Situation(now, last, idleHours, view.mode(), chantiers(view), attentes(userId, workspaceId),
                 envois(userId, workspaceId, workspace, now), exchange(recent), pieces(userId, workspaceId),
-                suites(recent));
+                suites(recent), lastUser, displayedLaneLive(userId, workspaceId, focus));
+    }
+
+    /** Le dernier message écrit par l'utilisateur, demandes automatiques (courses, routines) écartées. */
+    private OffsetDateTime lastUserMessage(UUID userId, UUID workspaceId) {
+        for (AtelierMessage m : messages.findTop20ByWorkspaceIdAndUserIdAndRoleOrderByCreatedAtDesc(workspaceId,
+                userId, "USER")) {
+            if (!isAutomatic(m.getContent())) {
+                return m.getCreatedAt();
+            }
+        }
+        return null;
+    }
+
+    /** Vrai pour une demande enregistrée au rôle utilisateur mais rédigée par la passerelle (course, routine). */
+    static boolean isAutomatic(String content) {
+        if (content == null) {
+            return false;
+        }
+        String head = content.length() <= 1_500 ? content : content.substring(0, 1_500);
+        return head.contains(AUTOMATIC_MARK);
+    }
+
+    /**
+     * Un tour tourne dans le fil que l'écran principal montre — le fil commun ou le chantier au focus (tour vivant
+     * ici ou chez un pair, course autonome) : la carte ne s'ouvre pas d'elle-même par-dessus (SF-225-03).
+     * Best-effort : une lecture en échec rend {@code false}.
+     */
+    private boolean displayedLaneLive(UUID userId, UUID workspaceId, Integer focus) {
+        try {
+            for (ChantierLanesService.Lane lane : lanes.lanes(userId, workspaceId).lanes()) {
+                if (lane.chantier() == null || lane.chantier().equals(focus)) {
+                    return true;
+                }
+            }
+        } catch (RuntimeException e) {
+            log.debug("Fils actifs illisibles ({})", e.getClass().getSimpleName());
+        }
+        return false;
     }
 
     private static List<Situation.ChantierLine> chantiers(SubjectJourneyResponse view) {
@@ -159,7 +218,7 @@ public class SituationService {
                 }
                 list.add(new Situation.Envoi(m.getId(), block.index(), block.kind().name(), block.subject(),
                         block.recipient(), m.getCreatedAt(), sent == null ? null : sent.getSentAt(),
-                        block.attenteKey(), attenteStatus, excerpt(block.body())));
+                        block.attenteKey(), attenteStatus, excerpt(block.body()), m.getChantierNumber()));
             }
         }
         Collections.reverse(list);
@@ -181,7 +240,7 @@ public class SituationService {
             return null;
         }
         return new Situation.Exchange(request == null ? null : cut(request.getContent()),
-                request == null ? null : request.getCreatedAt(), reply == null ? null : cut(reply.getContent()),
+                request == null ? null : request.getCreatedAt(), reply == null ? null : cutReply(reply.getContent()),
                 reply == null ? null : reply.getCreatedAt());
     }
 
@@ -230,10 +289,38 @@ public class SituationService {
         return flat.length() <= 400 ? flat : flat.substring(0, 399) + "…";
     }
 
-    private static String cut(String text) {
+    /** Coupe à {@link #MAX_TEXT} caractères, sans jamais séparer une paire de substitution (émoji). */
+    static String cut(String text) {
         if (text == null) {
             return null;
         }
-        return text.length() <= MAX_TEXT ? text : text.substring(0, MAX_TEXT - 1) + "…";
+        if (text.length() <= MAX_TEXT) {
+            return text;
+        }
+        int end = MAX_TEXT - 1;
+        if (Character.isHighSurrogate(text.charAt(end - 1))) {
+            end--;
+        }
+        return text.substring(0, end) + "…";
+    }
+
+    /**
+     * La dernière réponse coupée à {@link #MAX_TEXT} caractères <b>sans perdre l'essentiel</b> (SF-225-03) : une
+     * réponse longue dont le bloc {@code <<essentiel>>} finit au-delà de la coupe est lue à partir de son ouverture —
+     * l'écran en tire l'essentiel (F-126) au lieu d'un premier paragraphe de détail ou d'une balise orpheline.
+     */
+    static String cutReply(String text) {
+        if (text == null || text.length() <= MAX_TEXT) {
+            return text;
+        }
+        Matcher open = ESSENTIAL_OPEN.matcher(text);
+        if (open.find() && open.start() > 0) {
+            Matcher close = ESSENTIAL_CLOSE.matcher(text);
+            int closeEnd = close.find(open.end()) ? close.end() : text.length();
+            if (closeEnd > MAX_TEXT - 1) {
+                return cut(text.substring(open.start()));
+            }
+        }
+        return cut(text);
     }
 }

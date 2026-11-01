@@ -8,14 +8,20 @@ import java.util.UUID;
  * Le point de situation d'un terminal (F-225 / SF-225-01), tel que l'écran le montre.
  *
  * @param generatedAt    l'instant de la lecture
- * @param lastActivityAt le dernier message du fil, ou {@code null}
- * @param idleHours      heures entières depuis, ou {@code null} — l'écran ouvre la carte au-delà de son seuil
- * @param mode           {@code LIBRE} ou {@code GUIDE}
- * @param exchange       la dernière demande et la dernière réponse (brute : l'écran en tire l'essentiel), ou {@code null}
+ * @param lastActivityAt    le dernier message du fil (tous rôles), ou {@code null} — « Dernier échange il y a… »
+ * @param idleHours         heures entières depuis le dernier message <b>de l'utilisateur</b> (SF-225-03), ou
+ *                          {@code null} ; l'écran le croise avec la dernière visite de l'appareil
+ * @param mode              {@code LIBRE} ou {@code GUIDE}
+ * @param exchange          la dernière demande et la dernière réponse (l'essentiel préservé à la coupe), ou {@code null}
+ * @param lastUserMessageAt le dernier message écrit par l'utilisateur — jamais une demande automatique d'une course
+ *                          autonome ou d'une routine (SF-225-03), ou {@code null}
+ * @param turnLive          un tour tourne dans le fil que l'écran principal montre (fil commun ou chantier au
+ *                          focus, ici ou chez un pair, course autonome comprise) : la carte ne s'ouvre pas d'elle-même
  */
 public record Situation(OffsetDateTime generatedAt, OffsetDateTime lastActivityAt, Long idleHours, String mode,
                         List<ChantierLine> chantiers, List<Attente> attentes, List<Envoi> envois, Exchange exchange,
-                        List<Piece> pieces, List<Suite> suites) {
+                        List<Piece> pieces, List<Suite> suites, OffsetDateTime lastUserMessageAt,
+                        boolean turnLive) {
 
     /**
      * Un chantier ouvert et l'étape où il en est.
@@ -39,10 +45,11 @@ public record Situation(OffsetDateTime generatedAt, OffsetDateTime lastActivityA
      * @param sentAt        marqué envoyé (F-211), ou {@code null} : « pas marqué envoyé »
      * @param attenteStatus l'état de l'attente liée ({@code A_FAIRE}, {@code DEMANDE}…), ou {@code null}
      * @param excerpt       le début du texte proposé (400 caractères au plus), pour [Voir]
+     * @param chantierNumber le fil (chantier) du message qui l'a proposé, ou {@code null} : fil commun (SF-225-03)
      */
     public record Envoi(UUID messageId, int blockIndex, String kind, String subject, String recipient,
                         OffsetDateTime proposedAt, OffsetDateTime sentAt, String attenteKey, String attenteStatus,
-                        String excerpt) {
+                        String excerpt, Integer chantierNumber) {
     }
 
     /** La dernière demande de l'utilisateur et la dernière réponse. */

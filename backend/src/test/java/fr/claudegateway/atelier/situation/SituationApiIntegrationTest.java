@@ -66,6 +66,7 @@ class SituationApiIntegrationTest {
     @Autowired private AtelierMessageRepository messageRepository;
     @Autowired private MessageBlockSendRepository sendRepository;
     @Autowired private JwtService jwtService;
+    @Autowired private org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     private String aliceToken;
     private String bobToken;
@@ -136,7 +137,40 @@ class SituationApiIntegrationTest {
         perform(bobToken, get("/api/workspaces/" + workspaceId + "/situation")).andExpect(status().isNotFound());
     }
 
+    @Test
+    @DisplayName("SF-225-03 : l'inactivité court depuis le dernier message ÉCRIT par l'utilisateur, l'encart porte son fil")
+    void idleFromLastUserMessageAndEnvoiLane() throws Exception {
+        UUID ws = UUID.fromString(workspaceId);
+        at(messageRepository.save(AtelierMessage.builder().workspaceId(ws).userId(aliceId).role("USER")
+                .content("Prépare le mail pour Zahi").build()).getId(), 30);
+        at(messageRepository.save(AtelierMessage.builder().workspaceId(ws).userId(aliceId).role("USER")
+                .content("Chantier 2 « Logs » — EXÉCUTION AUTONOME lancée par l'utilisateur, sans écran ouvert "
+                        + "(tour 1/8).\nRègles…").chantierNumber(2).build()).getId(), 2);
+        at(messageRepository.save(AtelierMessage.builder().workspaceId(ws).userId(aliceId).role("ASSISTANT")
+                .content(REPLY).chantierNumber(2).build()).getId(), 1);
+
+        String body = perform(aliceToken, get("/api/workspaces/" + workspaceId + "/situation"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.idleHours").value(30))
+                .andExpect(jsonPath("$.lastUserMessageAt").exists())
+                .andExpect(jsonPath("$.turnLive").value(false))
+                .andExpect(jsonPath("$.envois.length()").value(2))
+                .andReturn().getResponse().getContentAsString();
+        java.util.List<Integer> lanes = JsonPath.read(body, "$.envois[*].chantierNumber");
+        org.assertj.core.api.Assertions.assertThat(lanes).containsExactly(2, 2);
+        String lastActivity = JsonPath.read(body, "$.lastActivityAt");
+        String lastUser = JsonPath.read(body, "$.lastUserMessageAt");
+        org.assertj.core.api.Assertions.assertThat(OffsetDateTime.parse(lastActivity))
+                .isAfter(OffsetDateTime.parse(lastUser).plusHours(20));
+    }
+
     // ---- outillage ----
+
+    /** Recule la date d'un message (la colonne est posée à l'insertion). */
+    private void at(UUID messageId, int hoursAgo) {
+        jdbc.update("update atelier_messages set created_at = ? where id = ?",
+                OffsetDateTime.now().minusHours(hoursAgo).minusMinutes(5), messageId);
+    }
 
     private ResultActions perform(String token, MockHttpServletRequestBuilder request) throws Exception {
         return mockMvc.perform(request.contextPath("/api").header("Authorization", "Bearer " + token));
