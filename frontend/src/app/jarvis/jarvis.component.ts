@@ -4,12 +4,18 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
-import { AtelierStreamDone, WorkspaceSummary } from '../core/models/atelier.models';
+import { AtelierConfirmRequest, AtelierStreamDone, WorkspaceSummary } from '../core/models/atelier.models';
 import { AtelierService } from '../core/services/atelier.service';
 import { DictationError, DictationService } from '../core/services/dictation.service';
 import { JarvisVoiceError, JarvisVoiceService } from '../core/services/jarvis-voice.service';
 import { MarkdownPipe } from '../shared/markdown.pipe';
 import { EndOfSpeech, MicMeter } from './jarvis-mic-meter';
+import { asksConfirmation, classifyConfirmation, confirmationQuestion } from './jarvis-confirm';
+
+/** SF-231-04 — ce que Jarvis dit quand la réponse n'est ni « oui » ni « non ». */
+export const DOUBT_PHRASE = 'Je n’ai pas compris : je ne fais rien. Tu peux confirmer depuis le terminal.';
+/** SF-231-04 — ce que Jarvis dit quand personne ne répond. */
+export const NO_ANSWER_PHRASE = 'Sans réponse, je ne fais rien.';
 import {
   ACK_DELAY_MS, ACK_PHRASE, isStopCommand, oralPhrase, subjectSwitch, withEndAnnouncement,
 } from './jarvis-oral';
@@ -167,15 +173,33 @@ export class JarvisComponent implements OnInit, OnDestroy {
       return;
     }
     if (!text) {
-      this.state.set('repos');
+      this.state.set(this.turnRunning ? 'reflexion' : 'repos');
+      if (this.pendingConfirm || this.awaitingVerbal) {
+        // SF-231-04 — le silence ne vaut pas accord.
+        this.awaitingVerbal = false;
+        await this.say(NO_ANSWER_PHRASE);
+      }
       return;
     }
     this.said.set(text);
     await this.handle(text);
   }
 
-  /** Ce qui a été dit : un ordre d'arrêt, un changement de sujet (sur l'appareil), sinon une demande au cerveau. */
+  /** Ce qui a été dit : une confirmation, un ordre d'arrêt, un changement de sujet, sinon une demande au cerveau. */
   async handle(text: string): Promise<void> {
+    if (this.pendingConfirm) {
+      await this.answerToolConfirmation(this.pendingConfirm, text);
+      return;
+    }
+    if (this.awaitingVerbal) {
+      // SF-231-04 — l'agent a demandé « Tu confirmes ? » : seul un « oui » ou un « non » nets repartent au cerveau ;
+      // une réponse ambiguë n'est jamais envoyée (une erreur de transcription ne déclenche rien).
+      this.awaitingVerbal = false;
+      if (classifyConfirmation(text) === 'doute') {
+        await this.say(DOUBT_PHRASE);
+        return;
+      }
+    }
     if (isStopCommand(text)) {
       // SF-231-03 — l'interruption par la parole : « stop » arrête le travail en cours, comme le bouton du terminal.
       const id = this.subjectId();
@@ -231,6 +255,23 @@ export class JarvisComponent implements OnInit, OnDestroy {
           this.onTurnError(code, reason);
         }
       }),
+      // SF-231-04 — une autorisation d'outil (`ask`) : reformulée à l'oral, « oui » requis.
+      onConfirmRequest: (request) => this.zone.run(() => {
+        if (latest()) {
+          void this.askToolConfirmation(request);
+        }
+      }),
+      onConfirmResolved: (resolved) => this.zone.run(() => {
+        // Tranchée ailleurs (terminal, autre appareil, délai) : la question n'a plus lieu d'être.
+        if (this.pendingConfirm?.toolUseId === resolved.toolUseId) {
+          this.pendingConfirm = null;
+        }
+      }),
+      onQuestionRequest: () => this.zone.run(() => {
+        if (latest()) {
+          void this.say('J’ai une question pour toi, à l’écran du terminal.');
+        }
+      }),
       onClosed: () => this.zone.run(() => {
         if (latest()) {
           this.endTurn();
@@ -283,8 +324,53 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.endTurn();
     this.detail.set(done.reply);
     const phrase = oralPhrase(done.reply) || 'C’est fait. Le détail est à l’écran.';
+    this.pendingConfirm = null;
     // SF-231-03 — un tour long s'annonce : le PO a pu passer à autre chose.
     await this.say(withEndAnnouncement(phrase, elapsed));
+    // SF-231-04 — l'agent a reformulé une action qui engage et attend « oui » : Jarvis écoute la réponse.
+    if (asksConfirmation(phrase)) {
+      this.awaitingVerbal = true;
+      await this.listen();
+    }
+  }
+
+  /** SF-231-04 — une autorisation d'outil en attente : la réponse dite décidera, « oui » requis. */
+  private pendingConfirm: AtelierConfirmRequest | null = null;
+  /** SF-231-04 — l'agent a demandé « Tu confirmes ? » : la prochaine réponse est filtrée. */
+  private awaitingVerbal = false;
+
+  /** Reformule l'autorisation demandée, puis écoute la réponse. */
+  private async askToolConfirmation(request: AtelierConfirmRequest): Promise<void> {
+    this.clearAck();
+    this.pendingConfirm = request;
+    await this.say(confirmationQuestion(request));
+    if (this.pendingConfirm === request) {
+      await this.listen();
+    }
+  }
+
+  /**
+   * La réponse à une autorisation d'outil : « oui » ⇒ autorisée ; « non » ⇒ refusée (motif rendu au modèle) ;
+   * doute ⇒ rien — la demande reste ouverte au terminal, et le silence finit en refus côté passerelle.
+   */
+  private async answerToolConfirmation(request: AtelierConfirmRequest, text: string): Promise<void> {
+    const subjectId = this.subjectId();
+    const answer = classifyConfirmation(text);
+    this.pendingConfirm = null;
+    if (!subjectId || answer === 'doute') {
+      this.state.set('reflexion');
+      await this.say(DOUBT_PHRASE);
+      this.state.set(this.turnRunning ? 'reflexion' : 'repos');
+      return;
+    }
+    const decision = answer === 'oui'
+      ? { toolUseId: request.toolUseId, decision: 'allow' as const }
+      : { toolUseId: request.toolUseId, decision: 'deny' as const, reason: 'Refusé à voix haute (Jarvis).' };
+    this.atelier.confirmChatToolUse(subjectId, decision).subscribe({
+      error: () => this.notice.set('La réponse n’a pas pu être transmise : confirme depuis le terminal.'),
+    });
+    await this.say(answer === 'oui' ? 'C’est parti.' : 'D’accord, je n’y touche pas.');
+    this.state.set(this.turnRunning ? 'reflexion' : 'repos');
   }
 
   private onTurnError(code: string, reason?: string): void {
