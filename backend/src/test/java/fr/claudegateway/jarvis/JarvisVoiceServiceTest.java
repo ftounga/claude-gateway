@@ -48,7 +48,7 @@ class JarvisVoiceServiceTest {
     private JarvisVoiceService service(String key, BigDecimal budgetEur) {
         SpeechProperties speech = new SpeechProperties(true, "http://localhost", key, null, Duration.ofSeconds(5),
                 null, null, null, null, null, null, null);
-        return new JarvisVoiceService(provider, speech, new JarvisVoiceProperties(null, null, null, null, budgetEur),
+        return new JarvisVoiceService(provider, speech, new JarvisVoiceProperties(null, null, null, null, budgetEur, null),
                 ledger, usage, workspaces);
     }
 
@@ -65,7 +65,7 @@ class JarvisVoiceServiceTest {
     @Test
     @DisplayName("défauts D2 : voix onyx, ton posé, 600 caractères, 100 € par mois (F-233 / D-PO-4)")
     void defaults() {
-        JarvisVoiceProperties props = new JarvisVoiceProperties(null, null, null, null, null);
+        JarvisVoiceProperties props = new JarvisVoiceProperties(null, null, null, null, null, null);
         assertThat(props.voice()).isEqualTo("onyx");
         assertThat(props.instructions()).contains("posée");
         assertThat(props.maxChars()).isEqualTo(600);
@@ -134,5 +134,36 @@ class JarvisVoiceServiceTest {
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> service("sk", null).prepare(alice, null, "x".repeat(4_001)))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("F-233 / SF-233-06 — voix ElevenLabs choisie par configuration : routée, tarifée à son prix, état")
+    void elevenLabsVoice() throws Exception {
+        SpeechProperties speech = new SpeechProperties(true, "http://localhost", null, null, Duration.ofSeconds(5),
+                null, null, null, null, null, null, null);
+        JarvisVoiceService service = new JarvisVoiceService(provider, speech, new JarvisVoiceProperties(
+                "JBFqnCBsd6RMkjVDRZzb", null, null, null, null, "elevenlabs"), ledger, usage, workspaces);
+        fr.claudegateway.speech.elevenlabs.ElevenLabsSpeechProvider eleven =
+                mock(fr.claudegateway.speech.elevenlabs.ElevenLabsSpeechProvider.class);
+        when(eleven.isConfigured()).thenReturn(true);
+        service.setElevenLabs(eleven, new fr.claudegateway.speech.elevenlabs.ElevenLabsProperties("k", null, null,
+                null, null, null));
+
+        JarvisVoiceService.VoiceStatus status = service.status(alice);
+        assertThat(status.enabled()).isTrue();
+        assertThat(status.provider()).isEqualTo("elevenlabs");
+        assertThat(status.voice()).isEqualTo("JBFqnCBsd6RMkjVDRZzb");
+        assertThat(service.voice()).isEqualTo("elevenlabs:JBFqnCBsd6RMkjVDRZzb");
+        // 1 000 caractères à 0,05 $ (et non 0,015 $ d'OpenAI).
+        assertThat(service.costUsd(1000)).isEqualByComparingTo("0.05");
+
+        service.speak(service.prepare(alice, null, "Bonjour, Monsieur."), new ByteArrayOutputStream());
+        verify(eleven).synthesizeStream(eq("Bonjour, Monsieur."), eq("JBFqnCBsd6RMkjVDRZzb"), anyString(), any());
+        verify(provider, never()).synthesizeStream(anyString(), anyString(), anyString(), any());
+
+        when(eleven.isConfigured()).thenReturn(false);
+        assertThat(service.status(alice).enabled()).isFalse();
+        assertThatThrownBy(() -> service.prepare(alice, null, "x"))
+                .isInstanceOf(SpeechProviderUnavailableException.class);
     }
 }

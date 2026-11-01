@@ -170,6 +170,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.jarvis.usage('SESSION');
     // F-233 / SF-233-02 — les clips de réaction, chargés une fois, joués localement au moment de réagir.
     void this.voice.preloadClips([WAKE_CLIP, ...REACTION_CLIPS]);
+    // SF-233-06 — le fournisseur de la voix, pour la mesure (SF-233-01).
+    this.voice.status().subscribe({ next: (status) => this.ttsProvider = status.provider ?? null, error: () => undefined });
     const wanted = this.route.snapshot.queryParamMap.get('sujet');
     const alertId = this.route.snapshot.queryParamMap.get('alerte');
     // F-232 : ouvert par le compagnon Android, qui vient d'entendre « Jarvis » et passe sa version.
@@ -535,6 +537,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const endOfSpeech = performance.now();
     const clock = new TurnClock(endOfSpeech, endOfSpeech - this.listenStartedAt);
     clock.workspaceId = this.subjectId();
+    clock.ttsProvider = this.ttsProvider;
     // SF-233-02 (D3) — réagir tout de suite : un clip local, pendant que la transcription part. Pas pendant une
     // confirmation (la réponse attendue est « oui » ou « non », pas une demande).
     if (!this.pendingConfirm && !this.awaitingVerbal) {
@@ -715,6 +718,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
   }
 
   private reactionSeq = 0;
+  /** SF-233-06 — le fournisseur de la voix de Jarvis (mesure). */
+  private ttsProvider: string | null = null;
 
   /** SF-233-02 — joue un clip de réaction (en alternance), sans attendre ; la marque `reaction` suit le son. */
   private react(clock: TurnClock): void {

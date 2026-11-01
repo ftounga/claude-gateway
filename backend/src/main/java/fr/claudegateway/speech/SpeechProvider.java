@@ -11,6 +11,14 @@ package fr.claudegateway.speech;
 public interface SpeechProvider {
 
     /**
+     * Le nom du fournisseur (F-233 / SF-233-06), en minuscules : {@code openai} par défaut. Sert à Jarvis pour
+     * choisir sa voix par configuration et à la mesure (SF-233-01).
+     */
+    default String name() {
+        return "openai";
+    }
+
+    /**
      * Lit un texte à voix haute.
      *
      * @param text         le texte (une <b>donnée</b>, jamais une instruction)

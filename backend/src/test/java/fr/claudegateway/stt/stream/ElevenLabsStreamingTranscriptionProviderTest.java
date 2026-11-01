@@ -31,7 +31,7 @@ class ElevenLabsStreamingTranscriptionProviderTest {
     @DisplayName("sans clé : non configuré, aucun appel")
     void unconfigured() {
         ElevenLabsStreamingTranscriptionProvider provider = new ElevenLabsStreamingTranscriptionProvider(
-                new ElevenLabsProperties(null, null, null, null),
+                new ElevenLabsProperties(null, null, null, null, null, null),
                 new JarvisSttStreamProperties(null, null, null, null, null, null), RestClient.builder(),
                 Clock.systemUTC());
         assertThat(provider.isConfigured()).isFalse();

@@ -71,7 +71,7 @@ class JarvisSttSessionServiceTest {
                 .StreamingSession("elevenlabs", "wss://x/realtime?model_id=m", "tok", clock.now.plusSeconds(900), 16000));
         voice = mock(JarvisVoiceService.class);
         when(voice.status(any())).thenReturn(new JarvisVoiceService.VoiceStatus(true, "onyx", BigDecimal.TEN,
-                BigDecimal.ZERO, false));
+                BigDecimal.ZERO, false, "openai"));
         usage = mock(JarvisUsageService.class);
         service = service(new JarvisSttStreamProperties(null, null, null, null, 120, new BigDecimal("0.006")));
     }
@@ -111,7 +111,7 @@ class JarvisSttSessionServiceTest {
     @DisplayName("plafond atteint : refus avant tout appel ; flux éteint ou non configuré : 503 sans appel")
     void refusals() {
         when(voice.status(alice)).thenReturn(new JarvisVoiceService.VoiceStatus(true, "onyx", BigDecimal.TEN,
-                BigDecimal.TEN, true));
+                BigDecimal.TEN, true, "openai"));
         assertThatThrownBy(() -> service.open(alice)).isInstanceOf(JarvisVoiceBudgetException.class);
         assertThatThrownBy(() -> service(new JarvisSttStreamProperties("none", null, null, null, null, null))
                 .open(bob)).isInstanceOf(TranscriptionProviderUnavailableException.class);

@@ -15,6 +15,8 @@ import fr.claudegateway.atelier.Workspace;
 import fr.claudegateway.atelier.WorkspaceRepository;
 import fr.claudegateway.quota.ProviderPricingProperties;
 import fr.claudegateway.speech.SpeechProperties;
+import fr.claudegateway.speech.elevenlabs.ElevenLabsProperties;
+import fr.claudegateway.speech.elevenlabs.ElevenLabsSpeechProvider;
 import fr.claudegateway.speech.SpeechProvider;
 import fr.claudegateway.speech.SpeechProviderUnavailableException;
 import fr.claudegateway.speech.SpeechUsage;
@@ -45,6 +47,9 @@ public class JarvisVoiceService {
     private final JarvisUsageService usage;
     private final WorkspaceRepository workspaces;
     private BigDecimal usdToEur = DEFAULT_USD_TO_EUR;
+    /** F-233 / SF-233-06 — la voix ElevenLabs, candidate (absente si non déclarée). */
+    private ElevenLabsSpeechProvider elevenLabs;
+    private ElevenLabsProperties elevenLabsProperties;
 
     public JarvisVoiceService(SpeechProvider provider, SpeechProperties speech, JarvisVoiceProperties properties,
             SpeechUsage ledger, JarvisUsageService usage, WorkspaceRepository workspaces) {
@@ -63,12 +68,37 @@ public class JarvisVoiceService {
         }
     }
 
+    /** F-233 / SF-233-06 — la voix ElevenLabs, candidate ; choisie par {@code app.jarvis.voice.provider}. */
+    @Autowired(required = false)
+    public void setElevenLabs(ElevenLabsSpeechProvider elevenLabs, ElevenLabsProperties elevenLabsProperties) {
+        this.elevenLabs = elevenLabs;
+        this.elevenLabsProperties = elevenLabsProperties;
+    }
+
+    /** F-233 / SF-233-06 — la voix de Jarvis en service : fournisseur et voix. */
+    public VoiceRef current() {
+        return new VoiceRef(properties.provider(), properties.voice());
+    }
+
     /** L'état de la voix pour l'écran : allumée, voix, plafond et dépense du mois en euros. */
     public VoiceStatus status(UUID userId) {
         BigDecimal spent = eur(usage.monthSpeechCostUsd(userId));
         BigDecimal budget = properties.monthlyBudgetEur().setScale(2, RoundingMode.HALF_UP);
-        return new VoiceStatus(speech.isActive() && budget.signum() > 0, properties.voice(), budget, spent,
-                reached(spent, budget));
+        VoiceRef voice = current();
+        return new VoiceStatus(available(voice) && budget.signum() > 0, voice.voice(), budget, spent,
+                reached(spent, budget), voice.provider());
+    }
+
+    /** La voix est-elle appelable (fournisseur configuré, voix valide) ? Aucun appel. */
+    boolean available(VoiceRef voice) {
+        if (ElevenLabsSpeechProvider.NAME.equals(voice.provider())) {
+            return elevenLabs != null && elevenLabs.isConfigured() && ElevenLabsSpeechProvider.isVoiceId(voice.voice());
+        }
+        return speech.isActive() && speech.allows(voice.voice());
+    }
+
+    private SpeechProvider providerFor(VoiceRef voice) {
+        return ElevenLabsSpeechProvider.NAME.equals(voice.provider()) ? elevenLabs : provider;
     }
 
     /**
@@ -105,7 +135,9 @@ public class JarvisVoiceService {
      * @return le nombre d'octets écrits
      */
     public long speak(Reading reading, OutputStream out) throws IOException {
-        long written = provider.synthesizeStream(reading.text(), properties.voice(), properties.instructions(), out);
+        VoiceRef voice = current();
+        long written = providerFor(voice).synthesizeStream(reading.text(), voice.voice(), properties.instructions(),
+                out);
         account(reading.userId(), reading.workspaceId(), reading.hostId(), reading.text().length());
         return written;
     }
@@ -122,22 +154,31 @@ public class JarvisVoiceService {
         if (status(userId).budgetReached()) {
             throw new JarvisVoiceBudgetException();
         }
-        byte[] audio = provider.synthesize(text, properties.voice(), properties.instructions()).bytes();
+        VoiceRef voice = current();
+        byte[] audio = providerFor(voice).synthesize(text, voice.voice(), properties.instructions()).bytes();
         account(userId, null, null, text.length());
         return audio;
     }
 
-    /** La voix de Jarvis en service (sert de clé aux clips : changer de voix les régénère). */
+    /** La voix de Jarvis en service, « fournisseur:voix » (sert de clé aux clips : changer de voix les régénère). */
     public String voice() {
-        return properties.voice();
+        VoiceRef voice = current();
+        return voice.provider() + ':' + voice.voice();
     }
 
     /** Vérifie que la voix est allumée, configurée et dans la liste blanche. */
     void requireVoice() {
+        VoiceRef voice = current();
+        if (ElevenLabsSpeechProvider.NAME.equals(voice.provider())) {
+            if (!available(voice)) {
+                throw new SpeechProviderUnavailableException("La voix ElevenLabs de Jarvis n'est pas configurée.");
+            }
+            return;
+        }
         if (!speech.isActive()) {
             throw new SpeechProviderUnavailableException("La voix n'est pas configurée sur cette installation.");
         }
-        if (!speech.allows(properties.voice())) {
+        if (!speech.allows(voice.voice())) {
             throw new SpeechProviderUnavailableException("La voix de Jarvis n'est pas dans la liste des voix.");
         }
     }
@@ -151,7 +192,9 @@ public class JarvisVoiceService {
 
     /** Le coût en dollars de {@code characters} caractères lus, au tarif de la voix off. */
     BigDecimal costUsd(long characters) {
-        return speech.costUsdPerThousandChars().multiply(BigDecimal.valueOf(characters))
+        BigDecimal perThousand = ElevenLabsSpeechProvider.NAME.equals(current().provider()) && elevenLabsProperties != null
+                ? elevenLabsProperties.ttsCostUsdPerThousandChars() : speech.costUsdPerThousandChars();
+        return perThousand.multiply(BigDecimal.valueOf(characters))
                 .divide(BigDecimal.valueOf(1000), 6, RoundingMode.HALF_UP);
     }
 
@@ -195,6 +238,10 @@ public class JarvisVoiceService {
 
     /** L'état de la voix pour l'écran, montants en euros. */
     public record VoiceStatus(boolean enabled, String voice, BigDecimal monthlyBudgetEur, BigDecimal monthSpentEur,
-            boolean budgetReached) {
+            boolean budgetReached, String provider) {
+    }
+
+    /** F-233 / SF-233-06 — une voix : son fournisseur ({@code openai}, {@code elevenlabs}) et son nom ou identifiant. */
+    public record VoiceRef(String provider, String voice) {
     }
 }

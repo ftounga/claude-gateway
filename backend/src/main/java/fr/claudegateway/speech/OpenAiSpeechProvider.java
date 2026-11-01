@@ -6,6 +6,7 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -23,6 +24,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  * <p><b>Éteint par défaut sans clé</b> : {@link SpeechProviderUnavailableException} sans appel réseau.</p>
  */
 @Component
+@Primary // F-233 / SF-233-06 : le fournisseur par défaut (voix off F-215) ; Jarvis peut en choisir un autre.
 public class OpenAiSpeechProvider implements SpeechProvider {
 
     private static final Logger log = LoggerFactory.getLogger(OpenAiSpeechProvider.class);
