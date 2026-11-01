@@ -15,7 +15,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param instructions     les consignes de ton envoyées au fournisseur
  * @param maxChars         au-delà, le texte lu est coupé à la dernière fin de phrase (défaut 600)
  * @param maxRequestChars  au-delà, la requête est refusée (défaut 4 000)
- * @param monthlyBudgetEur plafond du mois, en euros (défaut 15 ; 0 = voix coupée)
+ * @param monthlyBudgetEur plafond du mois, en euros (défaut 100 depuis F-233 / D-PO-4, lecture + écoute en flux ;
+ *                         0 = voix coupée)
  */
 @ConfigurationProperties(prefix = "app.jarvis.voice")
 public record JarvisVoiceProperties(
@@ -42,7 +43,7 @@ public record JarvisVoiceProperties(
             maxRequestChars = 4_000;
         }
         if (monthlyBudgetEur == null || monthlyBudgetEur.signum() < 0) {
-            monthlyBudgetEur = new BigDecimal("15");
+            monthlyBudgetEur = new BigDecimal("100");
         }
     }
 }

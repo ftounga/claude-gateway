@@ -82,12 +82,12 @@ public class JarvisAdoptionService {
         BigDecimal usd = BigDecimal.ZERO;
         for (JarvisUsageDay d : usage.lastDays(userId, window)) {
             rows.add(new Day(d.getDay(), d.getSessions(), minutes(d.getSpokenSeconds()), d.getWakes(),
-                    d.getCharsSpoken(), eur(d.getSpeechCostUsd())));
+                    d.getCharsSpoken(), eur(d.totalCostUsd())));
             sessions += d.getSessions();
             spoken += d.getSpokenSeconds();
             wakes += d.getWakes();
             chars += d.getCharsSpoken();
-            usd = usd.add(d.getSpeechCostUsd());
+            usd = usd.add(d.totalCostUsd());
         }
         int activeDays = (int) rows.stream().filter(r -> r.sessions() > 0).count();
         return new Measure(window, activeDays, sessions, minutes(spoken), wakes, chars, eur(usd), rows);
