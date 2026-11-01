@@ -1,31 +1,39 @@
 import {
-  AdditiveBlending, BufferAttribute, BufferGeometry, LineBasicMaterial, LineSegments, Material, Mesh, Object3D,
-  PerspectiveCamera, PlaneGeometry, Points, Scene, ShaderMaterial, WebGLRenderer,
+  AdditiveBlending, BufferAttribute, BufferGeometry, ColorManagement, LineBasicMaterial, LineSegments,
+  LinearSRGBColorSpace, Material, Mesh, Object3D, PerspectiveCamera, PlaneGeometry, Points, Scene, ShaderMaterial,
+  WebGLRenderer,
 } from 'three';
 
 import { FrameLoop } from '../jarvis-frame-loop';
 import { JarvisEngine, JarvisEngineOptions } from '../jarvis-engine.contract';
-import { HOLO_ALPHA, HOLO_COLORS, HOLO_DIM_OPACITY, rgb } from '../jarvis-motion';
+import { HOLO_ALPHA, HOLO_COLORS, HOLO_DIM_OPACITY, MOTION_DURATIONS, rgb } from '../jarvis-motion';
+import { QualityGovernor } from '../jarvis-quality';
 import { QualityLevel } from '../jarvis-render-capability';
+import { StagePlan } from '../jarvis-stage-director';
+import { Tween } from '../jarvis-tween';
+import { Heart3d } from './jarvis-heart-3d';
+import { JarvisPost } from './jarvis-post';
 
 /**
  * F-236 / SF-236-01 — **le moteur 3D, socle** : seul fichier (avec ses voisins de `engine/`) qui importe `three`,
  * donc seul contenu du morceau paresseux. Il dessine ce que l'écran lui demande et n'appelle jamais le réseau.
  *
- * <p>Au socle : le décor <b>riche</b> (goût du PO, V3) — lueur d'abysse, nébuleuse lente, étoiles sur trois
- * profondeurs, poussière, sol polaire — et un <b>cœur provisoire</b> de particules orange (V1) que SF-236-02
- * remplace par le vrai cœur et ses états. Tampons préalloués, uniformes seulement : zéro allocation par image.</p>
+ * <p>Le décor <b>riche</b> (goût du PO, V3) — lueur d'abysse, nébuleuse lente, étoiles sur trois profondeurs,
+ * poussière, sol polaire (SF-236-01) ; le <b>cœur</b> et ses états, le bloom et la qualité adaptative (SF-236-02).
+ * Tampons préalloués, uniformes seulement : zéro allocation par image.</p>
  */
 
 /** Ce que chaque niveau dessine (§6.1 / §6.3) ; le décor s'allège, il ne disparaît jamais d'un coup. */
 export const LEVEL_BUDGET: Record<QualityLevel, {
-  pixelRatio: number; starLayers: number; starsPerLayer: number; dust: number; core: number; floorRings: number;
-  nebula: boolean;
+  pixelRatio: number; starLayers: number; starsPerLayer: number; dust: number; floorRings: number; nebula: boolean;
 }> = {
-  high: { pixelRatio: 2, starLayers: 3, starsPerLayer: 900, dust: 600, core: 1600, floorRings: 7, nebula: true },
-  medium: { pixelRatio: 1.5, starLayers: 2, starsPerLayer: 500, dust: 250, core: 900, floorRings: 5, nebula: true },
-  low: { pixelRatio: 1, starLayers: 1, starsPerLayer: 300, dust: 0, core: 500, floorRings: 3, nebula: false },
+  high: { pixelRatio: 2, starLayers: 3, starsPerLayer: 900, dust: 600, floorRings: 7, nebula: true },
+  medium: { pixelRatio: 1.5, starLayers: 2, starsPerLayer: 500, dust: 250, floorRings: 5, nebula: true },
+  low: { pixelRatio: 1, starLayers: 1, starsPerLayer: 300, dust: 0, floorRings: 3, nebula: false },
 };
+
+/** Le pas d'une image est borné : un onglet revenu ne fait pas « sauter » les animations. */
+const MAX_DT_MS = 50;
 
 const BACKDROP_VERTEX = /* glsl */ `
 varying vec2 vUv;
@@ -42,6 +50,7 @@ uniform vec3 uFog;
 uniform vec3 uAbyss;
 uniform vec3 uTint;
 uniform vec3 uDeep;
+uniform float uGlow;
 varying vec2 vUv;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -58,7 +67,7 @@ float fbm(vec2 p) {
 void main() {
   vec2 p = (vUv - vec2(0.5, 0.56)) * vec2(uAspect, 1.0);
   float r = length(p);
-  vec3 color = mix(uAbyss, uFog, smoothstep(0.0, 0.85, r));
+  vec3 color = mix(mix(uFog, uAbyss, uGlow), uFog, smoothstep(0.0, 0.85, r));
   if (uNebula > 0.5) {
     float t = uTime * 0.000012;
     float n = fbm(p * 2.2 + vec2(t, -t * 0.7));
@@ -85,7 +94,7 @@ void main() {
   p += uDrift * vec3(sin(uTime * 0.00021 + aPhase), cos(uTime * 0.00017 + aPhase * 1.3), sin(uTime * 0.00013 + aPhase * 0.7));
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   gl_Position = projectionMatrix * mv;
-  gl_PointSize = aSize * uPixelRatio * (uScale / max(-mv.z, 0.5));
+  gl_PointSize = min(aSize * uPixelRatio * (uScale / max(-mv.z, 0.5)), 18.0 * uPixelRatio);
   vColor = aColor;
   vTwinkle = 0.72 + 0.28 * sin(uTime * 0.0016 + aPhase * 6.2831);
 }`;
@@ -113,6 +122,14 @@ class ThreeJarvisEngine implements JarvisEngine {
   private readonly loop: FrameLoop;
   private readonly timed: ShaderMaterial[] = [];
   private readonly backdrop: ShaderMaterial;
+  private readonly post: JarvisPost;
+  private readonly heart: Heart3d | null;
+  private readonly governor: QualityGovernor | null;
+  private readonly dustOpacity = new Tween(HOLO_ALPHA.panel);
+  private dustMaterial: ShaderMaterial | null = null;
+  private level: QualityLevel;
+  private plan: StagePlan;
+  private lastNow: number | null = null;
   private readonly onLost = (event: Event): void => {
     event.preventDefault();
     this.loop.pause();
@@ -120,16 +137,22 @@ class ThreeJarvisEngine implements JarvisEngine {
   };
   private readonly onRestored = (): void => this.options.onContextRestored();
   private firstFrameSeen = false;
+  private lastPoints: ShaderMaterial | null = null;
   private disposed = false;
 
   constructor(private readonly options: JarvisEngineOptions) {
     const budget = LEVEL_BUDGET[options.level];
     const canvas = options.canvas;
+    this.level = options.level;
+    this.plan = options.plan;
+    // Les couleurs de la palette sont écrites telles quelles, au canevas comme dans les passes (aucune conversion).
+    ColorManagement.enabled = false;
     canvas.addEventListener('webglcontextlost', this.onLost);
     canvas.addEventListener('webglcontextrestored', this.onRestored);
     this.renderer = new WebGLRenderer({
       canvas, antialias: options.level === 'high', alpha: false, powerPreference: 'high-performance',
     });
+    this.renderer.outputColorSpace = LinearSRGBColorSpace;
     this.renderer.setPixelRatio(Math.min(options.pixelRatio, budget.pixelRatio));
     this.renderer.setClearColor(HOLO_COLORS.fog, 1);
     this.renderer.setSize(options.width, options.height, false);
@@ -144,11 +167,18 @@ class ThreeJarvisEngine implements JarvisEngine {
       this.buildDust(budget.dust);
     }
     this.buildFloor(budget.floorRings);
+    const start = options.clock();
     if (options.withCore) {
-      this.buildCore(budget.core);
+      this.heart = new Heart3d(this.scene, options.random, options.level, this.renderer.getPixelRatio());
+      this.applyPlan(options.plan, start, true);
+    } else {
+      this.heart = null;
     }
+    this.post = new JarvisPost(this.renderer, this.scene, this.camera, options.width, options.height, options.level);
+    // Le banc (horloge figée) n'adapte pas la qualité : ses captures restent reproductibles.
+    this.governor = options.adaptive ? new QualityGovernor(options.level, start) : null;
 
-    this.loop = new FrameLoop(options.frameHost, () => this.draw());
+    this.loop = new FrameLoop(options.frameHost, (now) => this.draw(now));
   }
 
   get frames(): number {
@@ -166,9 +196,46 @@ class ThreeJarvisEngine implements JarvisEngine {
       return;
     }
     this.renderer.setSize(width, height, false);
+    this.post.setSize(width, height);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.backdrop.uniforms['uAspect'].value = width / height;
+  }
+
+  update(plan: StagePlan): void {
+    if (this.disposed) {
+      return;
+    }
+    this.applyPlan(plan, this.options.clock(), false);
+    this.plan = plan;
+  }
+
+  /** Les cibles du plan ; `opening` = le plan de départ (le banc rejoue ses transitions depuis t = 0). */
+  private applyPlan(plan: StagePlan, now: number, opening: boolean): void {
+    if (!this.heart) {
+      return;
+    }
+    if (opening && this.options.replayFromZero) {
+      this.heart.setMood('repos', 0, true);
+      this.heart.setMood(plan.mood, 0, false);
+      this.heart.setWakes(plan.wakes, 0);
+      return;
+    }
+    this.heart.setMood(plan.mood, now, opening);
+    if (opening) {
+      this.heart.setWakes(0, now);
+    }
+    this.heart.setWakes(plan.wakes, now);
+  }
+
+  /** T-Q — nouveau niveau : ratio de pixels, bloom, poussière et densité du cœur, en fondu. */
+  private applyLevel(level: QualityLevel, now: number): void {
+    this.level = level;
+    const budget = LEVEL_BUDGET[level];
+    this.renderer.setPixelRatio(Math.min(this.options.pixelRatio, budget.pixelRatio));
+    this.post.setLevel(level);
+    this.heart?.setLevel(level, now);
+    this.dustOpacity.set(budget.dust > 0 ? HOLO_ALPHA.panel : 0, now, MOTION_DURATIONS.quality, 'glisse');
   }
 
   dispose(): void {
@@ -191,20 +258,43 @@ class ThreeJarvisEngine implements JarvisEngine {
       }
     });
     this.scene.clear();
+    this.post.dispose();
     this.renderer.dispose();
     this.renderer.forceContextLoss();
   }
 
-  private draw(): void {
+  private draw(frameNow: number): void {
     const t = this.options.clock();
+    const frameMs = this.lastNow === null ? 0 : frameNow - this.lastNow;
+    this.lastNow = frameNow;
+    if (this.governor && frameMs > 0) {
+      const verdict = this.governor.sample(frameMs, frameNow);
+      if (verdict.kind === 'change') {
+        this.applyLevel(verdict.level, t);
+        this.options.onQualityChange(verdict.level);
+      } else if (verdict.kind === 'fallback2d') {
+        this.options.onLowPerf();
+      }
+    }
     for (const material of this.timed) {
       material.uniforms['uTime'].value = t;
     }
+    if (this.dustMaterial) {
+      this.dustMaterial.uniforms['uOpacity'].value = this.dustOpacity.value(t);
+    }
+    let bloom = 1.1;
+    let light = 0.8;
+    if (this.heart) {
+      this.heart.frame(t, Math.min(Math.max(frameMs, 0), MAX_DT_MS), this.options.voiceLevel());
+      bloom = this.heart.bloom.value(t);
+      light = this.heart.light;
+    }
+    this.backdrop.uniforms['uGlow'].value = 0.35 + 0.65 * light;
     // Dérive lente de la caméra (parallaxe des calques) : aucun roulis, focale fixe (§7.3, règle 8).
     this.camera.position.x = Math.sin(t * 0.00005) * 0.35;
     this.camera.position.y = 0.6 + Math.sin(t * 0.000037) * 0.12;
     this.camera.lookAt(0, 0, 0);
-    this.renderer.render(this.scene, this.camera);
+    this.post.render(bloom);
     if (!this.firstFrameSeen) {
       this.firstFrameSeen = true;
       this.options.onFirstFrame();
@@ -226,6 +316,7 @@ class ThreeJarvisEngine implements JarvisEngine {
         uAbyss: { value: rgb(HOLO_COLORS.abyss) },
         uTint: { value: rgb(HOLO_COLORS.normal) },
         uDeep: { value: rgb(HOLO_COLORS.deep) },
+        uGlow: { value: 0.8 },
       },
     });
     const quad = new Mesh(new PlaneGeometry(2, 2), material);
@@ -279,6 +370,7 @@ class ThreeJarvisEngine implements JarvisEngine {
       size[i] = 1.6 + random() * 2.2;
       phase[i] = random() * 10;
     }, { opacity: HOLO_ALPHA.panel, drift: 0.35, breath: 0, scale: 16 });
+    this.dustMaterial = this.lastPoints;
   }
 
   /** L1 — sol polaire : cercles gradués et rayons, orange atténué. */
@@ -308,41 +400,6 @@ class ThreeJarvisEngine implements JarvisEngine {
     const floor = new LineSegments(geometry, material);
     floor.position.y = -2.4;
     this.scene.add(floor);
-  }
-
-  /** L2 — le cœur provisoire : une sphère de particules qui respire (le vrai cœur arrive en SF-236-02). */
-  private buildCore(count: number): void {
-    const random = this.options.random;
-    const core = rgb(HOLO_COLORS.core);
-    const orange = rgb(HOLO_COLORS.normal);
-    const golden = Math.PI * (3 - Math.sqrt(5));
-    this.addPoints(count, (i, pos, col, size, phase) => {
-      const y = 1 - (i / Math.max(count - 1, 1)) * 2;
-      const ring = Math.sqrt(1 - y * y);
-      const a = golden * i;
-      const depth = 0.35 + 0.65 * Math.cbrt(random());
-      const r = 1.15 * depth;
-      pos[i * 3] = Math.cos(a) * ring * r;
-      pos[i * 3 + 1] = y * r;
-      pos[i * 3 + 2] = Math.sin(a) * ring * r;
-      const heat = 1 - depth;
-      for (let c = 0; c < 3; c++) {
-        col[i * 3 + c] = orange[c] * (1 - heat) + core[c] * heat;
-      }
-      size[i] = 1.6 + random() * 2.4;
-      phase[i] = random() * 10;
-    }, { opacity: HOLO_ALPHA.lit, drift: 0.02, breath: 0.04, scale: 20 });
-    // Halo : une lueur additive large, sans texture (la vraie lumière — bloom sélectif — arrive en SF-236-02).
-    this.addPoints(2, (i, pos, col, size, phase) => {
-      pos.fill(0, i * 3, i * 3 + 3);
-      const tint = i === 0 ? orange : core;
-      const gain = i === 0 ? 0.55 : 0.35;
-      for (let c = 0; c < 3; c++) {
-        col[i * 3 + c] = tint[c] * gain;
-      }
-      size[i] = i === 0 ? 150 : 45;
-      phase[i] = 0;
-    }, { opacity: HOLO_ALPHA.lit, drift: 0, breath: 0.03, scale: 20 });
   }
 
   private addPoints(
@@ -379,5 +436,6 @@ class ThreeJarvisEngine implements JarvisEngine {
     });
     this.scene.add(new Points(geometry, material));
     this.timed.push(material);
+    this.lastPoints = material;
   }
 }

@@ -9,7 +9,7 @@ import { InjectionToken } from '@angular/core';
 
 /** Pourquoi l'écran reste en 2D (les compteurs de la mesure, SF-236-06, reprendront ces mots). */
 export type Fallback2dReason = 'no_webgl' | 'perf_caveat' | 'reduced_motion' | 'save_data' | 'sober' | 'manual'
-  | 'context_lost';
+  | 'context_lost' | 'low_perf';
 
 /** Le niveau de qualité de départ (la qualité adaptative, SF-236-02, le fera ensuite varier). */
 export type QualityLevel = 'high' | 'medium' | 'low';

@@ -61,6 +61,7 @@ import { JarvisSceneComponent } from './scenes/jarvis-scene.component';
 import { JarvisConstellationComponent } from './scenes/jarvis-constellation.component';
 import { JarvisStage3dComponent } from './stage3d/jarvis-stage-3d.component';
 import { holoCssVars } from './stage3d/jarvis-motion';
+import { ScreenSignals } from './stage3d/jarvis-stage-director';
 import { isShowDismiss, stripShowLines } from './scenes/jarvis-show';
 import {
   ASK_SUBJECT, AnnouncementQueue, CORRECTION_WINDOW_MS, FastDelegation, FastDone, JarvisFastBrainClient,
@@ -447,6 +448,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   /** « Jarvis » entendu : il coupe sa voix s'il parlait, et écoute. */
   private async onWake(): Promise<void> {
+    // F-236 / SF-236-02 (N2) — le réveil se voit : onde de choc du cœur 3D.
+    this.wakeCalls.update((n) => n + 1);
     if (this.state() === 'ecoute') {
       return;
     }
@@ -1489,6 +1492,22 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   /** F-234 / SF-234-11 (D9) — le mode sobre : orbe et fil d'Ariane seuls. */
   readonly sober = computed(() => this.scenes.sober());
+
+  /** F-236 / SF-236-02 (N2) — appels du mot « Jarvis » depuis l'ouverture (onde de choc du cœur 3D). */
+  readonly wakeCalls = signal(0);
+
+  /** F-236 / SF-236-02 — ce que la scène 3D lit de l'écran (H2, H6, H9, H10) ; rien n'est modifié. */
+  readonly stageSignals = computed<ScreenSignals>(() => {
+    const reader = this.scenes.state();
+    return {
+      state: this.state(),
+      frozen: reader.frozen,
+      waiting: reader.scene?.id === 'S2' && reader.scene.pinned,
+      conversing: this.conversation.mode() === 'active',
+      wakeCalls: this.wakeCalls(),
+    };
+  }, { equal: (a, b) => a.state === b.state && a.frozen === b.frozen && a.waiting === b.waiting
+    && a.conversing === b.conversing && a.wakeCalls === b.wakeCalls });
 
   toggleSober(): void {
     const on = !this.scenes.sober();

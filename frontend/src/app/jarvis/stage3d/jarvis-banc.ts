@@ -1,4 +1,6 @@
+import { HeartMood } from './jarvis-heart';
 import { QualityLevel } from './jarvis-render-capability';
+import { StagePlan } from './jarvis-stage-director';
 
 /**
  * F-236 / SF-236-01 — **le banc de captures** (cadrage T12). Fichier <b>pur</b>.
@@ -24,7 +26,22 @@ function levelOf(raw: string | null): QualityLevel | null {
 }
 
 /** Les scènes que le banc sait poser ; une scène inconnue retombe sur `coeur`. */
-export const BANC_SCENES = ['coeur'] as const;
+export const BANC_SCENES = ['coeur', 'ecoute', 'reflexion', 'parole', 'oui', 'coupure', 'veille', 'reveil'] as const;
+
+/** SF-236-02 — l'humeur du cœur posée par chaque scène du banc (transition rejouée depuis t = 0). */
+const BANC_MOODS: Readonly<Record<string, HeartMood>> = {
+  coeur: 'repos', ecoute: 'ecoute', reflexion: 'reflexion', parole: 'parole', oui: 'oui', coupure: 'coupure',
+  veille: 'veille', reveil: 'repos',
+};
+
+/** Le plan que le banc pose, et le niveau de voix simulé (ondes ∝ niveau). */
+export function bancPlan(scene: string): { plan: StagePlan; voice: number } {
+  const mood = Object.hasOwn(BANC_MOODS, scene) ? BANC_MOODS[scene] : 'repos';
+  return {
+    plan: { mood, wakes: scene === 'reveil' ? 1 : 0 },
+    voice: mood === 'ecoute' || mood === 'parole' ? 0.7 : 0,
+  };
+}
 
 const SCENE_NAME = /^[a-z0-9-]{1,40}$/;
 

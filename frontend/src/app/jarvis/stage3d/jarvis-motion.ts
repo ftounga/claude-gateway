@@ -76,6 +76,23 @@ export const MOTION_DURATIONS = {
   fade: 400,
   /** T-Q — changement de niveau de qualité. */
   quality: 600,
+  /** SF-236-02 — T-C1 cœur : repos → écoute. */
+  heartListen: 350,
+  /** T-C2 — écoute → réflexion. */
+  heartThink: 600,
+  /** T-C3 — réflexion → parole. */
+  heartSpeak: 250,
+  /** T-C4 — → repos. */
+  heartRest: 1200,
+  /** T-C5 — → « oui » attendu. */
+  heartWait: 500,
+  /** T-C6 — coupure : gel, puis effacement (400 ms). */
+  heartCutFreeze: 1000,
+  heartCut: 400,
+  /** T-V1 — mise en veille. */
+  sleep: 2500,
+  /** T-V2 — réveil (onde de choc). */
+  wake: 600,
 } as const;
 
 /** Lit une courbe en `cubic-bezier(...)`. */

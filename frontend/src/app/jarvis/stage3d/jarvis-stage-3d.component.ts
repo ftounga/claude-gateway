@@ -7,6 +7,8 @@ import { BancParams, frozenClock, readBanc, realClock, seededRandom } from './ja
 import { JARVIS_3D_LOADER, JarvisEngine, JarvisEngineFactory } from './jarvis-engine.contract';
 import { FrameHost, browserFrameHost } from './jarvis-frame-loop';
 import { MOTION_DURATIONS } from './jarvis-motion';
+import { SLEEP_AFTER_MS, SleepWatch } from './jarvis-heart';
+import { IDLE_SCREEN, ScreenSignals, StagePlan, directStage } from './jarvis-stage-director';
 import {
   ContextLossPolicy, JARVIS_RENDER_PROBE, QualityLevel, RenderDecision, SESSION_CONTEXT_LOSS, canOffer3d, decideRender,
   readManual2d, writeManual2d,
@@ -68,8 +70,14 @@ export const JARVIS_CONTEXT_LOSS = new InjectionToken<ContextLossPolicy>('JARVIS
 export class JarvisStage3dComponent implements OnDestroy {
   /** Mode sobre F-234 (D9) : 2D. */
   readonly sober = input(false);
-  /** Dessiner le cœur provisoire 3D (banc) ; sur `/jarvis` l'orbe 2D reste le cœur jusqu'à SF-236-02. */
+  /** Dessiner le cœur 3D (SF-236-02) ; l'écran efface alors l'orbe 2D. */
   readonly withCore = input(false);
+  /** SF-236-02 — ce que l'écran sait (état, coupure, autorisation, conversation, réveils). */
+  readonly signals = input<ScreenSignals>(IDLE_SCREEN);
+  /** Banc seulement : un plan imposé. */
+  readonly planOverride = input<StagePlan | null>(null);
+  /** SF-236-02 — le niveau du micro ou de la voix (0-1), lu à chaque image hors zone. */
+  readonly voiceLevel = input<() => number>(() => 0);
 
   private readonly host = inject(ElementRef<HTMLElement>);
   private readonly zone = inject(NgZone);
@@ -85,6 +93,28 @@ export class JarvisStage3dComponent implements OnDestroy {
   private readonly contextLost = signal(this.losses.lostTwice);
   /** Le contexte est perdu, en attente de restauration : 2D en attendant. */
   private readonly contextSuspended = signal(false);
+  /** SF-236-02 — niveau Bas sous 30 i/s pendant 5 s : 2D pour cette ouverture. */
+  readonly lowPerf = signal(false);
+  /** SF-236-02 — le niveau de qualité courant (qualité adaptative). */
+  readonly level = signal<QualityLevel | null>(null);
+
+  /** N3 / N2 — la veille et les réveils, tenus ici (la minuterie n'existe que si la 3D est montée). */
+  private readonly sleepWatch = new SleepWatch();
+  private readonly asleep = signal(false);
+  private readonly wakes = signal(0);
+  private sleepTimer: ReturnType<typeof setTimeout> | null = null;
+  private wakeCallsSeen = 0;
+
+  /** Le plan du directeur de scène. */
+  readonly plan = computed<StagePlan>(() => {
+    const override = this.planOverride();
+    if (override) {
+      return override;
+    }
+    const s = this.signals();
+    return directStage({ state: s.state, frozen: s.frozen, waiting: s.waiting, asleep: this.asleep(),
+      wakes: this.wakes() });
+  });
 
   readonly decision = computed<RenderDecision>(() => {
     const decision = decideRender(this.probe, {
@@ -93,11 +123,15 @@ export class JarvisStage3dComponent implements OnDestroy {
       contextLostTwice: this.contextLost(),
       banc: this.banc !== null,
     });
-    return decision.mode === '3d' && this.contextSuspended() ? { mode: '2d', reason: 'context_lost' } : decision;
+    if (decision.mode === '3d' && this.contextSuspended()) {
+      return { mode: '2d', reason: 'context_lost' };
+    }
+    return decision.mode === '3d' && this.lowPerf() ? { mode: '2d', reason: 'low_perf' } : decision;
   });
 
   /** Le bouton « Vue 3D / 2D » n'est proposé que si la 3D est possible sur cet appareil. */
-  readonly offer3d = computed(() => canOffer3d(this.probe, this.banc !== null) && !this.contextLost());
+  readonly offer3d = computed(() => canOffer3d(this.probe, this.banc !== null) && !this.contextLost()
+    && !this.lowPerf());
   /** La 3D a dessiné sa première image et la décision est toujours « 3D ». */
   readonly shown = signal(false);
   readonly rendering = computed(() => (this.shown() ? '3d' : '2d'));
@@ -114,6 +148,29 @@ export class JarvisStage3dComponent implements OnDestroy {
     untracked(() => (decision.mode === '3d' ? this.ensureEngine() : this.retire()));
   });
 
+  /** N3 / N2 — relit la veille à chaque changement de l'écran. */
+  private readonly sleepFollow = effect(() => {
+    const s = this.signals();
+    untracked(() => {
+      if (s.wakeCalls > this.wakeCallsSeen) {
+        this.wakeCallsSeen = s.wakeCalls;
+        this.sleepWatch.wake(Date.now());
+      }
+      this.checkSleep();
+    });
+  });
+
+  /** SF-236-02 — chaque nouveau plan part au moteur (hors zone : le moteur n'écrit jamais l'inverse). */
+  private readonly relayPlan = effect(() => {
+    const plan = this.plan();
+    untracked(() => {
+      const engine = this.engine;
+      if (engine) {
+        this.zone.runOutsideAngular(() => engine.update(plan));
+      }
+    });
+  });
+
   /** Bascule « Vue 3D / 2D », retenue par appareil. */
   toggleView(): void {
     const next = !this.manual2d();
@@ -123,6 +180,7 @@ export class JarvisStage3dComponent implements OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    this.clearSleepTimer();
     if (this.retireTimer !== null) {
       clearTimeout(this.retireTimer);
       this.retireTimer = null;
@@ -177,6 +235,12 @@ export class JarvisStage3dComponent implements OnDestroy {
         random: seededRandom(0x236),
         frameHost: this.frameHost(),
         withCore: untracked(() => this.withCore()),
+        plan: untracked(() => this.plan()),
+        voiceLevel: untracked(() => this.voiceLevel()),
+        adaptive: this.banc === null,
+        replayFromZero: this.banc !== null,
+        onQualityChange: (next) => this.zone.run(() => this.level.set(next)),
+        onLowPerf: () => this.zone.run(() => this.lowPerf.set(true)),
         onFirstFrame: () => this.zone.run(() => {
           if (untracked(() => this.decision()).mode === '3d') {
             this.shown.set(true);
@@ -196,7 +260,9 @@ export class JarvisStage3dComponent implements OnDestroy {
       });
       this.resizeObserver.observe(element);
     }
+    this.level.set(level);
     this.engine.start();
+    this.checkSleep();
   }
 
   /** T11 — perte : bascule immédiate en 2D ; une restauration tentée ; seconde perte ⇒ 2D pour la session. */
@@ -232,7 +298,32 @@ export class JarvisStage3dComponent implements OnDestroy {
     }, MOTION_DURATIONS.fade);
   }
 
+  private checkSleep(): void {
+    const s = untracked(() => this.signals());
+    const asleep = this.sleepWatch.update(s.conversing, s.state, Date.now());
+    this.asleep.set(asleep);
+    this.wakes.set(this.sleepWatch.wakes);
+    this.clearSleepTimer();
+    // La minuterie n'existe que si la 3D est montée (en 2D, la veille n'a rien à dessiner).
+    if (!asleep && !s.conversing && s.state === 'repos' && this.engine && !this.destroyed) {
+      this.zone.runOutsideAngular(() => {
+        this.sleepTimer = setTimeout(() => this.zone.run(() => {
+          this.sleepTimer = null;
+          this.checkSleep();
+        }), SLEEP_AFTER_MS + 50);
+      });
+    }
+  }
+
+  private clearSleepTimer(): void {
+    if (this.sleepTimer !== null) {
+      clearTimeout(this.sleepTimer);
+      this.sleepTimer = null;
+    }
+  }
+
   private release(): void {
+    this.clearSleepTimer();
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     this.engine?.dispose();
