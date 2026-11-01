@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
-import { JarvisWatch, JarvisWatchTest } from '../models/veille.models';
+import { JarvisWatch, JarvisWatchRun, JarvisWatchTest } from '../models/veille.models';
 
 /**
  * **Les veilles Jarvis d'un sujet** (F-230). Aucun appel ne porte d'identifiant de compte : la gateway part du
@@ -29,6 +29,16 @@ export class VeilleService {
   /** Activer une veille testée. */
   accept(workspaceId: string, watchId: string): Observable<JarvisWatch> {
     return this.http.post<JarvisWatch>(`${this.base(workspaceId)}/${watchId}/accept`, {});
+  }
+
+  /** « Lancer maintenant » (SF-230-02) : rend le passage terminé. */
+  runNow(workspaceId: string, watchId: string): Observable<JarvisWatchRun> {
+    return this.http.post<JarvisWatchRun>(`${this.base(workspaceId)}/${watchId}/run`, {});
+  }
+
+  /** Les 20 derniers passages (SF-230-02). */
+  history(workspaceId: string, watchId: string): Observable<JarvisWatchRun[]> {
+    return this.http.get<JarvisWatchRun[]>(`${this.base(workspaceId)}/${watchId}/runs`);
   }
 
   /** Supprimer une veille — et refuser ainsi une proposition. */

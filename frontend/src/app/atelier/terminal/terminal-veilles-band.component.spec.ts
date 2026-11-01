@@ -12,7 +12,8 @@ export function watch(over: Partial<JarvisWatch> = {}): JarvisWatch {
     scope: 'En cours, bloqués ; jamais les done', command: 'bash .atelier/veilles/agenor.sh',
     scriptPath: '.atelier/veilles/agenor.sh', runTimes: ['09:00', '14:00'], timeZone: 'Europe/Paris',
     days: 'MONDAY_TO_FRIDAY', active: false, proposed: true, origin: 'AGENT', testedAt: null, testItemCount: null,
-    testSummary: null, nextRunAt: null, createdAt: '', updatedAt: '', ...over,
+    testSummary: null, nextRunAt: null, createdAt: '', updatedAt: '', lastRunAt: null, lastRunStatus: null,
+    broken: false, consecutiveFailures: 0, ...over,
   };
 }
 
@@ -92,6 +93,13 @@ describe('La bande des veilles Jarvis (F-230 / SF-230-01)', () => {
     service.remove.and.returnValue(of(void 0));
     button('Refuser').click();
     expect(service.remove).toHaveBeenCalledWith('w-1', 'v-1');
+  });
+
+  it('dit qu’une veille est en panne et propose de la faire réparer (SF-230-02)', () => {
+    create([watch({ proposed: false, active: true, broken: true, consecutiveFailures: 2 })]);
+    expect(text()).toContain('Veille « Agenor » en panne');
+    expect(text()).toContain('Demandez à l\'agent de la réparer');
+    expect((fixture.nativeElement as HTMLElement).querySelector('.veille-card')).toBeNull();
   });
 
   it('en lecture seule, aucun geste', () => {

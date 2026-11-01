@@ -81,7 +81,13 @@ public enum PushEvent {
      * non reportés, sans attente de tiers — F-222 / SF-222-04). Le moins prioritaire du récapitulatif : une seule
      * notification par jour.
      */
-    CHANTIERS_DORMANT("Des chantiers sont en sommeil", "Ouvrez la Forge pour les reprendre ou les clore.");
+    CHANTIERS_DORMANT("Des chantiers sont en sommeil", "Ouvrez la Forge pour les reprendre ou les clore."),
+
+    /**
+     * Une veille Jarvis est en panne : sa sonde a échoué deux fois de suite (F-230 / SF-230-02, D6) — une veille
+     * muette ne doit pas passer pour « rien de neuf ». Émise même terminal regardé.
+     */
+    WATCH_BROKEN("Une veille est en panne", "Sa sonde ne répond plus : ouvrez le sujet pour la faire réparer.", true);
 
     private final String title;
     private final String body;

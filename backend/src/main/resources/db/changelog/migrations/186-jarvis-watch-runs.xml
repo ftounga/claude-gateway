@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-230 / SF-230-02 - LES VEILLES JARVIS : ELLE TOURNE SANS IA.
+
+      jarvis_watch_snapshots : le dernier instantane de la liste normalisee rendue par la sonde, UN par
+      veille (remplace a chaque changement). Sert au diff du passage suivant (D3). items_json = la liste
+      normalisee bornee (id, titre, statut, assigne, mis_a_jour, dernier_commentaire). Type
+      varchar(1000000) et non text : H2 mappe text sur CLOB, que la validation de schema refuse face au
+      columnDefinition "text" de l'entite (meme raison que 037/041/050) ; sous Postgres, les deux sont
+      des VARCHAR.
+
+      jarvis_watch_runs : le journal des passages (BASELINE | NO_CHANGE | CHANGED | FAILED |
+      MISSED_OFFLINE), sans contenu : des instants, un statut, un nombre de changements, un code d'erreur
+      ferme. Nourrit la mesure d'adoption (D8). Purge a 90 jours.
+
+      Isolation : user_id sur chaque ligne ; lectures sous user_id (+ workspace_id). Les lignes suivent
+      la veille (cle etrangere, cascade).
+      Rollback : les deux tables se retirent.
+    -->
+
+    <changeSet id="186-jarvis-watch-snapshots" author="claude-gateway">
+        <createTable tableName="jarvis_watch_snapshots">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="watch_id" type="uuid">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uq_jarvis_watch_snapshots_watch"
+                             foreignKeyName="fk_jarvis_watch_snapshots_watch"
+                             references="jarvis_watches(id)" deleteCascade="true"/>
+            </column>
+            <column name="items_json" type="varchar(1000000)"><constraints nullable="false"/></column>
+            <column name="item_count" type="int"><constraints nullable="false"/></column>
+            <column name="taken_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <rollback>
+            <dropTable tableName="jarvis_watch_snapshots"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="186-jarvis-watch-runs" author="claude-gateway">
+        <createTable tableName="jarvis_watch_runs">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="watch_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_jarvis_watch_runs_watch"
+                             references="jarvis_watches(id)" deleteCascade="true"/>
+            </column>
+            <column name="slot_at" type="timestamptz"/>
+            <!-- SCHEDULED | CATCH_UP | MANUAL -->
+            <column name="trigger_kind" type="varchar(16)"><constraints nullable="false"/></column>
+            <!-- BASELINE | NO_CHANGE | CHANGED | FAILED | MISSED_OFFLINE -->
+            <column name="status" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="change_count" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="error_code" type="varchar(40)"/>
+            <column name="duration_ms" type="bigint"/>
+            <column name="started_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="finished_at" type="timestamptz"/>
+        </createTable>
+        <createIndex tableName="jarvis_watch_runs" indexName="idx_jarvis_watch_runs_watch">
+            <column name="watch_id"/>
+            <column name="started_at"/>
+        </createIndex>
+        <createIndex tableName="jarvis_watch_runs" indexName="idx_jarvis_watch_runs_user">
+            <column name="user_id"/>
+            <column name="started_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="jarvis_watch_runs"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

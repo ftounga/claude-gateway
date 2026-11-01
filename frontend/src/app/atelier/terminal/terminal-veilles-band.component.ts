@@ -21,6 +21,15 @@ import { VeilleService } from '../../core/services/veille.service';
   selector: 'app-terminal-veilles-band',
   imports: [MatButtonModule, MatIconModule, MatProgressSpinnerModule],
   template: `
+    @for (watch of brokenWatches(); track watch.id) {
+      <div class="veille-broken" role="status">
+        <mat-icon class="veille-broken__icon" aria-hidden="true">sensors_off</mat-icon>
+        <span class="veille-broken__text">
+          Veille « {{ watch.name }} » en panne : sa sonde a échoué {{ watch.consecutiveFailures }} fois de suite.
+          Demandez à l'agent de la réparer.
+        </span>
+      </div>
+    }
     @for (watch of proposals(); track watch.id) {
       <div class="veille-card" role="group" [attr.aria-label]="'Veille proposée : ' + watch.name">
         <mat-icon class="veille-card__icon" aria-hidden="true">radar</mat-icon>
@@ -78,6 +87,14 @@ import { VeilleService } from '../../core/services/veille.service';
   `,
   styles: `
     :host { display: block; }
+    .veille-broken {
+      display: flex; align-items: center; gap: var(--cg-space-2); margin: var(--cg-space-2) 0;
+      padding: var(--cg-space-1) var(--cg-space-3); border: 1px solid var(--cg-divider);
+      border-left: 4px solid var(--cg-orange-2); border-radius: 8px; font-family: var(--cg-font-body);
+      font-size: 13px; color: inherit;
+    }
+    .veille-broken__icon { flex: none; color: var(--cg-orange-2); }
+    .veille-broken__text { min-width: 0; overflow-wrap: anywhere; }
     .veille-card {
       display: flex; gap: var(--cg-space-2); margin: var(--cg-space-2) 0; padding: var(--cg-space-2) var(--cg-space-3);
       border: 1px solid var(--cg-orange-2); border-left-width: 4px; border-radius: 8px; color: inherit;
@@ -128,6 +145,8 @@ export class TerminalVeillesBandComponent {
 
   readonly watches = signal<JarvisWatch[]>([]);
   readonly proposals = computed(() => this.watches().filter((w) => w.proposed));
+  /** SF-230-02 — les veilles en panne : une veille muette ne doit pas passer pour « rien de neuf » (D6). */
+  readonly brokenWatches = computed(() => this.watches().filter((w) => w.broken && !w.proposed));
   /** Les tests de cette visite, par veille. */
   readonly results = signal<Record<string, JarvisWatchTest>>({});
   readonly testing = signal<string | null>(null);

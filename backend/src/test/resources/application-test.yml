@@ -32,6 +32,11 @@ app:
   # directement.
   routines:
     enabled: false
+  # F-230 / SF-230-02 : planificateur des veilles Jarvis désactivé en tests ; JarvisWatchPlanner.runOnce() est
+  # appelé directement.
+  jarvis:
+    watches:
+      enabled: false
   # F-219 / SF-219-02 : fermeture des courses autonomes orphelines désactivée en tests ;
   # AutonomyService.closeStale() est appelé directement.
   autonomy:

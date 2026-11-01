@@ -50,6 +50,18 @@ describe('Le panneau /veilles (F-230 / SF-230-01)', () => {
     expect(text()).toContain('Prochain passage');
   });
 
+  it('dit le dernier passage et la panne (SF-230-02)', () => {
+    service.list.and.returnValue(of([
+      watch({ proposed: false, active: true, lastRunAt: new Date().toISOString(), lastRunStatus: 'NO_CHANGE' }),
+      watch({ id: 'v-3', name: 'Muette', proposed: false, active: true, broken: true, lastRunStatus: 'FAILED',
+        lastRunAt: new Date().toISOString() }),
+    ]));
+    create();
+    expect(text()).toContain('rien de neuf');
+    expect(text()).toContain('En panne — à faire réparer');
+    expect(text()).toContain('sonde en échec');
+  });
+
   it('supprime après confirmation', () => {
     service.list.and.returnValue(of([watch()]));
     service.remove.and.returnValue(of(void 0));
