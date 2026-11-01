@@ -45,14 +45,22 @@ export class JarvisSceneBus implements OnDestroy {
 
   /** Lit l'univers — jamais pendant un tour (D1) ; best-effort : un échec laisse l'écran tel quel. */
   load(): void {
-    if (this.turnRunning || !this.http) {
-      return;
+    if (this.turnRunning || !this.http || this.loading) {
+      return; // une lecture en vol suffit (la scène et la constellation la demandent toutes deux à l'ouverture)
     }
+    this.loading = true;
     this.http.get<JarvisUniverse>(JARVIS_UNIVERSE_URL).subscribe({
-      next: (universe) => this.setUniverse(universe),
-      error: () => undefined,
+      next: (universe) => {
+        this.loading = false;
+        this.setUniverse(universe);
+      },
+      error: () => {
+        this.loading = false;
+      },
     });
   }
+
+  private loading = false;
 
   /** Pose l'univers (lu, ou fourni par un test). */
   setUniverse(universe: JarvisUniverse | null): void {

@@ -176,3 +176,9 @@
     font-size: 24px;
   }
 }
+
+// F-234 / SF-234-03 — la constellation entoure l'orbe : l'orbe garde le centre, à une taille qui laisse lire l'anneau
+// des sujets (rayon 62 sur 100) et la couronne des clients.
+.jv__constellation .jv__orb-button {
+  width: 52%;
+}

@@ -911,6 +911,39 @@ Sur ce fond, une couleur en dur (`#9FB0C4`, `#F9A825`, `#5FD08F`) n'est plus adm
 **Hors périmètre, signalé** : le blanc sur or des boutons pleins HORS terminal (2,63:1) reste un point de
 charte, non tranché ici.
 
+---
+
+## 22 — Jarvis : constellation et scènes (ajout F-234 / SF-234-03, 2026-11-01)
+
+L'écran `/jarvis` (F-231) est **navy** (dégradé `--cg-navy-2` → `--cg-navy`). La constellation et les scènes n'y
+ajoutent **aucune couleur** :
+
+| Élément | Rendu | Jeton | Contraste (texte) |
+|---|---|---|---|
+| Nœud au repos (sujet) | point | `--cg-cream` à 35 % | — (forme) |
+| Sujet courant | point plus franc + nom | `--cg-cream` à 80 % | ≥ 12:1 |
+| Client | rond liseré, nom | `--cg-navy-2` + liseré `--cg-cream` ; courant : liseré plein, nom gras | crème/`--cg-navy-2` 14,6:1 |
+| Client déconnecté | même forme, atténuée | opacité 0,55 | — |
+| Nœud cité | forme pleine | `--cg-accent` | — (forme) |
+| Nom en surbrillance, fil d'Ariane (dernier maillon) | texte gras | `--cg-orange-2` | 7,3:1 sur `--cg-navy-2`, 8,2:1 sur `--cg-navy` |
+| Fil lumineux nœud → orbe | trait 0,6 | `--cg-orange-2` à 80 % | — |
+| Anneau qui pulse (un appel d'outil) | cercle | `--cg-accent` | — |
+| Scène (carte) | fond `--cg-navy-2` à 70 %, liseré crème 18 % ; autorisation : liseré `--cg-accent` | — | titre crème |
+
+- **Polices** : noms en **Inter** ; titres de scène en **Space Grotesk** (`--cg-font-heading`) ; commandes, chemins et
+  clés en **JetBrains Mono**.
+- **La forme dit le type, le nom est écrit** (jamais la couleur seule) : client = rond liseré, sujet = point,
+  chantier = losange, personne = carré arrondi.
+- **Tons d'identité §9** : réservés à la pastille du poste ; la constellation ne les utilise pas (aucun nœud ne
+  devient « la couleur d'un client »).
+- **Téléphone (< 768 px)** : seul le client courant déploie ses sujets ; les autres clients sont des points nommés en
+  lisière. Cible tactile d'un sujet ≥ 44 px (zone invisible).
+- **Mouvement réduit** (`prefers-reduced-motion`) : aucun tracé, aucune pulsation, aucune respiration ; le nœud
+  s'allume d'un coup. L'orbe garde son comportement F-231.
+- **Accessibilité** : le fil d'Ariane texte est l'équivalent de la constellation ; une région `aria-live` annonce au
+  plus une fois toutes les 4 s, jamais pendant que Jarvis parle ; les sujets sont des boutons au clavier
+  (« Passer sur X »).
+
 ## Logo & marque (ajout 2026-07-03)
 
 - **Logo de l'application** : `frontend/public/ng-portal-logo.png` (« NG Portal » — bouclier hexagonal, tête + étincelle, bulle de chat, orbite). Utilisé comme **favicon** (`index.html`) et sur la **landing** (nav, hero, footer). Nom de marque affiché : **« NG Portal »** (renommé en F-29 SF-29-01 : le terme « Proxy » faisait classer le domaine en catégorie « anonymizer » par les filtres d'entreprise).

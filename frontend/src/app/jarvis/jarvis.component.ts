@@ -48,6 +48,7 @@ import { JarvisOrbComponent, JarvisState } from './jarvis-orb.component';
 import { JarvisCompanionsComponent } from './jarvis-companions.component';
 import { JarvisSceneBus } from './scenes/jarvis-scene-bus.service';
 import { JarvisSceneComponent } from './scenes/jarvis-scene.component';
+import { JarvisConstellationComponent } from './scenes/jarvis-constellation.component';
 
 /** Le sujet retenu sur cet appareil, d'une ouverture de Jarvis à l'autre. */
 export const JARVIS_SUBJECT_KEY = 'cg.jarvis.subject';
@@ -93,7 +94,7 @@ export function companionOffer(version: JarvisCompanionVersion, installed: numbe
  */
 @Component({
   selector: 'app-jarvis',
-  imports: [JarvisCompanionsComponent, JarvisOrbComponent, JarvisSceneComponent, MarkdownPipe, MatButtonModule, MatIconModule, MatMenuModule, RouterLink],
+  imports: [JarvisCompanionsComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, MarkdownPipe, MatButtonModule, MatIconModule, MatMenuModule, RouterLink],
   templateUrl: './jarvis.component.html',
   styleUrl: './jarvis.component.scss',
 })
