@@ -1,5 +1,5 @@
 import {
-  AnnouncementQueue, FastBrainHandlers, announcementText, dispatch, isRepeatCommand,
+  AnnouncementQueue, FastBrainHandlers, announcementText, dispatch, isCorrection, isRepeatCommand,
 } from './jarvis-fast-brain';
 
 /** F-235 / SF-235-05 — le client du cerveau rapide : événements, file d'annonces, « redis-moi ». */
@@ -46,6 +46,15 @@ describe('Le cerveau rapide, côté écran (F-235 / SF-235-05)', () => {
     expect(announcementText({ label: 'tickets bloqués.', phrase: 'Deux sont bloqués.', subjectId: 'w', confirm: false }))
       .toBe('Pour tickets bloqués : Deux sont bloqués.');
     expect(announcementText({ label: '', phrase: 'C’est fait.', subjectId: 'w', confirm: false })).toBe('C’est fait.');
+  });
+
+  it('F-235 / SF-235-07 — une correction est une liste fermée', () => {
+    expect(isCorrection('Non, c’est faux.')).toBeTrue();
+    expect(isCorrection('Vérifie')).toBeTrue();
+    expect(isCorrection('Jarvis, demande à Opus')).toBeTrue();
+    expect(isCorrection('Non')).toBeTrue();
+    expect(isCorrection('Non merci, ça ira')).toBeFalse();
+    expect(isCorrection('Vérifie les tickets d’AGENOR')).toBeFalse();
   });
 
   it('« redis-moi » est une liste fermée', () => {

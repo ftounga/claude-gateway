@@ -101,6 +101,17 @@ public class JarvisLatencyService {
                 .interruptionsConfirmed(counter(report.interruptionsConfirmed()))
                 .acknowledgements(counter(report.acknowledgements()))
                 .falseTriggers(counter(report.falseTriggers()))
+                // F-235 / SF-235-07 (D14)
+                .brain(closed(report.brain(), BRAINS))
+                .fastModel(model(report.fastModel()))
+                .fastFirstTokenMs(mark(report.fastFirstTokenMs()))
+                .groundingTrips(counter(report.groundingTrips()))
+                .fillersRemoved(counter(report.fillersRemoved()))
+                .repeatsRemoved(counter(report.repeatsRemoved()))
+                .imitationsRemoved(counter(report.imitationsRemoved()))
+                .forcedDelegation(Boolean.TRUE.equals(report.forcedDelegation()))
+                .delegationReason(closed(report.delegationReason(), REASONS))
+                .correction(Boolean.TRUE.equals(report.correction()))
                 .build());
     }
 
@@ -162,6 +173,36 @@ public class JarvisLatencyService {
         return value;
     }
 
+    /** F-235 / SF-235-07 — les cerveaux d'un tour vocal (liste fermée). */
+    static final List<String> BRAINS = List.of("FAST", "FAST_DELEGATED", "OPUS");
+    /** F-235 / SF-235-07 — les raisons d'une délégation d'office ou d'un repli (liste fermée). */
+    static final List<String> REASONS = List.of("grounding", "refusal", "error", "timeout", "empty", "tool_text",
+            "forced", "budget", "quota", "no_subject");
+    private static final Pattern MODEL = Pattern.compile("^[a-z0-9.\\-]{1,64}$");
+
+    private static String closed(String value, List<String> allowed) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String v = value.strip();
+        String match = allowed.stream().filter(a -> a.equalsIgnoreCase(v)).findFirst().orElse(null);
+        if (match == null) {
+            throw new IllegalArgumentException("Valeur hors liste.");
+        }
+        return match;
+    }
+
+    private static String model(String name) {
+        if (name == null || name.isBlank()) {
+            return null;
+        }
+        String flat = name.strip().toLowerCase();
+        if (!MODEL.matcher(flat).matches()) {
+            throw new IllegalArgumentException("Nom de modèle illisible.");
+        }
+        return flat;
+    }
+
     private static String provider(String name) {
         if (name == null || name.isBlank()) {
             return null;
@@ -178,7 +219,11 @@ public class JarvisLatencyService {
             Boolean toolTurn, Integer speechMs, Integer transcriptMs, Integer reactionMs, Integer sentMs,
             Integer firstTokenMs, Integer firstOralSentenceMs, Integer firstAudioByteMs, Integer firstSoundMs,
             Integer doneMs, Integer interruptionsDetected, Integer interruptionsRestored,
-            Integer interruptionsConfirmed, Integer acknowledgements, Integer falseTriggers) {
+            Integer interruptionsConfirmed, Integer acknowledgements, Integer falseTriggers,
+            // F-235 / SF-235-07 (D14) — facultatifs, absents des écrans d'avant F-235.
+            String brain, String fastModel, Integer fastFirstTokenMs, Integer groundingTrips, Integer fillersRemoved,
+            Integer repeatsRemoved, Integer imitationsRemoved, Boolean forcedDelegation, String delegationReason,
+            Boolean correction) {
     }
 
     /** Une étape : nombre de tours où elle a eu lieu, p50 et p90 en ms (nuls sans mesure). */

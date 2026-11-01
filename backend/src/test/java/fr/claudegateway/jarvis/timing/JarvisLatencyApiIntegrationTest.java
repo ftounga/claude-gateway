@@ -98,6 +98,48 @@ class JarvisLatencyApiIntegrationTest {
     }
 
     @Test
+    @DisplayName("F-235 / SF-235-07 — mesure du cerveau rapide : par cerveau, délégation, corrections, creuses ; ADMIN, sous user_id")
+    void fastBrainMeasure() throws Exception {
+        report(adminToken, "{\"brain\":\"FAST\",\"fastModel\":\"claude-haiku-5-5\",\"fastFirstTokenMs\":400,"
+                + "\"firstSoundMs\":1200,\"fillersRemoved\":1}").andExpect(status().isNoContent());
+        report(adminToken, "{\"brain\":\"FAST\",\"fastFirstTokenMs\":600,\"firstSoundMs\":1500,\"correction\":true}")
+                .andExpect(status().isNoContent());
+        report(adminToken, "{\"brain\":\"FAST_DELEGATED\",\"firstSoundMs\":1300,\"delegationReason\":\"grounding\","
+                + "\"groundingTrips\":1}").andExpect(status().isNoContent());
+        report(adminToken, "{\"brain\":\"FAST_DELEGATED\",\"forcedDelegation\":true,\"delegationReason\":\"forced\"}")
+                .andExpect(status().isNoContent());
+        report(adminToken, "{\"firstSoundMs\":9700}").andExpect(status().isNoContent());
+        report(adminToken, "{\"brain\":\"PIGEON\"}").andExpect(status().isBadRequest());
+        report(adminToken, "{\"delegationReason\":\"caprice\"}").andExpect(status().isBadRequest());
+
+        mockMvc.perform(get("/api/admin/jarvis/fast-brain/measure").contextPath("/api")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.turns").value(5))
+                .andExpect(jsonPath("$.fastAnswers").value(2))
+                .andExpect(jsonPath("$.fastDelegated").value(2))
+                .andExpect(jsonPath("$.opusTurns").value(1))
+                .andExpect(jsonPath("$.firstSoundByBrain.FAST.p50").value(1200))
+                .andExpect(jsonPath("$.firstSoundByBrain.OPUS.p50").value(9700))
+                .andExpect(jsonPath("$.fastFirstToken.p90").value(600))
+                .andExpect(jsonPath("$.delegationRate").value(0.5))
+                .andExpect(jsonPath("$.automaticDelegations.grounding").value(1))
+                .andExpect(jsonPath("$.forcedDelegations").value(1))
+                .andExpect(jsonPath("$.corrections").value(1))
+                .andExpect(jsonPath("$.correctionRate").value(0.5))
+                .andExpect(jsonPath("$.hollowOrRepeatedShare").value(0.5))
+                .andExpect(jsonPath("$.opusTurnsAvoided").value(2));
+        mockMvc.perform(get("/api/admin/jarvis/fast-brain/measure").contextPath("/api")
+                        .header("Authorization", "Bearer " + otherAdminToken))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.turns").value(0));
+        String userToken = jwtService.generateToken(user("jarvis-fbm-u-" + UUID.randomUUID() + "@ex.com",
+                UserRole.USER));
+        mockMvc.perform(get("/api/admin/jarvis/fast-brain/measure").contextPath("/api")
+                        .header("Authorization", "Bearer " + userToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     @DisplayName("le sujet d'autrui est ignoré (ligne sans sujet) ; le sien est rattaché")
     void subjectIsolation() throws Exception {
         Workspace mine = workspaceRepository.save(Workspace.builder().userId(admin.getId()).name("lat-mine").build());
