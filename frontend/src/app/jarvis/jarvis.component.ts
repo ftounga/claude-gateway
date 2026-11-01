@@ -8,6 +8,8 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
 import { AtelierConfirmRequest, AtelierStreamDone, WorkspaceSummary } from '../core/models/atelier.models';
 import { AtelierService } from '../core/services/atelier.service';
+import { LiveTerminalService } from '../core/services/live-terminal.service';
+import { NotificationCenterService } from '../core/services/notification-center.service';
 import { DictationError, DictationService } from '../core/services/dictation.service';
 import { JarvisVoiceError, JarvisVoiceService, SpeakHooks } from '../core/services/jarvis-voice.service';
 import { TurnClock, TurnCounter } from './jarvis-turn-clock';
@@ -115,6 +117,20 @@ export class JarvisComponent implements OnInit, OnDestroy {
   private readonly destroyRef = inject(DestroyRef);
   /** F-234 — l'écran vivant : l'écran lui relaie les événements du tour qu'il reçoit déjà. */
   private readonly scenes = inject(JarvisSceneBus);
+  /**
+   * F-234 / SF-234-10 — l'ambiance hors tour lit les relevés **déjà faits** par l'application (centre de
+   * notifications F-185, registre des terminaux vivants F-70) : leurs signaux seulement, aucun relevé démarré ici.
+   */
+  private readonly notificationCenter = inject(NotificationCenterService);
+  private readonly liveTerminals = inject(LiveTerminalService);
+  private readonly ambientRelay = effect(() => {
+    const items = this.notificationCenter.items();
+    const live = this.liveTerminals.registry()?.terminals.map((t) => t.workspaceId) ?? [];
+    untracked(() => {
+      this.scenes.notifications(items);
+      this.scenes.liveTerminals(live);
+    });
+  });
 
   readonly state = signal<JarvisState>('repos');
   readonly subjects = signal<WorkspaceSummary[]>([]);
@@ -273,6 +289,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
           this.chooseSubject(alert.workspaceId);
         }
         this.veilles.openAlert(alertId).subscribe({ error: () => undefined });
+        // F-234 / SF-234-10 / A5 — la veille sonne : son client s'allume, une onde part vers l'orbe.
+        const changes = alert.changes?.length ?? 0;
+        this.scenes.alert(alert.workspaceId, `Veille ${alert.watchName ?? alert.platform ?? ''}`.trim()
+          + (changes > 0 ? ` — ${changes} changement${changes > 1 ? 's' : ''}` : ''));
         const phrase = `${alert.watchName ? `Veille ${alert.watchName} : ` : ''}${alert.sentence} Que voulez-vous faire ?`;
         void this.sayAlert(phrase);
       },
@@ -919,14 +939,14 @@ export class JarvisComponent implements OnInit, OnDestroy {
       onDone: (done) => this.zone.run(() => {
         if (latest()) {
           if (!done.followUp) {
-            this.scenes.done();
+            this.scenes.done(done.costEur ?? null);
           }
           void this.onDone(done);
         }
       }),
       onError: (code, reason) => this.zone.run(() => {
         if (latest()) {
-          this.scenes.aborted();
+          this.scenes.aborted(code);
           this.onTurnError(code, reason);
         }
       }),
