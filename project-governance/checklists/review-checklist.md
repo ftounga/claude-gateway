@@ -46,6 +46,7 @@ Les items marqués **BLOQUANT** empêchent le merge.
 - [ ] Migration Liquibase présente si changement de schéma (**BLOQUANT** si absente)
 - [ ] Aucun traitement IA synchrone (**BLOQUANT**)
 - [ ] Le build et la CI sont verts (**BLOQUANT**)
+- [ ] Si la PR ajoute un outil à l'agent (ou un nouveau `type` d'étape) : sa scène Jarvis est déclarée dans `frontend/src/app/jarvis/scenes/jarvis-scene-registry.json` — scène dédiée, ou `"scene": "GENERIQUE"` acceptée explicitement avec un `libelle` lisible (F-234, D17) (**BLOQUANT** si absente)
 
 ---
 

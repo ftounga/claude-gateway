@@ -25,6 +25,8 @@
       <app-jarvis-orb class="jv__orb" [state]="state()" [level]="orbLevel" />
     </button>
     <p class="jv__status" role="status" aria-live="polite">{{ statusLabel() }}</p>
+    <!-- F-234 — la scène en cours (une à la fois), déduite à l'écran des événements du tour. -->
+    <app-jarvis-scene class="jv__scene" />
   </section>
 
   <section class="jv__exchange" aria-label="Dernier échange">
