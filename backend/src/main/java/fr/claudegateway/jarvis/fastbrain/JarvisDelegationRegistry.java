@@ -71,6 +71,53 @@ public class JarvisDelegationRegistry {
         }
     }
 
+    // ------------------------------------------------------------------ SF-235-04 (D10) : la demande reformulée
+
+    /** Au-delà, une reformulation non prise par un tour ne vaut plus (elle ne doit pas déteindre sur un autre). */
+    static final Duration REFORMULATION_TTL = Duration.ofMinutes(2);
+
+    /** Une reformulation qui attend le tour Opus de son fil. */
+    public record Reformulation(UUID delegationId, String demande, String label, Instant at) {
+    }
+
+    private final Map<String, Reformulation> reformulations = new ConcurrentHashMap<>();
+
+    private static String key(UUID userId, UUID subjectId, Integer chantier) {
+        return userId + "|" + subjectId + "|" + (chantier == null ? "-" : chantier);
+    }
+
+    /**
+     * La délégation part vers le fil {@code (sujet, chantier)} : sa demande reformulée attend le tour Opus que
+     * l'écran ouvre sur ce fil, qui la joindra à son message (jamais à la consigne système).
+     */
+    public void offer(UUID userId, UUID subjectId, Integer chantier, UUID delegationId, String demande,
+            String label) {
+        if (userId == null || subjectId == null || demande == null || demande.isBlank()) {
+            return;
+        }
+        reformulations.put(key(userId, subjectId, chantier),
+                new Reformulation(delegationId, demande.strip(), label, clock.instant()));
+    }
+
+    /** Prend (une seule fois) la reformulation fraîche qui attend ce fil du compte, ou {@code null}. */
+    public Reformulation take(UUID userId, UUID subjectId, Integer chantier) {
+        if (userId == null || subjectId == null) {
+            return null;
+        }
+        Reformulation r = reformulations.remove(key(userId, subjectId, chantier));
+        return r != null && !r.at().isBefore(clock.instant().minus(REFORMULATION_TTL)) ? r : null;
+    }
+
+    /** Vrai si le fil {@code (sujet, chantier)} du compte a un tour vivant (la délégation deviendra une précision). */
+    public boolean live(UUID userId, UUID subjectId, Integer chantier) {
+        try {
+            return liveTurns != null && userId != null && subjectId != null
+                    && liveTurns.find(userId, subjectId, chantier).isPresent();
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
     private boolean alive(UUID userId, Running r) {
         try {
             return liveTurns != null && liveTurns.find(userId, r.subjectId(), r.chantier()).isPresent();

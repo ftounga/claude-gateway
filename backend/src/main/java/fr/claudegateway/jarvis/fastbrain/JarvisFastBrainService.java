@@ -144,6 +144,7 @@ public class JarvisFastBrainService {
     private JarvisFastContextBuilder contextBuilder;
     private JarvisFastMemory memory;
     private JarvisDelegationRegistry delegations;
+    private JarvisFastExchangeWriter exchanges;
     private fr.claudegateway.jarvis.preferences.JarvisPreferenceService preferences;
     private fr.claudegateway.jarvis.preferences.JarvisSobriety sobriety;
     /** Dernier pré-chauffage par compte (D6) : au plus un toutes les {@link #WARM_EVERY}. */
@@ -213,7 +214,12 @@ public class JarvisFastBrainService {
      * d'office ou un repli.
      */
     public Outcome converse(Request request, Sink sink) {
-        Outcome outcome = decide(request, sink);
+        Outcome outcome = route(request, decide(request, sink));
+        // SF-235-04 (D12) : un échange rapide est tracé dans le fil du sujet courant (jamais rejoué comme un tour).
+        if (exchanges != null && outcome.kind() == Kind.ANSWER && request.workspace() != null) {
+            exchanges.write(request.userId(), request.workspace().getId(), request.chantier(), request.text(),
+                    outcome.spokenText());
+        }
         // SF-235-02 : la mémoire de session (mots seuls) et le registre des délégations en cours.
         if (memory != null && outcome.kind() != Kind.FALLBACK) {
             memory.remember(request.userId(), request.text(), outcome.kind() == Kind.ANSWER ? outcome.spokenText()
@@ -228,6 +234,46 @@ public class JarvisFastBrainService {
                     d.label() == null || d.label().isBlank() ? d.demande() : d.label());
         }
         return outcome;
+    }
+
+    /** F-235 / SF-235-04 — la question posée quand la délégation n'a pas de sujet cible (D19 : jamais au hasard). */
+    static final String ASK_SUBJECT = "Pour quel client ou quel sujet, Monsieur ?";
+
+    /** F-235 / SF-235-04 — l'annonce d'une délégation qui devient une précision du tour vivant de son fil (D10). */
+    static final String ADDED_TO_RUNNING = "J'ajoute ça à la recherche en cours";
+
+    /**
+     * Le routage de la délégation (D10, D19) : sans sujet cible, Jarvis <b>demande</b> le sujet (jamais de choix au
+     * hasard) ; un fil dont le tour vit reçoit une <b>précision</b> et l'annonce le dit ; sinon la demande reformulée
+     * attend le tour Opus du fil cible, qui la joindra à son message.
+     */
+    Outcome route(Request request, Outcome outcome) {
+        if (outcome.kind() != Kind.DELEGATE || outcome.delegation() == null) {
+            return outcome;
+        }
+        Delegation d = outcome.delegation();
+        if (d.subjectId() == null) {
+            return new Outcome(Kind.ANSWER, ASK_SUBJECT, null, "no_subject", outcome.model(), outcome.firstTokenMs(),
+                    outcome.costUsd(), outcome.guards());
+        }
+        if (delegations == null) {
+            return outcome;
+        }
+        if (delegations.live(request.userId(), d.subjectId(), d.chantier())) {
+            String label = d.label() == null || d.label().isBlank() ? "" : " : " + d.label().strip()
+                    .replaceAll("[.!?…]+$", "");
+            d = new Delegation(d.delegationId(), d.demande(), d.label(), ADDED_TO_RUNNING + label + ".",
+                    d.subjectId(), d.chantier(), d.automatic(), d.reason());
+        }
+        delegations.offer(request.userId(), d.subjectId(), d.chantier(), d.delegationId(), d.demande(), d.label());
+        return new Outcome(outcome.kind(), outcome.spokenText(), d, outcome.reason(), outcome.model(),
+                outcome.firstTokenMs(), outcome.costUsd(), outcome.guards());
+    }
+
+    /** F-235 / SF-235-04 — la trace des échanges rapides dans le fil. */
+    @Autowired(required = false)
+    public void setExchanges(JarvisFastExchangeWriter exchanges) {
+        this.exchanges = exchanges;
     }
 
     /**

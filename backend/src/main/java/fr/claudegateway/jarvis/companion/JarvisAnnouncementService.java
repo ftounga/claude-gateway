@@ -70,6 +70,9 @@ public class JarvisAnnouncementService {
         Map<UUID, String> names = names(userId, replies.stream().map(AtelierMessage::getWorkspaceId)
                 .collect(Collectors.toSet()));
         for (AtelierMessage reply : replies) {
+            if (reply.isFastBrain()) {
+                continue; // F-235 / SF-235-04 (D12) : une réponse rapide a déjà été dite ; seules les fins de tour
+            }
             String line = JarvisReplies.oralLine(reply.getContent());
             if (line == null) {
                 line = "C'est fait.";

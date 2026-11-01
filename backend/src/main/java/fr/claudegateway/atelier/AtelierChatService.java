@@ -1801,6 +1801,66 @@ public class AtelierChatService implements RelayInterruptTarget {
     private fr.claudegateway.runner.host.RunnerHostService runnerHostsForDoor;
 
     /** Branche la porte d'entrée du runner (F-161 / SF-161-01). */
+    /** F-235 / SF-235-04 (D10) — les délégations du cerveau rapide : la demande reformulée qui attend un fil. */
+    private fr.claudegateway.jarvis.fastbrain.JarvisDelegationRegistry jarvisDelegations;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJarvisDelegations(fr.claudegateway.jarvis.fastbrain.JarvisDelegationRegistry jarvisDelegations) {
+        this.jarvisDelegations = jarvisDelegations;
+    }
+
+    /** F-235 / SF-235-04 (D12) — borne de la note des échanges rapides jointe au message du tour Opus suivant. */
+    static final int FAST_EXCHANGES_NOTE_MAX = 1_500;
+
+    /**
+     * La note des échanges rapides (F-235 / SF-235-04, D12) : les lignes {@code brain='FAST'} de ce fil écrites depuis
+     * le dernier message non rapide, plus récentes d'abord, bornées à {@value #FAST_EXCHANGES_NOTE_MAX} caractères.
+     * Aucune : {@code consigne} inchangée à l'octet près. Best-effort, sous {@code user_id}.
+     */
+    String withFastExchanges(UUID userId, Workspace workspace, String consigne) {
+        try {
+            List<AtelierMessage> past = workspace.getChatThreadStartedAt() == null
+                    ? messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspace.getId(), userId)
+                    : messageRepository.findByWorkspaceIdAndUserIdAndCreatedAtGreaterThanEqualOrderByCreatedAtAsc(
+                            workspace.getId(), userId, workspace.getChatThreadStartedAt());
+            if (past == null || past.isEmpty()) {
+                return consigne;
+            }
+            Integer chantier = workspace.getTurnChantier();
+            List<AtelierMessage> recent = new ArrayList<>();
+            for (int i = past.size() - 1; i >= 0; i--) {
+                AtelierMessage m = past.get(i);
+                if (!java.util.Objects.equals(m.getChantierNumber(), chantier)) {
+                    continue; // un autre fil
+                }
+                if (!m.isFastBrain()) {
+                    break; // le dernier tour : ce qui précède lui est déjà parvenu
+                }
+                recent.add(m); // plus récent d'abord
+            }
+            if (recent.isEmpty()) {
+                return consigne;
+            }
+            StringBuilder lines = new StringBuilder();
+            for (AtelierMessage m : recent) {
+                String who = "USER".equals(m.getRole()) ? "Utilisateur" : "Jarvis";
+                String line = who + " : " + m.getContent().strip().replaceAll("\\s+", " ");
+                if (lines.length() + line.length() + 1 > FAST_EXCHANGES_NOTE_MAX) {
+                    break;
+                }
+                lines.append(line).append('\n');
+            }
+            if (lines.length() == 0) {
+                return consigne;
+            }
+            return consigne + "\n[Échanges avec Jarvis depuis ton dernier tour — réponses rapides, non vérifiées, "
+                    + "plus récents d'abord :\n" + lines.toString().strip() + "]";
+        } catch (RuntimeException e) {
+            log.debug("Échanges rapides non joints (best-effort) : {}", e.getClass().getSimpleName());
+            return consigne;
+        }
+    }
+
     /** F-235 / SF-235-09 (D18) — la personnalité de Jarvis (réglage d'humour) et le ton sobre forcé. */
     private fr.claudegateway.jarvis.preferences.JarvisPreferenceService jarvisPreferences;
     private fr.claudegateway.jarvis.preferences.JarvisSobriety jarvisSobriety;
@@ -3387,6 +3447,22 @@ public class AtelierChatService implements RelayInterruptTarget {
             // signalée, DANS LE MESSAGE (préfixe intact). Le texte écrit du tour précédent reste intact dans le fil.
             consigne = fr.claudegateway.jarvis.JarvisOralNote.appendCut(consigne, voiceMark.heardBeforeCut());
         }
+        // F-235 / SF-235-04 (D10) — une délégation du cerveau rapide : sa demande reformulée attend ce fil ; elle est
+        // jointe AU MESSAGE (la parole du PO reste mot pour mot dans le fil, la consigne système est intouchée).
+        boolean delegated = false;
+        if (viaJarvis && jarvisDelegations != null) {
+            fr.claudegateway.jarvis.fastbrain.JarvisDelegationRegistry.Reformulation reformulation =
+                    jarvisDelegations.take(userId, workspaceId, workspace.getTurnChantier());
+            if (reformulation != null) {
+                delegated = true;
+                consigne = consigne + "\n[Jarvis — demande reformulée : « "
+                        + reformulation.demande().replace('«', '"').replace('»', '"') + " »]";
+            }
+        }
+        // F-235 / SF-235-04 (D12) — les échanges rapides tenus par Jarvis depuis le dernier tour de ce fil : jamais
+        // rejoués comme des tours, ils parviennent ici en NOTE du message (append-only, cache intact). Aucun échange
+        // rapide : consigne inchangée à l'octet près.
+        consigne = withFastExchanges(userId, workspace, consigne);
         messages.add(AgentMessage.userText(consigne));
         // F-229 / SF-229-01 : le ruban du premier appel comparé à celui du dernier appel du tour précédent
         // du même fil. Lecture seule : la requête n'en dépend pas. Best-effort.
@@ -3396,7 +3472,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         AtelierMessage savedUserMessage = messageRepository.save(AtelierMessage.builder()
                 .workspaceId(workspaceId).userId(userId).role("USER").content(userText)
                 .chantierNumber(workspace.getTurnChantier())
-                .via(viaJarvis ? AtelierMessage.VIA_JARVIS : null).build());
+                .via(viaJarvis ? AtelierMessage.VIA_JARVIS : null)
+                .brain(delegated ? AtelierMessage.BRAIN_DELEGATED : null).build());
         // F-169 / SF-169-02 : LIER les dépôts joints à CE message, maintenant que son id existe. Le
         // lien (message_id) rend les pièces jointes persistantes — le rechargement du fil les retrouve
         // (GET /chat). Isolation réappliquée au service. Best-effort : un échec de lien ne casse pas le
@@ -4871,6 +4948,12 @@ public class AtelierChatService implements RelayInterruptTarget {
                 ? messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspace.getId(), userId)
                 : messageRepository.findByWorkspaceIdAndUserIdAndCreatedAtGreaterThanEqualOrderByCreatedAtAsc(
                         workspace.getId(), userId, workspace.getChatThreadStartedAt());
+        // F-235 / SF-235-04 (D12) : les échanges rapides de Jarvis ne sont JAMAIS rejoués comme des tours (ce serait
+        // insérer des messages au milieu d'un historique déjà envoyé : cache cassé) ; ils parviennent par une note.
+        if (past.stream().anyMatch(AtelierMessage::isFastBrain)) {
+            past = past.stream().filter(m -> !m.isFastBrain())
+                    .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+        }
         // F-221 / SF-221-01 : le fil du tour ne relit que le passé commun et le sien, regroupé par tour.
         List<AtelierMessage> thread = threadOf(userId, workspace.getId(), workspace.getTurnChantier(), past);
         int offset = messages.size();

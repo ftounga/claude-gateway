@@ -99,4 +99,23 @@ public class AtelierMessage {
     public boolean isViaJarvis() {
         return VIA_JARVIS.equals(via);
     }
+
+    /** F-235 / SF-235-04 (D12) — un échange tenu par le cerveau rapide : écrit dans le fil, jamais rejoué. */
+    public static final String BRAIN_FAST = "FAST";
+
+    /** F-235 / SF-235-04 (D10) — la demande d'un tour Opus lancé par une délégation du cerveau rapide. */
+    public static final String BRAIN_DELEGATED = "DELEGATED";
+
+    /**
+     * Le cerveau qui a tenu le message (F-235) : {@link #BRAIN_FAST} (réponse rapide, <b>exclue du rejeu</b> du tour
+     * Opus — elle lui parvient par une note jointe au message suivant), {@link #BRAIN_DELEGATED} (demande d'un tour
+     * Opus délégué), {@code null} sinon (tout le reste, et tout ce qui précède F-235).
+     */
+    @Column(name = "brain", length = 16)
+    private String brain;
+
+    /** Vrai si le message est une réponse rapide (ou la parole qui l'a appelée) : jamais rejoué comme un tour. */
+    public boolean isFastBrain() {
+        return BRAIN_FAST.equals(brain);
+    }
 }

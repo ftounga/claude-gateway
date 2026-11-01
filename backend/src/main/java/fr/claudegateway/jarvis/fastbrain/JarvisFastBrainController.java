@@ -67,18 +67,23 @@ public class JarvisFastBrainController {
         if (!service.enabled()) {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build();
         }
-        if (request == null || request.subjectId() == null || request.text() == null || request.text().isBlank()
+        if (request == null || request.text() == null || request.text().isBlank()
                 || request.text().length() > MAX_TEXT
                 || (request.heardBeforeCut() != null && request.heardBeforeCut().length() > MAX_HEARD)) {
             return ResponseEntity.badRequest().build();
         }
         UUID userId = currentUser.requireId();
-        Optional<Workspace> workspace = workspaces.findByIdAndUserId(request.subjectId(), userId);
-        if (workspace.isEmpty() || !atelierAccess.hasTerminalAccess(request.subjectId())) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        // F-235 / SF-235-04 (D19) : Jarvis est global — le sujet courant est facultatif ; s'il est donné, il doit
+        // appartenir au compte (404 sinon, sans appel modèle).
+        Optional<Workspace> workspace = Optional.empty();
+        if (request.subjectId() != null) {
+            workspace = workspaces.findByIdAndUserId(request.subjectId(), userId);
+            if (workspace.isEmpty() || !atelierAccess.hasTerminalAccess(request.subjectId())) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+            }
         }
         SseEmitter emitter = new SseEmitter(EMITTER_TIMEOUT_MS);
-        JarvisFastBrainService.Request call = new JarvisFastBrainService.Request(userId, workspace.get(),
+        JarvisFastBrainService.Request call = new JarvisFastBrainService.Request(userId, workspace.orElse(null),
                 request.chantier(), request.text(), request.heardBeforeCut());
         SseStreamDispatch.submit(executor, emitter, () -> relay(emitter, call, request.turnSeq()));
         return ResponseEntity.ok().contentType(MediaType.TEXT_EVENT_STREAM).body(emitter);

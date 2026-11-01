@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-235 / SF-235-04 - LA DELEGATION DANS LE FIL (D10, D12).
+
+      atelier_messages.brain : FAST = un echange tenu par le cerveau rapide de Jarvis (parole + reponse), ecrit
+      dans le fil pour l'ecran, JAMAIS rejoue comme un tour (il parvient a Opus par une note du message suivant) ;
+      DELEGATED = la demande d'un tour Opus lance par une delegation ; NULL = tout le reste (lignes existantes).
+      Colonne additive nullable : aucune donnee existante modifiee.
+
+      Numero 235 = numero de la feature. Rollback : la colonne se retire.
+    -->
+
+    <changeSet id="235-atelier-messages-brain" author="claude-gateway">
+        <addColumn tableName="atelier_messages">
+            <column name="brain" type="varchar(16)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="atelier_messages" columnName="brain"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -165,6 +165,87 @@ class AtelierChatServiceVoiceTurnTest {
         assertThat(sentToModel()).doesNotContain("Mode Jarvis");
     }
 
+    // ------------------------------------------------------------- F-235 / SF-235-04 : la délégation dans le fil
+
+    private AtelierMessage row(String role, String content, String brain) {
+        AtelierMessage m = AtelierMessage.builder().workspaceId(workspaceId).userId(userId).role(role)
+                .content(content).brain(brain).via(brain == null ? null : AtelierMessage.VIA_JARVIS).build();
+        m.setCreatedAt(java.time.OffsetDateTime.now());
+        return m;
+    }
+
+    @Test
+    void SF_235_04_lesEchangesRapidesNeSontJamaisRejouesEtArriventEnNoteAuTourSuivant() {
+        List<AtelierMessage> past = List.of(
+                row("USER", "bonjour", null), row("ASSISTANT", "Bonjour !", null),
+                row("USER", "où en est le chantier 3 ?", AtelierMessage.BRAIN_FAST),
+                row("ASSISTANT", "Le chantier 3 en est aux tests.", AtelierMessage.BRAIN_FAST));
+        when(messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspaceId, userId)).thenReturn(past);
+        agentProvider.enqueueFinal("ok");
+
+        service.chat(userId, workspaceId, "et le chantier 4 ?");
+
+        List<fr.claudegateway.agent.AgentMessage> sent = agentProvider.lastRequest.messages();
+        String replayed = sent.subList(0, sent.size() - 1).stream().map(Object::toString)
+                .reduce("", String::concat);
+        assertThat(replayed).contains("bonjour").doesNotContain("où en est le chantier 3");
+        assertThat(sent.get(sent.size() - 1).toString())
+                .contains("[Échanges avec Jarvis depuis ton dernier tour — réponses rapides, non vérifiées")
+                .contains("Jarvis : Le chantier 3 en est aux tests.")
+                .contains("Utilisateur : où en est le chantier 3 ?");
+        // Le plus récent d'abord.
+        String last = sent.get(sent.size() - 1).toString();
+        assertThat(last.indexOf("Jarvis : Le chantier 3")).isLessThan(last.indexOf("Utilisateur : où en est"));
+    }
+
+    @Test
+    void SF_235_04_sansEchangeRapideLaConsigneEstInchangee() {
+        assertThat(service.withFastExchanges(userId, workspaceWith(), "c")).isEqualTo("c");
+    }
+
+    private Workspace workspaceWith() {
+        Workspace w = new Workspace();
+        w.setId(workspaceId);
+        w.setUserId(userId);
+        return w;
+    }
+
+    @Test
+    void SF_235_04_uneDelegationJointSaDemandeReformuleeAuMessageEtMarqueLeTour() {
+        fr.claudegateway.jarvis.fastbrain.JarvisDelegationRegistry registry =
+                new fr.claudegateway.jarvis.fastbrain.JarvisDelegationRegistry(java.time.Clock.systemUTC(), null);
+        service.setJarvisDelegations(registry);
+        agentProvider.enqueueFinal("ok");
+        service.chat(userId, workspaceId, "bonjour");
+        String typedSystem = agentProvider.lastRequest.system();
+
+        registry.offer(userId, workspaceId, null, UUID.randomUUID(),
+                "Lister les tickets Jira bloqués du client Edenred", "tickets bloqués d'Edenred");
+        service.markVoiceTurn(userId, workspaceId, null);
+        agentProvider.enqueueFinal("🎙 Deux tickets bloqués.");
+        service.chat(userId, workspaceId, "regarde les tickets bloqués d'Edenred");
+
+        assertThat(sentToModel())
+                .contains("[Jarvis — demande reformulée : « Lister les tickets Jira bloqués du client Edenred »]");
+        assertThat(agentProvider.lastRequest.system()).isEqualTo(typedSystem);
+        assertThat(saved()).filteredOn(m -> "USER".equals(m.getRole()) && m.isViaJarvis())
+                .extracting(AtelierMessage::getContent, AtelierMessage::getBrain)
+                .containsExactly(org.assertj.core.groups.Tuple.tuple("regarde les tickets bloqués d'Edenred",
+                        AtelierMessage.BRAIN_DELEGATED));
+        // Prise une seule fois.
+        assertThat(registry.take(userId, workspaceId, null)).isNull();
+    }
+
+    @Test
+    void SF_235_04_laReformulationDUnAutreCompteOuDUnAutreFilNeSePrendPas() {
+        fr.claudegateway.jarvis.fastbrain.JarvisDelegationRegistry registry =
+                new fr.claudegateway.jarvis.fastbrain.JarvisDelegationRegistry(java.time.Clock.systemUTC(), null);
+        registry.offer(userId, workspaceId, 3, UUID.randomUUID(), "x", "y");
+        assertThat(registry.take(UUID.randomUUID(), workspaceId, 3)).isNull();
+        assertThat(registry.take(userId, workspaceId, null)).isNull();
+        assertThat(registry.take(userId, workspaceId, 3)).isNotNull();
+    }
+
     private String sentToModel() {
         return agentProvider.lastRequest.messages().stream().map(Object::toString)
                 .reduce("", String::concat);

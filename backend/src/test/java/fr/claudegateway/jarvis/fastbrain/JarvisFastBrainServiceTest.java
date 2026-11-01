@@ -466,6 +466,66 @@ class JarvisFastBrainServiceTest {
         assertThat(outcome.guards().imitationsRemoved()).isEqualTo(1);
     }
 
+    // ------------------------------------------------------------- SF-235-04 : délégation dans le fil
+
+    @Test
+    void withoutASubjectJarvisAsksWhichOneInsteadOfChoosing() {
+        JarvisFastBrainService.Outcome outcome = service(delegating("""
+                {"demande": "x", "label": "tickets bloqués", "annonce": "Je regarde les tickets bloqués.",
+                 "sujet": "", "chantier": null}
+                """), null, null).converse(new JarvisFastBrainService.Request(alice, null, null,
+                "Regarde les tickets bloqués", null), null);
+
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(outcome.spokenText()).isEqualTo(JarvisFastBrainService.ASK_SUBJECT);
+    }
+
+    @Test
+    void aDelegationOffersItsReformulationToTheTargetThread() {
+        JarvisFastBrainService service = service(delegating("""
+                {"demande": "Lister les tickets bloqués", "label": "tickets bloqués",
+                 "annonce": "Je regarde les tickets bloqués.", "sujet": "", "chantier": null}
+                """), null, null);
+        JarvisDelegationRegistry registry = new JarvisDelegationRegistry(Clock.systemUTC(), null);
+        service.setContext(null, null, registry);
+
+        service.converse(ask("Regarde les tickets bloqués"), null);
+
+        assertThat(registry.take(alice, subject, 3).demande()).isEqualTo("Lister les tickets bloqués");
+    }
+
+    @Test
+    void aLiveThreadTurnsTheDelegationIntoAnAddition() {
+        JarvisFastBrainService service = service(delegating("""
+                {"demande": "Et aussi les tickets en revue", "label": "tickets en revue",
+                 "annonce": "Je regarde les tickets en revue.", "sujet": "", "chantier": null}
+                """), null, null);
+        JarvisDelegationRegistry registry = mock(JarvisDelegationRegistry.class);
+        when(registry.live(alice, subject, 3)).thenReturn(true);
+        service.setContext(null, null, registry);
+
+        JarvisFastBrainService.Outcome outcome = service.converse(ask("Et les tickets en revue"), null);
+
+        assertThat(outcome.delegation().annonce()).isEqualTo("J'ajoute ça à la recherche en cours : tickets en revue.");
+    }
+
+    @Test
+    void aFastAnswerIsWrittenInTheThreadButADelegationIsNot() {
+        JarvisFastExchangeWriter writer = mock(JarvisFastExchangeWriter.class);
+        JarvisFastBrainService service = service(streaming("Le chantier en est aux tests."), null, null);
+        service.setExchanges(writer);
+        service.converse(ask("Et le chantier ?"), null);
+        verify(writer).write(alice, subject, 3, "Et le chantier ?", "Le chantier en est aux tests.");
+
+        JarvisFastExchangeWriter writer2 = mock(JarvisFastExchangeWriter.class);
+        JarvisFastBrainService delegating = service(delegating("""
+                {"demande": "x", "label": "y", "annonce": "Je regarde y.", "sujet": "", "chantier": null}
+                """), null, null);
+        delegating.setExchanges(writer2);
+        delegating.converse(ask("Regarde y"), null);
+        org.mockito.Mockito.verifyNoInteractions(writer2);
+    }
+
     private static String text(AgentTurnRequest request, int index) {
         return ((fr.claudegateway.agent.AgentContentBlock.Text) request.messages().get(index).content().get(0)).text();
     }
