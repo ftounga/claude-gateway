@@ -947,6 +947,49 @@ ajoutent **aucune couleur** :
   plus une fois toutes les 4 s, jamais pendant que Jarvis parle ; les sujets sont des boutons au clavier
   (« Passer sur X »).
 
+## 23 — Palette holographique de Jarvis (ajout F-236 / SF-236-01, 2026-11-02)
+
+**Décision antérieure amendée (signalée)** : §22 (F-234 D8) n'ajoutait **aucune couleur** à `/jarvis`. Le rendu **3D**
+de `/jarvis` (F-236) a besoin de couleurs lumineuses sous bloom : la palette ci-dessous est **bornée au rendu 3D de
+`/jarvis`** (scène, HUD et panneaux de cet écran), comme §15 et §21 pour leurs surfaces. Le **repli 2D garde §22**.
+**Goût du PO (2026-11-02, cadrage F-236 §17)** : V1 = **orange de la marque** en teinte dominante (le cyan devient la
+couleur de l'attente) ; V2 = **Space Grotesk** ; V3 = décor **riche**.
+
+**Une seule source** : `frontend/src/app/jarvis/stage3d/jarvis-motion.ts` (`HOLO_COLORS`, `HOLO_ALPHA`,
+`MOTION_CURVES`, `MOTION_DURATIONS`), posée en propriétés CSS sur l'hôte de l'écran par `holoCssVars()`. Aucune
+valeur en dur ailleurs.
+
+| Rôle (grammaire) | Jeton CSS | Valeur | Contraste sur `--cg-navy` | Charte ? |
+|---|---|---|---|---|
+| Fond, brouillard | `--cg-navy` | `#0B1020` | — | oui (§2) |
+| Lueur centrale du fond (dégradé radial vers le navy) | `--cg-holo-abyss` | `#26170E` | — | nouveau |
+| **Normal** — cerveau rapide, liens, nœuds (émissif) | `--cg-holo` | `#E07B39` | 6,37:1 | **oui** (`--cg-orange`) |
+| Normal atténué (orbites, trame, liserés) | `--cg-holo-dim` | `#E07B39` à 35 % | — | dérivé |
+| Texte des étiquettes et panneaux | `--cg-holo-text` | `#F0954F` | 8,22:1 | **oui** (`--cg-orange-2`) |
+| Cœur incandescent (centre des cœurs) | `--cg-holo-core` | `#FFF3E4` | 17,3:1 | nouveau |
+| **Cerveau principal au travail** (Opus) | `--cg-holo-deep` → centre `--cg-holo-deep-core` | `#9B7BFF` → `#F3EDFF` | 6,01:1 | nouveau |
+| **Connecté / réussi** | `--cg-holo-green` | `#4CF2A0` | 13,1:1 | nouveau |
+| **Attend le PO** (« oui », question, à envoyer, attente) | `--cg-holo-wait` | `#5FD4FF` | 11,1:1 | nouveau |
+| **Alerte** | `--cg-holo-red` | `#FF5A6E` | 6,26:1 | nouveau (`--cg-error` trop sombre sous bloom) |
+| Éteint / déconnecté | `--cg-holo-off` | `#2A4256` | — (forme) | nouveau |
+
+- **Grammaire des couleurs d'état** : **orange** = normal · **violet** = le cerveau principal travaille · **vert** =
+  connecté / réussi · **cyan** = attend le PO · **rouge** = alerte · **gris bleuté** = éteint. Aucune autre
+  signification, nulle part (3D, HUD, panneaux, chronologies).
+- **La couleur ne porte jamais seule l'information** (§22 reconduit) : la **forme** dit le type, le **nom** est écrit,
+  l'état a un **mot**. Tout texte ≥ 5,8:1 sur navy (test `jarvis-motion.spec.ts`).
+- **Transparences** : cinq paliers seulement — 0,04 (latent) · 0,18 (contexte) · 0,45 (actif) · 0,75 (panneau) · 1
+  (allumé).
+- **Courbes** (`--jv-ease-*`) : `sortie` `cubic-bezier(.16,1,.3,1)` · `entree` `(.7,0,.84,0)` · `glisse`
+  `(.65,0,.35,1)` · `souffle` `(.37,0,.63,1)` · `rebond` `(.34,1.3,.64,1)` ; caméra = ressort amorti critique
+  (ω = 5,5 rad/s). **Durées** (`--jv-dur-*`) : fondu 2D ↔ 3D 400 ms (`glisse`), changement de qualité 600 ms.
+- **Polices** : **aucune nouvelle** — titres HUD et étiquettes en **Space Grotesk** 600 capitales espacées (`.08em` à
+  `.3em`), clés/commandes/compteurs en **JetBrains Mono**, sous-titres et corps en **Inter**.
+- **Décor riche** (PC) : lueur d'abysse, nébuleuse lente, étoiles sur trois profondeurs, poussière, sol polaire ; il
+  s'allège avec la qualité (une profondeur d'étoiles, pas de poussière ni de nébuleuse au niveau Bas) sans jamais
+  disparaître d'un coup.
+- **Jamais de noir** : la 3D apparaît et disparaît en fondu au-dessus du fond navy de §22 ; le 2D est toujours dessous.
+
 ## Logo & marque (ajout 2026-07-03)
 
 - **Logo de l'application** : `frontend/public/ng-portal-logo.png` (« NG Portal » — bouclier hexagonal, tête + étincelle, bulle de chat, orbite). Utilisé comme **favicon** (`index.html`) et sur la **landing** (nav, hero, footer). Nom de marque affiché : **« NG Portal »** (renommé en F-29 SF-29-01 : le terme « Proxy » faisait classer le domaine en catégorie « anonymizer » par les filtres d'entreprise).

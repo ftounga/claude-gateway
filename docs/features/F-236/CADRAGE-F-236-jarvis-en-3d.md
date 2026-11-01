@@ -220,6 +220,9 @@ Un appareil en repli 2D **ne télécharge jamais** le chunk 3D.
 
 ### 7.1 Palette et lumière — DESIGN_SYSTEM §23 « Palette holographique de Jarvis » (amendement proposé)
 
+> **Amendé par le goût du PO (V1, 2026-11-02)** : normal = **orange de la marque** `#E07B39` (texte `#F0954F`),
+> attente = **cyan** `#5FD4FF`. Le tableau ci-dessous est la proposition d'origine ; la référence est DESIGN_SYSTEM §23.
+
 **Décision actuelle** : §22 (F-234 D8), aucune couleur nouvelle sur `/jarvis`. **Variante** : palette **bornée au
 rendu 3D de `/jarvis`** (comme §15 et §21 pour leurs surfaces) ; le repli 2D garde §22. Écrite dans
 `docs/DESIGN_SYSTEM.md` par **SF-236-01**, contrastes mesurés, **avant** tout composant qui l'utilise.
@@ -742,6 +745,11 @@ deux cerveaux ; les scènes non encore livrées passent par S-GEN 3D).
 ---
 
 ## 17. Questions de goût visuel pour le PO (défaut appliqué sans réponse)
+
+> **Réponses du PO (2026-11-02)** : **V1 = orange de la marque** (l'alternative : teinte dominante orange, **cyan
+> pour l'attente**) ; **V2 = Space Grotesk** (défaut) ; **V3 = riche** (défaut). Appliquées par SF-236-01 dans
+> DESIGN_SYSTEM §23 et `jarvis-motion.ts` : partout dans ce cadrage, lire « orange » pour « cyan » quand il s'agit
+> de l'état **normal**, et « cyan » pour « orange » quand il s'agit de **l'attente du PO**.
 
 | # | Question | Défaut | Alternative |
 |---|---|---|---|

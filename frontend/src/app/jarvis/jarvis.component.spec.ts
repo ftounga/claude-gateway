@@ -23,6 +23,9 @@ import { VeilleService } from '../core/services/veille.service';
 import { JarvisStreamOpener, StreamHandlers } from './jarvis-stream-listener';
 import { JarvisVadService, VadHandlers } from './jarvis-barge-in';
 import { FORMULAS, FORMULA_CLIPS, tutoie } from './jarvis-phrases';
+import { JARVIS_3D_LOADER, JarvisEngineFactory } from './stage3d/jarvis-engine.contract';
+import { JARVIS_RENDER_PROBE, RenderProbe } from './stage3d/jarvis-render-capability';
+import { NO_WEBGL_PROBE, PC_PROBE, fakeEngineFactory } from './stage3d/jarvis-stage3d.testing';
 
 const FILLERS = FORMULAS.filter((f) => f.kind === 'filler').map((f) => f.text);
 
@@ -55,9 +58,14 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
   let vadStop: jasmine.Spy;
   let fastBrain: jasmine.SpyObj<JarvisFastBrainClient>;
   let fast: FastBrainHandlers | null;
+  let renderProbe: RenderProbe;
+  let loader3d: jasmine.Spy<() => Promise<JarvisEngineFactory>>;
 
   beforeEach(() => {
+    renderProbe = NO_WEBGL_PROBE;
+    loader3d = jasmine.createSpy('loader3d').and.callFake(() => Promise.resolve(fakeEngineFactory([])));
     try {
+      localStorage.removeItem('cg.jarvis.view');
       localStorage.removeItem('cg.jarvis.subject');
     } catch {
       // ignoré
@@ -136,9 +144,41 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
         { provide: NotificationCenterService, useValue: notificationCenter },
         { provide: LiveTerminalService, useValue: liveTerminals },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: convertToParamMap(params) } } },
+        // F-236 / SF-236-01 — Karma n'a pas de GPU fiable : l'écran est testé dans son rendu 2D (le repli).
+        { provide: JARVIS_RENDER_PROBE, useValue: () => renderProbe },
+        { provide: JARVIS_3D_LOADER, useValue: loader3d },
       ],
     });
   }
+
+  it('F-236 / SF-236-01 — sans WebGL2 : l’écran 2D d’aujourd’hui, aucun canevas, aucun bouton « Vue », morceau 3D jamais demandé', fakeAsync(() => {
+    configure({});
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('app-jarvis-stage-3d')).not.toBeNull();
+    expect(el.querySelector('app-jarvis-stage-3d canvas')).toBeNull();
+    expect(el.querySelector('.jv__view')).toBeNull();
+    expect(el.querySelector('app-jarvis-constellation')).not.toBeNull();
+    expect(loader3d).not.toHaveBeenCalled();
+    expect(el.style.getPropertyValue('--cg-holo')).toBe('#E07B39');
+    fixture.componentInstance.ngOnDestroy();
+  }));
+
+  it('F-236 / SF-236-01 — 3D possible : bouton « Vue 2D » proposé, masqué en mode sobre', fakeAsync(() => {
+    renderProbe = { ...PC_PROBE };
+    configure({});
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.jv__view')?.textContent).toContain('Vue 2D');
+    expect(loader3d).toHaveBeenCalledTimes(1);
+    fixture.componentInstance.ngOnDestroy();
+    fixture.destroy();
+  }));
 
   it('F-235 / SF-235-09 — humour : léger par défaut, bascule vers aucun, retour si l’enregistrement échoue', fakeAsync(() => {
     configure({});

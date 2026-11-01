@@ -59,6 +59,8 @@ import { JarvisCompanionsComponent } from './jarvis-companions.component';
 import { JarvisSceneBus } from './scenes/jarvis-scene-bus.service';
 import { JarvisSceneComponent } from './scenes/jarvis-scene.component';
 import { JarvisConstellationComponent } from './scenes/jarvis-constellation.component';
+import { JarvisStage3dComponent } from './stage3d/jarvis-stage-3d.component';
+import { holoCssVars } from './stage3d/jarvis-motion';
 import { isShowDismiss, stripShowLines } from './scenes/jarvis-show';
 import {
   ASK_SUBJECT, AnnouncementQueue, CORRECTION_WINDOW_MS, FastDelegation, FastDone, JarvisFastBrainClient,
@@ -109,12 +111,16 @@ export function companionOffer(version: JarvisCompanionVersion, installed: numbe
  */
 @Component({
   selector: 'app-jarvis',
-  imports: [JarvisCompanionsComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, MarkdownPipe, MatButtonModule, MatIconModule, MatMenuModule, RouterLink],
+  imports: [JarvisCompanionsComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatIconModule, MatMenuModule, RouterLink],
   templateUrl: './jarvis.component.html',
   styleUrl: './jarvis.component.scss',
   providers: [JarvisAppUpdate],
+  // F-236 / SF-236-01 — la palette holographique et les courbes (DESIGN_SYSTEM §23), une seule source : jarvis-motion.ts.
+  host: { '[style]': 'holoVars' },
 })
 export class JarvisComponent implements OnInit, OnDestroy {
+  /** F-236 / SF-236-01 — jetons `--cg-holo-*`, `--jv-ease-*`, `--jv-dur-*` posés sur l'hôte. */
+  protected readonly holoVars = holoCssVars();
   private readonly atelier = inject(AtelierService);
   private readonly dictation = inject(DictationService);
   protected readonly voice = inject(JarvisVoiceService);

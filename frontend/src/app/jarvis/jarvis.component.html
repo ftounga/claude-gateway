@@ -1,3 +1,5 @@
+<!-- F-236 / SF-236-01 — la scène 3D, en calque plein écran DERRIÈRE l'écran F-234 (qui reste la référence et le repli). -->
+<app-jarvis-stage-3d #stage3d [sober]="sober()" />
 <main class="jv" [attr.data-state]="state()">
   <header class="jv__top">
     <a mat-icon-button class="jv__back" routerLink="/atelier" aria-label="Quitter Jarvis">
@@ -34,6 +36,14 @@
       <mat-icon aria-hidden="true">{{ sober() ? 'blur_on' : 'blur_off' }}</mat-icon>
       {{ sober() ? 'Écran complet' : 'Mode sobre' }}
     </button>
+    <!-- F-236 / SF-236-01 — « Vue 3D / 2D », par appareil ; proposé seulement si la 3D est possible ici. -->
+    @if (stage3d.offer3d() && !sober()) {
+      <button mat-button type="button" class="jv__view" [attr.aria-pressed]="!stage3d.manual2d()"
+              (click)="stage3d.toggleView()">
+        <mat-icon aria-hidden="true">{{ stage3d.manual2d() ? 'view_in_ar' : 'layers' }}</mat-icon>
+        {{ stage3d.manual2d() ? 'Vue 3D' : 'Vue 2D' }}
+      </button>
+    }
     <!-- F-235 / SF-235-05 — les délégations vivantes à Opus, sous l'orbe : le PO continue de converser. -->
     @if (delegations().length > 0) {
       <ul class="jv__delegations" aria-label="Recherches en cours">

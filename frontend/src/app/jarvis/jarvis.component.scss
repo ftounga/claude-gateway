@@ -10,6 +10,9 @@
 }
 
 .jv {
+  /* F-236 / SF-236-01 — l'écran F-234 passe devant la scène 3D (calque fixe, z-index 0). */
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
@@ -83,7 +86,8 @@
 }
 
 /* F-234 / SF-234-11 (D9) — l'interrupteur du mode sobre, discret, cible tactile ≥ 44 px. */
-.jv__sober {
+.jv__sober,
+.jv__view {
   min-height: 44px;
   color: color-mix(in srgb, var(--cg-cream) 75%, transparent);
   font-size: 13px;
