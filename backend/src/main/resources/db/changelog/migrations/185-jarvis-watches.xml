@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-230 / SF-230-01 - LES VEILLES JARVIS : POSER UNE VEILLE.
+
+      Une ligne par veille : une sonde en lecture seule ecrite par l'agent sur le poste, lancee aux
+      heures donnees par le PO, du lundi au vendredi (impose, aucune colonne de jours). La veille
+      proposee par l'agent (proposed = true) ne tourne pas tant que le PO ne l'a pas testee puis
+      activee. Une veille n'est PAS une routine : table et execution propres (D7).
+
+      probe_command : la ligne lancee sur le poste (jamais de secret en clair : controle D5 a
+      l'enregistrement). probe_script_hash : empreinte SHA-256 du script de sonde valide par le PO ;
+      un script modifie ne tourne plus.
+
+      Colonnes de planification (last_slot_at, missed_slot_at, consecutive_failures, broken,
+      last_run_at, last_run_status, monthly_budget_usd) posees des maintenant : SF-230-02/03 les
+      remplissent, sans nouvelle ALTER.
+
+      Isolation : user_id sur chaque ligne ; toute lecture filtre user_id + workspace_id. Les lignes
+      suivent le sujet (cle etrangere, cascade) et le compte (purge nommee).
+      Rollback : la table se retire.
+    -->
+
+    <changeSet id="185-jarvis-watches" author="claude-gateway">
+        <createTable tableName="jarvis_watches">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_jarvis_watches_workspace"
+                             references="workspaces(id)" deleteCascade="true"/>
+            </column>
+            <column name="chantier_number" type="int"/>
+            <column name="name" type="varchar(80)"><constraints nullable="false"/></column>
+            <column name="platform" type="varchar(40)"><constraints nullable="false"/></column>
+            <column name="scope" type="varchar(500)"><constraints nullable="false"/></column>
+            <column name="probe_command" type="varchar(2000)"><constraints nullable="false"/></column>
+            <column name="probe_script_path" type="varchar(300)"/>
+            <column name="probe_script_hash" type="varchar(64)"/>
+            <!-- HH:mm separees par des virgules, triees ; 1 a 6 heures -->
+            <column name="run_times" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="time_zone" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="active" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="proposed" type="boolean" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <!-- USER | AGENT -->
+            <column name="origin" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="tested_at" type="timestamptz"/>
+            <column name="test_item_count" type="int"/>
+            <column name="test_summary" type="varchar(500)"/>
+            <column name="last_slot_at" type="timestamptz"/>
+            <column name="missed_slot_at" type="timestamptz"/>
+            <column name="consecutive_failures" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="broken" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="last_run_at" type="timestamptz"/>
+            <column name="last_run_status" type="varchar(24)"/>
+            <column name="monthly_budget_usd" type="numeric(10,2)" defaultValueNumeric="5.44"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="jarvis_watches" indexName="idx_jarvis_watches_user_workspace">
+            <column name="user_id"/>
+            <column name="workspace_id"/>
+        </createIndex>
+        <createIndex tableName="jarvis_watches" indexName="idx_jarvis_watches_active">
+            <column name="active"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="jarvis_watches"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -150,6 +150,16 @@ export const SLASH_PANEL_COMMANDS: readonly SlashPanelCommand[] = [
     panelKind: 'routines',
   },
   {
+    // F-230 / SF-230-01 : les veilles Jarvis du sujet — sondes sans IA, du lundi au vendredi.
+    name: 'veilles',
+    title: '/veilles',
+    description: 'Les veilles Jarvis du sujet : une sonde sur le poste, l’IA seulement sur changement',
+    kind: 'action',
+    takesArgument: false,
+    icon: 'radar',
+    panelKind: 'veilles',
+  },
+  {
     name: 'compacter',
     title: '/compacter',
     description: 'Compaction douce : résume les vieux tours, garde la mémoire',
