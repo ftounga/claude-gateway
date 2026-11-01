@@ -40,5 +40,10 @@ class JarvisFastBrainDormantApiIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"subjectId\":\"" + UUID.randomUUID() + "\",\"text\":\"Bonjour\"}"))
                 .andExpect(status().isServiceUnavailable());
+        // SF-235-02 : le pré-chauffage est éteint lui aussi.
+        mockMvc.perform(post("/api/jarvis/converse/warm").contextPath("/api")
+                        .header("Authorization", "Bearer " + jwtService.generateToken(alice))
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isServiceUnavailable());
     }
 }

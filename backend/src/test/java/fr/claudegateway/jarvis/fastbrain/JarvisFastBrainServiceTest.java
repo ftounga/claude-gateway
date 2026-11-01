@@ -248,4 +248,57 @@ class JarvisFastBrainServiceTest {
         assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.FALLBACK);
         assertThat(outcome.reason()).isEqualTo("quota");
     }
+
+    // ------------------------------------------------------------- SF-235-02 : mémoire, contexte, pré-chauffage
+
+    @Test
+    void replaysTheSessionWordsThenTheContextOnTheLastMessageOnly() {
+        JarvisFastBrainService service = service(answering("Oui, Monsieur."), null, null);
+        JarvisFastMemory memory = new JarvisFastMemory(Clock.systemUTC());
+        JarvisFastContextBuilder builder = mock(JarvisFastContextBuilder.class);
+        when(builder.build(any(), any(), any(), any())).thenReturn("CONTEXTE-1").thenReturn("CONTEXTE-2");
+        service.setContext(builder, memory, null);
+
+        service.converse(ask("Première"), null);
+        service.converse(ask("Deuxième"), null);
+
+        AgentTurnRequest second = calls.get(1);
+        assertThat(second.messages()).hasSize(3);
+        assertThat(text(second, 0)).isEqualTo("Première");
+        assertThat(text(second, 1)).isEqualTo("Oui, Monsieur.");
+        assertThat(text(second, 2)).contains("CONTEXTE-2").contains("Deuxième").doesNotContain("CONTEXTE-1");
+        // Deux contextes différents, une seule consigne système.
+        assertThat(calls.get(0).system()).isEqualTo(second.system());
+    }
+
+    @Test
+    void warmsAtMostEveryFourMinutesWithZeroOutput() {
+        JarvisFastBrainService service = service(answering(""), null, null);
+
+        assertThat(service.warm(alice, workspace)).isTrue();
+        assertThat(service.warm(alice, workspace)).isFalse();
+
+        assertThat(calls).hasSize(1);
+        assertThat(calls.get(0).shape().maxTokens()).isZero();
+        assertThat(calls.get(0).system()).isEqualTo(JarvisFastBrainPrompt.system());
+    }
+
+    @Test
+    void aDelegationIsRegisteredAsRunning() {
+        JarvisFastBrainService service = service(delegating("""
+                {"demande": "x", "label": "tickets bloqués", "annonce": "Je regarde les tickets bloqués.",
+                 "sujet": "", "chantier": null}
+                """), null, null);
+        JarvisDelegationRegistry registry = new JarvisDelegationRegistry(Clock.systemUTC(), null);
+        service.setContext(null, null, registry);
+
+        service.converse(ask("Regarde les tickets bloqués"), null);
+
+        assertThat(registry.running(alice)).extracting(JarvisDelegationRegistry.Running::label)
+                .containsExactly("tickets bloqués");
+    }
+
+    private static String text(AgentTurnRequest request, int index) {
+        return ((fr.claudegateway.agent.AgentContentBlock.Text) request.messages().get(index).content().get(0)).text();
+    }
 }
