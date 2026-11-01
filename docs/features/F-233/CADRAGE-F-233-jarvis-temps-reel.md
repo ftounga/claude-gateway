@@ -171,7 +171,7 @@ sûres et rapides ; 04-05 et 08-10 se décident sur la mesure.
 |---|---|---|
 | SF-233-01 | **Chronométrer le tour vocal** : table `jarvis_turn_timings` (une ligne par tour vocal, `user_id`, horodatages relatifs en ms, fournisseurs, compteurs d'interruption ; aucun contenu ; purge 90 j), marques posées par l'écran + premier jeton côté serveur, `GET /api/admin/jarvis/latency` (p50/p90 par étape, interruptions détectées/annulées/confirmées). | 1,5 j |
 | SF-233-02 | **Réagir tout de suite** : clips pré-synthétisés (« Oui ? », « Je regarde. », « Une seconde. ») joués localement à la fin de parole ; accusé à ≈ 2 s ; silence de fin de phrase réglable, défaut 0,7 s. | 1 j |
-| SF-233-03 | **Parler pendant que la réponse s'écrit** : lecture des deltas `onText`, découpe en phrases de la ligne 🎙, file de phrases (synthèse de la suivante pendant la lecture), consigne orale complétée (annonce avant outils, dans le message), confirmations F-231 conservées. | 2 j |
+| SF-233-03 | **Parler pendant que la réponse s'écrit** : lecture des deltas `onText`, découpe en phrases de la ligne 🎙, file de phrases (synthèse de la suivante pendant la lecture), consigne orale complétée (annonce avant outils, et adresse au PO par « Monsieur » avec vouvoiement — D-PO-8 —, dans le message), confirmations F-231 conservées. | 2 j |
 | SF-233-04 | **Session de transcription en flux (passerelle)** : `TranscriptionProvider.openStreamingSession`, implémentation du fournisseur retenu (D-PO-1/2), `POST /api/jarvis/stt-session` (jeton éphémère, plafond vérifié, durée comptée en €) ; dictée batch passée sur `gpt-transcribe`. | 1,5 j |
 | SF-233-05 | **Écouter en flux (écran)** : WebSocket direct vers le fournisseur, texte partiel affiché sous l'orbe, fin de tour du fournisseur (sinon silence 0,7 s), repli batch automatique, contraintes d'écho sur le micro de l'écoute. | 2 j |
 | SF-233-06 | **Voix candidates** : adaptateurs `SpeechProvider` en flux pour 2-3 candidats (ElevenLabs, Cartesia, Azure — selon D-PO-1), tarif par fournisseur pour le compte en €, sélection par configuration ; aucune bascule encore. | 2 j |
@@ -193,6 +193,7 @@ sûres et rapides ; 04-05 et 08-10 se décident sur la mesure.
 | **D-PO-5** | **Parole pendant un tour d'agent qui tourne** | précision par défaut + annulation sur « laisse tomber » / toujours précision / toujours nouvelle demande | **Précision par défaut, annulation sur phrase explicite** (réutilise le *steer* existant). |
 | **D-PO-6** | **Voix** | choisie à l'aveugle (SF-233-07) | Le PO écoute et choisit ; échéance 06/01/2027. |
 | **D-PO-7** | **Annonce avant outils** (« Je regarde les logs du build… ») ajoutée à la consigne orale du message | oui / non | **Oui** (aucune contrainte sur le raisonnement, préfixe inchangé). |
+| **D-PO-8** | **Adresse au PO** : Jarvis dit « Monsieur » et vouvoie, comme dans le film, avec parcimonie (début d'échange, annonce, interpellation ; pas à chaque phrase) ; consigne orale dans le message, jamais dans la consigne système | « Monsieur » + vous / prénom + tu / rien | **« Monsieur » + vouvoiement** — tranché par le PO le 2026-11-01. |
 
 ## Préoccupations transversales
 
