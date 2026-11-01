@@ -68,6 +68,17 @@ export interface SceneData {
   question?: boolean;
   /** S14 — les points de route du tour. */
   questions?: { libelle: string; state: string }[];
+  /** S1 — enveloppe (courriel) ou bulle (messagerie, ticket). */
+  envelope?: 'mail' | 'message';
+  /** S1 — destinataire et objet, tels qu'écrits en tête du bloc (jamais le corps). */
+  to?: string;
+  subject?: string;
+  /** S1 — le bloc est fini : il file dans « À envoyer (n) ». */
+  finished?: boolean;
+  /** S1 — `email_me` : il ne part qu'à vous. */
+  forMe?: boolean;
+  /** S1 — des preuves sont jointes (F-212 : l'objectif photographie). */
+  proof?: boolean;
 }
 
 /** S9 — ce que fait chaque outil de chantier. */
@@ -212,7 +223,7 @@ export class JarvisSceneReader {
   private stepsDone: Record<string, number> = {};
   private line = '';
   private scanned = 0;
-  private block: { kind: BlockKind; to: string | null; subject: string | null } | null = null;
+  private block: { kind: BlockKind; to: string | null; subject: string | null; proof: boolean } | null = null;
 
   constructor(index: NameIndex = new NameIndex(null), subjectId: string | null = null) {
     this.index = index;
@@ -256,7 +267,9 @@ export class JarvisSceneReader {
     this.pulses++;
     // S4 — une commande qui vise Jira / Confluence devient des cartes de tickets (heuristique, D11).
     const source = resolved.scene === 'S3' ? ticketSource(action.path) : null;
-    const sceneId = source ? 'S4' : resolved.scene;
+    // S1 — les captures de preuve (F-212) passent par l'étape `bash` : elles sont une preuve jointe, pas une commande.
+    const proof = type === 'bash' && /^captures de preuve\b/i.test(action.path ?? '');
+    const sceneId = proof ? 'S1' : source ? 'S4' : resolved.scene;
     // S11 — pose, mise à jour et levée d'une attente forment une seule scène (avec la carte `attente`).
     const key = source ? `tickets-${source}` : sceneId === 'S11' ? 'attente' : type;
     const current = this.scene;
@@ -274,7 +287,7 @@ export class JarvisSceneReader {
       return;
     }
     this.show({
-      id: sceneId, key, libelle: source ? ticketLabel(source) : resolved.libelle, count: 1,
+      id: sceneId, key, libelle: proof ? 'Preuves capturées' : source ? ticketLabel(source) : resolved.libelle, count: 1,
       detail: sceneDetail(action.path), entity, pinned: false, since: now, updatedAt: now,
       data: this.sceneData(sceneId, type, action.path, source, undefined),
     }, now);
@@ -309,6 +322,13 @@ export class JarvisSceneReader {
     }
     if (sceneId === 'S9') {
       return this.progressData(type, path);
+    }
+    if (sceneId === 'S1') {
+      // `email_me` (« Courriel · objet ») ou captures de preuve (« captures de preuve : titre »).
+      const subject = (path ?? '').replace(/^(courriel\s*·|captures de preuve\s*:)\s*/i, '').trim() || undefined;
+      return type === 'bash'
+        ? { envelope: 'message', proof: true, subject }
+        : { envelope: 'mail', forMe: type === 'email_me', subject, finished: type === 'email_me' };
     }
     if (sceneId === 'S11') {
       return attenteData(type, path);
@@ -539,9 +559,11 @@ export class JarvisSceneReader {
       }
       return;
     }
-    const fence = /^```\s*(mail|message)\s*$/i.exec(trimmed);
+    // La balise peut porter `attente=` et `preuves=` (MESSAGE_BLOCK_DOCTRINE, F-203/F-212).
+    const fence = /^```\s*(mail|message)\b(.*)$/i.exec(trimmed);
     if (!this.block && fence) {
-      this.block = { kind: fence[1].toLowerCase() as BlockKind, to: null, subject: null };
+      this.block = { kind: fence[1].toLowerCase() as BlockKind, to: null, subject: null,
+        proof: /\bpreuves\s*=/i.test(fence[2] ?? '') };
       this.showBlock(now, false);
       return;
     }
@@ -607,9 +629,13 @@ export class JarvisSceneReader {
     const entity = block.to ? this.index.match(block.to, this.contextSubject())[0] ?? null : null;
     const key = `block-${block.kind}`;
     const view: SceneView = {
-      id: 'GENERIQUE', key, libelle: finished ? `${noun} prêt · à envoyer` : `${noun} en préparation`, count: 1,
+      id: 'S1', key, libelle: finished ? `${noun} prêt · à envoyer` : `${noun} en préparation`, count: 1,
       detail: sceneDetail(parts.join(' · ')), entity: entity ?? this.currentSubject(), pinned: false,
       since: now, updatedAt: now,
+      data: {
+        envelope: block.kind, to: block.to ? sceneDetail(block.to) ?? undefined : undefined,
+        subject: block.subject ? sceneDetail(block.subject) ?? undefined : undefined, finished, proof: block.proof,
+      },
     };
     if (this.scene && this.scene.key === key && !this.scene.pinned) {
       this.scene = { ...view, since: this.scene.since };
