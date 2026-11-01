@@ -1391,6 +1391,7 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   `usage_day` (unique avec `user_id`), `chars_spoken` + `speech_cost_usd` (la voix de Jarvis : sert le **plafond
   mensuel en euros** `app.jarvis.voice.monthly-budget-eur`), `sessions`, `spoken_seconds`, `wakes` (mesure d'adoption
   D9, SF-231-05, `GET /api/admin/jarvis/measure`), `updated_at`. **Aucun contenu** (ni texte ni audio).
+- **jarvis_companions** — **un compagnon Android appairé** (F-232 / SF-232-03, migration `194`) : `user_id`, `label`, `pairing_code_hash` + `pairing_expires_at` (code à usage unique, effacé à l'échange), `token_hash` (unique ; jeton dédié qui n'ouvre QUE `GET /api/runner/jarvis/announcements`, en-tête `X-Jarvis-Token`), `paired_at`, `last_seen_at` (échéance glissante 60 j), `revoked_at`, `created_at`. Empreintes SHA-256 seulement. Index `(user_id, via, created_at)` ajouté sur `atelier_messages` pour la relève des annonces.
 - **atelier_messages.via** — **l'origine d'un message** (F-231 / SF-231-06, migration `191`) : `JARVIS` pour une
   demande dite à la voix dans l'écran Jarvis **et** la réponse de ce tour, `NULL` sinon. Donnée d'affichage : marque
   « 🎙 via Jarvis », encart « Pendant ton absence » (`GET /api/workspaces/{id}/jarvis/absence`), point de situation,
