@@ -25,8 +25,10 @@ export interface SceneChantier {
   selector: 'app-jarvis-scene',
   imports: [JarvisSceneExtraComponent],
   template: `
+    <!-- SF-234-11 — mode sobre (D9) : aucune scène. -->
+    @if (!sober()) {
     @if (scene(); as s) {
-      <div class="scene" [class.scene--pinned]="s.pinned" aria-hidden="true" [attr.data-scene]="s.id">
+      <div class="scene" [class.scene--pinned]="s.pinned" [class.scene--frozen]="frozen()" aria-hidden="true" [attr.data-scene]="s.id">
         <span class="scene__pulse"></span>
         <div class="scene__body">
           <p class="scene__title">
@@ -191,6 +193,7 @@ export interface SceneChantier {
         }
       }
     }
+    }
   `,
   styles: `
     :host { display: block; width: 100%; min-height: 0; }
@@ -203,6 +206,7 @@ export interface SceneChantier {
       animation: scene-in 240ms ease-out;
     }
     .scene--pinned { border-color: var(--cg-accent); }
+    .scene--frozen { opacity: 0.55; transition: opacity 1s linear; }
     .scene__pulse {
       flex: none; width: 10px; height: 10px; margin-top: 6px; border-radius: 50%;
       background: var(--cg-accent); animation: scene-pulse 1.2s ease-out infinite;
@@ -392,6 +396,9 @@ export class JarvisSceneComponent implements OnInit {
   }
 
   readonly scene = computed(() => this.bus.state().scene);
+  /** SF-234-11 — mode sobre (D9) ; scène figée après une coupure (D13). */
+  readonly sober = computed(() => this.bus.sober());
+  readonly frozen = computed(() => this.bus.state().frozen);
 
   /**
    * SF-234-06 — le chantier d'une scène, lu sur l'univers (titre, phase, `done/total` + les étapes faites pendant le

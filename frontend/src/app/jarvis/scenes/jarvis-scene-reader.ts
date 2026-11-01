@@ -18,6 +18,8 @@ export const LIT_MS = 6000;
 export const MIN_SCENE_MS = 1200;
 /** Deux appels du même outil plus proches que ce délai se regroupent en rafale (D14). */
 export const BURST_MS = 2500;
+/** SF-234-11 (D13) — à une coupure de la voix, la scène se fige ce temps puis s'efface. */
+export const CUT_FREEZE_MS = 1000;
 /** Une scène sans nouvelle s'efface après ce délai (sauf l'autorisation, qui attend sa réponse). */
 export const SCENE_TTL_MS = 8000;
 /** Le détail d'une scène, au plus (D11). */
@@ -212,6 +214,17 @@ export interface ReaderState {
   show: ShowRequest | null;
   /** SF-234-06 — étapes faites pendant le tour, par chantier (`done/total` avance avant la relecture de l'univers). */
   stepsDone: Record<string, number>;
+  /** SF-234-11 (D13) — la voix a été coupée : la scène est figée, puis s'efface. */
+  frozen: boolean;
+  /** SF-234-11 (D13) — les nœuds nommés dans la phrase en train d'être dite (surbrillance du nom). */
+  said: string[];
+}
+
+/** SF-234-11 (D16) — ce que l'écran a montré pendant un tour, sans contenu : des identifiants et des nombres. */
+export interface SceneStats {
+  scenes: Record<string, number>;
+  lit: number;
+  shows: number;
 }
 
 /** Masque les motifs de secret d'une ligne (D11) : jetons, en-têtes d'autorisation, mots de passe, clés. */
@@ -254,6 +267,10 @@ export class JarvisSceneReader {
   private showRequest: ShowRequest | null = null;
   /** S3 — la sortie de la commande en cours (fin seulement). */
   private output = '';
+  /** SF-234-11 — la coupure en cours (instant), la phrase dite, la mesure du tour. */
+  private frozenAt: number | null = null;
+  private said: string[] = [];
+  private stats: SceneStats = { scenes: {}, lit: 0, shows: 0 };
   /** S7 — l'avancement de la salle de montage pendant ce tour. */
   private montage: SceneData | null = null;
   /** S9 — étapes faites pendant ce tour, par chantier, pas encore comptées par l'univers. */
@@ -285,6 +302,8 @@ export class JarvisSceneReader {
     this.block = null;
     this.showRequest = null; // SF-234-13 : le tour suivant rend l'écran à son état normal
     this.montage = null;
+    this.frozenAt = null;
+    this.said = [];
   }
 
   /** SF-234-13 — « c'est bon » : l'écran revient à l'état normal. Rend vrai si quelque chose était montré. */
@@ -589,6 +608,12 @@ export class JarvisSceneReader {
   /** Le temps passe : extinctions, scène suivante, scène périmée. Rend vrai si l'état a changé. */
   tick(now: number): boolean {
     let changed = false;
+    if (this.frozenAt !== null && now - this.frozenAt >= CUT_FREEZE_MS) {
+      this.frozenAt = null;
+      this.scene = null;
+      this.next = null;
+      changed = true;
+    }
     const kept = this.lit.filter((l) => now - l.at < LIT_MS);
     if (kept.length !== this.lit.length) {
       this.lit = kept;
@@ -624,18 +649,50 @@ export class JarvisSceneReader {
   state(): ReaderState {
     return {
       lit: [...this.lit], scene: this.scene, pulses: this.pulses, toSendAdded: this.toSendAdded,
-      show: this.showRequest, stepsDone: { ...this.stepsDone },
+      show: this.showRequest, stepsDone: { ...this.stepsDone }, frozen: this.frozenAt !== null, said: [...this.said],
     };
+  }
+
+  /** SF-234-11 (D13) — la voix est coupée : la scène se fige {@link CUT_FREEZE_MS}, puis s'efface. */
+  cut(now: number): void {
+    if (this.scene && !this.scene.pinned) {
+      this.frozenAt = now;
+      this.next = null;
+    }
+    this.said = [];
+  }
+
+  /** SF-234-11 (D13) — une phrase commence à être dite : les noms qu'elle contient passent en surbrillance. */
+  saying(sentence: string, now: number): void {
+    const nodes = sentence ? this.index.match(sentence, this.contextSubject()) : [];
+    for (const node of nodes) {
+      this.light(node, 1, now);
+    }
+    this.said = nodes.map((n) => n.key);
+  }
+
+  /** SF-234-11 (D16) — la mesure du tour (puis remise à zéro). */
+  takeStats(): SceneStats {
+    const stats = this.stats;
+    this.stats = { scenes: {}, lit: 0, shows: 0 };
+    return stats;
   }
 
   // ---- interne ----
 
   /** Une scène qui attend une réponse : devant tout, la scène en cours reprend ensuite. */
   private pin(scene: SceneView): void {
+    this.frozenAt = null;
+    this.count(scene.id);
     if (this.scene && !this.scene.pinned) {
       this.next = this.scene;
     }
     this.scene = scene;
+  }
+
+  /** SF-234-11 — une scène de plus pour la mesure (identifiant seulement). */
+  private count(id: string): void {
+    this.stats.scenes[id] = (this.stats.scenes[id] ?? 0) + 1;
   }
 
   /** Une scène d'événement : remplace la même (mise à jour) ou suit les règles d'affichage. */
@@ -669,6 +726,10 @@ export class JarvisSceneReader {
   }
 
   private show(scene: SceneView, now: number): void {
+    if (this.frozenAt !== null) {
+      return; // D13 : figée après une coupure, la scène ne change plus avant de s'effacer
+    }
+    this.count(scene.id);
     if (this.scene && (this.scene.pinned || now - this.scene.since < MIN_SCENE_MS)) {
       this.next = scene; // la plus récente gagne, après la durée minimale de la scène en cours
       return;
@@ -685,6 +746,7 @@ export class JarvisSceneReader {
       const request = parseShowLine(trimmed);
       if (request) {
         this.showRequest = request;
+        this.stats.shows++;
       }
       return;
     }
@@ -789,6 +851,7 @@ export class JarvisSceneReader {
       this.lit = this.lit.filter((l) => l !== weakest);
     }
     this.lit.push({ node, priority, at: now });
+    this.stats.lit++;
   }
 
   /** Les sujets de contexte pour « chantier N » : le dernier sujet cité, puis le sujet courant. */

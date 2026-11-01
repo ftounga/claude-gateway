@@ -82,6 +82,13 @@
   text-align: center;
 }
 
+/* F-234 / SF-234-11 (D9) — l'interrupteur du mode sobre, discret, cible tactile ≥ 44 px. */
+.jv__sober {
+  min-height: 44px;
+  color: color-mix(in srgb, var(--cg-cream) 75%, transparent);
+  font-size: 13px;
+}
+
 .jv__exchange {
   display: flex;
   flex-direction: column;

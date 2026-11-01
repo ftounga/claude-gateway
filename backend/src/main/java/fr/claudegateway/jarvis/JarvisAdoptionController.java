@@ -42,7 +42,8 @@ public class JarvisAdoptionController {
         atelierAccess.requireAccess();
         try {
             service.record(currentUser.requireId(), body == null ? null : body.event(),
-                    body == null ? null : body.seconds());
+                    body == null ? null : body.seconds(), body == null ? null : body.scenes(),
+                    body == null ? null : body.lit(), body == null ? null : body.shows());
             return ResponseEntity.noContent().build();
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(new ErrorResponse("validation_error", e.getMessage()));
@@ -55,8 +56,18 @@ public class JarvisAdoptionController {
         return service.measure(currentUser.requireId(), days == null || days <= 0 ? DEFAULT_DAYS : days);
     }
 
-    /** Corps de {@code POST /api/jarvis/usage} : {@code SESSION}, {@code SPOKEN} (+ secondes), {@code WAKE} ou {@code IDLE_END} (SF-233-11). */
+    /**
+     * Corps de {@code POST /api/jarvis/usage} : {@code SESSION}, {@code SPOKEN} (+ secondes), {@code WAKE},
+     * {@code IDLE_END} (SF-233-11) ; F-234 / SF-234-11 : {@code SCENES} (+ {@code scenes}, {@code lit},
+     * {@code shows}), {@code TOUCH}, {@code SOBER}.
+     */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record UsageEvent(String event, Long seconds) {
+    public record UsageEvent(String event, Long seconds, java.util.Map<String, Integer> scenes, Integer lit,
+            Integer shows) {
+
+        /** Forme d'avant F-234 (sans scènes). */
+        public UsageEvent(String event, Long seconds) {
+            this(event, seconds, null, null, null);
+        }
     }
 }

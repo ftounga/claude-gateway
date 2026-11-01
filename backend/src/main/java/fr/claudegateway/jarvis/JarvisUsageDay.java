@@ -88,6 +88,37 @@ public class JarvisUsageDay {
     @Column(name = "fast_brain_cost_usd", nullable = false, precision = 12, scale = 6)
     private BigDecimal fastBrainCostUsd = BigDecimal.ZERO;
 
+    /** F-234 / SF-234-11 (D16) — scènes montrées ce jour-là, dont génériques. */
+    @Builder.Default
+    @Column(name = "scenes_shown", nullable = false)
+    private int scenesShown = 0;
+
+    @Builder.Default
+    @Column(name = "scenes_generic", nullable = false)
+    private int scenesGeneric = 0;
+
+    /** F-234 / SF-234-11 — le détail par scène, « S3=12;S5=4;GENERIQUE=2 » (identifiants de scène seulement). */
+    @Builder.Default
+    @Column(name = "scene_counts", nullable = false, length = 1000)
+    private String sceneCounts = "";
+
+    /** F-234 / SF-234-11 — nœuds allumés, touchers de nœud, mode sobre activé, demandes « Montrer ». */
+    @Builder.Default
+    @Column(name = "nodes_lit", nullable = false)
+    private int nodesLit = 0;
+
+    @Builder.Default
+    @Column(name = "node_touches", nullable = false)
+    private int nodeTouches = 0;
+
+    @Builder.Default
+    @Column(name = "sober_on", nullable = false)
+    private int soberOn = 0;
+
+    @Builder.Default
+    @Column(name = "show_requests", nullable = false)
+    private int showRequests = 0;
+
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 

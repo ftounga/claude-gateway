@@ -54,6 +54,7 @@
     "skill": { "scene": "S12", "cible": "S12", "libelle": "Savoir-faire appliqué" },
     "explore": { "scene": "S13", "cible": "S13", "libelle": "Exploration déléguée", "pluriel": "{n} explorations déléguées" },
     "task": { "scene": "S13", "cible": "S13", "libelle": "Tâche déléguée", "pluriel": "{n} tâches déléguées" },
+    "deleguer": { "scene": "GENERIQUE", "cible": "S13", "libelle": "Demande confiée au cerveau principal" },
     "ouvrir_sujet": { "scene": "S10", "cible": "S10", "libelle": "Passation vers un sujet" },
     "create_subject": { "scene": "S10", "cible": "S10", "libelle": "Nouveau sujet" },
     "sujets_etat": { "scene": "S15", "cible": "S15", "libelle": "Le point sur les sujets" },
