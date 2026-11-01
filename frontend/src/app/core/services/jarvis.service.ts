@@ -30,7 +30,7 @@ export class JarvisService {
    * SF-231-05 — la mesure d'adoption (D9) : une ouverture (`SESSION`), des secondes parlées (`SPOKEN`), un réveil par
    * le mot « Jarvis » (`WAKE`). Aucun contenu ; best-effort, jamais une raison de gêner l'écran.
    */
-  usage(event: 'SESSION' | 'SPOKEN' | 'WAKE', seconds?: number): void {
+  usage(event: 'SESSION' | 'SPOKEN' | 'WAKE' | 'IDLE_END', seconds?: number): void {
     this.http.post<void>('/api/jarvis/usage', seconds === undefined ? { event } : { event, seconds: Math.round(seconds) })
       .subscribe({ error: () => undefined });
   }

@@ -24,7 +24,7 @@ export class TurnClock {
     interruptionsDetected: 0, interruptionsRestored: 0, interruptionsConfirmed: 0, acknowledgements: 0,
     falseTriggers: 0,
   };
-  listenMode: 'BATCH' | 'STREAM' = 'BATCH';
+  listenMode: TurnTimingReport['listenMode'] = 'BATCH';
   sttProvider: string | null = null;
   ttsProvider: string | null = null;
   toolTurn = false;

@@ -90,9 +90,11 @@
     }
     <!-- F-232 / SF-232-03 — les annonces téléphone verrouillé : appairer le compagnon, voir et révoquer. -->
     <app-jarvis-companions [android]="android" />
-    <button mat-fab extended color="primary" type="button" class="jv__talk" (click)="talk()">
-      <mat-icon>{{ state() === 'ecoute' ? 'send' : state() === 'parole' ? 'stop' : 'mic' }}</mat-icon>
-      {{ state() === 'ecoute' ? 'J’ai fini' : state() === 'parole' ? 'Interrompre' : 'Parler' }}
+    <!-- F-233 / SF-233-11 — conversation mains libres : un simple interrupteur, plus de « J'ai fini ». -->
+    <button mat-fab extended color="primary" type="button" class="jv__talk"
+            [attr.aria-pressed]="conversation.mode() === 'active'" (click)="toggleConversation()">
+      <mat-icon aria-hidden="true">{{ conversation.mode() === 'active' ? 'pause' : 'mic' }}</mat-icon>
+      {{ toggleLabel() }}
     </button>
   </footer>
 </main>

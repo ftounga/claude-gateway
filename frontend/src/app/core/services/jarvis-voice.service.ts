@@ -101,6 +101,8 @@ export class JarvisVoiceService {
   private queueError: JarvisVoiceError | null = null;
   /** SF-233-02 — les clips de réaction chargés (URL locales), par nom. */
   private readonly clips = new Map<string, string>();
+  /** SF-233-11 — la fin du clip en cours, que la file attend avant de dire sa première phrase. */
+  private clipPlaying: Promise<void> | null = null;
 
   /** La voix est-elle là, et combien a-t-elle coûté ce mois ? */
   status(): Observable<JarvisVoiceStatus> {
@@ -128,9 +130,16 @@ export class JarvisVoiceService {
    * avec un {@link JarvisVoiceError} si la voix n'a pas pu parler.
    */
   async speak(text: string, workspaceId: string | null = null, hooks?: SpeakHooks): Promise<void> {
-    this.stop();
+    // SF-233-11 — un clip en cours finit son mot ; une phrase en cours, elle, est coupée.
+    this.clearQueue();
+    if (this.current?.text !== undefined) {
+      this.stopCurrent();
+    }
     const abort = new AbortController();
     const url = await this.fetchAudio(text, workspaceId, abort, hooks);
+    if (this.clipPlaying) {
+      await this.clipPlaying;
+    }
     return this.play(url, abort, hooks, true, text);
   }
 
@@ -142,7 +151,10 @@ export class JarvisVoiceService {
   enqueue(text: string, workspaceId: string | null = null, hooks?: SpeakHooks): void {
     if (!this.queueRunning && this.queue.length === 0) {
       this.queueError = null;
-      this.stopCurrent();
+      // F-233 / SF-233-11 — un clip (formule courte) n'est pas coupé au milieu d'un mot : la file attend sa fin.
+      if (this.current?.text !== undefined) {
+        this.stopCurrent();
+      }
     }
     this.queue.push({ text, workspaceId, hooks, abort: new AbortController(), url: null });
     this.prefetch();
@@ -180,6 +192,12 @@ export class JarvisVoiceService {
       this.prefetch();
       try {
         const url = await item.url!;
+        if (this.queue[0] !== item) {
+          continue;
+        }
+        if (this.clipPlaying) {
+          await this.clipPlaying;
+        }
         if (this.queue[0] !== item) {
           continue;
         }
@@ -269,8 +287,16 @@ export class JarvisVoiceService {
       return false;
     }
     this.stopCurrent();
+    const playing = this.play(url, new AbortController(), hooks, false);
+    const settled = playing.then(() => undefined, () => undefined);
+    this.clipPlaying = settled;
+    void settled.then(() => {
+      if (this.clipPlaying === settled) {
+        this.clipPlaying = null;
+      }
+    });
     try {
-      await this.play(url, new AbortController(), hooks, false);
+      await playing;
       return true;
     } catch {
       return false;

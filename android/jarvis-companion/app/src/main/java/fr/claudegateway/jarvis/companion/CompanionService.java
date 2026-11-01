@@ -488,7 +488,7 @@ public final class CompanionService extends Service {
             }
         }));
         main.postDelayed(endReplyWindow, AnnouncementPolicy.REPLY_WINDOW_MS);
-        status = "Jarvis t'écoute";
+        status = "Jarvis vous écoute";
         notifyListen();
     }
 
@@ -525,7 +525,7 @@ public final class CompanionService extends Service {
                 NotificationManager.IMPORTANCE_LOW);
         listen.setDescription("Notification permanente tant que le mot d'éveil est écouté.");
         listen.setShowBadge(false);
-        NotificationChannel wake = new NotificationChannel(CHANNEL_WAKE, "Jarvis t'écoute",
+        NotificationChannel wake = new NotificationChannel(CHANNEL_WAKE, "Jarvis vous écoute",
                 NotificationManager.IMPORTANCE_HIGH);
         wake.setDescription("Ouvre Jarvis quand le mot d'éveil est reconnu.");
         wake.setSound(null, null);
@@ -574,7 +574,7 @@ public final class CompanionService extends Service {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_USER_ACTION), 20);
         Notification.Builder b = new Notification.Builder(this, CHANNEL_WAKE)
                 .setSmallIcon(R.drawable.ic_jarvis)
-                .setContentTitle("Jarvis t'écoute")
+                .setContentTitle("Jarvis vous écoute")
                 .setContentText("Toucher pour ouvrir Jarvis")
                 .setCategory(Notification.CATEGORY_REMINDER)
                 .setAutoCancel(true)

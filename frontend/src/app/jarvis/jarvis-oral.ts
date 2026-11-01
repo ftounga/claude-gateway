@@ -71,18 +71,7 @@ function cutOral(text: string): string {
   return `${(space > 0 ? head.slice(0, space) : head).trimEnd()}…`;
 }
 
-/** SF-231-03 — l'accusé d'un tour qui ne répond pas tout de suite (D3). */
-export const ACK_PHRASE = 'Je m’en occupe.';
-/**
- * SF-231-03 — au-delà, l'accusé est dit (le tour ne répond pas en un clin d'œil). F-233 / SF-233-02 (D3) : 5 s → 2 s,
- * réglé sur la mesure SF-233-01.
- */
-export const ACK_DELAY_MS = 2_000;
-
-/** F-233 / SF-233-02 (D3) — le clip joué au réveil, avant d'écouter. */
-export const WAKE_CLIP = 'oui';
-/** F-233 / SF-233-02 (D3) — les clips joués dès la fin de la parole, en alternance. */
-export const REACTION_CLIPS: readonly string[] = ['je-regarde', 'une-seconde'];
+// F-233 / SF-233-11 — l'accusé et les clips de réaction vivent désormais dans `jarvis-phrases.ts` (répertoire varié).
 /** SF-231-03 — au-delà, la réponse est précédée d'une annonce de fin : le PO a pu passer à autre chose. */
 export const LONG_TURN_MS = 30_000;
 

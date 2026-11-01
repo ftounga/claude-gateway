@@ -14,6 +14,9 @@ import { JarvisService } from '../core/services/jarvis.service';
 import { VeilleService } from '../core/services/veille.service';
 import { JarvisStreamOpener, StreamHandlers } from './jarvis-stream-listener';
 import { JarvisVadService, VadHandlers } from './jarvis-barge-in';
+import { FORMULAS, FORMULA_CLIPS, tutoie } from './jarvis-phrases';
+
+const FILLERS = FORMULAS.filter((f) => f.kind === 'filler').map((f) => f.text);
 
 const NO_COMPANION = {
   available: false, versionCode: null, versionName: null, sha256: null, signingCertSha256: null, sizeBytes: null,
@@ -236,18 +239,23 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(jarvis.state()).toBe('ecoute');
   }));
 
-  it('SF-231-03 — un tour qui tarde reçoit un accusé, puis s’annonce terminé', fakeAsync(() => {
+  it('SF-231-03 / SF-233-11 — un tour qui tarde reçoit UNE formule d’attente variée, puis s’annonce terminé',
+    fakeAsync(() => {
     const fixture = TestBed.createComponent(JarvisComponent);
     fixture.detectChanges();
     const jarvis = fixture.componentInstance;
 
     jarvis.send('w-2', 'Lance les tests');
-    tick(1_999);
+    tick(1_199);
     expect(voice.speak).not.toHaveBeenCalled();
-    // F-233 / SF-233-02 — l'accusé à 2 s (et non plus 5).
     tick(1);
-    expect(voice.speak).toHaveBeenCalledWith('Je m’en occupe.', 'w-2');
+    expect(voice.speak).toHaveBeenCalledTimes(1);
+    const said = voice.speak.calls.mostRecent().args[0];
+    expect(FILLERS).toContain(said);
     expect(jarvis.state()).toBe('reflexion');
+    // Une seule formule par échange : rien de plus pendant que le tour tourne.
+    tick(20_000);
+    expect(voice.speak).toHaveBeenCalledTimes(1);
 
     tick(30_000);
     handlers!.onDone({ reply: '🎙 Les tests passent.', actions: [], messageId: 'm-1' });
@@ -389,22 +397,173 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(companionOffer(NO_COMPANION, null, true)).toBeNull();
   });
 
-  it('F-233 / SF-233-02 — charge les clips, réagit dès la fin de parole, et « Oui, Monsieur ? » au réveil', fakeAsync(() => {
+  it('F-233 / SF-233-11 — charge le répertoire ; formule d’attente seulement si la réponse tarde', fakeAsync(() => {
     voice.hasClip.and.returnValue(true);
     voice.playClip.and.resolveTo(true);
     const fixture = TestBed.createComponent(JarvisComponent);
     fixture.detectChanges();
     const jarvis = fixture.componentInstance;
-    expect(voice.preloadClips).toHaveBeenCalledWith(['oui', 'je-regarde', 'une-seconde']);
+    expect(voice.preloadClips).toHaveBeenCalledWith(FORMULA_CLIPS);
     dictation.stop.and.resolveTo('Où en est la migration ?');
 
     void jarvis.talk();
     flushMicrotasks();
     void jarvis.talk();
     flushMicrotasks();
-    expect(voice.playClip).toHaveBeenCalledWith('je-regarde', jasmine.any(Object));
+    // Plus de réaction immédiate à la fin de la parole.
+    expect(voice.playClip).not.toHaveBeenCalled();
+    tick(1_200);
+    expect(voice.playClip).toHaveBeenCalledTimes(1);
+    const clip = voice.playClip.calls.mostRecent().args[0];
+    expect(FORMULAS.find((f) => f.id === clip)?.kind).toBe('filler');
+    jarvis.ngOnDestroy();
+    tick(1_000);
+  }));
+
+  it('F-233 / SF-233-11 — aucune formule si la première phrase est déjà là', fakeAsync(() => {
+    voice.hasClip.and.returnValue(true);
+    voice.playClip.and.resolveTo(true);
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+
+    jarvis.send('w-2', 'Bonjour');
+    tick(400);
+    handlers!.onText('🎙 Bonjour, Monsieur. ');
+    tick(2_000);
+    expect(voice.playClip).not.toHaveBeenCalled();
+    expect(voice.speak).not.toHaveBeenCalled();
     jarvis.ngOnDestroy();
   }));
+
+  it('F-233 / SF-233-11 — l’interrupteur : Commencer, puis Pause / Reprendre ; plus jamais « J’ai fini »',
+    fakeAsync(() => {
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      const jarvis = fixture.componentInstance;
+      const button = () => ((fixture.nativeElement as HTMLElement).querySelector('.jv__talk')?.textContent ?? '').trim();
+      expect(button()).toContain('Commencer');
+      fixture.autoDetectChanges();
+
+      void jarvis.toggleConversation();
+      tick(300);
+      fixture.detectChanges();
+      expect(voice.unlock).toHaveBeenCalled();
+      expect(jarvis.state()).toBe('ecoute');
+      expect(button()).toContain('Pause');
+      expect(button()).not.toContain('J’ai fini');
+
+      void jarvis.toggleConversation();
+      flushMicrotasks();
+      tick(1_000);
+      fixture.detectChanges();
+      expect(dictation.cancel).toHaveBeenCalled();
+      expect(jarvis.state()).toBe('repos');
+      expect(jarvis.conversation.mode()).toBe('paused');
+      expect(button()).toContain('Reprendre la conversation');
+      expect(dictation.start).toHaveBeenCalledTimes(1);
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-233 / SF-233-11 — en conversation, il se remet à écouter seul après avoir répondu, sans un mot',
+    fakeAsync(() => {
+      voice.hasClip.and.returnValue(true);
+      voice.playClip.and.resolveTo(true);
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      const jarvis = fixture.componentInstance;
+      fixture.autoDetectChanges();
+      fixture.autoDetectChanges();
+    jarvis.startConversation();
+      tick(300);
+      expect(jarvis.state()).toBe('ecoute');
+      dictation.stop.and.resolveTo('Où en est la migration ?');
+
+      void jarvis.finishListening();
+      flushMicrotasks();
+      handlers!.onText('🎙 La migration est à l’étape 4. ');
+      handlers!.onDone({ reply: '🎙 La migration est à l’étape 4.', actions: [], messageId: 'm-1' });
+      flushMicrotasks();
+      expect(jarvis.state()).toBe('repos');
+      tick(300);
+      expect(jarvis.state()).toBe('ecoute');
+      expect(dictation.start).toHaveBeenCalledTimes(2);
+      expect(voice.playClip).not.toHaveBeenCalled();
+      const report = jarvisApi.timings.calls.mostRecent().args[0];
+      expect(report.listenMode).toBe('CONV_BATCH');
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-233 / SF-233-11 — un bruit n’envoie rien et l’écoute repart', fakeAsync(() => {
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    fixture.autoDetectChanges();
+    jarvis.startConversation();
+    tick(300);
+    dictation.stop.and.resolveTo('euh…');
+
+    void jarvis.finishListening();
+    flushMicrotasks();
+    tick(300);
+    expect(atelier.streamChat).not.toHaveBeenCalled();
+    expect(voice.speak).not.toHaveBeenCalled();
+    expect(jarvis.state()).toBe('ecoute');
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-233 / SF-233-11 — « Jarvis, pause » : pause sans tour, et plus de réécoute', fakeAsync(() => {
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    fixture.autoDetectChanges();
+    jarvis.startConversation();
+    tick(300);
+    dictation.stop.and.resolveTo('Jarvis, pause.');
+
+    void jarvis.finishListening();
+    flushMicrotasks();
+    tick(1_000);
+    expect(atelier.streamChat).not.toHaveBeenCalled();
+    expect(voice.speak).toHaveBeenCalledWith('Je me mets en pause.', 'w-2');
+    expect(jarvis.conversation.mode()).toBe('paused');
+    expect(jarvis.state()).toBe('repos');
+    expect(dictation.start).toHaveBeenCalledTimes(1);
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-233 / SF-233-11 — après 60 s sans demande : retour au repos, dit une fois et compté', fakeAsync(() => {
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    fixture.autoDetectChanges();
+    jarvis.startConversation();
+    tick(300);
+    // Une écoute qui s'est close sans un mot : la réécoute constate le silence.
+    dictation.stop.and.resolveTo('');
+    tick(61_000);
+    void jarvis.finishListening();
+    flushMicrotasks();
+    tick(300);
+    expect(jarvisApi.usage).toHaveBeenCalledWith('IDLE_END');
+    expect(voice.speak).toHaveBeenCalledWith('Je me mets en veille.', 'w-2');
+    expect(jarvis.conversation.mode()).toBe('idle');
+    expect(jarvis.state()).toBe('repos');
+    tick(1_000);
+    expect(dictation.start).toHaveBeenCalledTimes(1);
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-233 / SF-233-11 — aucun texte de l’écran ni formule ne tutoie dans l’interrupteur et l’état', () => {
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    for (const state of ['repos', 'ecoute', 'reflexion', 'parole'] as const) {
+      jarvis.state.set(state);
+      expect(tutoie(jarvis.statusLabel())).withContext(state).toBeFalse();
+    }
+    expect(tutoie(jarvis.toggleLabel())).toBeFalse();
+  });
 
   it('F-233 / SF-233-03 — dit chaque phrase 🎙 dès qu’elle est écrite, sans la redire à la fin', fakeAsync(() => {
     const fixture = TestBed.createComponent(JarvisComponent);
