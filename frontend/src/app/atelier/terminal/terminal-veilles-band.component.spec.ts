@@ -2,8 +2,10 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { of } from 'rxjs';
 
+import { ActivatedRoute, convertToParamMap } from '@angular/router';
+
 import { TerminalVeillesBandComponent } from './terminal-veilles-band.component';
-import { JarvisWatch } from '../../core/models/veille.models';
+import { JarvisAlert, JarvisWatch } from '../../core/models/veille.models';
 import { VeilleService } from '../../core/services/veille.service';
 
 export function watch(over: Partial<JarvisWatch> = {}): JarvisWatch {
@@ -13,7 +15,17 @@ export function watch(over: Partial<JarvisWatch> = {}): JarvisWatch {
     scriptPath: '.atelier/veilles/agenor.sh', runTimes: ['09:00', '14:00'], timeZone: 'Europe/Paris',
     days: 'MONDAY_TO_FRIDAY', active: false, proposed: true, origin: 'AGENT', testedAt: null, testItemCount: null,
     testSummary: null, nextRunAt: null, createdAt: '', updatedAt: '', lastRunAt: null, lastRunStatus: null,
-    broken: false, consecutiveFailures: 0, ...over,
+    broken: false, consecutiveFailures: 0, monthlyBudgetEur: 5, monthSpentEur: 0, ...over,
+  };
+}
+
+function alert(over: Partial<JarvisAlert> = {}): JarvisAlert {
+  return {
+    id: 'a-1', watchId: 'v-1', watchName: 'Agenor', platform: 'Jira', workspaceId: 'w-1', chantierNumber: 2,
+    sentence: 'Agenor : AG-2 est passé en bloqué.',
+    changes: [{ kind: 'STATUS', id: 'AG-2', title: 'Batch', before: 'En cours', after: 'Bloqué' }],
+    aiWritten: true, costEur: 0.04, createdAt: new Date().toISOString(), openedAt: null,
+    link: '/atelier/w-1?alerte=a-1', ...over,
   };
 }
 
@@ -39,10 +51,14 @@ describe('La bande des veilles Jarvis (F-230 / SF-230-01)', () => {
   }
 
   beforeEach(() => {
-    service = jasmine.createSpyObj<VeilleService>('VeilleService', ['list', 'test', 'accept', 'remove']);
+    service = jasmine.createSpyObj<VeilleService>('VeilleService',
+      ['list', 'test', 'accept', 'remove', 'alert', 'openAlert']);
     TestBed.configureTestingModule({
       imports: [TerminalVeillesBandComponent, NoopAnimationsModule],
-      providers: [{ provide: VeilleService, useValue: service }],
+      providers: [
+        { provide: VeilleService, useValue: service },
+        { provide: ActivatedRoute, useValue: { queryParamMap: of(convertToParamMap({})) } },
+      ],
     });
   });
 
@@ -100,6 +116,26 @@ describe('La bande des veilles Jarvis (F-230 / SF-230-01)', () => {
     expect(text()).toContain('Veille « Agenor » en panne');
     expect(text()).toContain('Demandez à l\'agent de la réparer');
     expect((fixture.nativeElement as HTMLElement).querySelector('.veille-card')).toBeNull();
+  });
+
+  it('montre l’alerte demandée par l’adresse et la marque ouverte (SF-230-03)', () => {
+    TestBed.overrideProvider(ActivatedRoute, { useValue: { queryParamMap: of(convertToParamMap({ alerte: 'a-1' })) } });
+    service.alert.and.returnValue(of(alert()));
+    service.openAlert.and.returnValue(of(void 0));
+    create([]);
+    expect(service.alert).toHaveBeenCalledWith('a-1');
+    expect(text()).toContain('Agenor : AG-2 est passé en bloqué.');
+    expect(text()).toContain('AG-2 Batch : En cours → Bloqué');
+    expect(text()).toContain('0,04 €');
+    expect(service.openAlert).toHaveBeenCalledWith('a-1');
+  });
+
+  it('n’affiche pas l’alerte d’un autre sujet, ni ne rouvre une alerte déjà lue', () => {
+    TestBed.overrideProvider(ActivatedRoute, { useValue: { queryParamMap: of(convertToParamMap({ alerte: 'a-1' })) } });
+    service.alert.and.returnValue(of(alert({ workspaceId: 'w-2' })));
+    create([]);
+    expect(text()).not.toContain('bloqué');
+    expect(service.openAlert).not.toHaveBeenCalled();
   });
 
   it('en lecture seule, aucun geste', () => {

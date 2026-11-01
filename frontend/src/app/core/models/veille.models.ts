@@ -32,6 +32,54 @@ export interface JarvisWatch {
   /** SF-230-02 — deux échecs d'affilée : la veille est en panne (D6). */
   broken: boolean;
   consecutiveFailures: number;
+  /** SF-230-03 — budget de la rédaction IA et dépense du mois, en euros. */
+  monthlyBudgetEur: number | null;
+  monthSpentEur: number | null;
+}
+
+/** Un changement vu par une veille (SF-230-03). */
+export interface JarvisWatchChange {
+  kind: 'NEW' | 'GONE' | 'STATUS' | 'ASSIGNEE' | 'COMMENT' | 'UPDATED';
+  id: string;
+  title: string;
+  before: string;
+  after: string;
+}
+
+/** Une alerte de veille (SF-230-03) — le contrat que lit aussi Jarvis (F-231). */
+export interface JarvisAlert {
+  id: string;
+  watchId: string;
+  watchName: string | null;
+  platform: string | null;
+  workspaceId: string;
+  chantierNumber: number | null;
+  sentence: string;
+  changes: JarvisWatchChange[];
+  aiWritten: boolean;
+  costEur: number | null;
+  createdAt: string;
+  openedAt: string | null;
+  link: string;
+}
+
+/** Un changement, en mots : « AG-2 Batch : En cours → Bloqué ». */
+export function changeLabel(change: JarvisWatchChange): string {
+  const what = change.title ? `${change.id} ${change.title}` : change.id;
+  switch (change.kind) {
+    case 'NEW':
+      return `${what} : nouveau${change.after ? ` (${change.after})` : ''}`;
+    case 'GONE':
+      return `${what} : sorti du périmètre`;
+    case 'STATUS':
+      return `${what} : ${change.before || '—'} → ${change.after || '—'}`;
+    case 'ASSIGNEE':
+      return `${what} : assigné à ${change.after || 'personne'}`;
+    case 'COMMENT':
+      return `${what} : nouveau commentaire « ${change.after} »`;
+    case 'UPDATED':
+      return `${what} : mis à jour`;
+  }
 }
 
 /** L'issue d'un passage (SF-230-02). */

@@ -1,10 +1,16 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, effect, inject, input, output, signal } from '@angular/core';
+import { Component, DestroyRef, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { ActivatedRoute } from '@angular/router';
 
-import { JarvisWatch, JarvisWatchTest, watchScheduleLabel } from '../../core/models/veille.models';
+import { ago } from '../../core/models/routine.models';
+import {
+  JarvisAlert, JarvisWatch, JarvisWatchChange, JarvisWatchTest, changeLabel, watchScheduleLabel,
+} from '../../core/models/veille.models';
+import { formatEuros } from '../../shared/euros';
 import { VeilleService } from '../../core/services/veille.service';
 
 /**
@@ -21,6 +27,32 @@ import { VeilleService } from '../../core/services/veille.service';
   selector: 'app-terminal-veilles-band',
   imports: [MatButtonModule, MatIconModule, MatProgressSpinnerModule],
   template: `
+    @if (visibleAlert(); as a) {
+      <div class="veille-alert" role="status" aria-live="polite">
+        <mat-icon class="veille-alert__icon" aria-hidden="true">notifications_active</mat-icon>
+        <div class="veille-alert__body">
+          <p class="veille-alert__headline">{{ a.sentence }}</p>
+          @if (a.changes.length) {
+            <ul class="veille-alert__changes">
+              @for (change of a.changes.slice(0, maxChanges); track $index) {
+                <li>{{ label(change) }}</li>
+              }
+            </ul>
+            @if (a.changes.length > maxChanges) {
+              <p class="veille-alert__meta">… et {{ a.changes.length - maxChanges }} autre(s).</p>
+            }
+          }
+          <p class="veille-alert__meta">
+            @if (a.platform) { <span>{{ a.platform }} · </span> }<span>{{ since(a.createdAt) }}</span>
+            @if (a.costEur !== null) { <span> · {{ money(a.costEur) }}</span> }
+          </p>
+        </div>
+        <button mat-icon-button type="button" class="veille-alert__close" aria-label="Fermer l'alerte"
+                (click)="alert.set(null)">
+          <mat-icon>close</mat-icon>
+        </button>
+      </div>
+    }
     @for (watch of brokenWatches(); track watch.id) {
       <div class="veille-broken" role="status">
         <mat-icon class="veille-broken__icon" aria-hidden="true">sensors_off</mat-icon>
@@ -87,6 +119,18 @@ import { VeilleService } from '../../core/services/veille.service';
   `,
   styles: `
     :host { display: block; }
+    .veille-alert {
+      display: flex; gap: var(--cg-space-2); margin: var(--cg-space-2) 0;
+      padding: var(--cg-space-2) var(--cg-space-1) var(--cg-space-2) var(--cg-space-3);
+      border: 1px solid var(--cg-divider); border-left: 4px solid var(--cg-accent); border-radius: 8px;
+      font-family: var(--cg-font-body); color: inherit;
+    }
+    .veille-alert__icon { flex: none; color: var(--cg-accent); }
+    .veille-alert__body { min-width: 0; flex: 1; }
+    .veille-alert__headline { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+    .veille-alert__changes { margin: var(--cg-space-1) 0 0; padding-left: var(--cg-space-4); font-size: 13px; }
+    .veille-alert__meta { margin: var(--cg-space-1) 0 0; font-size: 12px; opacity: 0.8; }
+    .veille-alert__close { --mdc-icon-button-icon-color: inherit; color: inherit; flex: none; }
     .veille-broken {
       display: flex; align-items: center; gap: var(--cg-space-2); margin: var(--cg-space-2) 0;
       padding: var(--cg-space-1) var(--cg-space-3); border: 1px solid var(--cg-divider);
@@ -153,6 +197,16 @@ export class TerminalVeillesBandComponent {
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
 
+  /**
+   * SF-230-03 — l'alerte demandée par l'adresse (`?alerte=…`, le lien de la notification tant que Jarvis — F-231 —
+   * n'est pas là) : affichée en tête, marquée ouverte (mesure D8).
+   */
+  readonly alert = signal<JarvisAlert | null>(null);
+  readonly maxChanges = 8;
+  private readonly route = inject(ActivatedRoute, { optional: true });
+  private readonly destroyRef = inject(DestroyRef);
+  private shownAlertId: string | null = null;
+
   constructor() {
     effect(() => {
       const id = this.workspaceId();
@@ -163,6 +217,51 @@ export class TerminalVeillesBandComponent {
         this.watches.set([]);
       }
     });
+    this.route?.queryParamMap?.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
+      const alertId = params.get('alerte');
+      if (alertId && alertId !== this.shownAlertId) {
+        this.showAlert(alertId);
+      }
+    });
+  }
+
+  private showAlert(alertId: string): void {
+    this.shownAlertId = alertId;
+    this.service.alert(alertId).subscribe({
+      next: (alert) => this.alert.set(alert),
+      // Une alerte introuvable (supprimée, d'un autre compte) n'est jamais une raison de casser le terminal.
+      error: () => this.alert.set(null),
+    });
+  }
+
+  /** L'alerte n'est montrée que dans le fil de SON sujet : chaque terminal (mosaïque comprise) ne montre que les siennes. */
+  readonly visibleAlert = computed(() => {
+    const alert = this.alert();
+    const workspaceId = this.workspaceId();
+    return alert && workspaceId && alert.workspaceId === workspaceId ? alert : null;
+  });
+
+  private openedAlertId: string | null = null;
+
+  /** Montrée = ouverte (mesure D8), une fois. */
+  private readonly markOpened = effect(() => {
+    const alert = this.visibleAlert();
+    if (alert && !alert.openedAt && alert.id !== this.openedAlertId) {
+      this.openedAlertId = alert.id;
+      untracked(() => this.service.openAlert(alert.id).subscribe({ error: () => undefined }));
+    }
+  });
+
+  label(change: JarvisWatchChange): string {
+    return changeLabel(change);
+  }
+
+  since(iso: string): string {
+    return ago(iso);
+  }
+
+  money(value: number | null): string {
+    return formatEuros(value);
   }
 
   private load(workspaceId: string): void {

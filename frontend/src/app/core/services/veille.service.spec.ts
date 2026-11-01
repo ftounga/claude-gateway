@@ -28,6 +28,10 @@ describe('VeilleService (F-230)', () => {
     http.expectOne({ method: 'POST', url: '/api/workspaces/w-1/watches/v-1/run' }).flush({});
     service.history('w-1', 'v-1').subscribe();
     http.expectOne({ method: 'GET', url: '/api/workspaces/w-1/watches/v-1/runs' }).flush([]);
+    service.alert('a-1').subscribe();
+    http.expectOne({ method: 'GET', url: '/api/jarvis/alerts/a-1' }).flush({});
+    service.openAlert('a-1').subscribe();
+    http.expectOne({ method: 'POST', url: '/api/jarvis/alerts/a-1/open' }).flush(null);
     service.remove('w-1', 'v-1').subscribe();
     http.expectOne({ method: 'DELETE', url: '/api/workspaces/w-1/watches/v-1' }).flush(null);
   });
