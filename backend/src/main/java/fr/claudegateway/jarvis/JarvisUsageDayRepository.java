@@ -17,7 +17,11 @@ public interface JarvisUsageDayRepository extends JpaRepository<JarvisUsageDay, 
 
     List<JarvisUsageDay> findByUserIdAndDayGreaterThanEqualOrderByDayAsc(UUID userId, LocalDate from);
 
-    /** Le coût de la voix du compte depuis {@code from} (inclus), en dollars ; 0 sans ligne. */
-    @Query("select coalesce(sum(d.speechCostUsd), 0) from JarvisUsageDay d where d.userId = :userId and d.day >= :from")
+    /**
+     * Le coût de la voix du compte depuis {@code from} (inclus), en dollars ; 0 sans ligne. F-233 / SF-233-04 :
+     * lecture <b>et</b> écoute en flux.
+     */
+    @Query("select coalesce(sum(d.speechCostUsd + d.sttStreamCostUsd), 0) from JarvisUsageDay d"
+            + " where d.userId = :userId and d.day >= :from")
     BigDecimal sumSpeechCostUsdSince(@Param("userId") UUID userId, @Param("from") LocalDate from);
 }

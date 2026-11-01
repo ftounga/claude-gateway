@@ -48,6 +48,14 @@ public class JarvisUsageService {
         });
     }
 
+    /** F-233 / SF-233-04 — une session d'écoute en flux : secondes et coût en dollars. */
+    public void addStream(UUID userId, long seconds, BigDecimal costUsd) {
+        bump(userId, day -> {
+            day.setSttStreamSeconds(day.getSttStreamSeconds() + Math.max(0L, seconds));
+            day.setSttStreamCostUsd(day.getSttStreamCostUsd().add(costUsd == null ? BigDecimal.ZERO : costUsd));
+        });
+    }
+
     /** SF-231-05 — une ouverture de l'écran Jarvis (mesure d'adoption, D9). */
     public void addSession(UUID userId) {
         bump(userId, day -> day.setSessions(day.getSessions() + 1));

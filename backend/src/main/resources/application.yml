@@ -604,6 +604,14 @@ app:
     # Tarifs du journal d'usage (USD) : synthèse par 1 000 caractères, transcription des mots par minute.
     cost-usd-per-thousand-chars: ${APP_SPEECH_COST_USD_PER_1K_CHARS:0.015}
     transcription-cost-usd-per-minute: ${APP_SPEECH_TRANSCRIPTION_COST_USD_PER_MIN:0.006}
+  elevenlabs:
+    # F-233 (D-PO-1 b) : ElevenLabs, sous-traitant de l'ecoute en flux (SF-233-04) et voix candidate (SF-233-06).
+    # La cle vient EXCLUSIVEMENT de l'environnement (secret backend-secrets), jamais commitee ni journalisee,
+    # jamais exposee au client. Vide => tout ce qui en depend est eteint (503), aucun appel sortant.
+    api-key: ${APP_ELEVENLABS_API_KEY:}
+    base-url: ${APP_ELEVENLABS_BASE_URL:https://api.elevenlabs.io}
+    ws-base-url: ${APP_ELEVENLABS_WS_BASE_URL:wss://api.elevenlabs.io}
+    timeout: ${APP_ELEVENLABS_TIMEOUT:PT30S}
   jarvis:
     # F-231 / SF-231-05 : l'écran /jarvis existe ; les alertes de veille (F-230) y mènent (/jarvis?alerte=…).
     # false = repli sur le fil du sujet (/atelier/{sujet}?alerte=…).
@@ -614,7 +622,22 @@ app:
     voice:
       voice: ${APP_JARVIS_VOICE:onyx}
       max-chars: ${APP_JARVIS_VOICE_MAX_CHARS:600}
-      monthly-budget-eur: ${APP_JARVIS_VOICE_MONTHLY_BUDGET_EUR:15}
+      # F-233 / D-PO-4 : 100 EUR/mois, lecture ET ecoute en flux (SF-233-04).
+      monthly-budget-eur: ${APP_JARVIS_VOICE_MONTHLY_BUDGET_EUR:100}
+    # F-233 / SF-233-04 : L'ECOUTE EN FLUX (transcription pendant la parole). Fournisseur retenu (D-PO-1 b) :
+    # ElevenLabs Scribe v2 Realtime, par JETON EPHEMERE (D-PO-3) : la passerelle obtient un jeton a usage
+    # unique, le navigateur parle directement au fournisseur ; la cle ne quitte jamais le serveur.
+    # DORMANT SANS CLE (APP_ELEVENLABS_API_KEY) : route 503, l'ecran reste sur la dictee batch, rien ne part.
+    # provider=none eteint le flux sans toucher a la cle.
+    stt-stream:
+      provider: ${APP_JARVIS_STT_STREAM_PROVIDER:elevenlabs}
+      model: ${APP_JARVIS_STT_STREAM_MODEL:scribe_v2_realtime}
+      language: ${APP_JARVIS_STT_STREAM_LANGUAGE:fr}
+      # Fin de tour du fournisseur (D6) : silence de VAD en secondes.
+      vad-silence-seconds: ${APP_JARVIS_STT_STREAM_VAD_SILENCE_SECONDS:0.7}
+      max-session-seconds: ${APP_JARVIS_STT_STREAM_MAX_SESSION_SECONDS:120}
+      # 0,39 $/h (Scribe v2 Realtime) ; compte a la duree de session (D13).
+      cost-usd-per-minute: ${APP_JARVIS_STT_STREAM_COST_USD_PER_MIN:0.0065}
     # LE COMPAGNON ANDROID (F-232 / SF-232-02), servi par GET /runner/download/android SEULEMENT si sa
     # signature v1 est faite par le certificat dont l'empreinte SHA-256 est donnee ici (format keytool
     # accepte). L'empreinte d'un certificat est PUBLIQUE : ce n'est pas un secret. Vide => rien n'est servi.

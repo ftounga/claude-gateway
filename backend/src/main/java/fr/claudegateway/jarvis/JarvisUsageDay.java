@@ -64,6 +64,21 @@ public class JarvisUsageDay {
     @Column(name = "wakes", nullable = false)
     private int wakes = 0;
 
+    /** F-233 / SF-233-04 — secondes de transcription en flux (écoute), comptées à la durée. */
+    @Builder.Default
+    @Column(name = "stt_stream_seconds", nullable = false)
+    private long sttStreamSeconds = 0L;
+
+    @Builder.Default
+    @Column(name = "stt_stream_cost_usd", nullable = false, precision = 12, scale = 6)
+    private BigDecimal sttStreamCostUsd = BigDecimal.ZERO;
+
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    /** F-233 / SF-233-04 — ce que la voix de Jarvis a coûté ce jour-là : lecture + écoute en flux, en dollars. */
+    public BigDecimal totalCostUsd() {
+        BigDecimal speech = speechCostUsd == null ? BigDecimal.ZERO : speechCostUsd;
+        return sttStreamCostUsd == null ? speech : speech.add(sttStreamCostUsd);
+    }
 }

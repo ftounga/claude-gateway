@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-233 / SF-233-04 - L'ECOUTE EN FLUX DE JARVIS, COMPTEE A LA DUREE (D13).
+
+      jarvis_usage_days + stt_stream_seconds / stt_stream_cost_usd : les secondes de session de
+      transcription en flux et leur cout. Le plafond mensuel de la voix somme lecture + ecoute.
+      Aucun contenu. Colonnes additives avec defaut : les lignes existantes valent 0.
+
+      Rollback : les colonnes se retirent.
+    -->
+
+    <changeSet id="197-jarvis-usage-stt-stream" author="claude-gateway">
+        <addColumn tableName="jarvis_usage_days">
+            <column name="stt_stream_seconds" type="bigint" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="stt_stream_cost_usd" type="numeric(12,6)" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="jarvis_usage_days" columnName="stt_stream_cost_usd"/>
+            <dropColumn tableName="jarvis_usage_days" columnName="stt_stream_seconds"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

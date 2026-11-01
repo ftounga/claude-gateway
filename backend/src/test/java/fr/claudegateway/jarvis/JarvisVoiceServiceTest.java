@@ -63,13 +63,13 @@ class JarvisVoiceServiceTest {
     }
 
     @Test
-    @DisplayName("défauts D2 : voix onyx, ton posé, 600 caractères, 15 € par mois")
+    @DisplayName("défauts D2 : voix onyx, ton posé, 600 caractères, 100 € par mois (F-233 / D-PO-4)")
     void defaults() {
         JarvisVoiceProperties props = new JarvisVoiceProperties(null, null, null, null, null);
         assertThat(props.voice()).isEqualTo("onyx");
         assertThat(props.instructions()).contains("posée");
         assertThat(props.maxChars()).isEqualTo(600);
-        assertThat(props.monthlyBudgetEur()).isEqualByComparingTo("15");
+        assertThat(props.monthlyBudgetEur()).isEqualByComparingTo("100");
     }
 
     @Test
@@ -121,7 +121,7 @@ class JarvisVoiceServiceTest {
         assertThat(status.enabled()).isTrue();
         assertThat(status.voice()).isEqualTo("onyx");
         assertThat(status.monthSpentEur()).isEqualByComparingTo("0.92");
-        assertThat(status.monthlyBudgetEur()).isEqualByComparingTo("15.00");
+        assertThat(status.monthlyBudgetEur()).isEqualByComparingTo("100.00");
         assertThat(status.budgetReached()).isFalse();
     }
 
