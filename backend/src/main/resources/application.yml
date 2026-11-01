@@ -604,6 +604,14 @@ app:
     # Tarifs du journal d'usage (USD) : synthèse par 1 000 caractères, transcription des mots par minute.
     cost-usd-per-thousand-chars: ${APP_SPEECH_COST_USD_PER_1K_CHARS:0.015}
     transcription-cost-usd-per-minute: ${APP_SPEECH_TRANSCRIPTION_COST_USD_PER_MIN:0.006}
+  jarvis:
+    # LE MODE JARVIS (F-231). La voix (SF-231-01) relaie la voix off (app.speech.*, meme fournisseur, meme cle,
+    # memes tarifs) : AUCUN NOUVEAU SECRET. Voix masculine posee par defaut (onyx), phrases courtes, plafond
+    # mensuel en euros (0 = voix coupee, l'ecran retombe sur le texte).
+    voice:
+      voice: ${APP_JARVIS_VOICE:onyx}
+      max-chars: ${APP_JARVIS_VOICE_MAX_CHARS:600}
+      monthly-budget-eur: ${APP_JARVIS_VOICE_MONTHLY_BUDGET_EUR:15}
   videos:
     # DEVIS D'UNE VIDEO (F-216 / SF-216-01) : outil video_devis, calcule par la gateway avant toute fabrication.
     # voix = caracteres x tarif de voix_off + minutes x tarif d'horodatage (app.speech.*, jamais dupliques) ;

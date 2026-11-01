@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-231 / SF-231-01 - LE MODE JARVIS : LA VOIX DE JARVIS.
+
+      jarvis_usage_days : UNE ligne par compte et par jour. chars_spoken + speech_cost_usd = ce que la
+      voix de Jarvis a lu et ce que cela a coute (sert le plafond mensuel en euros, D9) ; sessions,
+      spoken_seconds et wakes = la mesure d'adoption (SF-231-05, D9 : sessions par jour, minutes
+      parlees, reveils). Aucun contenu : ni texte ni audio.
+
+      Isolation : user_id sur chaque ligne ; lectures et ecritures sous user_id.
+      Rollback : la table se retire.
+    -->
+
+    <changeSet id="190-jarvis-usage-days" author="claude-gateway">
+        <createTable tableName="jarvis_usage_days">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="usage_day" type="date"><constraints nullable="false"/></column>
+            <column name="chars_spoken" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="speech_cost_usd" type="numeric(12,6)" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="sessions" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="spoken_seconds" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="wakes" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="jarvis_usage_days" columnNames="user_id, usage_day"
+                             constraintName="uq_jarvis_usage_days_user_day"/>
+        <rollback>
+            <dropTable tableName="jarvis_usage_days"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -47,21 +47,7 @@ public class OpenAiSpeechProvider implements SpeechProvider {
 
     @Override
     public SpeechAudio synthesize(String text, String voice, String instructions) {
-        if (!properties.isActive()) {
-            throw new SpeechProviderUnavailableException(
-                    "Voix off non configurée : aucun fournisseur de synthèse vocale n'est paramétré.");
-        }
-        if (text == null || text.isBlank()) {
-            throw new SpeechProviderException("Texte vide : rien à lire.");
-        }
-        ObjectNode body = objectMapper.createObjectNode();
-        body.put("model", properties.model());
-        body.put("input", text);
-        body.put("voice", voice);
-        if (instructions != null && !instructions.isBlank()) {
-            body.put("instructions", instructions);
-        }
-        body.put("response_format", "mp3");
+        ObjectNode body = requestBody(text, voice, instructions);
         try {
             byte[] bytes = restClient.post()
                     .uri(properties.baseUrl().strip().replaceAll("/+$", "") + "/audio/speech")
@@ -84,5 +70,67 @@ public class OpenAiSpeechProvider implements SpeechProvider {
             log.warn("Appel au fournisseur de voix en échec (modèle={})", properties.model());
             throw new SpeechProviderException("Échec de l'appel au fournisseur de voix.", e);
         }
+    }
+
+    /**
+     * La même requête, dont la réponse est <b>recopiée au fil de l'eau</b> dans {@code out} (F-231 / SF-231-01) :
+     * le fournisseur diffuse l'mp3 par morceaux, et la voix de Jarvis démarre avant la fin de la synthèse.
+     */
+    @Override
+    public long synthesizeStream(String text, String voice, String instructions, java.io.OutputStream out) {
+        ObjectNode body = requestBody(text, voice, instructions);
+        try {
+            Long written = restClient.post()
+                    .uri(properties.baseUrl().strip().replaceAll("/+$", "") + "/audio/speech")
+                    .header("Authorization", "Bearer " + properties.apiKey())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .exchange((request, resp) -> {
+                        if (resp.getStatusCode().isError()) {
+                            throw new SpeechProviderException(
+                                    "Le fournisseur de voix a répondu une erreur (" + resp.getStatusCode().value() + ").");
+                        }
+                        long total = 0;
+                        byte[] buffer = new byte[8_192];
+                        try (java.io.InputStream in = resp.getBody()) {
+                            int read;
+                            while ((read = in.read(buffer)) >= 0) {
+                                out.write(buffer, 0, read);
+                                out.flush();
+                                total += read;
+                            }
+                        }
+                        return total;
+                    });
+            if (written == null || written == 0L) {
+                throw new SpeechProviderException("Réponse vide du fournisseur de voix.");
+            }
+            return written;
+        } catch (SpeechProviderException e) {
+            throw e;
+        } catch (RestClientException e) {
+            log.warn("Appel au fournisseur de voix en échec (modèle={}, flux)", properties.model());
+            throw new SpeechProviderException("Échec de l'appel au fournisseur de voix.", e);
+        }
+    }
+
+    /** Le corps de {@code POST /audio/speech} ; refuse sans appel réseau si la voix est éteinte ou le texte vide. */
+    private ObjectNode requestBody(String text, String voice, String instructions) {
+        if (!properties.isActive()) {
+            throw new SpeechProviderUnavailableException(
+                    "Voix off non configurée : aucun fournisseur de synthèse vocale n'est paramétré.");
+        }
+        if (text == null || text.isBlank()) {
+            throw new SpeechProviderException("Texte vide : rien à lire.");
+        }
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("model", properties.model());
+        body.put("input", text);
+        body.put("voice", voice);
+        if (instructions != null && !instructions.isBlank()) {
+            body.put("instructions", instructions);
+        }
+        body.put("response_format", "mp3");
+        return body;
     }
 }
