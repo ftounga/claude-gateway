@@ -12,6 +12,13 @@ describe('toThreadItem — né à la voix (F-231 / SF-231-06)', () => {
   it('n’ajoute rien pour un message tapé', () => {
     expect(toThreadItem(base as AtelierMessage).viaJarvis).toBeUndefined();
     expect(toThreadItem({ ...base, via: null } as AtelierMessage).viaJarvis).toBeUndefined();
+    expect(toThreadItem(base as AtelierMessage).brain).toBeUndefined();
+  });
+
+  it('F-235 / SF-235-06 — garde le cerveau : réponse rapide ou délégation à Opus', () => {
+    expect(toThreadItem({ ...base, via: 'JARVIS', brain: 'FAST' } as AtelierMessage).brain).toBe('FAST');
+    expect(toThreadItem({ ...base, via: 'JARVIS', brain: 'DELEGATED' } as AtelierMessage).brain).toBe('DELEGATED');
+    expect(toThreadItem({ ...base, via: 'JARVIS', brain: null } as AtelierMessage).brain).toBeUndefined();
   });
 });
 

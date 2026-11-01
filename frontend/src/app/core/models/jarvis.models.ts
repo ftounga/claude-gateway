@@ -20,6 +20,8 @@ export interface JarvisAbsenceTurn {
   chantierNumber: number | null;
   replyId: string | null;
   reply: string | null;
+  /** F-235 / SF-235-06 — `FAST` : réponse rapide de Jarvis ; `DELEGATED` : tour Opus délégué ; absent sinon. */
+  brain?: 'FAST' | 'DELEGATED' | null;
 }
 
 /** Une attente créée depuis la première demande dite à la voix. */

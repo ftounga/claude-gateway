@@ -57,6 +57,22 @@ describe('Pendant ton absence, via Jarvis (F-231 / SF-231-06)', () => {
     expect(text).toContain('Mail à Zahi — Compte forge');
   });
 
+  it('F-235 / SF-235-06 — distingue réponses rapides et délégations à Opus', () => {
+    jarvis.absence.and.returnValue(of(absence({
+      turns: [
+        { messageId: 'u-1', request: 'Où en est le chantier 3 ?', at: new Date().toISOString(), chantierNumber: null,
+          replyId: 'a-1', reply: 'Le chantier 3 en est aux tests.', brain: 'FAST' },
+        { messageId: 'u-2', request: 'Regarde les tickets bloqués', at: new Date().toISOString(), chantierNumber: null,
+          replyId: 'a-2', reply: 'Deux tickets sont bloqués.', brain: 'DELEGATED' },
+      ],
+    })));
+    const fixture = render(null);
+    const items = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('.jabs__turn'))
+      .map((li) => li.textContent ?? '');
+    expect(items[0]).toContain('réponse rapide');
+    expect(items[1]).toContain('délégué à Opus');
+  });
+
   it('[Marquer envoyé] passe par F-211 et sort le message de la liste', () => {
     jarvis.absence.and.returnValue(of(absence()));
     sends.mark.and.returnValue(of({} as unknown as MessageSend));

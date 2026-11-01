@@ -38,6 +38,8 @@ export interface AtelierThreadItem {
   actions: AtelierAction[];
   /** Né à la voix, dans l'écran Jarvis (F-231 / SF-231-06) : marque « 🎙 via Jarvis ». Absent sinon. */
   viaJarvis?: boolean;
+  /** F-235 / SF-235-06 — `FAST` : réponse rapide de Jarvis ; `DELEGATED` : tour Opus lancé par Jarvis. */
+  brain?: 'FAST' | 'DELEGATED';
   /** Chemins des fichiers modifiés par une session d'exécution (mode « Terminal », SF-28-11). */
   changedFiles?: string[];
   /**

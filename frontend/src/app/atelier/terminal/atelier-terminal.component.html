@@ -835,6 +835,12 @@
               <!-- F-231 / SF-231-06 : née à la voix, dans l'écran Jarvis. Typographie seule, aucune couleur nouvelle. -->
               @if (message.viaJarvis) {
                 <span class="terminal-via-jarvis">· 🎙 via Jarvis</span>
+                <!-- F-235 / SF-235-06 : le cerveau qui a tenu l'échange. Typographie seule, aucune couleur nouvelle. -->
+                @if (message.brain === 'FAST') {
+                  <span class="terminal-via-jarvis terminal-brain-fast">· réponse rapide</span>
+                } @else if (message.brain === 'DELEGATED') {
+                  <span class="terminal-via-jarvis terminal-brain-delegated">· → délégué à Opus</span>
+                }
               }
             </span>
             <span class="terminal-request">{{ questionText(message) }}</span>

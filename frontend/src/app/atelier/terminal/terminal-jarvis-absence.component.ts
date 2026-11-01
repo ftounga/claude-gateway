@@ -37,7 +37,7 @@ import { MessageSendsService } from '../../core/services/message-sends.service';
             <li class="jabs__turn">
               <span class="jabs__request">🎙 « {{ turn.request }} »</span>
               @if (turn.reply) { <span class="jabs__reply">{{ turn.reply }}</span> }
-              <span class="jabs__meta">{{ when(turn.at) }}@if (turn.chantierNumber) { · chantier {{ turn.chantierNumber }}}</span>
+              <span class="jabs__meta">{{ when(turn.at) }}@if (turn.chantierNumber) { · chantier {{ turn.chantierNumber }}}@if (turn.brain === 'FAST') { · réponse rapide} @else if (turn.brain === 'DELEGATED') { · délégué à Opus}</span>
             </li>
           }
         </ul>
