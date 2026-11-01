@@ -15,6 +15,7 @@ import { AdminBilansService } from './bilans/admin-bilans.service';
 import { AdminDiagnosticService } from './diagnostic/admin-diagnostic.service';
 import { AdminUsageService } from './admin-usage.service';
 import { AppRequestService } from '../core/services/app-request.service';
+import { AdminJarvisVoiceService } from './jarvis-voice/admin-jarvis-voice.service';
 
 describe('AdminComponent', () => {
   let fixture: ComponentFixture<AdminComponent>;
@@ -127,6 +128,8 @@ describe('AdminComponent', () => {
         { provide: AdminBilansService, useValue: bilansSpy },
         { provide: AdminDiagnosticService, useValue: diagnosticSpy },
         { provide: AppRequestService, useValue: besoinsSpy },
+        { provide: AdminJarvisVoiceService, useValue: jasmine.createSpyObj<AdminJarvisVoiceService>(
+          'AdminJarvisVoiceService', { audition: of({ phrases: [], candidates: [], chosen: null }) }) },
       ],
     }).compileComponents();
 

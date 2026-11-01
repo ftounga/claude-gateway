@@ -10,6 +10,7 @@ import { AdminService } from './admin.service';
 import { AdminUser } from './admin.models';
 import { AccessCodesComponent } from './access-codes/access-codes.component';
 import { AdminCostComponent } from './cost/admin-cost.component';
+import { AdminJarvisVoiceComponent } from './jarvis-voice/admin-jarvis-voice.component';
 import { AdminDiagnosticComponent } from './diagnostic/admin-diagnostic.component';
 import { AdminBesoinsComponent } from './besoins/admin-besoins.component';
 import { AdminBilansComponent } from './bilans/admin-bilans.component';
@@ -42,6 +43,7 @@ import { GovernancePackagesComponent } from './governance-packages/governance-pa
     GovernancePackagesComponent,
     AccessCodesComponent,
     AdminCostComponent,
+    AdminJarvisVoiceComponent,
     AdminUsageComponent,
     AdminBilansComponent,
     AdminDiagnosticComponent,

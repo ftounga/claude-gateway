@@ -634,6 +634,10 @@ app:
     # unique, le navigateur parle directement au fournisseur ; la cle ne quitte jamais le serveur.
     # DORMANT SANS CLE (APP_ELEVENLABS_API_KEY) : route 503, l'ecran reste sur la dictee batch, rien ne part.
     # provider=none eteint le flux sans toucher a la cle.
+    # F-233 / SF-233-07 : l'audition a l'aveugle. Candidats imposes par le PO (Daniel, George, Onyx) par defaut ;
+    # la voix decrite (Voice Design ElevenLabs) s'ajoute quand son identifiant est fourni.
+    audition:
+      designed-voice-id: ${APP_JARVIS_AUDITION_DESIGNED_VOICE_ID:}
     stt-stream:
       provider: ${APP_JARVIS_STT_STREAM_PROVIDER:elevenlabs}
       model: ${APP_JARVIS_STT_STREAM_MODEL:scribe_v2_realtime}
