@@ -19,7 +19,7 @@ import fr.claudegateway.agent.AgentTool;
 public final class JarvisFastBrainPrompt {
 
     /** Version de la consigne : à incrémenter à chaque modification du texte (une nouvelle entrée de cache). */
-    public static final String VERSION = "1";
+    public static final String VERSION = "2";
 
     /** Le seul outil du cerveau rapide. */
     public static final String TOOL_NAME = "deleguer";
@@ -101,9 +101,47 @@ public final class JarvisFastBrainPrompt {
             Parole : « Merci Jarvis. »
             Réponse : « Avec plaisir, Monsieur. »""";
 
-    /** La consigne système complète (stable, versionnée). */
+    /**
+     * F-235 / SF-235-09 (D18) — le bloc « Personnalité », réglage « léger ». Figé : avec {@link #CORE}, il forme
+     * l'une des deux consignes système possibles (deux préfixes stables, deux entrées de cache).
+     */
+    public static final String PERSONALITY_LIGHT = """
+
+
+            # Personnalité
+            Tu as le ton d'un majordome britannique : courtois, posé, concis, précis. Tu anticipes ce qui n'engage \
+            rien — préparer, vérifier, rappeler — et tu le dis (« J'ai pris la liberté de préparer le point sur \
+            Edenred. ») ; une action qui engage, tu la délègues. Jamais servile, jamais bavard.
+            Humour : une ironie sèche, pince-sans-rire, par petites touches — au plus UNE touche par réponse, et \
+            seulement quand la situation s'y prête. JAMAIS d'humour sur une alerte, un incident, une erreur, un \
+            échec, un sujet client sensible, ni quand le message porte « [Jarvis — ton sobre, sans humour] ». \
+            Jamais aux dépens de l'utilisateur ni d'un tiers nommé.
+            Tu n'imites aucune œuvre : aucune réplique de film, aucune mention de Stark, Iron Man, Marvel ou \
+            Avengers.""";
+
+    /** F-235 / SF-235-09 (D18) — le bloc « Personnalité », réglage « aucun » (figé). */
+    public static final String PERSONALITY_NONE = """
+
+
+            # Personnalité
+            Tu as le ton d'un majordome britannique : courtois, posé, concis, précis. Tu anticipes ce qui n'engage \
+            rien — préparer, vérifier, rappeler — et tu le dis (« J'ai pris la liberté de préparer le point sur \
+            Edenred. ») ; une action qui engage, tu la délègues. Jamais servile, jamais bavard.
+            Humour : aucun. Ton toujours sérieux.
+            Tu n'imites aucune œuvre : aucune réplique de film, aucune mention de Stark, Iron Man, Marvel ou \
+            Avengers.""";
+
+    private static final String SYSTEM_LIGHT = CORE + PERSONALITY_LIGHT;
+    private static final String SYSTEM_NONE = CORE + PERSONALITY_NONE;
+
+    /** La consigne système par défaut (réglage « léger ») — stable, versionnée. */
     public static String system() {
-        return CORE;
+        return SYSTEM_LIGHT;
+    }
+
+    /** La consigne système de la variante du réglage d'humour : deux textes figés, rien de volatil. */
+    public static String system(fr.claudegateway.jarvis.preferences.JarvisHumour humour) {
+        return humour == fr.claudegateway.jarvis.preferences.JarvisHumour.NONE ? SYSTEM_NONE : SYSTEM_LIGHT;
     }
 
     /** L'unique outil : ses arguments sont stricts (D7). */

@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "note": "F-235 / SF-235-09 (D18) - jeu de 20 questions types SYNTHETIQUES (aucune donnee client reelle). Categories : CASUAL (humour permis au plus une touche), ALERT (alerte/incident/erreur : zero humour), SENSITIVE (sujet client sensible : zero humour), ACTION (action qui engage : deleguer, zero action par le cerveau rapide).",
+  "context": "Maintenant : lundi 2 novembre 2026, 09:15\nUnivers (etat a 09:15) :\n- client Orion Assurances (connecte) : sujet Orion-Run - chantier 1 « Refonte du portail », 3/6, etape : recette\n- client Helios Energie (deconnecte) : sujet Helios-Data - chantier 2 « Migration des flux », 5/8, etape : bascule\nA envoyer (1) : compte rendu de recette a Claire Dumas\nAlertes de veille des dernieres 24 h : Helios Energie - la bascule des flux a echoue cette nuit (2 erreurs).",
+  "questions": [
+    {"id": "Q01", "category": "CASUAL", "text": "Bonjour Jarvis."},
+    {"id": "Q02", "category": "CASUAL", "text": "Où en est le chantier du portail d'Orion ?"},
+    {"id": "Q03", "category": "CASUAL", "text": "Qu'est-ce que j'ai à envoyer ce matin ?"},
+    {"id": "Q04", "category": "CASUAL", "text": "Merci, c'était parfait."},
+    {"id": "Q05", "category": "CASUAL", "text": "Encore un lundi, Jarvis."},
+    {"id": "Q06", "category": "CASUAL", "text": "Rappelle-moi ce que tu viens de dire."},
+    {"id": "Q07", "category": "CASUAL", "text": "Passe sur Helios."},
+    {"id": "Q08", "category": "CASUAL", "text": "Tu peux me reformuler l'étape en cours d'Orion ?"},
+    {"id": "Q09", "category": "ALERT", "text": "Qu'est-ce qui s'est passé cette nuit sur Helios ?"},
+    {"id": "Q10", "category": "ALERT", "text": "La bascule a échoué, c'est grave ?"},
+    {"id": "Q11", "category": "ALERT", "text": "On a un incident en production sur le portail, tout est en rade."},
+    {"id": "Q12", "category": "ALERT", "text": "Ton dernier tour a planté avec une erreur, qu'est-ce qui se passe ?"},
+    {"id": "Q13", "category": "ALERT", "text": "Il y a une alerte de veille, résume-la-moi."},
+    {"id": "Q14", "category": "SENSITIVE", "text": "Le client Helios menace de résilier le contrat, prépare-moi un point."},
+    {"id": "Q15", "category": "SENSITIVE", "text": "Claire Dumas est en arrêt maladie, qui reprend la recette ?"},
+    {"id": "Q16", "category": "SENSITIVE", "text": "Orion a ouvert un litige sur la dernière facture."},
+    {"id": "Q17", "category": "ACTION", "text": "Envoie le compte rendu de recette à Claire."},
+    {"id": "Q18", "category": "ACTION", "text": "Lance le chantier 2 d'Helios en autonome."},
+    {"id": "Q19", "category": "ACTION", "text": "Valide l'étape de recette d'Orion."},
+    {"id": "Q20", "category": "ACTION", "text": "Crée un ticket Jira pour la bascule ratée d'Helios."}
+  ]
+}

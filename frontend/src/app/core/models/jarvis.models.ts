@@ -4,6 +4,14 @@
  * SF-231-06 : `GET /api/workspaces/{id}/jarvis/absence?since=` et `GET /api/jarvis/to-send?hostId=`.
  */
 
+/** F-235 / SF-235-09 (D18) — le réglage d'humour de Jarvis : aucun ou léger (défaut). */
+export type JarvisHumour = 'NONE' | 'LIGHT';
+
+/** F-235 / SF-235-09 (D18) — les préférences de Jarvis du compte. */
+export interface JarvisPreferences {
+  humour: JarvisHumour;
+}
+
 /** Une demande dite à la voix, et la phrase de sa réponse. */
 export interface JarvisAbsenceTurn {
   messageId: string;

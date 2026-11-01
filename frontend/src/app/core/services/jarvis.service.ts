@@ -3,8 +3,8 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import {
-  JarvisAbsence, JarvisCompanionDevice, JarvisCompanionPairingCode, JarvisCompanionVersion, JarvisToSendList,
-  JarvisSttTicket, TurnTimingReport,
+  JarvisAbsence, JarvisCompanionDevice, JarvisCompanionPairingCode, JarvisCompanionVersion, JarvisHumour,
+  JarvisPreferences, JarvisToSendList, JarvisSttTicket, TurnTimingReport,
 } from '../models/jarvis.models';
 
 /** F-232 / SF-232-02 — l'APK du compagnon Android, servi par le chemin des paquets du runner (F-44). */
@@ -80,5 +80,15 @@ export class JarvisService {
   /** F-232 / SF-232-03 — révoque un compagnon : son jeton est refusé dès sa relève suivante. */
   revokeCompanion(id: string): Observable<void> {
     return this.http.delete<void>(`/api/jarvis/companions/${id}`);
+  }
+
+  /** F-235 / SF-235-09 (D18) — les préférences de Jarvis du compte (humour : aucun / léger, léger par défaut). */
+  preferences(): Observable<JarvisPreferences> {
+    return this.http.get<JarvisPreferences>('/api/jarvis/preferences');
+  }
+
+  /** F-235 / SF-235-09 (D18) — enregistre le réglage d'humour du compte. */
+  setHumour(humour: JarvisHumour): Observable<JarvisPreferences> {
+    return this.http.put<JarvisPreferences>('/api/jarvis/preferences', { humour });
   }
 }

@@ -1801,6 +1801,17 @@ public class AtelierChatService implements RelayInterruptTarget {
     private fr.claudegateway.runner.host.RunnerHostService runnerHostsForDoor;
 
     /** Branche la porte d'entrée du runner (F-161 / SF-161-01). */
+    /** F-235 / SF-235-09 (D18) — la personnalité de Jarvis (réglage d'humour) et le ton sobre forcé. */
+    private fr.claudegateway.jarvis.preferences.JarvisPreferenceService jarvisPreferences;
+    private fr.claudegateway.jarvis.preferences.JarvisSobriety jarvisSobriety;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJarvisPersonality(fr.claudegateway.jarvis.preferences.JarvisPreferenceService jarvisPreferences,
+            fr.claudegateway.jarvis.preferences.JarvisSobriety jarvisSobriety) {
+        this.jarvisPreferences = jarvisPreferences;
+        this.jarvisSobriety = jarvisSobriety;
+    }
+
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setRunnerDoor(fr.claudegateway.runner.door.RunnerDoor runnerDoor,
             fr.claudegateway.runner.host.RunnerHostService runnerHostsForDoor) {
@@ -3363,7 +3374,15 @@ public class AtelierChatService implements RelayInterruptTarget {
         // dans la consigne système : le préfixe reste stable et le cache F-134 intact). Texte fixe, ajouté APRÈS la
         // parole de l'utilisateur ; le message PERSISTÉ reste sa parole. Tour tapé : consigne inchangée à l'octet près.
         if (viaJarvis) {
-            consigne = fr.claudegateway.jarvis.JarvisOralNote.appendTo(consigne);
+            // F-235 / SF-235-09 (D18) : la personnalité (variante figée selon le réglage d'humour) et, sur alerte,
+            // incident ou erreur, la note « ton sobre » — toujours DANS LE MESSAGE, consigne système intouchée.
+            if (jarvisPreferences != null) {
+                boolean sober = jarvisSobriety != null && jarvisSobriety.sober(userId, userText);
+                consigne = fr.claudegateway.jarvis.JarvisOralNote.appendTo(consigne,
+                        jarvisPreferences.humour(userId), sober);
+            } else {
+                consigne = fr.claudegateway.jarvis.JarvisOralNote.appendTo(consigne);
+            }
             // F-233 / SF-233-09 (D10) — la réponse orale précédente a été coupée : seule la part entendue est
             // signalée, DANS LE MESSAGE (préfixe intact). Le texte écrit du tour précédent reste intact dans le fil.
             consigne = fr.claudegateway.jarvis.JarvisOralNote.appendCut(consigne, voiceMark.heardBeforeCut());

@@ -18,7 +18,7 @@ import { CutSnapshot } from '../core/services/jarvis-voice.service';
 import { JarvisStreamOpener, LISTEN_AUDIO, LiveListening } from './jarvis-stream-listener';
 import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { JarvisSttTicket } from '../core/models/jarvis.models';
+import { JarvisHumour, JarvisSttTicket } from '../core/models/jarvis.models';
 import { MarkdownPipe } from '../shared/markdown.pipe';
 import { EndOfSpeech, MicMeter, silenceMs } from './jarvis-mic-meter';
 import { asksConfirmation, classifyConfirmation, confirmationQuestion } from './jarvis-confirm';
@@ -176,6 +176,25 @@ export class JarvisComponent implements OnInit, OnDestroy {
   /** F-232 / SF-232-03 — sur Android, l'appairage des annonces téléphone verrouillé est proposé. */
   readonly android = /Android/i.test(this.userAgent);
 
+  // ---- F-235 / SF-235-09 (D18) : la personnalité, réglage d'humour par compte ----
+  /** Le réglage d'humour du compte (léger par défaut, tant que la passerelle n'a pas répondu). */
+  readonly humour = signal<JarvisHumour>('LIGHT');
+
+  /** Bascule « Humour : aucun / léger » ; revient en arrière si l'enregistrement échoue. */
+  toggleHumour(): void {
+    const previous = this.humour();
+    const next: JarvisHumour = previous === 'LIGHT' ? 'NONE' : 'LIGHT';
+    this.humour.set(next);
+    this.jarvis.setHumour(next).subscribe({
+      next: (prefs) => this.humour.set(prefs.humour),
+      error: () => this.humour.set(previous),
+    });
+  }
+
+  private loadPreferences(): void {
+    this.jarvis.preferences().subscribe({ next: (prefs) => this.humour.set(prefs.humour), error: () => undefined });
+  }
+
   constructor() {
     // F-233 / SF-233-08 — pendant que Jarvis parle, le micro reste ouvert : la détection de voix peut le couper.
     effect(() => {
@@ -229,6 +248,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const rawInstalled = Number(this.route.snapshot.queryParamMap.get('compagnon'));
     const installed = fromCompanion && Number.isInteger(rawInstalled) && rawInstalled >= 1 ? rawInstalled : null;
     this.loadCompanion(installed);
+    this.loadPreferences();
     this.atelier.listWorkspaces().subscribe({
       next: (list) => {
         this.subjects.set(list);

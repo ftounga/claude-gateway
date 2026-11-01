@@ -103,8 +103,8 @@ public class JarvisFastBrainService {
      * consommé par la mesure (SF-235-07).
      */
     public record Guards(int groundingTrips, int fillersRemoved, int repeatsRemoved, boolean forcedDelegation,
-            boolean toolText) {
-        public static final Guards NONE = new Guards(0, 0, 0, false, false);
+            boolean toolText, int imitationsRemoved) {
+        public static final Guards NONE = new Guards(0, 0, 0, false, false, 0);
     }
 
     /** Ce qui reçoit les fragments de la réponse au fil de l'eau. */
@@ -144,6 +144,8 @@ public class JarvisFastBrainService {
     private JarvisFastContextBuilder contextBuilder;
     private JarvisFastMemory memory;
     private JarvisDelegationRegistry delegations;
+    private fr.claudegateway.jarvis.preferences.JarvisPreferenceService preferences;
+    private fr.claudegateway.jarvis.preferences.JarvisSobriety sobriety;
     /** Dernier pré-chauffage par compte (D6) : au plus un toutes les {@link #WARM_EVERY}. */
     private final java.util.Map<UUID, java.time.Instant> warmed = new java.util.concurrent.ConcurrentHashMap<>();
     static final java.time.Duration WARM_EVERY = java.time.Duration.ofMinutes(4);
@@ -168,6 +170,19 @@ public class JarvisFastBrainService {
     }
 
     /** F-235 / SF-235-02 — le contexte compact, la mémoire de session, les délégations en cours. */
+    @Autowired(required = false)
+    public void setPersonality(fr.claudegateway.jarvis.preferences.JarvisPreferenceService preferences,
+            fr.claudegateway.jarvis.preferences.JarvisSobriety sobriety) {
+        this.preferences = preferences;
+        this.sobriety = sobriety;
+    }
+
+    /** F-235 / SF-235-09 (D18) — la variante figée de la consigne système selon le réglage d'humour du compte. */
+    String systemFor(UUID userId) {
+        return JarvisFastBrainPrompt.system(preferences == null ? fr.claudegateway.jarvis.preferences.JarvisHumour
+                .DEFAULT : preferences.humour(userId));
+    }
+
     @Autowired(required = false)
     public void setContext(JarvisFastContextBuilder contextBuilder, JarvisFastMemory memory,
             JarvisDelegationRegistry delegations) {
@@ -236,7 +251,7 @@ public class JarvisFastBrainService {
         warmed.put(userId, now);
         try {
             String apiKey = byok == null ? null : byok.resolveActiveApiKey(userId).orElse(null);
-            AgentTurn turn = provider.nextTurn(new AgentTurnRequest(properties.model(), JarvisFastBrainPrompt.system(),
+            AgentTurn turn = provider.nextTurn(new AgentTurnRequest(properties.model(), systemFor(userId),
                     List.of(AgentMessage.userText(WARM_TEXT)), List.of(JarvisFastBrainPrompt.delegateTool()), apiKey,
                     AgentReasoning.off(properties.effort()), AgentContextPolicy.none(), AgentTurnMode.ACT,
                     AgentCallShape.compact(0)));
@@ -270,7 +285,7 @@ public class JarvisFastBrainService {
         String apiKey = byok == null ? null : byok.resolveActiveApiKey(userId).orElse(null);
         String context = context(request);
         SentenceGate gate = new SentenceGate(context, request.text(), recentSentences(userId), out);
-        AgentTurnRequest call = new AgentTurnRequest(properties.model(), JarvisFastBrainPrompt.system(),
+        AgentTurnRequest call = new AgentTurnRequest(properties.model(), systemFor(userId),
                 messages(request, context), List.of(JarvisFastBrainPrompt.delegateTool()), apiKey,
                 AgentReasoning.off(properties.effort()), AgentContextPolicy.none(), AgentTurnMode.ACT,
                 AgentCallShape.compact(properties.maxTokens()));
@@ -360,7 +375,7 @@ public class JarvisFastBrainService {
         UUID subject = request.workspace() == null ? null : request.workspace().getId();
         return new Outcome(Kind.DELEGATE, "", new Delegation(UUID.randomUUID(), demande, "", AUTO_ANNOUNCE, subject,
                 request.chantier(), true, REASON_FORCED), REASON_FORCED, properties.model(), -1L, null,
-                new Guards(0, 0, 0, true, false));
+                new Guards(0, 0, 0, true, false, 0));
     }
 
     /**
@@ -429,6 +444,7 @@ public class JarvisFastBrainService {
         private int fillersRemoved;
         private int repeatsRemoved;
         private boolean toolText;
+        private int imitationsRemoved;
 
         SentenceGate(String context, String said, List<String> recent, Sink out) {
             this.context = context == null ? "" : context;
@@ -474,6 +490,10 @@ public class JarvisFastBrainService {
             try {
                 if (JarvisFastGuards.looksLikeToolCall(sentence)) {
                     abort(REASON_TOOL_TEXT);
+                    return;
+                }
+                if (JarvisFastGuards.imitates(sentence, context, said)) {
+                    imitationsRemoved++; // D18 : aucune imitation de l'œuvre — la phrase est retirée
                     return;
                 }
                 if (ungrounded(sentence) != null) {
@@ -549,7 +569,7 @@ public class JarvisFastBrainService {
         }
 
         Guards guards() {
-            return new Guards(groundingTrips, fillersRemoved, repeatsRemoved, false, toolText);
+            return new Guards(groundingTrips, fillersRemoved, repeatsRemoved, false, toolText, imitationsRemoved);
         }
     }
 
@@ -575,8 +595,27 @@ public class JarvisFastBrainService {
                         e.answered()))));
             }
         }
-        messages.add(AgentMessage.userText(message(context, request.text())));
+        String last = message(context, request.text());
+        if (sober(request, context)) {
+            last = last + "\n\n" + fr.claudegateway.jarvis.preferences.JarvisSobriety.NOTE;
+        }
+        messages.add(AgentMessage.userText(last));
         return messages;
+    }
+
+    /**
+     * F-235 / SF-235-09 (D18) — ton sobre forcé : alerte de veille récente, incident ou erreur dans la parole, ou
+     * alerte / échec dans le contexte. Best-effort.
+     */
+    boolean sober(Request request, String context) {
+        try {
+            if (sobriety != null && sobriety.sober(request.userId(), request.text())) {
+                return true;
+            }
+            return fr.claudegateway.jarvis.preferences.JarvisSobriety.mentionsTrouble(request.text());
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     /** Le message d'un échange : le contexte, puis la parole. */

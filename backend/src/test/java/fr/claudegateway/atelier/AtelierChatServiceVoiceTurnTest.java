@@ -119,6 +119,26 @@ class AtelierChatServiceVoiceTurnTest {
     }
 
     @Test
+    void SF_235_09_laPersonnaliteEtLeTonSobreVontDansLeMessageLeSystemeResteIdentique() {
+        agentProvider.enqueueFinal("ok");
+        service.chat(userId, workspaceId, "bonjour");
+        String typedSystem = agentProvider.lastRequest.system();
+
+        fr.claudegateway.jarvis.preferences.JarvisPreferenceService prefs =
+                Mockito.mock(fr.claudegateway.jarvis.preferences.JarvisPreferenceService.class);
+        when(prefs.humour(userId)).thenReturn(fr.claudegateway.jarvis.preferences.JarvisHumour.LIGHT);
+        service.setJarvisPersonality(prefs,
+                new fr.claudegateway.jarvis.preferences.JarvisSobriety(java.time.Clock.systemUTC()));
+        service.markVoiceTurn(userId, workspaceId, null);
+        agentProvider.enqueueFinal("🎙 Je regarde l'incident, Monsieur.");
+        service.chat(userId, workspaceId, "on a un incident en production");
+
+        assertThat(sentToModel()).contains(fr.claudegateway.jarvis.JarvisOralNote.PERSONALITY_LIGHT)
+                .contains(fr.claudegateway.jarvis.preferences.JarvisSobriety.NOTE);
+        assertThat(agentProvider.lastRequest.system()).isEqualTo(typedSystem).doesNotContain("majordome");
+    }
+
+    @Test
     void SF_234_13_montrerPasseParLeMessageEtLePrefixeResteIdentiqueAuTerminal() {
         agentProvider.enqueueFinal("ok");
         service.chat(userId, workspaceId, "bonjour");

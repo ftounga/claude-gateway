@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-235 / SF-235-09 - LA PERSONNALITE DE JARVIS (D18).
+
+      jarvis_preferences : une ligne par compte (cle user_id) ; humour = NONE (aucun) ou LIGHT (leger,
+      defaut quand la ligne est absente). Aucun contenu. Purge nommee a la suppression du compte.
+
+      Numero 235 = numero de la feature (aucune collision avec les vagues paralleles).
+      Rollback : la table se retire.
+    -->
+
+    <changeSet id="235-jarvis-preferences" author="claude-gateway">
+        <createTable tableName="jarvis_preferences">
+            <column name="user_id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="humour" type="varchar(8)" defaultValue="LIGHT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <rollback>
+            <dropTable tableName="jarvis_preferences"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
