@@ -1398,12 +1398,18 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   `scenes_generic`, `scene_counts` (« S3=12;S5=4 », identifiants de scène seulement, validés par motif),
   `nodes_lit`, `node_touches`, `sober_on`, `show_requests` ; événements `SCENES` / `TOUCH` / `SOBER` de
   `POST /api/jarvis/usage`, lus par `GET /api/admin/jarvis/measure` (`scenes`).
+  F-235 / SF-235-01 (migration `235-jarvis-usage-fast-brain`) : `fast_brain_calls`, `fast_brain_cost_usd` — le
+  cerveau rapide de Jarvis, son **plafond mensuel propre** `app.jarvis.fast-brain.monthly-budget-eur` (20 €).
 - **jarvis_turn_timings** — **un tour vocal chronométré** (F-233 / SF-233-01, migration `196`) : `user_id`,
   `workspace_id` (nul si sujet d'autrui), `created_at`, `listen_mode` (`BATCH|STREAM|CONV_BATCH|CONV_STREAM`, SF-233-11), `stt_provider`, `tts_provider`,
   `tool_turn`, marques en ms depuis la fin de parole (`speech_ms`, `transcript_ms`, `reaction_ms`, `sent_ms`,
   `first_token_ms`, `first_oral_sentence_ms`, `first_audio_byte_ms`, `first_sound_ms`, `done_ms`), compteurs
   d'interruption (`interruptions_detected|restored|confirmed`, `acknowledgements`, `false_triggers`). **Aucun
   contenu.** Purge à 90 jours. Lu par `GET /api/admin/jarvis/latency` (ADMIN, ses propres tours).
+  F-235 / SF-235-07 (migration `235-jarvis-turn-timings-brain`) : `brain` (`FAST|FAST_DELEGATED|OPUS`),
+  `fast_model`, `fast_first_token_ms`, `grounding_trips`, `fillers_removed`, `repeats_removed`,
+  `imitations_removed`, `forced_delegation`, `delegation_reason` (liste fermée), `correction` — lus par
+  `GET /api/admin/jarvis/fast-brain/measure` (ADMIN, ses propres tours). Toujours **sans contenu**.
 - **jarvis_voice_choices** — **la voix de Jarvis choisie à l'audition** (F-233 / SF-233-07, migration `198`) :
   `user_id`, `provider` (`openai|elevenlabs`), `voice` (nom ou identifiant), `label` (lettre entendue), `chosen_at`.
   Le plus récent du compte fait foi (`JarvisVoiceService.current(userId)`), sinon la configuration. Purgé à la
@@ -1413,6 +1419,16 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   demande dite à la voix dans l'écran Jarvis **et** la réponse de ce tour, `NULL` sinon. Donnée d'affichage : marque
   « 🎙 via Jarvis », encart « Pendant ton absence » (`GET /api/workspaces/{id}/jarvis/absence`), point de situation,
   compteur « À envoyer (n) » (`GET /api/jarvis/to-send`).
+- **atelier_messages.brain** — **le cerveau qui a tenu le message** (F-235 / SF-235-04, migration
+  `235-atelier-messages-brain`) : `FAST` = échange tenu par le cerveau rapide de Jarvis (parole + réponse), écrit
+  dans le fil pour l'écran mais **jamais rejoué** comme un tour (il parvient à Opus par une note du message
+  suivant : append-only, cache intact) ; `DELEGATED` = demande d'un tour Opus lancé par une délégation ; `NULL`
+  sinon. Exposé par `GET /chat` et l'encart d'absence (SF-235-06) ; le compagnon n'annonce pas les `FAST`.
+- **jarvis_preferences** — **les préférences de Jarvis d'un compte** (F-235 / SF-235-09, migration
+  `235-jarvis-preferences`) : `user_id` (clé), `humour` (`NONE|LIGHT`, « léger » par défaut sans ligne),
+  `updated_at`. Choisit la variante **figée** de la consigne système du cerveau rapide et de la personnalité
+  jointe au message des tours Opus vocaux (D18). `GET/PUT /api/jarvis/preferences`. Purgé à la suppression du
+  compte.
 - **interlocuteurs** — **les interlocuteurs d'un poste** (F-180 / SF-180-03, migration `160`) : une
   personne dont on attend quelque chose, normalisée. `id`, `user_id`, `host_id` (NOT NULL — un terminal
   hébergé garde le texte libre), `display_name (120)`, `normalized_name (120)` (unique par `user_id` +
