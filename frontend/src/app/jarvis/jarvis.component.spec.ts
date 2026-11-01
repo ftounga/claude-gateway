@@ -53,7 +53,8 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       { supported: true, stream: null });
     dictation.start.and.resolveTo();
     voice = jasmine.createSpyObj<JarvisVoiceService>('JarvisVoiceService',
-      ['speak', 'stop', 'unlock', 'level', 'preloadClips', 'playClip', 'hasClip']);
+      ['speak', 'stop', 'unlock', 'level', 'preloadClips', 'playClip', 'hasClip', 'enqueue', 'idle']);
+    voice.idle.and.resolveTo();
     voice.speak.and.resolveTo();
     voice.preloadClips.and.resolveTo();
     voice.playClip.and.resolveTo(false);
@@ -100,7 +101,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(jarvisApi.usage).toHaveBeenCalledWith('SESSION');
     expect(jarvis.subjectId()).toBe('w-1');
     expect(veilles.openAlert).toHaveBeenCalledWith('a-1');
-    expect(voice.speak).toHaveBeenCalledWith('Veille Jira AGENOR : AG-2 est passé en Bloqué. Que veux-tu faire ?', 'w-1');
+    expect(voice.speak).toHaveBeenCalledWith('Veille Jira AGENOR : AG-2 est passé en Bloqué. Que voulez-vous faire ?', 'w-1');
     expect(jarvis.state()).toBe('ecoute');
     jarvis.ngOnDestroy();
   }));
@@ -236,7 +237,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
 
     handlers!.onConfirmRequest!({ toolUseId: 't-1', tool: 'bash', detail: 'git push' });
     flushMicrotasks();
-    expect(voice.speak).toHaveBeenCalledWith('Je vais lancer la commande « git push ». Tu confirmes ?', 'w-2');
+    expect(voice.speak).toHaveBeenCalledWith('Je vais lancer la commande « git push ». Vous confirmez ?', 'w-2');
     expect(jarvis.state()).toBe('ecoute');
 
     void jarvis.finishListening();
@@ -362,5 +363,42 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     flushMicrotasks();
     expect(voice.playClip).toHaveBeenCalledWith('je-regarde', jasmine.any(Object));
     jarvis.ngOnDestroy();
+  }));
+
+  it('F-233 / SF-233-03 — dit chaque phrase 🎙 dès qu’elle est écrite, sans la redire à la fin', fakeAsync(() => {
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+
+    jarvis.send('w-2', 'Regarde les logs du build');
+    handlers!.onText('🎙 Je regarde les logs du build, Monsieur. ');
+    expect(voice.enqueue).toHaveBeenCalledWith('Je regarde les logs du build, Monsieur.', 'w-2', undefined);
+    expect(jarvis.state()).toBe('parole');
+    handlers!.onText('\n\n```\n🎙 pas ceci.\n```\n');
+    handlers!.onText('🎙 Le build casse sur un test');
+    expect(voice.enqueue).toHaveBeenCalledTimes(1);
+    handlers!.onText(' de paie. Je corrige ?\n\nDétail…');
+    expect(voice.enqueue).toHaveBeenCalledTimes(3);
+    expect(voice.enqueue.calls.argsFor(1)[0]).toBe('Le build casse sur un test de paie.');
+
+    handlers!.onDone({ reply: '🎙 Le build casse sur un test de paie. Je corrige ?\n\nDétail…', actions: [],
+      messageId: 'm-1' });
+    flushMicrotasks();
+    expect(voice.idle).toHaveBeenCalled();
+    expect(voice.speak).not.toHaveBeenCalled();
+    expect(jarvis.state()).toBe('repos');
+  }));
+
+  it('F-233 / SF-233-03 — sans ligne 🎙 écrite au fil de l’eau, la phrase finale est dite à la fin (repli)', fakeAsync(() => {
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+
+    jarvis.send('w-2', 'Bonjour');
+    handlers!.onText('Bonjour Monsieur. Tout va bien.');
+    expect(voice.enqueue).not.toHaveBeenCalled();
+    handlers!.onDone({ reply: 'Bonjour Monsieur. Tout va bien.', actions: [], messageId: 'm-1' });
+    flushMicrotasks();
+    expect(voice.speak).toHaveBeenCalledWith('Bonjour Monsieur. Tout va bien.', 'w-2');
   }));
 });

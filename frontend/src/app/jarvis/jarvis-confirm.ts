@@ -32,7 +32,10 @@ export function classifyConfirmation(said: string | null | undefined): Confirmat
 /** Au-delà, le détail d'une commande est coupé dans la question dite. */
 const MAX_DETAIL = 140;
 
-/** La question dite pour une autorisation d'outil (`ask`) : l'action reformulée, puis « Tu confirmes ? ». */
+/**
+ * La question dite pour une autorisation d'outil (`ask`) : l'action reformulée, puis « Vous confirmez ? » (F-233 /
+ * SF-233-03, D-PO-8 : Jarvis vouvoie).
+ */
 export function confirmationQuestion(request: Pick<AtelierConfirmRequest, 'tool' | 'detail'>): string {
   const detail = shorten(request.detail);
   const tool = (request.tool ?? '').toLowerCase();
@@ -42,16 +45,16 @@ export function confirmationQuestion(request: Pick<AtelierConfirmRequest, 'tool'
   } else if (tool.includes('write') || tool.includes('edit')) {
     action = detail ? `modifier ${detail}` : 'modifier un fichier';
   } else if (tool === 'email_me') {
-    action = 't’envoyer un courriel';
+    action = 'vous envoyer un courriel';
   } else {
     action = detail ? `utiliser ${request.tool} : ${detail}` : `utiliser ${request.tool}`;
   }
-  return `Je vais ${action}. Tu confirmes ?`;
+  return `Je vais ${action}. Vous confirmez ?`;
 }
 
-/** La phrase finit-elle par une demande de confirmation (« Tu confirmes ? ») posée par l'agent ? */
+/** La phrase finit-elle par une demande de confirmation (« Vous confirmez ? », ou l'ancien « Tu confirmes ? ») ? */
 export function asksConfirmation(phrase: string | null | undefined): boolean {
-  return /tu confirmes\s*\?\s*$/i.test((phrase ?? '').trim());
+  return /(?:vous confirmez|tu confirmes)\s*\?\s*$/i.test((phrase ?? '').trim());
 }
 
 function shorten(detail: string | null | undefined): string {

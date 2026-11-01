@@ -1,4 +1,6 @@
-import { firstSentences, isStopCommand, oralPhrase, subjectSwitch, withEndAnnouncement } from './jarvis-oral';
+import {
+  OralStream, firstSentences, isStopCommand, oralPhrase, oralSentences, subjectSwitch, withEndAnnouncement,
+} from './jarvis-oral';
 import { EndOfSpeech, END_OF_SPEECH_MS, NO_SPEECH_MS } from './jarvis-mic-meter';
 import { sphere, withAlpha } from './jarvis-orb.component';
 
@@ -101,5 +103,31 @@ describe('Jarvis — l’orbe (F-231 / SF-231-02)', () => {
   it('applique une opacité aux couleurs du design system', () => {
     expect(withAlpha('#E07B39', 0.5)).toBe('rgba(224, 123, 57, 0.500)');
     expect(withAlpha('rgb(1,2,3)', 0.5)).toBe('rgb(1,2,3)');
+  });
+});
+
+describe('La parole au fil de l’écriture (F-233 / SF-233-03)', () => {
+  it('une phrase n’est complète que ponctuée et suivie d’un blanc, ou ligne close', () => {
+    expect(oralSentences('Il reste 3.5 Go. Je', false)).toEqual(['Il reste 3.5 Go.']);
+    expect(oralSentences('Il reste 3.5 Go.', false)).toEqual([]);
+    expect(oralSentences('Il reste 3.5 Go. Je nettoie', true)).toEqual(['Il reste 3.5 Go.', 'Je nettoie']);
+    expect(oralSentences(' **Prêt**, Monsieur ? ', false)).toEqual(['Prêt, Monsieur ?']);
+  });
+
+  it('rend chaque phrase une fois, au plus deux par ligne, hors blocs de code', () => {
+    const oral = new OralStream();
+    expect(oral.push('🎙 Je lance les tes')).toEqual([]);
+    expect(oral.push('ts. Ça prend ')).toEqual(['Je lance les tests.']);
+    expect(oral.push('une minute.\n```\n🎙 non.\n```\n🎙 Un. Deux. Trois.\n')).toEqual(
+      ['Ça prend une minute.', 'Un.', 'Deux.']);
+    expect(oral.push('suite')).toEqual([]);
+    expect(oral.spoken.length).toBe(4);
+  });
+
+  it('remaining : ce qui reste à dire de la phrase finale', () => {
+    const oral = new OralStream();
+    oral.push('🎙 Les tests passent. ');
+    expect(oral.remaining('Les tests passent. Je pousse ?')).toBe('Je pousse ?');
+    expect(oral.remaining('Les tests passent.')).toBe('');
   });
 });

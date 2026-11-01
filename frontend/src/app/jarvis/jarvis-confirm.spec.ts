@@ -20,15 +20,16 @@ describe('Jarvis — confirmer à voix haute (F-231 / SF-231-04)', () => {
     }
   });
 
-  it('reformule l’autorisation d’un outil puis demande « Tu confirmes ? »', () => {
+  it('reformule l’autorisation d’un outil puis demande « Vous confirmez ? » (F-233 / SF-233-03)', () => {
     expect(confirmationQuestion({ tool: 'bash', detail: 'git push origin main' }))
-      .toBe('Je vais lancer la commande « git push origin main ». Tu confirmes ?');
-    expect(confirmationQuestion({ tool: 'email_me', detail: '' })).toBe('Je vais t’envoyer un courriel. Tu confirmes ?');
+      .toBe('Je vais lancer la commande « git push origin main ». Vous confirmez ?');
+    expect(confirmationQuestion({ tool: 'email_me', detail: '' })).toBe('Je vais vous envoyer un courriel. Vous confirmez ?');
     expect(confirmationQuestion({ tool: 'bash', detail: 'x '.repeat(200) }).length).toBeLessThan(200);
   });
 
   it('repère une phrase de l’agent qui attend « oui »', () => {
     expect(asksConfirmation('Je lance le chantier 4 en autonome. Tu confirmes ?')).toBeTrue();
+    expect(asksConfirmation('Je lance le chantier 4 en autonome, Monsieur. Vous confirmez ?')).toBeTrue();
     expect(asksConfirmation('C’est fait.')).toBeFalse();
   });
 });

@@ -122,3 +122,84 @@ export function subjectSwitch<T extends { id: string; name: string }>(said: stri
   const partial = subjects.filter((s) => normalize(s.name).includes(wanted));
   return partial.length === 1 ? partial[0] : null;
 }
+
+/** F-233 / SF-233-03 — au plus autant de phrases dites par ligne 🎙 (la consigne en demande deux au plus). */
+export const MAX_LINE_SENTENCES = 2;
+
+/**
+ * F-233 / SF-233-03 — les phrases de `raw` (le texte d'une ligne 🎙, sans la marque). Ligne **en cours** : seules les
+ * phrases dont la ponctuation finale est suivie d'un blanc sont complètes (« 3.5 » ne coupe pas) ; ligne **close** :
+ * le reste compte aussi.
+ */
+export function oralSentences(raw: string, complete: boolean): string[] {
+  const out: string[] = [];
+  let rest = raw.replace(/^\s+/, '');
+  const pattern = complete ? /^([\s\S]*?[.!?…]+["»”)]*)(?:\s+|$)/ : /^([\s\S]*?[.!?…]+["»”)]*)\s+/;
+  for (;;) {
+    const match = pattern.exec(rest);
+    if (!match) {
+      break;
+    }
+    const sentence = cutOral(clean(match[1]));
+    if (sentence) {
+      out.push(sentence);
+    }
+    rest = rest.slice(match[0].length);
+  }
+  if (complete) {
+    const tail = cutOral(clean(rest));
+    if (tail) {
+      out.push(tail);
+    }
+  }
+  return out;
+}
+
+/**
+ * F-233 / SF-233-03 (D4) — **la parole au fil de l'écriture** : reçoit les deltas du flux et rend, une seule fois
+ * chacune, les phrases complètes des lignes « 🎙 » (hors blocs de code), au plus deux par ligne.
+ */
+export class OralStream {
+  private buffer = '';
+  /** Par position de ligne dans le tampon : le nombre de phrases déjà rendues. */
+  private readonly emitted = new Map<number, number>();
+  private readonly said: string[] = [];
+
+  /** Ajoute un delta ; rend les phrases nouvellement complètes. */
+  push(delta: string): string[] {
+    this.buffer += delta;
+    const out: string[] = [];
+    const lines = this.buffer.split('\n');
+    let offset = 0;
+    let inFence = false;
+    lines.forEach((raw, index) => {
+      const complete = index < lines.length - 1;
+      const line = raw.trim();
+      if (line.startsWith('```')) {
+        inFence = !inFence;
+      } else if (!inFence && line.startsWith(ORAL_MARK)) {
+        const body = raw.slice(raw.indexOf(ORAL_MARK) + ORAL_MARK.length);
+        const sentences = oralSentences(body, complete).slice(0, MAX_LINE_SENTENCES);
+        const done = this.emitted.get(offset) ?? 0;
+        for (let k = done; k < sentences.length; k++) {
+          out.push(sentences[k]);
+          this.said.push(sentences[k]);
+        }
+        this.emitted.set(offset, Math.max(done, sentences.length));
+      }
+      offset += raw.length + 1;
+    });
+    return out;
+  }
+
+  /** Les phrases déjà rendues. */
+  get spoken(): readonly string[] {
+    return this.said;
+  }
+
+  /** Ce qui reste à dire de `phrase` (la phrase orale finale) : ses phrases pas encore rendues. */
+  remaining(phrase: string): string {
+    const said = new Set(this.said.map((s) => normalize(s)));
+    return oralSentences(phrase, true).filter((s) => !said.has(normalize(s))).join(' ');
+  }
+}

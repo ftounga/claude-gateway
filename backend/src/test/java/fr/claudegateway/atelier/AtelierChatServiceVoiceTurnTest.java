@@ -108,8 +108,11 @@ class AtelierChatServiceVoiceTurnTest {
 
         assertThat(sentToModel()).contains("[Mode Jarvis").contains("email_me")
                 // SF-231-04 : les actions qui engagent sont reformulées puis confirmées.
-                .contains("Tu confirmes ?");
-        assertThat(agentProvider.lastRequest.system()).doesNotContain("Mode Jarvis");
+                .contains("Vous confirmez ?")
+                // F-233 / SF-233-03 : annonce avant outils (D-PO-7), « Monsieur » et vouvoiement (D-PO-8).
+                .contains("Si tu dois utiliser des outils, commence par une ligne « 🎙 »")
+                .contains("appelle-le « Monsieur »");
+        assertThat(agentProvider.lastRequest.system()).doesNotContain("Mode Jarvis").doesNotContain("Monsieur");
         // Le fil garde la parole de l'utilisateur, pas la consigne.
         assertThat(saved()).filteredOn(m -> "USER".equals(m.getRole()))
                 .extracting(AtelierMessage::getContent).containsExactly("valide l'étape trois");
