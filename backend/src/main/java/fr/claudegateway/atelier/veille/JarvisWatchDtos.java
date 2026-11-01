@@ -50,6 +50,14 @@ public final class JarvisWatchDtos {
         }
     }
 
+    /** Tenir une veille (SF-230-04) : un champ absent garde sa valeur. */
+    public record UpdateRequest(Boolean active, List<String> runTimes, BigDecimal monthlyBudgetEur) {
+    }
+
+    /** Une veille du compte, avec le nom de son sujet (SF-230-04, tableau du client). */
+    public record JarvisWatchSummaryView(JarvisWatchView watch, String workspaceName) {
+    }
+
     /** Le taux de lecture en euros quand la grille n'est pas branchée (F-224). */
     public static final BigDecimal DEFAULT_USD_TO_EUR = new BigDecimal("0.92");
 

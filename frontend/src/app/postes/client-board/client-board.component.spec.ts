@@ -14,6 +14,7 @@ import { AutonomyService } from '../../core/services/autonomy.service';
 import { ClientBoardService } from '../../core/services/client-board.service';
 import { JourneyService } from '../../core/services/journey.service';
 import { TerminalActionsService } from '../../core/services/terminal-actions.service';
+import { VeilleService } from '../../core/services/veille.service';
 import { CLIENT_BOARD_COLLAPSED_KEY, ClientBoardComponent } from './client-board.component';
 
 /** F-220 / SF-220-03 — l'écran du tableau du client, service simulé. */
@@ -106,6 +107,8 @@ describe('ClientBoardComponent', () => {
         { provide: AutonomyService, useValue: autonomy },
         { provide: JourneyService, useValue: journeys },
         { provide: TerminalActionsService, useValue: actions },
+        // F-230 / SF-230-04 : la section des veilles a son propre spec ; ici, aucune veille.
+        { provide: VeilleService, useValue: { listForAccount: () => of([]) } },
       ],
     });
     TestBed.overrideProvider(MatDialog, { useValue: dialog });

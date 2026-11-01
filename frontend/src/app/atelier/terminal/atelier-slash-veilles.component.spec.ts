@@ -24,7 +24,7 @@ describe('Le panneau /veilles (F-230 / SF-230-01)', () => {
   }
 
   beforeEach(() => {
-    service = jasmine.createSpyObj<VeilleService>('VeilleService', ['list', 'remove']);
+    service = jasmine.createSpyObj<VeilleService>('VeilleService', ['list', 'remove', 'update', 'runNow']);
     dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
     TestBed.configureTestingModule({
       imports: [AtelierSlashVeillesComponent, NoopAnimationsModule],
@@ -60,6 +60,32 @@ describe('Le panneau /veilles (F-230 / SF-230-01)', () => {
     expect(text()).toContain('rien de neuf');
     expect(text()).toContain('En panne — à faire réparer');
     expect(text()).toContain('sonde en échec');
+  });
+
+  it('met en pause, reprend et lance maintenant ; dit la dépense du mois en euros (SF-230-04)', () => {
+    const active = watch({ proposed: false, active: true, monthlyBudgetEur: 5, monthSpentEur: 0.12 });
+    service.list.and.returnValue(of([active]));
+    service.update.and.returnValue(of(watch({ proposed: false, active: false })));
+    service.runNow.and.returnValue(of({
+      id: 'r-1', watchId: 'v-1', slotAt: null, trigger: 'MANUAL', status: 'CHANGED', changeCount: 2, errorCode: null,
+      durationMs: 800, startedAt: '', finishedAt: '',
+    }));
+    create();
+    expect(text()).toContain('Rédaction IA ce mois-ci : 0,12 € sur 5,00 €');
+    const buttons = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('button'));
+    (buttons.find((b) => (b.textContent ?? '').includes('Pause')) as HTMLButtonElement).click();
+    expect(service.update).toHaveBeenCalledWith('w-1', 'v-1', { active: false });
+    fixture.componentInstance.runNow(active);
+    fixture.detectChanges();
+    expect(service.runNow).toHaveBeenCalledWith('w-1', 'v-1');
+    expect(text()).toContain('« Agenor » : 2 changements.');
+  });
+
+  it('une proposition n’a ni pause ni lancement', () => {
+    service.list.and.returnValue(of([watch()]));
+    create();
+    expect(text()).not.toContain('Pause');
+    expect(text()).not.toContain('Lancer maintenant');
   });
 
   it('supprime après confirmation', () => {
