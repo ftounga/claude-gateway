@@ -21,9 +21,13 @@
   </header>
 
   <section class="jv__stage">
-    <button type="button" class="jv__orb-button" (click)="talk()" [attr.aria-label]="statusLabel()">
-      <app-jarvis-orb class="jv__orb" [state]="state()" [level]="orbLevel" />
-    </button>
+    <!-- F-234 / SF-234-03 — la constellation de l'univers autour de l'orbe ; toucher un sujet = le choisir. -->
+    <app-jarvis-constellation class="jv__constellation" [subjectId]="subjectId()" [speaking]="state() === 'parole'"
+                              (choose)="chooseSubject($event)">
+      <button type="button" class="jv__orb-button" (click)="talk()" [attr.aria-label]="statusLabel()">
+        <app-jarvis-orb class="jv__orb" [state]="state()" [level]="orbLevel" />
+      </button>
+    </app-jarvis-constellation>
     <p class="jv__status" role="status" aria-live="polite">{{ statusLabel() }}</p>
     <!-- F-234 — la scène en cours (une à la fois), déduite à l'écran des événements du tour. -->
     <app-jarvis-scene class="jv__scene" />
