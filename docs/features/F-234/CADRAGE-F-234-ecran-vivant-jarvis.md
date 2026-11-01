@@ -2,6 +2,7 @@
 
 **Statut :** cadrage du 2026-11-01 (go PO du 2026-11-01), précisions et arbitrages PO du même jour intégrés
 (§0) ; **décisions D-PO-1→7 ratifiées le 2026-11-01** (défauts retenus). Famille « Jarvis » : F-230, F-231, F-232, F-233, **F-234**.
+**Ajout PO du 2026-11-01** : SF-234-13 « Montrer » (P5, D18) — F-234 compte désormais **13 SF**.
 
 **Demande PO (2026-11-01)** : l'écran `/jarvis` (F-231) ne montre qu'un « cerveau » (l'orbe neuronal). Il doit
 **traduire ce qui se passe dans l'application** pendant qu'on parle à Jarvis : allumer le client, le sujet, le
@@ -35,6 +36,7 @@ surbrillance) et des **scènes** par type d'action.
 | P2 | **Priorité par usage réel**, mesuré en prod. Radar, Vigie, Teams et réunions (pas encore utilisés) en **dernière vague**, cadrés mais **développement facultatif**. | §2 (mesure), §11 (vagues) |
 | P3 | **Une scène générique par défaut**, pilotée par un **registre** (outil ou famille → scène) : tout outil sans scène dédiée s'anime quand même (nom lisible, entité en surbrillance, pulsation). | §4, D3 |
 | P4 | **Règle pour l'avenir** : toute feature qui ajoute un outil déclare sa scène dans le registre ou accepte explicitement la générique ; ligne de `review-checklist.md` proposée et rattachée à une SF. | §12, SF-234-02 |
+| P5 | **« Montrer »** (ajout PO du 2026-11-01, oubli du cadrage initial) : le PO **demande à voir** — « montre-moi tous mes clients », « ceux qui sont connectés », « les chantiers bloqués », « les étapes en cours », « mes messages à envoyer » — et la constellation se réorganise. Le cadrage ne prévoyait que des scènes qui **réagissent**. | §6.2, D18, SF-234-13 |
 
 ---
 
@@ -251,6 +253,7 @@ Toutes les features de `docs/PRODUCT_SPEC.md` au 2026-11-01. « Données » : ou
 |---|---|---|
 | **Constellation** | clients → sujets → chantiers → étapes autour de l'orbe ; le nœud cité s'allume, fil lumineux, nom en surbrillance | A |
 | **S-GEN Générique** | nom lisible de l'outil, entité en surbrillance, pulsation d'anneau ; tout outil sans scène | A |
+| **S20 Montrer** (P5) | sur demande du PO : les éléments demandés passent au premier plan en surbrillance (poste connecté = halo vert, déconnecté = éteint), le reste s'estompe ; retour à l'état normal au tour suivant ou sur « c'est bon » | B (en tête) |
 | **S3 Terminal en filigrane** | la commande et ses 2 dernières lignes défilent en mono, secrets masqués | B |
 | **S4 Cartes de tickets** | cartes Jira/Confluence en éventail avec leurs clés | B |
 | **S5 Feuillets / loupe** | les fichiers lus/écrits s'empilent (« 6 fichiers lus »), le motif cherché sous une loupe | B |
@@ -317,6 +320,7 @@ Toutes les features de `docs/PRODUCT_SPEC.md` au 2026-11-01. « Données » : ou
 | D14 | **Une seule scène à la fois** ; la plus récente gagne, sauf **S2** qui reste devant tant qu'elle est ouverte. Durée minimale ~1,2 s ; rafales du même outil regroupées. Les scènes hors tour (A1-A5) ne s'affichent **qu'au repos** (aucun tour en cours), sauf A5 à l'ouverture par alerte. | Sobriété |
 | D15 | **Priorité par usage réel** (§2) : vagues A (socle) → B (usage fort) → C (usage moyen + ambiance) → D (Radar, Vigie, Teams, réunions : **facultative**, la générique les couvre en attendant). | P2 |
 | D16 | **Mesure d'intérêt sans contenu** : compteurs par jour ajoutés à `jarvis_usage_days` (migration additive) — scènes montrées par famille, part de la générique, nœuds allumés, touchers de nœud, mode sobre. `GET /api/admin/jarvis/measure` étendu. J+7/J+14 : une famille jamais montrée n'est pas enrichie ; une générique très fréquente sur un outil = candidat à une scène dédiée. | Proposer depuis l'usage observé |
+| D18 | **« Montrer » sans outil réservé à Jarvis** (P5). Le préfixe (consigne système + liste d'outils) doit rester **identique** entre un tour Jarvis et un tour terminal du même fil : **aucun outil** n'est ajouté. La **consigne orale** de Jarvis — déjà dans le **message** (`JarvisOralNote`, F-231/F-233), jamais dans la consigne système — permet à l'agent d'écrire, sous sa ligne 🎙, une **ligne marqueur** `🖥 montrer: <filtre> [client]`, filtre **fermé** parmi `clients`, `connectes`, `deconnectes`, `chantiers-bloques`, `etapes-en-cours`, `a-envoyer`. L'écran la lit au fil des deltas, la **résout sur l'univers déjà chargé** (aucun appel réseau ni IA de plus) et la **masque** : jamais dite, jamais affichée (détail Jarvis, fil du terminal). Un filtre inconnu n'affiche rien. Retour à l'état normal au tour suivant, ou sur « c'est bon » dit à Jarvis (classé sur l'appareil, aucun tour). | Préfixe de cache intact ; zéro coût IA |
 | D17 | **Règle pour l'avenir** (§12) : tout outil ajouté à l'agent déclare sa scène dans le registre ou accepte `GENERIQUE` ; une **garde automatique** (test passerelle) échoue si un outil offert à l'agent est absent du registre. | P4 |
 
 ### Décisions PO — ratifiées le 2026-11-01
@@ -485,6 +489,7 @@ outils concernés passent par **S-GEN** (nom lisible + sujet courant) — rien n
 
 | SF | Contenu | Critères d'acceptation | Durée |
 |---|---|---|---|
+| **SF-234-13** | **S20 Montrer** (P5, D18) : ligne marqueur `🖥 montrer:` dans la consigne orale (message), lue et masquée à l'écran ; la constellation met au premier plan clients / connectés / déconnectés / chantiers bloqués / étapes en cours / à envoyer, le reste estompé ; « c'est bon » ou tour suivant ⇒ retour. **Livrée en tête de la vague B.** | `🖥 montrer: connectes` ⇒ seuls les postes connectés en surbrillance avec halo vert, déconnectés éteints ; `chantiers-bloques` ⇒ losanges des chantiers qui attendent quelqu'un, avec la personne ; filtre inconnu ⇒ rien ; la ligne n'est ni dite ni affichée ; consigne système et liste d'outils inchangées (test) ; « c'est bon » ⇒ retour sans tour. | 1,5 j |
 | **SF-234-05** | **S3 commande, S4 tickets, S5 feuillets/loupe** (D11). | Sortie avec `Authorization: Bearer abc` ⇒ masquée ; `curl …/rest/api/2/issue/FORGE-41` ⇒ carte FORGE-41 ; URL `…/wiki/…` ⇒ « Confluence » ; 2 lignes max ; mode sobre ⇒ rien. | 2 j |
 | **SF-234-06** | **S9 étape qui avance / plan / phase / autonomie, S11 attentes, S2 oui et question, S14 points de route.** | `update_plan_step` étiqueté ⇒ étape cochée en cours de tour ; `done` 3/5 ⇒ compteur mis à jour ; `record_blocker` ⇒ personne attachée au chantier, `close_blocker` ⇒ détachée ; `confirm_request` ⇒ S2 devant toute autre scène jusqu'à `confirm_resolved` ou expiration ; `questions` ⇒ une puce par question. | 2 j |
 | **SF-234-07** | **S1 messages à envoyer** : enveloppe/bulle, `email_me`, preuves jointes (F-212), compteur « À envoyer (n) ». | Bloc ` ```mail ` avec « À : Zahi » ⇒ enveloppe + nœud Zahi + compteur +1 à la fin du bloc ; corps jamais rendu (test) ; `preuves=` ⇒ objectif photo ; `email_me` ⇒ « pour toi ». | 1,5 j |
@@ -504,8 +509,8 @@ outils concernés passent par **S-GEN** (nom lisible + sujet courant) — rien n
 |---|---|---|---|
 | **SF-234-12** | **S18 Radar et brief** (balayage, sujets Radar en écho, résumé du matin) et **S19 Teams / Vigie / réunions** (bulles, réunion en cours, capture, transcription, fichiers M365) ; les entrées du registre passent de `GENERIQUE` à dédiées. | `radar_find_subject` ⇒ balayage sur le client ; `teams_meeting_capture_start` ⇒ point rouge « réunion en cours » ; `teams_read_conversation` ⇒ bulles ; sans cette SF, ces outils restent sur S-GEN (test de non-régression). | 2 j |
 
-**Durée** : vague A 7 j · vague B 5,5 j · vague C 7 j · vague D 2 j ⇒ **≈ 19,5 j au total, ≈ 17,5 j sans la vague D**
-(12 SF). Lancer la vague C après la mesure J+7 de la vague B (D16) si le PO le souhaite.
+**Durée** : vague A 7 j · vague B 7 j (avec SF-234-13) · vague C 7 j · vague D 2 j ⇒ **≈ 21 j au total, ≈ 19 j sans
+la vague D** (13 SF). Lancer la vague C après la mesure J+7 de la vague B (D16) si le PO le souhaite.
 
 ---
 
