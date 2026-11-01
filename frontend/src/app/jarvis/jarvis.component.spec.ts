@@ -56,7 +56,10 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       { supported: true, stream: null });
     dictation.start.and.resolveTo();
     voice = jasmine.createSpyObj<JarvisVoiceService>('JarvisVoiceService',
-      ['speak', 'stop', 'unlock', 'level', 'preloadClips', 'playClip', 'hasClip', 'enqueue', 'idle']);
+      ['speak', 'stop', 'unlock', 'level', 'preloadClips', 'playClip', 'hasClip', 'enqueue', 'idle', 'status']);
+    voice.status.and.returnValue(of({
+      enabled: true, voice: 'onyx', monthlyBudgetEur: 100, monthSpentEur: 0, budgetReached: false, provider: 'openai',
+    }));
     voice.idle.and.resolveTo();
     voice.speak.and.resolveTo();
     voice.preloadClips.and.resolveTo();
@@ -442,6 +445,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       flushMicrotasks();
       expect(jarvisApi.timings.calls.mostRecent().args[0].listenMode).toBe('STREAM');
       expect(jarvisApi.timings.calls.mostRecent().args[0].sttProvider).toBe('elevenlabs');
+      expect(jarvisApi.timings.calls.mostRecent().args[0].ttsProvider).toBe('openai');
     }));
 
   it('F-233 / SF-233-05 — flux non configuré (503) : dictée batch, et on n’essaie plus pendant l’ouverture',

@@ -1,5 +1,6 @@
 package fr.claudegateway.speech.elevenlabs;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -10,13 +11,16 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * <p>La clé vient <b>exclusivement</b> de l'environnement ({@code APP_ELEVENLABS_API_KEY}), jamais commitée, jamais
  * journalisée, jamais rendue au client. Sans clé, tout ce qui en dépend est éteint : aucun appel sortant.</p>
  *
- * @param apiKey    la clé (en-tête {@code xi-api-key})
- * @param baseUrl   l'API HTTP (défaut {@code https://api.elevenlabs.io})
- * @param wsBaseUrl l'API WebSocket (défaut {@code wss://api.elevenlabs.io})
- * @param timeout   délai des appels HTTP (défaut 30 s)
+ * @param apiKey                  la clé (en-tête {@code xi-api-key})
+ * @param baseUrl                 l'API HTTP (défaut {@code https://api.elevenlabs.io})
+ * @param wsBaseUrl               l'API WebSocket (défaut {@code wss://api.elevenlabs.io})
+ * @param timeout                 délai des appels HTTP (défaut 30 s)
+ * @param ttsModel                le modèle de voix (défaut {@code eleven_flash_v2_5}, SF-233-06)
+ * @param ttsCostUsdPerThousandChars le tarif de la voix, en dollars pour 1 000 caractères (défaut 0,05)
  */
 @ConfigurationProperties(prefix = "app.elevenlabs")
-public record ElevenLabsProperties(String apiKey, String baseUrl, String wsBaseUrl, Duration timeout) {
+public record ElevenLabsProperties(String apiKey, String baseUrl, String wsBaseUrl, Duration timeout,
+        String ttsModel, BigDecimal ttsCostUsdPerThousandChars) {
 
     public ElevenLabsProperties {
         if (baseUrl == null || baseUrl.isBlank()) {
@@ -29,6 +33,12 @@ public record ElevenLabsProperties(String apiKey, String baseUrl, String wsBaseU
         wsBaseUrl = wsBaseUrl.strip().replaceAll("/+$", "");
         if (timeout == null || timeout.isZero() || timeout.isNegative()) {
             timeout = Duration.ofSeconds(30);
+        }
+        if (ttsModel == null || ttsModel.isBlank()) {
+            ttsModel = "eleven_flash_v2_5";
+        }
+        if (ttsCostUsdPerThousandChars == null || ttsCostUsdPerThousandChars.signum() < 0) {
+            ttsCostUsdPerThousandChars = new BigDecimal("0.05");
         }
     }
 

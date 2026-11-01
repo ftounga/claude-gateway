@@ -14,6 +14,8 @@ export interface JarvisVoiceStatus {
   monthlyBudgetEur: number;
   monthSpentEur: number;
   budgetReached: boolean;
+  /** F-233 / SF-233-06 — le fournisseur de la voix (`openai`, `elevenlabs`). */
+  provider?: string;
 }
 
 /** F-233 / SF-233-01 — ce que la lecture signale au chronomètre du tour. */
