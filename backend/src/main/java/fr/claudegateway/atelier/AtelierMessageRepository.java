@@ -23,6 +23,12 @@ public interface AtelierMessageRepository extends JpaRepository<AtelierMessage, 
     List<AtelierMessage> findTop6ByWorkspaceIdAndUserIdOrderByCreatedAtDesc(UUID workspaceId, UUID userId);
 
     /**
+     * F-235 / SF-235-08 (D16) — les 60 dernières demandes du compte d'une origine donnée (les paroles dites à
+     * Jarvis, pour le banc du cerveau rapide). Toujours sous {@code user_id}.
+     */
+    List<AtelierMessage> findTop60ByUserIdAndViaAndRoleOrderByCreatedAtDesc(UUID userId, String via, String role);
+
+    /**
      * Les douze derniers messages du fil, du plus récent au plus ancien (F-202 / SF-202-01) : la matière
      * de Plume, bornée par le nombre ici et par un budget de caractères au service. Filtrée
      * {@code workspace_id} + {@code user_id}.

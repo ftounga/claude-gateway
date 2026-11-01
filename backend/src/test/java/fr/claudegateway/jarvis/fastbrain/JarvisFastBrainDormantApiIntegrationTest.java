@@ -46,4 +46,26 @@ class JarvisFastBrainDormantApiIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isServiceUnavailable());
     }
+
+    @Test
+    @DisplayName("SF-235-08 — le banc : ADMIN seulement, candidats en liste fermée, rapport d'autrui introuvable")
+    void benchIsAdminOnlyAndClosed() throws Exception {
+        User admin = userRepository.save(User.builder().email("fast-bench-a-" + UUID.randomUUID() + "@ex.com")
+                .emailVerified(true).provider(AuthProvider.LOCAL).role(UserRole.ADMIN).build());
+        User user = userRepository.save(User.builder().email("fast-bench-u-" + UUID.randomUUID() + "@ex.com")
+                .emailVerified(true).provider(AuthProvider.LOCAL).role(UserRole.USER).build());
+        String adminAuth = "Bearer " + jwtService.generateToken(admin);
+        mockMvc.perform(post("/api/admin/jarvis/fast-brain/bench").contextPath("/api")
+                        .header("Authorization", adminAuth).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"model\":\"gpt-5\"}"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get("/api/admin/jarvis/fast-brain/bench/" + UUID.randomUUID()).contextPath("/api")
+                        .header("Authorization", adminAuth))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/admin/jarvis/fast-brain/bench").contextPath("/api")
+                        .header("Authorization", "Bearer " + jwtService.generateToken(user))
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isForbidden());
+    }
 }
