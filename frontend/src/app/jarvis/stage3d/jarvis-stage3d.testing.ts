@@ -1,6 +1,7 @@
 import { JarvisEngine, JarvisEngineFactory, JarvisEngineOptions } from './jarvis-engine.contract';
 import { FrameHost } from './jarvis-frame-loop';
 import { RenderProbe } from './jarvis-render-capability';
+import { StagePlan } from './jarvis-stage-director';
 
 /** F-236 / SF-236-01 — doublures de test du socle 3D (aucun import de `three`). */
 
@@ -58,6 +59,7 @@ export class FakeEngine implements JarvisEngine {
   disposed = false;
   frames = 0;
   resized: [number, number][] = [];
+  plans: StagePlan[] = [];
 
   constructor(readonly options: JarvisEngineOptions) {
     FakeEngine.live++;
@@ -69,6 +71,10 @@ export class FakeEngine implements JarvisEngine {
 
   resize(width: number, height: number): void {
     this.resized.push([width, height]);
+  }
+
+  update(plan: StagePlan): void {
+    this.plans.push(plan);
   }
 
   /** Simule la première image dessinée. */

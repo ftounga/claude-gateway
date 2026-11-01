@@ -25,7 +25,7 @@ import { JarvisVadService, VadHandlers } from './jarvis-barge-in';
 import { FORMULAS, FORMULA_CLIPS, tutoie } from './jarvis-phrases';
 import { JARVIS_3D_LOADER, JarvisEngineFactory } from './stage3d/jarvis-engine.contract';
 import { JARVIS_RENDER_PROBE, RenderProbe } from './stage3d/jarvis-render-capability';
-import { NO_WEBGL_PROBE, PC_PROBE, fakeEngineFactory } from './stage3d/jarvis-stage3d.testing';
+import { FakeEngine, NO_WEBGL_PROBE, PC_PROBE, fakeEngineFactory } from './stage3d/jarvis-stage3d.testing';
 
 const FILLERS = FORMULAS.filter((f) => f.kind === 'filler').map((f) => f.text);
 
@@ -176,6 +176,28 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     const el = fixture.nativeElement as HTMLElement;
     expect(el.querySelector('.jv__view')?.textContent).toContain('Vue 2D');
     expect(loader3d).toHaveBeenCalledTimes(1);
+    fixture.componentInstance.ngOnDestroy();
+    fixture.destroy();
+  }));
+
+  it('F-236 / SF-236-02 — le cœur 3D remplace l’orbe : orbe effacée quand la 3D est affichée, bouton « parler » gardé', fakeAsync(() => {
+    renderProbe = { ...PC_PROBE };
+    const engines: FakeEngine[] = [];
+    loader3d.and.callFake(() => Promise.resolve(fakeEngineFactory(engines)));
+    configure({});
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(engines.length).toBe(1);
+    expect(engines[0].options.withCore).toBeTrue();
+    expect(el.querySelector('main.jv')?.classList).not.toContain('jv--3d');
+    engines[0].firstFrame();
+    fixture.detectChanges();
+    expect(el.querySelector('main.jv')?.classList).toContain('jv--3d');
+    expect(el.querySelector('.jv__orb-button')).not.toBeNull();
+    expect(engines[0].options.voiceLevel()).toBe(0);
     fixture.componentInstance.ngOnDestroy();
     fixture.destroy();
   }));

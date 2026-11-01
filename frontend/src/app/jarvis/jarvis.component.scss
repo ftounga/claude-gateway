@@ -75,6 +75,12 @@
 
 .jv__orb {
   width: 100%;
+  transition: opacity var(--jv-dur-fade, 400ms) var(--jv-ease-glisse, ease-in-out);
+}
+
+/* F-236 / SF-236-02 — le cœur 3D est dessiné derrière : l'orbe 2D s'efface en fondu (T-F), son bouton reste. */
+.jv--3d .jv__orb {
+  opacity: 0;
 }
 
 .jv__status {

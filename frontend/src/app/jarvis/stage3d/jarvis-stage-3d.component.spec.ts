@@ -6,15 +6,18 @@ import { JARVIS_3D_LOADER, JarvisEngineFactory } from './jarvis-engine.contract'
 import {
   ContextLossPolicy, JARVIS_RENDER_PROBE, JARVIS_VIEW_KEY, RenderProbe,
 } from './jarvis-render-capability';
+import { SLEEP_AFTER_MS } from './jarvis-heart';
+import { IDLE_SCREEN, ScreenSignals } from './jarvis-stage-director';
 import { JARVIS_BANC, JARVIS_CONTEXT_LOSS, JARVIS_FRAME_HOST, JarvisStage3dComponent } from './jarvis-stage-3d.component';
 import { FakeEngine, FakeFrameHost, NO_WEBGL_PROBE, PC_PROBE, fakeEngineFactory } from './jarvis-stage3d.testing';
 
 @Component({
   imports: [JarvisStage3dComponent],
-  template: '<app-jarvis-stage-3d #stage [sober]="sober()" />',
+  template: '<app-jarvis-stage-3d #stage [sober]="sober()" [signals]="signals()" />',
 })
 class HostComponent {
   readonly sober = signal(false);
+  readonly signals = signal<ScreenSignals>(IDLE_SCREEN);
 }
 
 describe('F-236 / SF-236-01 — JarvisStage3dComponent (socle, repli 2D, fondu)', () => {
@@ -221,6 +224,81 @@ describe('F-236 / SF-236-01 — JarvisStage3dComponent (socle, repli 2D, fondu)'
     expect(created.length).toBe(1);
     expect(created[0].options.clock()).toBe(1200);
     expect(created[0].options.level).toBe('medium');
+    fixture.destroy();
+  }));
+
+  it('SF-236-02 — le plan suit l’écran : état, coupure, « oui » ; le moteur reçoit chaque nouveau plan', fakeAsync(() => {
+    configure(PC_PROBE);
+    const fixture = TestBed.createComponent(HostComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    const engine = created[0];
+    expect(engine.options.plan.mood).toBe('repos');
+    expect(engine.options.adaptive).toBeTrue();
+    expect(engine.options.replayFromZero).toBeFalse();
+    fixture.componentInstance.signals.set({ ...IDLE_SCREEN, state: 'ecoute', conversing: true });
+    fixture.detectChanges();
+    expect(engine.plans.at(-1)?.mood).toBe('ecoute');
+    fixture.componentInstance.signals.set({ ...IDLE_SCREEN, state: 'reflexion', waiting: true, conversing: true });
+    fixture.detectChanges();
+    expect(engine.plans.at(-1)?.mood).toBe('oui');
+    fixture.componentInstance.signals.set({ ...IDLE_SCREEN, state: 'parole', frozen: true, conversing: true });
+    fixture.detectChanges();
+    expect(engine.plans.at(-1)?.mood).toBe('coupure');
+    fixture.destroy();
+  }));
+
+  it('SF-236-02 — veille après 60 s de silence au repos, réveil par « Jarvis » (onde de choc comptée)', fakeAsync(() => {
+    configure(PC_PROBE);
+    const fixture = TestBed.createComponent(HostComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    const engine = created[0];
+    tick(SLEEP_AFTER_MS + 100);
+    fixture.detectChanges();
+    expect(engine.plans.at(-1)?.mood).toBe('veille');
+    fixture.componentInstance.signals.set({ ...IDLE_SCREEN, wakeCalls: 1 });
+    fixture.detectChanges();
+    expect(engine.plans.at(-1)).toEqual(jasmine.objectContaining({ mood: 'repos', wakes: 1 }));
+    fixture.destroy();
+  }));
+
+  it('SF-236-02 — en 2D, aucune minuterie de veille (rien à dessiner)', fakeAsync(() => {
+    configure(NO_WEBGL_PROBE);
+    const fixture = TestBed.createComponent(HostComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    // fakeAsync échouerait sur une minuterie restante.
+    expect(created.length).toBe(0);
+  }));
+
+  it('SF-236-02 — qualité adaptative : niveau suivi ; Bas sous 30 i/s ⇒ repli 2D « low_perf », bouton retiré', fakeAsync(() => {
+    configure(PC_PROBE);
+    const fixture = TestBed.createComponent(HostComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    const engine = created[0];
+    engine.firstFrame();
+    const stage = stageOf(fixture);
+    expect(stage.level()).toBe('high');
+    engine.options.onQualityChange('medium');
+    expect(stage.level()).toBe('medium');
+    engine.options.onLowPerf();
+    fixture.detectChanges();
+    expect(stage.decision()).toEqual({ mode: '2d', reason: 'low_perf' });
+    expect(stage.offer3d()).toBeFalse();
+    tick(400);
+    expect(engine.disposed).toBeTrue();
+    fixture.destroy();
+  }));
+
+  it('SF-236-02 — banc : pas de qualité adaptative, transitions rejouées depuis t = 0', fakeAsync(() => {
+    configure({ ...PC_PROBE, majorPerformanceCaveat: true }, { scene: 'ecoute', t: 200, level: 'high' });
+    const fixture = TestBed.createComponent(HostComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    expect(created[0].options.adaptive).toBeFalse();
+    expect(created[0].options.replayFromZero).toBeTrue();
     fixture.destroy();
   }));
 });
