@@ -3218,3 +3218,69 @@ describe('AtelierTerminalComponent', () => {
     expect(component.historyRevealed()).toBeFalse();
   });
 });
+
+/** F-225 / SF-225-03 — l'ouverture d'elle-même du point de situation : où, quand, et jamais par-dessus un tour. */
+describe('AtelierTerminalComponent — point de situation à l’entrée (SF-225-03)', () => {
+  let fixture: ComponentFixture<AtelierTerminalComponent>;
+  let component: AtelierTerminalComponent;
+  let http: HttpTestingController;
+  const URL = '/api/workspaces/w-sit/situation';
+  const LONG_AGO = new Date(Date.now() - 30 * 3_600_000).toISOString();
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [AtelierTerminalComponent, NoopAnimationsModule],
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
+    }).compileComponents();
+    fixture = TestBed.createComponent(AtelierTerminalComponent);
+    component = fixture.componentInstance;
+    http = TestBed.inject(HttpTestingController);
+    localStorage.removeItem('cg.situation.visits');
+    localStorage.removeItem('cg.situation.idleHours');
+  });
+
+  afterEach(() => localStorage.removeItem('cg.situation.visits'));
+
+  function situation(extra: Record<string, unknown> = {}) {
+    return { generatedAt: new Date().toISOString(), lastActivityAt: new Date().toISOString(), idleHours: 0,
+      mode: 'LIBRE', chantiers: [], attentes: [], envois: [], exchange: null, pieces: [], suites: [],
+      lastUserMessageAt: LONG_AGO, turnLive: false, ...extra };
+  }
+
+  function situationOpen(): boolean {
+    return component.slashPanels().some((p) => p.panelKind === 'situation');
+  }
+
+  it('inactif depuis 30 h (dernier message écrit, aucune visite) : la carte s’ouvre et la visite est notée', async () => {
+    component.projectId = 'w-sit';
+    await Promise.resolve();
+    http.match(URL).forEach((r) => r.flush(situation()));
+    expect(situationOpen()).toBeTrue();
+    expect(localStorage.getItem('cg.situation.visits')).toContain('w-sit');
+  });
+
+  it('venu sur cet appareil il y a une heure : rien ne s’ouvre, même sans message écrit depuis 30 h', async () => {
+    localStorage.setItem('cg.situation.visits',
+      JSON.stringify({ 'w-sit': new Date(Date.now() - 3_600_000).toISOString() }));
+    component.projectId = 'w-sit';
+    await Promise.resolve();
+    http.match(URL).forEach((r) => r.flush(situation()));
+    expect(situationOpen()).toBeFalse();
+  });
+
+  it('un tour tourne dans le fil montré : la carte ne s’impose pas', async () => {
+    component.projectId = 'w-sit';
+    await Promise.resolve();
+    http.match(URL).forEach((r) => r.flush(situation({ turnLive: true })));
+    expect(situationOpen()).toBeFalse();
+  });
+
+  it('dans un volet du split : aucune lecture, aucune ouverture, aucune visite notée', async () => {
+    component.laneChantier = 2;
+    component.projectId = 'w-sit';
+    await Promise.resolve();
+    expect(http.match(URL).length).toBe(0);
+    expect(situationOpen()).toBeFalse();
+    expect(localStorage.getItem('cg.situation.visits')).toBeNull();
+  });
+});

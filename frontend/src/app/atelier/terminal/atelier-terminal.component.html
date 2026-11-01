@@ -1573,8 +1573,8 @@
           }
           @case ('situation') {
             <!-- F-225 / SF-225-02 — LE POINT DE SITUATION : une lecture, aucun tour. -->
-            <app-terminal-situation [workspaceId]="projectId" [readOnly]="readOnly"
-              (markSent)="onSituationMarkSent($event)" />
+            <app-terminal-situation [workspaceId]="projectId" [readOnly]="readOnly" [chantier]="laneChantier"
+              (sendsChanged)="onSituationSendsChanged()" />
           }
           @case ('sujet') {
             <app-atelier-slash-sujet
