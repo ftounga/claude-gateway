@@ -106,7 +106,9 @@ class AtelierChatServiceVoiceTurnTest {
 
         service.chat(userId, workspaceId, "valide l'étape trois");
 
-        assertThat(sentToModel()).contains("[Mode Jarvis").contains("email_me");
+        assertThat(sentToModel()).contains("[Mode Jarvis").contains("email_me")
+                // SF-231-04 : les actions qui engagent sont reformulées puis confirmées.
+                .contains("Tu confirmes ?");
         assertThat(agentProvider.lastRequest.system()).doesNotContain("Mode Jarvis");
         // Le fil garde la parole de l'utilisateur, pas la consigne.
         assertThat(saved()).filteredOn(m -> "USER".equals(m.getRole()))

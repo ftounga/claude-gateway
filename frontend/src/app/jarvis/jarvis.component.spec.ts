@@ -27,8 +27,10 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       // ignoré
     }
     handlers = null;
-    atelier = jasmine.createSpyObj<AtelierService>('AtelierService', ['listWorkspaces', 'streamChat', 'interruptChat']);
+    atelier = jasmine.createSpyObj<AtelierService>('AtelierService',
+      ['listWorkspaces', 'streamChat', 'interruptChat', 'confirmChatToolUse']);
     atelier.interruptChat.and.returnValue(of(undefined));
+    atelier.confirmChatToolUse.and.returnValue(of(undefined));
     atelier.listWorkspaces.and.returnValue(of([subject('w-1', 'Connecteur AGENOR'), subject('w-2', 'CAGIP')]));
     atelier.streamChat.and.callFake((_id: string, _text: string, h: AtelierStreamHandlers) => {
       handlers = h;
@@ -137,6 +139,63 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(atelier.interruptChat).toHaveBeenCalledWith('w-2');
     expect(voice.speak).toHaveBeenCalledWith('J’arrête.', 'w-2');
     expect(atelier.streamChat).toHaveBeenCalledTimes(1);
+  }));
+
+  it('SF-231-04 — une autorisation d’outil est dite, et « oui » l’accorde', fakeAsync(() => {
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    jarvis.send('w-2', 'Pousse la branche');
+    dictation.stop.and.resolveTo('Oui, vas-y');
+
+    handlers!.onConfirmRequest!({ toolUseId: 't-1', tool: 'bash', detail: 'git push' });
+    flushMicrotasks();
+    expect(voice.speak).toHaveBeenCalledWith('Je vais lancer la commande « git push ». Tu confirmes ?', 'w-2');
+    expect(jarvis.state()).toBe('ecoute');
+
+    void jarvis.finishListening();
+    flushMicrotasks();
+    expect(atelier.confirmChatToolUse).toHaveBeenCalledWith('w-2', { toolUseId: 't-1', decision: 'allow' });
+    jarvis.ngOnDestroy();
+  }));
+
+  it('SF-231-04 — un doute n’accorde rien et n’envoie rien', fakeAsync(() => {
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    jarvis.send('w-2', 'Pousse la branche');
+    dictation.stop.and.resolveTo('oui mais attends');
+
+    handlers!.onConfirmRequest!({ toolUseId: 't-1', tool: 'bash', detail: 'git push' });
+    flushMicrotasks();
+    void jarvis.finishListening();
+    flushMicrotasks();
+
+    expect(atelier.confirmChatToolUse).not.toHaveBeenCalled();
+    expect(voice.speak).toHaveBeenCalledWith(jasmine.stringContaining('je ne fais rien'), 'w-2');
+    expect(atelier.streamChat).toHaveBeenCalledTimes(1);
+    jarvis.ngOnDestroy();
+  }));
+
+  it('SF-231-04 — l’agent demande « Tu confirmes ? » : seul un oui/non net repart au cerveau', fakeAsync(() => {
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    jarvis.send('w-2', 'Lance le chantier 4 en autonome');
+    handlers!.onDone({ reply: '🎙 Je lance le chantier 4 en autonome. Tu confirmes ?', actions: [], messageId: 'm' });
+    flushMicrotasks();
+    expect(jarvis.state()).toBe('ecoute');
+
+    dictation.stop.and.resolveTo('euh');
+    void jarvis.finishListening();
+    flushMicrotasks();
+    expect(atelier.streamChat).toHaveBeenCalledTimes(1);
+
+    void jarvis.handle('Oui');
+    flushMicrotasks();
+    expect(atelier.streamChat).toHaveBeenCalledTimes(2);
+    expect(atelier.streamChat.calls.mostRecent().args[1]).toBe('Oui');
+    jarvis.ngOnDestroy();
   }));
 
   it('sans voix (plafond atteint), la phrase reste écrite', fakeAsync(() => {
