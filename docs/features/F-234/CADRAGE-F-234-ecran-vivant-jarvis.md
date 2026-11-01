@@ -1,7 +1,7 @@
 # CADRAGE F-234 — L'écran vivant de Jarvis
 
 **Statut :** cadrage du 2026-11-01 (go PO du 2026-11-01), précisions et arbitrages PO du même jour intégrés
-(§0). Famille « Jarvis » : F-230, F-231, F-232, F-233, **F-234**.
+(§0) ; **décisions D-PO-1→7 ratifiées le 2026-11-01** (défauts retenus). Famille « Jarvis » : F-230, F-231, F-232, F-233, **F-234**.
 
 **Demande PO (2026-11-01)** : l'écran `/jarvis` (F-231) ne montre qu'un « cerveau » (l'orbe neuronal). Il doit
 **traduire ce qui se passe dans l'application** pendant qu'on parle à Jarvis : allumer le client, le sujet, le
@@ -319,17 +319,21 @@ Toutes les features de `docs/PRODUCT_SPEC.md` au 2026-11-01. « Données » : ou
 | D16 | **Mesure d'intérêt sans contenu** : compteurs par jour ajoutés à `jarvis_usage_days` (migration additive) — scènes montrées par famille, part de la générique, nœuds allumés, touchers de nœud, mode sobre. `GET /api/admin/jarvis/measure` étendu. J+7/J+14 : une famille jamais montrée n'est pas enrichie ; une générique très fréquente sur un outil = candidat à une scène dédiée. | Proposer depuis l'usage observé |
 | D17 | **Règle pour l'avenir** (§12) : tout outil ajouté à l'agent déclare sa scène dans le registre ou accepte `GENERIQUE` ; une **garde automatique** (test passerelle) échoue si un outil offert à l'agent est absent du registre. | P4 |
 
-### Décisions à faire trancher par le PO
+### Décisions PO — ratifiées le 2026-11-01
 
-| # | Question | Défaut proposé |
+Le PO a validé l'ensemble (« je valide tout ») : **les 7 défauts proposés sont retenus tels quels**. Ces
+décisions sont désormais **fermes** pour toutes les subfeatures de F-234 ; y revenir exige un nouvel
+arbitrage PO tracé ici.
+
+| # | Question | Décision PO (2026-11-01) |
 |---|---|---|
-| **D-PO-1** | Toucher un **client** ou un **chantier** : rien, ou ouvrir le tableau du client / le terminal du chantier (quitte Jarvis) ? | Rien ; seul le sujet est touchable (D12) |
-| **D-PO-2** | **Sortie de commande** sur l'écran Jarvis : 2 dernières lignes masquées (D11), ou la commande seule ? | 2 lignes masquées ; mode sobre pour tout retirer |
-| **D-PO-3** | **Univers complet** en couronne ou **client courant seul**, sur téléphone ? | Client courant déployé + autres en lisière (D7) |
-| **D-PO-4** | Accepter l'**enrichissement passerelle** D5 — sans lui, chantier/étape et attentes (les familles 3 et 5 en usage) ne s'animent qu'en fin de tour, web et passation jamais. | Oui (SF-234-04) |
-| **D-PO-5** | **Effets sonores** sur les scènes ? | **Non** : la seule voix est celle de Jarvis |
-| **D-PO-6** | **Coût du tour en €** (A4) affiché sur l'écran Jarvis ? | Oui, discret, administrateur seulement (règle F-133) |
-| **D-PO-7** | **Vague D** (Radar, Vigie, Teams, réunions) : la livrer avec F-234, ou attendre que ces fonctions soient utilisées (la générique les anime déjà) ? | Attendre (facultative) |
+| **D-PO-1** | Toucher un **client** ou un **chantier** : rien, ou ouvrir le tableau du client / le terminal du chantier (quitte Jarvis) ? | **Ratifié** — Rien ; seul le sujet est touchable (D12) |
+| **D-PO-2** | **Sortie de commande** sur l'écran Jarvis : 2 dernières lignes masquées (D11), ou la commande seule ? | **Ratifié** — 2 lignes masquées ; mode sobre pour tout retirer |
+| **D-PO-3** | **Univers complet** en couronne ou **client courant seul**, sur téléphone ? | **Ratifié** — Client courant déployé + autres en lisière (D7) |
+| **D-PO-4** | Accepter l'**enrichissement passerelle** D5 — sans lui, chantier/étape et attentes (les familles 3 et 5 en usage) ne s'animent qu'en fin de tour, web et passation jamais. | **Ratifié** — Oui (SF-234-04) |
+| **D-PO-5** | **Effets sonores** sur les scènes ? | **Ratifié** — **Non** : la seule voix est celle de Jarvis |
+| **D-PO-6** | **Coût du tour en €** (A4) affiché sur l'écran Jarvis ? | **Ratifié** — Oui, discret, administrateur seulement (règle F-133) |
+| **D-PO-7** | **Vague D** (Radar, Vigie, Teams, réunions) : la livrer avec F-234, ou attendre que ces fonctions soient utilisées (la générique les anime déjà) ? | **Ratifié** — Attendre (facultative) |
 
 ---
 
