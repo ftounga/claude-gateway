@@ -158,6 +158,13 @@ export class JarvisSceneBus implements OnDestroy {
     this.ensureTimer();
   }
 
+  /** SF-234-09 — S7 : une page, un PDF ou une vidéo publiés. */
+  created(creation: 'page' | 'pdf' | 'video', title: string): void {
+    this.reader.created(creation, title, this.now());
+    this.publish();
+    this.ensureTimer();
+  }
+
   /** SF-234-08 — S12 : le fil se résume. */
   compaction(summarizedTurns: number): void {
     this.reader.compaction(summarizedTurns, this.now());

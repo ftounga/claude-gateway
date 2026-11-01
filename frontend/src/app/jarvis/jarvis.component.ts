@@ -914,6 +914,17 @@ export class JarvisComponent implements OnInit, OnDestroy {
           this.scenes.compaction(event.summarizedTurns);
         }
       },
+      // F-234 / SF-234-09 — une page ou une vidéo publiée : son titre s'écrit (S7).
+      onPage: (event) => {
+        if (latest()) {
+          this.scenes.created(event.page.pdf ? 'pdf' : 'page', event.page.title);
+        }
+      },
+      onVideo: (event) => {
+        if (latest()) {
+          this.scenes.created('video', event.video.title);
+        }
+      },
       onHandoff: (event) => {
         if (latest()) {
           this.scenes.handoff(event.handoff.name, event.handoff.workspaceId);
