@@ -120,7 +120,7 @@ public class JarvisFastBrainController {
                 }
             }
             send(emitter, "done", new DoneEvent(brainOf(outcome), outcome.spokenText(), outcome.firstTokenMs(),
-                    outcome.model(), turnSeq));
+                    outcome.model(), turnSeq, outcome.guards()));
             emitter.complete();
         } catch (RuntimeException e) {
             log.warn("Cerveau rapide : flux interrompu ({})", e.getClass().getSimpleName());
@@ -159,7 +159,8 @@ public class JarvisFastBrainController {
     record FallbackEvent(String reason) {
     }
 
-    record DoneEvent(String brain, String spokenText, long firstTokenMs, String model, Long turnSeq) {
+    record DoneEvent(String brain, String spokenText, long firstTokenMs, String model, Long turnSeq,
+            JarvisFastBrainService.Guards guards) {
     }
 
     record ErrorEvent(String error) {

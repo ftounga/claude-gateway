@@ -99,7 +99,7 @@ class JarvisFastBrainServiceTest {
 
         assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
         assertThat(outcome.spokenText()).isEqualTo("Le chantier 3 en est aux tests.");
-        assertThat(heard).hasToString("Le chantier 3 en est aux tests.");
+        assertThat(heard.toString().strip()).isEqualTo("Le chantier 3 en est aux tests.");
         verify(usage).addFastBrain(eq(alice), any());
     }
 
@@ -296,6 +296,144 @@ class JarvisFastBrainServiceTest {
 
         assertThat(registry.running(alice)).extracting(JarvisDelegationRegistry.Running::label)
                 .containsExactly("tickets bloqués");
+    }
+
+    // ------------------------------------------------------------- SF-235-03 : garde-fous
+
+    private AiAgentProvider streaming(String... deltas) {
+        return new AiAgentProvider() {
+            @Override
+            public AgentTurn nextTurn(AgentTurnRequest request) {
+                return nextTurn(request, d -> { });
+            }
+
+            @Override
+            public AgentTurn nextTurn(AgentTurnRequest request, AgentTextListener listener) {
+                calls.add(request);
+                for (String d : deltas) {
+                    listener.onTextDelta(d);
+                }
+                return new AgentTurn(String.join("", deltas), List.of(), true, 100, 10);
+            }
+        };
+    }
+
+    @Test
+    void anUngroundedNumberIsNeverSaidAndTheExchangeIsDelegated() {
+        StringBuilder heard = new StringBuilder();
+        JarvisFastBrainService.Outcome outcome = service(streaming("Kestrel avance bien. ", "Il reste 42 tickets ",
+                "ouverts."), null, null).converse(ask("Où en est Kestrel ?"), heard::append);
+
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.DELEGATE);
+        assertThat(outcome.delegation().reason()).isEqualTo("grounding");
+        assertThat(outcome.delegation().demande()).isEqualTo("Où en est Kestrel ?");
+        assertThat(outcome.guards().groundingTrips()).isEqualTo(1);
+        assertThat(heard.toString()).contains("Kestrel avance bien.").doesNotContain("42");
+    }
+
+    @Test
+    void anUngroundedTicketKeyOrNameIsNeverSaid() {
+        StringBuilder heard = new StringBuilder();
+        JarvisFastBrainService.Outcome outcome = service(streaming("Le ticket KES-418 bloque."), null, null)
+                .converse(ask("Qu'est-ce qui bloque ?"), heard::append);
+        assertThat(outcome.delegation().reason()).isEqualTo("grounding");
+        assertThat(heard.toString()).isEmpty();
+
+        outcome = service(streaming("C'est chez Thales que ça coince."), null, null)
+                .converse(ask("Qu'est-ce qui coince ?"), null);
+        assertThat(outcome.delegation().reason()).isEqualTo("grounding");
+    }
+
+    @Test
+    void aFactPresentInTheWordsIsSaid() {
+        JarvisFastBrainService.Outcome outcome = service(streaming("Le ticket KES-418 est noté chez Thales."), null,
+                null).converse(ask("Note le ticket KES-418 de Thales"), null);
+
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+    }
+
+    @Test
+    void aFillerAloneIsRemovedButKeptInsideAFullSentence() {
+        StringBuilder heard = new StringBuilder();
+        JarvisFastBrainService.Outcome outcome = service(streaming("Très bien. ", "Le chantier en est aux tests. ",
+                "Je m'en occupe, Monsieur."), null, null).converse(ask("Et le chantier ?"), heard::append);
+
+        assertThat(outcome.spokenText()).isEqualTo("Le chantier en est aux tests.");
+        assertThat(outcome.guards().fillersRemoved()).isEqualTo(2);
+        assertThat(heard.toString()).doesNotContain("Très bien");
+
+        outcome = service(streaming("Très bien, le chantier en est aux tests."), null, null)
+                .converse(ask("Et le chantier ?"), null);
+        assertThat(outcome.spokenText()).isEqualTo("Très bien, le chantier en est aux tests.");
+    }
+
+    @Test
+    void onlyFillersBecomesAnAutomaticDelegation() {
+        JarvisFastBrainService.Outcome outcome = service(streaming("Une seconde."), null, null)
+                .converse(ask("Et alors ?"), null);
+
+        assertThat(outcome.delegation().reason()).isEqualTo("empty");
+    }
+
+    @Test
+    void aSentenceFromTheLastAnswersIsNotRepeated() {
+        JarvisFastBrainService service = service(streaming("Avec plaisir. ", "Le chantier en est aux tests."), null,
+                null);
+        service.setContext(null, new JarvisFastMemory(Clock.systemUTC()), null);
+
+        service.converse(ask("Merci"), null);
+        JarvisFastBrainService.Outcome second = service.converse(ask("Merci encore"), null);
+
+        assertThat(second.spokenText()).doesNotContain("Avec plaisir");
+        assertThat(second.guards().repeatsRemoved()).isEqualTo(2);
+        assertThat(second.delegation().reason()).isEqualTo("empty");
+    }
+
+    @Test
+    void verifyForcesOpusOnThePreviousQuestionWithoutCallingTheFastBrain() {
+        JarvisFastBrainService service = service(streaming("Le chantier en est aux tests."), null, null);
+        service.setContext(null, new JarvisFastMemory(Clock.systemUTC()), null);
+        service.converse(ask("Où en est le chantier ?"), null);
+        calls.clear();
+
+        JarvisFastBrainService.Outcome outcome = service.converse(ask("Vérifie, s'il te plaît"), null);
+
+        assertThat(calls).isEmpty();
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.DELEGATE);
+        assertThat(outcome.delegation().reason()).isEqualTo("forced");
+        assertThat(outcome.delegation().demande()).startsWith("Où en est le chantier ?");
+        assertThat(outcome.guards().forcedDelegation()).isTrue();
+        assertThat(service.converse(ask("Demande à Opus"), null).delegation().reason()).isEqualTo("forced");
+        assertThat(service.converse(ask("Non, c'est faux"), null).delegation().reason()).isEqualTo("forced");
+    }
+
+    @Test
+    void textImitatingAToolCallIsNeverSaid() {
+        StringBuilder heard = new StringBuilder();
+        JarvisFastBrainService.Outcome outcome = service(streaming("deleguer(", "{\"demande\": \"x\"})"), null, null)
+                .converse(ask("Regarde"), heard::append);
+
+        assertThat(outcome.delegation().reason()).isEqualTo("tool_text");
+        assertThat(outcome.guards().toolText()).isTrue();
+        assertThat(heard.toString()).isEmpty();
+    }
+
+    @Test
+    void aHollowAnnounceIsReplacedByOneThatNamesTheObject() {
+        JarvisFastBrainService.Outcome outcome = service(delegating("""
+                {"demande": "x", "label": "tickets bloqués", "annonce": "Je m'en occupe.", "sujet": "",
+                 "chantier": null}
+                """), null, null).converse(ask("Regarde les tickets bloqués"), null);
+
+        assertThat(outcome.delegation().annonce()).isEqualTo("Je regarde : tickets bloqués.");
+    }
+
+    @Test
+    void monsieurAtMostOncePerAnswer() {
+        JarvisFastBrainService.Outcome outcome = service(streaming("Bonsoir, Monsieur. ",
+                "Le chantier en est aux tests, Monsieur."), null, null).converse(ask("Bonsoir"), null);
+
+        assertThat(outcome.spokenText()).isEqualTo("Bonsoir, Monsieur. Le chantier en est aux tests.");
     }
 
     private static String text(AgentTurnRequest request, int index) {

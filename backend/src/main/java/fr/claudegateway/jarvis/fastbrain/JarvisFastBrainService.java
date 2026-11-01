@@ -90,7 +90,21 @@ public class JarvisFastBrainService {
 
     /** Le résultat d'un échange. */
     public record Outcome(Kind kind, String spokenText, Delegation delegation, String reason, String model,
-            long firstTokenMs, BigDecimal costUsd) {
+            long firstTokenMs, BigDecimal costUsd, Guards guards) {
+
+        public Outcome(Kind kind, String spokenText, Delegation delegation, String reason, String model,
+                long firstTokenMs, BigDecimal costUsd) {
+            this(kind, spokenText, delegation, reason, model, firstTokenMs, costUsd, Guards.NONE);
+        }
+    }
+
+    /**
+     * Ce que les garde-fous ont fait pendant l'échange (F-235 / SF-235-03, D9, D11) — compté, jamais de contenu ;
+     * consommé par la mesure (SF-235-07).
+     */
+    public record Guards(int groundingTrips, int fillersRemoved, int repeatsRemoved, boolean forcedDelegation,
+            boolean toolText) {
+        public static final Guards NONE = new Guards(0, 0, 0, false, false);
     }
 
     /** Ce qui reçoit les fragments de la réponse au fil de l'eau. */
@@ -106,6 +120,12 @@ public class JarvisFastBrainService {
     public static final String REASON_EMPTY = "empty";
     public static final String REASON_BUDGET = "budget";
     public static final String REASON_QUOTA = "quota";
+    /** SF-235-03 : un fait non ancré (D9a), un texte d'outil (D9c), une délégation demandée par le PO (D9d). */
+    public static final String REASON_GROUNDING = "grounding";
+    public static final String REASON_TOOL_TEXT = "tool_text";
+    public static final String REASON_FORCED = "forced";
+    /** Nombre de réponses précédentes de la session dont les phrases ne doivent pas revenir (D11c). */
+    static final int REPEAT_WINDOW = 5;
 
     /** L'annonce d'une délégation d'office : courte, vraie, jamais un fait. */
     static final String AUTO_ANNOUNCE = "Je vérifie, Monsieur.";
@@ -233,6 +253,10 @@ public class JarvisFastBrainService {
     Outcome decide(Request request, Sink sink) {
         Sink out = sink == null ? delta -> { } : sink;
         UUID userId = request.userId();
+        // D9d : « vérifie », « demande à Opus », « c'est faux »… ⇒ Opus, sans appel au cerveau rapide.
+        if (JarvisFastGuards.forcesDelegation(request.text())) {
+            return forced(request);
+        }
         if (overBudget(userId)) {
             return fallback(REASON_BUDGET);
         }
@@ -244,25 +268,25 @@ public class JarvisFastBrainService {
             }
         }
         String apiKey = byok == null ? null : byok.resolveActiveApiKey(userId).orElse(null);
+        String context = context(request);
+        SentenceGate gate = new SentenceGate(context, request.text(), recentSentences(userId), out);
         AgentTurnRequest call = new AgentTurnRequest(properties.model(), JarvisFastBrainPrompt.system(),
-                messages(request), List.of(JarvisFastBrainPrompt.delegateTool()), apiKey,
+                messages(request, context), List.of(JarvisFastBrainPrompt.delegateTool()), apiKey,
                 AgentReasoning.off(properties.effort()), AgentContextPolicy.none(), AgentTurnMode.ACT,
                 AgentCallShape.compact(properties.maxTokens()));
 
         long started = System.nanoTime();
         AtomicLong firstToken = new AtomicLong(-1L);
         CountDownLatch first = new CountDownLatch(1);
-        StringBuilder streamed = new StringBuilder();
-        Object gate = new Object();
+        Object lock = new Object();
         boolean[] abandoned = { false };
         CompletableFuture<AgentTurn> pending = CompletableFuture.supplyAsync(() -> provider.nextTurn(call, delta -> {
             if (firstToken.compareAndSet(-1L, (System.nanoTime() - started) / 1_000_000L)) {
                 first.countDown();
             }
-            synchronized (gate) {
+            synchronized (lock) {
                 if (!abandoned[0]) {
-                    streamed.append(delta);
-                    out.text(delta);
+                    gate.accept(delta);
                 }
             }
         }), calls);
@@ -277,7 +301,7 @@ public class JarvisFastBrainService {
         try {
             boolean started1 = first.await(properties.firstTokenTimeout().toMillis(), TimeUnit.MILLISECONDS);
             if (!started1 && !pending.isDone()) {
-                synchronized (gate) {
+                synchronized (lock) {
                     abandoned[0] = true;
                 }
                 return auto(request, REASON_TIMEOUT, -1L);
@@ -292,20 +316,243 @@ public class JarvisFastBrainService {
         }
         long firstMs = firstToken.get() >= 0 ? firstToken.get() : (System.nanoTime() - started) / 1_000_000L;
         if (turn == null || turn.refused()) {
-            return auto(request, REASON_REFUSAL, firstMs);
+            return auto(request, REASON_REFUSAL, firstMs, gate.guards());
         }
         Optional<AgentToolCall> delegate = turn.toolCalls().stream()
                 .filter(tc -> JarvisFastBrainPrompt.TOOL_NAME.equals(tc.name())).findFirst();
+        synchronized (lock) {
+            if (delegate.isEmpty() && !gate.streamedAnything() && turn.text() != null) {
+                gate.accept(turn.text()); // fournisseur sans flux : le texte entier passe la même porte
+            }
+            gate.finish();
+        }
+        if (gate.abortReason() != null) {
+            return auto(request, gate.abortReason(), firstMs, gate.guards());
+        }
         if (delegate.isPresent()) {
-            return new Outcome(Kind.DELEGATE, streamed.toString().strip(),
-                    delegation(request, delegate.get().input()), null, properties.model(), firstMs, null);
+            Delegation d = withSafeAnnounce(delegation(request, delegate.get().input()), gate);
+            return new Outcome(Kind.DELEGATE, gate.spoken(), d, null, properties.model(), firstMs, null,
+                    gate.guards());
         }
-        String text = turn.text() == null ? "" : turn.text().strip();
+        String text = gate.spoken();
         if (text.isEmpty() || turn.truncated()) {
-            return auto(request, REASON_EMPTY, firstMs);
+            return auto(request, REASON_EMPTY, firstMs, gate.guards());
         }
-        return new Outcome(Kind.ANSWER, text, null, null, properties.model(), firstMs, null);
+        return new Outcome(Kind.ANSWER, text, null, null, properties.model(), firstMs, null, gate.guards());
     }
+
+    /**
+     * Délégation demandée par le PO (D9d) : la parole <b>précédente</b> de la session part à Opus (à défaut, la
+     * parole elle-même), sans appel au cerveau rapide.
+     */
+    Outcome forced(Request request) {
+        String previous = null;
+        if (memory != null) {
+            List<JarvisFastMemory.Exchange> recalled = memory.recall(request.userId());
+            if (!recalled.isEmpty()) {
+                previous = recalled.get(recalled.size() - 1).said();
+            }
+        }
+        String said = request.text() == null ? "" : request.text().strip();
+        String demande = previous == null || previous.isBlank() ? said
+                : previous + "\n(L'utilisateur demande de vérifier : « " + said + " ». La réponse rapide précédente "
+                        + "n'était pas vérifiée.)";
+        UUID subject = request.workspace() == null ? null : request.workspace().getId();
+        return new Outcome(Kind.DELEGATE, "", new Delegation(UUID.randomUUID(), demande, "", AUTO_ANNOUNCE, subject,
+                request.chantier(), true, REASON_FORCED), REASON_FORCED, properties.model(), -1L, null,
+                new Guards(0, 0, 0, true, false));
+    }
+
+    /**
+     * L'annonce d'une délégation (D11b) : creuse, répétée ou non ancrée ⇒ remplacée par une annonce qui nomme
+     * l'objet (« Je regarde : tickets bloqués d'Edenred. »).
+     */
+    Delegation withSafeAnnounce(Delegation d, SentenceGate gate) {
+        String annonce = d.annonce();
+        boolean bad = annonce == null || annonce.isBlank() || AUTO_ANNOUNCE.equals(annonce)
+                || JarvisFastGuards.isFillerAlone(annonce) || gate.repeats(annonce)
+                || JarvisFastGuards.looksLikeToolCall(annonce) || gate.ungrounded(annonce) != null;
+        if (!bad) {
+            return d;
+        }
+        String label = d.label() == null ? "" : d.label().strip().replaceAll("[.!?…]+$", "");
+        String safe = label.isEmpty() || JarvisFastGuards.looksLikeToolCall(label) || gate.ungrounded(label) != null
+                ? AUTO_ANNOUNCE
+                : "Je regarde : " + label + ".";
+        if (!AUTO_ANNOUNCE.equals(safe) && gate.repeats(safe)) {
+            safe = "Je lance la recherche : " + label + ".";
+        }
+        return new Delegation(d.delegationId(), d.demande(), d.label(), safe, d.subjectId(), d.chantier(),
+                d.automatic(), d.reason());
+    }
+
+    /** Les phrases des {@value #REPEAT_WINDOW} dernières réponses de la session (D11c). */
+    List<String> recentSentences(UUID userId) {
+        if (memory == null) {
+            return List.of();
+        }
+        List<JarvisFastMemory.Exchange> recalled = memory.recall(userId);
+        List<String> sentences = new ArrayList<>();
+        for (int i = Math.max(0, recalled.size() - REPEAT_WINDOW); i < recalled.size(); i++) {
+            String answered = recalled.get(i).answered();
+            if (answered == null || answered.isBlank()) {
+                continue;
+            }
+            JarvisFastGuards.Split split = JarvisFastGuards.split(answered);
+            sentences.addAll(split.sentences());
+            if (!split.rest().isBlank()) {
+                sentences.add(split.rest().strip());
+            }
+        }
+        return sentences;
+    }
+
+    /**
+     * <b>La porte des phrases</b> (D9, D11) : retient les fragments jusqu'à la fin d'une phrase, la contrôle, puis
+     * seulement la laisse partir vers l'écran. Un fait non ancré ou un texte d'outil ferme la porte (plus rien ne
+     * part) et l'échange devient une délégation d'office.
+     */
+    static final class SentenceGate {
+        private static final java.util.regex.Pattern MONSIEUR = java.util.regex.Pattern
+                .compile("(?i)(,\\s*)?\\bmonsieur\\b");
+        private final String context;
+        private final String said;
+        private final List<String> recent;
+        private final Sink out;
+        private final StringBuilder pending = new StringBuilder();
+        private final StringBuilder spoken = new StringBuilder();
+        private final List<String> saidNow = new ArrayList<>();
+        private boolean streamed;
+        private boolean addressed;
+        private String abortReason;
+        private int groundingTrips;
+        private int fillersRemoved;
+        private int repeatsRemoved;
+        private boolean toolText;
+
+        SentenceGate(String context, String said, List<String> recent, Sink out) {
+            this.context = context == null ? "" : context;
+            this.said = said == null ? "" : said;
+            this.recent = recent == null ? List.of() : recent;
+            this.out = out;
+        }
+
+        void accept(String delta) {
+            if (delta == null || delta.isEmpty() || abortReason != null) {
+                return;
+            }
+            streamed = true;
+            pending.append(delta);
+            JarvisFastGuards.Split split = JarvisFastGuards.split(pending.toString());
+            pending.setLength(0);
+            pending.append(split.rest());
+            for (String sentence : split.sentences()) {
+                check(sentence);
+            }
+            // Un appel d'outil écrit en texte se voit souvent avant la fin de « phrase » : on coupe tout de suite.
+            if (abortReason == null && JarvisFastGuards.looksLikeToolCall(pending.toString())) {
+                abort(REASON_TOOL_TEXT);
+            }
+        }
+
+        void finish() {
+            String rest = pending.toString().strip();
+            pending.setLength(0);
+            if (!rest.isEmpty()) {
+                check(rest);
+            }
+        }
+
+        private void check(String raw) {
+            if (abortReason != null) {
+                return;
+            }
+            String sentence = raw.strip();
+            if (sentence.isEmpty()) {
+                return;
+            }
+            try {
+                if (JarvisFastGuards.looksLikeToolCall(sentence)) {
+                    abort(REASON_TOOL_TEXT);
+                    return;
+                }
+                if (ungrounded(sentence) != null) {
+                    groundingTrips++;
+                    abort(REASON_GROUNDING);
+                    return;
+                }
+                if (JarvisFastGuards.isFillerAlone(sentence)) {
+                    fillersRemoved++;
+                    return;
+                }
+                if (repeats(sentence)) {
+                    repeatsRemoved++;
+                    return;
+                }
+            } catch (RuntimeException e) {
+                groundingTrips++;
+                abort(REASON_GROUNDING); // une garde en panne ne laisse jamais passer un fait
+                return;
+            }
+            String kept = oneMonsieur(sentence);
+            saidNow.add(kept);
+            if (spoken.length() > 0) {
+                spoken.append(' ');
+            }
+            spoken.append(kept);
+            out.text(kept + " ");
+        }
+
+        /** « Monsieur » au plus une fois par réponse (D11e) : les suivants sont retirés. */
+        private String oneMonsieur(String sentence) {
+            java.util.regex.Matcher m = MONSIEUR.matcher(sentence);
+            StringBuilder b = new StringBuilder();
+            while (m.find()) {
+                if (!addressed) {
+                    addressed = true;
+                    m.appendReplacement(b, java.util.regex.Matcher.quoteReplacement(m.group()));
+                } else {
+                    m.appendReplacement(b, "");
+                }
+            }
+            m.appendTail(b);
+            String cleaned = b.toString().replaceAll("\\s+([.!?…,])", "$1").replaceAll("\\s{2,}", " ").strip();
+            return cleaned.isEmpty() ? sentence : cleaned;
+        }
+
+        String ungrounded(String sentence) {
+            return JarvisFastGuards.ungroundedFact(sentence, context, said);
+        }
+
+        boolean repeats(String sentence) {
+            return JarvisFastGuards.isRepeat(sentence, recent) || JarvisFastGuards.isRepeat(sentence, saidNow);
+        }
+
+        private void abort(String reason) {
+            if (REASON_TOOL_TEXT.equals(reason)) {
+                toolText = true;
+            }
+            abortReason = reason;
+            pending.setLength(0);
+        }
+
+        boolean streamedAnything() {
+            return streamed;
+        }
+
+        String abortReason() {
+            return abortReason;
+        }
+
+        String spoken() {
+            return spoken.toString().strip();
+        }
+
+        Guards guards() {
+            return new Guards(groundingTrips, fillersRemoved, repeatsRemoved, false, toolText);
+        }
+    }
+
 
     /** Les messages de l'appel : la parole et son contexte, dans le message (jamais dans la consigne système). */
     List<AgentMessage> messages(Request request) {
@@ -394,10 +641,14 @@ public class JarvisFastBrainService {
 
     /** Délégation d'office de la parole d'origine (D9b) : jamais de silence, jamais d'invention. */
     Outcome auto(Request request, String reason, long firstMs) {
+        return auto(request, reason, firstMs, Guards.NONE);
+    }
+
+    Outcome auto(Request request, String reason, long firstMs, Guards guards) {
         UUID subject = request.workspace() == null ? null : request.workspace().getId();
         String said = request.text() == null ? "" : request.text().strip();
         return new Outcome(Kind.DELEGATE, "", new Delegation(UUID.randomUUID(), said, "", AUTO_ANNOUNCE, subject,
-                request.chantier(), true, reason), reason, properties.model(), firstMs, null);
+                request.chantier(), true, reason), reason, properties.model(), firstMs, null, guards);
     }
 
     private Outcome fallback(String reason) {
