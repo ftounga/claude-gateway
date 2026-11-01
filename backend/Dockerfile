@@ -84,6 +84,53 @@ RUN ./package-relay.sh windows target \
     && ./package-relay.sh macos-aarch64 target \
     && ./package-relay.sh linux-x64 target
 
+# ---- Compagnon Android de Jarvis (F-232 / SF-232-04) ----
+# L'APK est construit ICI et signé v1 + v2 par la clé de release, montée le temps d'UNE instruction par
+# deux secrets de construction (jamais dans une couche, jamais dans le dépôt) :
+#
+#   docker build --secret id=jarvis_keystore,src=<keystore PKCS12> \
+#                --secret id=jarvis_signing_env,src=<fichier JARVIS_SIGNING_*=…> -f backend/Dockerfile .
+#
+# (clé : AWS Secrets Manager, claude-gateway/jarvis-companion-signing — cf. android/jarvis-companion/README.md).
+# Sans ces secrets, l'image se construit SANS compagnon (avertissement) : la gateway ne sert alors rien et
+# l'écran Jarvis n'affiche aucun lien. À l'inverse du runner, rien d'autre n'en dépend.
+# Debian (glibc) et non alpine : aapt2 du SDK Android exige la glibc.
+FROM eclipse-temurin:17-jdk-jammy AS jarvis-build
+ENV ANDROID_HOME=/opt/android-sdk
+RUN apt-get update -q && apt-get install -y -q --no-install-recommends unzip curl && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSLo /tmp/clt.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip \
+    && echo "2d2d50857e4eb553af5a6dc3ad507a17adf43d115264b1afc116f95c92e5e258  /tmp/clt.zip" | sha256sum -c - \
+    && mkdir -p "$ANDROID_HOME/cmdline-tools" && unzip -q /tmp/clt.zip -d "$ANDROID_HOME/cmdline-tools" \
+    && mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest" && rm /tmp/clt.zip \
+    && yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null \
+    && "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" >/dev/null
+WORKDIR /jarvis
+# Wrapper et scripts Gradle d'abord : la distribution Gradle (somme SHA-256 épinglée) et le plugin Android
+# restent en cache tant qu'ils ne changent pas.
+COPY android/jarvis-companion/gradlew android/jarvis-companion/settings.gradle \
+     android/jarvis-companion/build.gradle android/jarvis-companion/gradle.properties ./
+COPY android/jarvis-companion/gradle/ gradle/
+COPY android/jarvis-companion/app/build.gradle app/
+RUN ./gradlew --no-daemon -q help
+COPY android/jarvis-companion/app/src/ app/src/
+COPY android/jarvis-companion/build-release.sh ./
+# JARVIS_SIGNING=on (posé par deploy2.sh avec les secrets) : la clé est EXIGÉE, son absence fait échouer la
+# construction. L'ARG entre dans la clé de cache — le contenu d'un secret, lui, n'y entre pas : sans lui, une
+# étape construite sans clé serait réutilisée telle quelle par une construction qui en fournit une.
+ARG JARVIS_SIGNING=off
+RUN --mount=type=secret,id=jarvis_keystore --mount=type=secret,id=jarvis_signing_env \
+    mkdir -p /out \
+    && if [ -s /run/secrets/jarvis_keystore ] && [ -s /run/secrets/jarvis_signing_env ]; then \
+        ./build-release.sh /run/secrets/jarvis_keystore /run/secrets/jarvis_signing_env /out; \
+    elif [ "$JARVIS_SIGNING" = "on" ]; then \
+        echo "ERREUR : JARVIS_SIGNING=on mais secrets jarvis_keystore / jarvis_signing_env absents." >&2; \
+        exit 1; \
+    else \
+        echo "AVERTISSEMENT : clé du compagnon Jarvis absente — image construite SANS compagnon Android." >&2; \
+        echo "  --secret id=jarvis_keystore,src=… --secret id=jarvis_signing_env,src=… (README du compagnon)" >&2; \
+        echo "absent" > /out/AUCUN-COMPAGNON; \
+    fi
+
 # ---- Build du backend ----
 FROM eclipse-temurin:21-jdk-alpine AS build
 WORKDIR /app
@@ -119,6 +166,11 @@ COPY --from=runner-build /runner/target/px-v0.11.0-windows-amd64.zip px-v0.11.0-
 COPY --from=runner-build /runner/target/px-v0.11.0-mac-arm64.tar.gz px-v0.11.0-mac-arm64.tar.gz
 COPY --from=runner-build /runner/target/px-v0.11.0-linux-glibc-x86_64.tar.gz px-v0.11.0-linux-glibc-x86_64.tar.gz
 COPY --from=runner-build /runner/target/px-LICENSE.txt px-LICENSE.txt
+# Compagnon Android de Jarvis (F-232 / SF-232-04) : APK signé + version.properties, servis par
+# GET /runner/download/android — seulement si l'empreinte du certificat est configurée
+# (APP_JARVIS_COMPANION_SIGNING_CERT_SHA256, ConfigMap). Dossier vide de tout APK sans clé à la construction.
+COPY --from=jarvis-build /out/ jarvis/
+ENV APP_JARVIS_COMPANION_APK_PATH=/app/jarvis/jarvis-compagnon.apk
 
 EXPOSE 8080
 
