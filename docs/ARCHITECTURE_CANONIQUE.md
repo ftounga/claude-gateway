@@ -1362,6 +1362,31 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   Index `(status, started_at)` : la vérification avant déploiement (D5) lit les lignes `RUNNING`
   (requête dans `docs/DEPLOYMENT.md`) ; les orphelines sont closes après 3 h. La dépense du mois
   d'une routine est la somme de `cost_usd` depuis le 1er (fuseau de la routine).
+- **jarvis_watches** — **les veilles Jarvis** (F-230 / SF-230-01, migration `185`) : une sonde en lecture
+  seule écrite par l'agent sur le poste, lancée aux heures données par le PO, **du lundi au vendredi**
+  (imposé). `id`, `user_id`, `workspace_id` (FK `workspaces`, cascade), `chantier_number`, `name (80)`,
+  `platform (40)`, `scope (500)`, `probe_command (2000)` (contrôle D5 : aucun littéral de jeton, aucune
+  écriture HTTP ni mutation GraphQL), `probe_script_path`, `probe_script_hash` (SHA-256 du script validé —
+  modifié, il ne tourne plus), `run_times` (`HH:mm` triées, 1 à 6), `time_zone`, `active`, `proposed`,
+  `origin (USER | AGENT)`, `tested_at`/`test_item_count`/`test_summary` (test devant le PO, exigé pour
+  activer), `last_slot_at` (verrou entre pods), `missed_slot_at`, `consecutive_failures`, `broken` (2 échecs
+  d'affilée), `last_run_at`, `last_run_status`, `monthly_budget_usd` (rédaction IA, saisie en euros),
+  `created_at`, `updated_at`. Une veille **n'est pas une routine** : elle lance une commande, jamais un tour
+  d'agent. Toute lecture filtre `user_id` (+ `workspace_id`) ; purge à la suppression du compte.
+- **jarvis_watch_snapshots** — **le dernier instantané d'une veille** (F-230 / SF-230-02, migration `186`) :
+  `user_id`, `watch_id` (FK cascade, unique), `items_json` (liste normalisée `{id, titre, statut, assigne,
+  mis_a_jour, dernier_commentaire}`, 500 éléments au plus), `item_count`, `taken_at`. Le passage suivant s'y
+  compare : rien n'a bougé ⇒ rien ne se passe.
+- **jarvis_watch_runs** — **le journal des passages** (F-230 / SF-230-02, migration `186`) : `user_id`,
+  `workspace_id`, `watch_id` (FK cascade), `slot_at`, `trigger_kind` (`SCHEDULED | CATCH_UP | MANUAL`),
+  `status` (`BASELINE | NO_CHANGE | CHANGED | FAILED | MISSED_OFFLINE`), `change_count`, `error_code`
+  (liste fermée), `duration_ms`, `started_at`, `finished_at`. **Aucun contenu.** Purge à 90 jours.
+- **jarvis_watch_alerts** — **les alertes des veilles** (F-230 / SF-230-03, migration `187`) : `user_id`,
+  `workspace_id`, `watch_id` (FK cascade), `run_id`, `chantier_number`, `sentence (500)` (rédigée par l'IA via
+  `AIProvider` à partir du **diff seul**, ou déterministe si budget/quota/fournisseur font défaut),
+  `changes_json`, `change_count`, `ai_written`, `cost_usd`, `opened_at` (mesure D8), `created_at`. Lue par
+  Jarvis (F-231) via `GET /api/jarvis/alerts/{id}`. La dépense du mois d'une veille est la somme de
+  `cost_usd` depuis le 1er (UTC).
 - **interlocuteurs** — **les interlocuteurs d'un poste** (F-180 / SF-180-03, migration `160`) : une
   personne dont on attend quelque chose, normalisée. `id`, `user_id`, `host_id` (NOT NULL — un terminal
   hébergé garde le texte libre), `display_name (120)`, `normalized_name (120)` (unique par `user_id` +
