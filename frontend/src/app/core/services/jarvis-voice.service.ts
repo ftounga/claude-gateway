@@ -40,7 +40,37 @@ interface Playback {
   audio: HTMLAudioElement;
   abort: AbortController;
   url: string;
+  /** SF-233-08 — la phrase jouée (pour savoir ce qui a été entendu) ; absente pour un clip. */
+  text?: string;
   done: (error?: JarvisVoiceError) => void;
+}
+
+/**
+ * F-233 / SF-233-08 (D10) — ce que Jarvis avait dit au moment d'être coupé : la part **entendue** (phrases finies +
+ * début de la phrase coupée, estimé par l'horloge audio) et ce qu'il lui restait à dire (la phrase coupée, entière,
+ * puis la file).
+ */
+export interface CutSnapshot {
+  heard: string;
+  resume: string[];
+}
+
+/** SF-233-08 — volume de la voix pendant qu'un humain semble parler (baisse, avant la coupure). */
+export const DUCK_GAIN = 0.25;
+/** SF-233-08 — débit moyen de la voix (caractères par seconde), pour estimer la part entendue d'une phrase coupée. */
+export const SPOKEN_CHARS_PER_SECOND = 15;
+
+/** La part entendue d'une phrase coupée après `seconds` de lecture (mots entiers ; `duration` si connue). */
+export function heardPart(text: string, seconds: number, duration: number): string {
+  const words = text.split(/\s+/).filter((w) => w.length > 0);
+  if (words.length === 0 || seconds <= 0) {
+    return '';
+  }
+  const fraction = Number.isFinite(duration) && duration > 0
+    ? seconds / duration
+    : (seconds * SPOKEN_CHARS_PER_SECOND) / Math.max(1, text.length);
+  const count = Math.min(words.length, Math.floor(words.length * Math.min(1, fraction)));
+  return words.slice(0, count).join(' ');
 }
 
 /**
@@ -58,6 +88,10 @@ export class JarvisVoiceService {
   private context: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private samples: Uint8Array | null = null;
+  /** SF-233-08 — le gain de sortie (baisse de volume pendant une interruption possible). */
+  private gain: GainNode | null = null;
+  /** SF-233-08 — les phrases entendues en entier depuis `resetHeard()`. */
+  private heard: string[] = [];
   private current: Playback | null = null;
   /** SF-233-03 — la file de phrases à dire, et l'attente de sa fin. */
   private queue: QueuedSentence[] = [];
@@ -97,7 +131,7 @@ export class JarvisVoiceService {
     this.stop();
     const abort = new AbortController();
     const url = await this.fetchAudio(text, workspaceId, abort, hooks);
-    return this.play(url, abort, hooks, true);
+    return this.play(url, abort, hooks, true, text);
   }
 
   /**
@@ -149,7 +183,7 @@ export class JarvisVoiceService {
         if (this.queue[0] !== item) {
           continue;
         }
-        await this.play(url, item.abort, item.hooks, true);
+        await this.play(url, item.abort, item.hooks, true, item.text);
       } catch (error) {
         if (this.queue[0] === item) {
           // Voix absente ou plafond : inutile d'essayer les suivantes, elles restent écrites.
@@ -244,14 +278,19 @@ export class JarvisVoiceService {
   }
 
   /** Joue `url` ; une seule lecture à la fois. `revoke` : l'URL est rendue à la fin (une phrase, pas un clip). */
-  private play(url: string, abort: AbortController, hooks: SpeakHooks | undefined, revoke: boolean): Promise<void> {
+  private play(url: string, abort: AbortController, hooks: SpeakHooks | undefined, revoke: boolean,
+               text?: string): Promise<void> {
     const audio = new Audio();
     audio.src = url;
     this.connect(audio);
+    this.duck(false);
     return new Promise<void>((resolve, reject) => {
       const playback: Playback = {
-        audio, abort, url,
+        audio, abort, url, text,
         done: (error) => {
+          if (!error && text) {
+            this.heard.push(text);
+          }
           if (this.current === playback) {
             this.current = null;
           }
@@ -273,6 +312,47 @@ export class JarvisVoiceService {
       audio.onerror = () => playback.done('echec');
       audio.play().catch(() => playback.done('echec'));
     });
+  }
+
+  /**
+   * F-233 / SF-233-08 — baisse (ou rétablit) le volume de la voix : un humain semble parler, Jarvis se fait discret
+   * avant de décider s'il se tait.
+   */
+  duck(on: boolean): void {
+    const target = on ? DUCK_GAIN : 1;
+    if (this.gain && this.context) {
+      this.gain.gain.setTargetAtTime(target, this.context.currentTime, 0.03);
+    } else if (this.current) {
+      this.current.audio.volume = target;
+    }
+  }
+
+  /** SF-233-08 — oublie ce qui a été entendu (une nouvelle réponse commence). */
+  resetHeard(): void {
+    this.heard = [];
+  }
+
+  /**
+   * SF-233-08 (D8, D10) — **la coupure** : arrête la phrase en cours et vide la file, et rend ce qui a été entendu et
+   * ce qu'il restait à dire. `null` si Jarvis ne disait rien.
+   */
+  interrupt(): CutSnapshot | null {
+    const playback = this.current;
+    // La phrase jouée depuis la file y reste en tête tant qu'elle joue : on ne la compte qu'une fois.
+    const pending = playback?.text && this.queue[0]?.text === playback.text ? this.queue.slice(1) : this.queue;
+    const queued = pending.map((item) => item.text);
+    if (!playback?.text && queued.length === 0) {
+      this.stop();
+      return null;
+    }
+    const partial = playback?.text
+      ? heardPart(playback.text, playback.audio.currentTime || 0, playback.audio.duration) : '';
+    const snapshot: CutSnapshot = {
+      heard: [...this.heard, partial].filter((t) => t.length > 0).join(' '),
+      resume: [...(playback?.text ? [playback.text] : []), ...queued],
+    };
+    this.stop();
+    return snapshot;
   }
 
   /** Coupe la phrase en cours **et vide la file** (interruption). Sans effet s'il n'y a rien. */
@@ -314,7 +394,10 @@ export class JarvisVoiceService {
       this.analyser = this.context.createAnalyser();
       this.analyser.fftSize = 512;
       this.samples = new Uint8Array(this.analyser.fftSize);
-      this.analyser.connect(this.context.destination);
+      // SF-233-08 — analyseur → gain → sortie : la baisse de volume passe par le gain.
+      this.gain = this.context.createGain();
+      this.analyser.connect(this.gain);
+      this.gain.connect(this.context.destination);
     } catch {
       this.context = null;
     }
