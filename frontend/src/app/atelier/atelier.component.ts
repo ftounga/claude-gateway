@@ -2068,18 +2068,22 @@ export class AtelierComponent implements OnInit, OnDestroy {
     // trois fois). Deux chemins le permettaient : un envoi avec @-mentions garde la saisie le temps de lire les
     // fichiers (une 2e Entrée renvoyait le même texte), et un double geste (double clic, Entrée répétée) dans la
     // même seconde. Le même texte vers le même sujet dans les 3 s, ou pendant la lecture des mentions, est ignoré.
+    //
+    // F-222 / SF-222-04 — sans rien perdre : la lecture des mentions ne bloque QUE son sujet (un autre sujet s'envoie
+    // pendant ce temps), et l'envoi n'est mémorisé qu'une fois le message réellement parti — un envoi refusé par le
+    // plafond de terminaux peut être renvoyé aussitôt.
     const now = Date.now();
-    if (this.resolvingMentions
+    if (this.resolvingMentionsFor.has(id)
         || (this.lastSent !== null && this.lastSent.id === id && this.lastSent.content === content
             && now - this.lastSent.at < DUPLICATE_SEND_WINDOW_MS)) {
       return;
     }
-    this.lastSent = { id, content, at: now };
     // Le plafond refuse cette place : on ne démarre pas un tour dans un terminal qui n'est pas
     // vivant (F-70 / SF-70-01). C'est ce refus qui fait du plafond un garde-fou de dépense.
     if (this.liveTerminals.limitReached()) {
       return;
     }
+    this.lastSent = { id, content, at: now };
     // F-121 / SF-121-24 : les @-mentions reconnues font LIRE leur fichier (lecture bornée, isolée
     // par `requireOwned` + cible du workspace) et APPOSENT leur contenu au message. Le champ fait
     // foi : un `@chemin` inconnu ou effacé n'entraîne aucune lecture (mémoire SF-146-01). Aucune
@@ -2090,20 +2094,26 @@ export class AtelierComponent implements OnInit, OnDestroy {
       this.dispatchMessage(id, content);
       return;
     }
-    this.resolvingMentions = true;
+    this.resolvingMentionsFor.add(id);
     this.resolveMentions(id, paths).subscribe({
       next: (files) => {
-        this.resolvingMentions = false;
+        this.resolvingMentionsFor.delete(id);
         this.dispatchMessage(id, content + buildContextBlock(files));
       },
       error: () => {
-        this.resolvingMentions = false;
+        // Rien n'est parti : le message reste dans la saisie et peut être renvoyé tout de suite.
+        this.resolvingMentionsFor.delete(id);
+        this.lastSent = null;
+        this.notifyError('Le message n\'a pas pu partir : réessayez.');
       },
     });
   }
 
-  /** Les @-mentions d'un envoi sont en lecture : un 2e envoi attendrait le même texte (F-222 / SF-222-03). */
-  private resolvingMentions = false;
+  /**
+   * Les sujets dont un envoi lit ses @-mentions : un 2e envoi du MÊME sujet attendrait le même texte (F-222 /
+   * SF-222-03) ; un autre sujet n'est pas bloqué (SF-222-04).
+   */
+  private readonly resolvingMentionsFor = new Set<string>();
 
   /** Le dernier envoi, pour ne pas faire partir deux fois le même message (F-222 / SF-222-03). */
   private lastSent: { id: string; content: string; at: number } | null = null;

@@ -269,7 +269,7 @@ export class ClientBoardComponent {
     writeCollapsed(next);
   }
 
-  /** « dormant depuis 6 j » — l'élément le plus dormant du sujet. */
+  /** « en sommeil depuis 6 j » — l'élément le plus dormant du sujet. */
   blockIdle(block: SubjectBlock): string {
     return idleLabel(block.oldest);
   }

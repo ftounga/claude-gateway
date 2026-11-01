@@ -44,7 +44,7 @@ Fermer les trous laissés par SF-222-01→03 : un « go » écrit ne valide que 
 - [x] Liste blanche : `python3 -Bc '…' voir`, `node --require=x.js jira.js voir`, `python3 jira.py --mode voir creer` restent des modifications ; les 9 formes de SF-222-02 restent des lectures.
 
 ## Plan de test
-- Back : `SubjectJourneyChantiersIntegrationTest` (validatePlanTool réécrit : version, citation, canal ; autonome ; amendement externe ; origine des versions ; sommeil hors tiers, isolation Bob → 404), `JourneyToolCatalogGuideTest`, `JourneyRiskClassifierTest`, `JourneyTurnNoteTest`, `ClientBoardServiceTest`/`DormantChantierScannerTest` (seuil 3 j, tiers exclu).
+- Back : `SubjectJourneyChantiersIntegrationTest` (validatePlanTool réécrit : version, citation, canal ; autonome ; amendement externe ; origine des versions ; sommeil hors tiers, isolation Bob → 404), `JourneyToolCatalogGuideTest`, `JourneyRiskClassifierTest`, `ChantierUnblockerTest.awaitsThirdParty`, `ChantierSnoozeIntegrationTest.dormantReminder` (2 j : rien, 3 j : rappel), `ClientBoardIntegrationTest.looseTasks` (attente de tiers jamais en sommeil).
 - Front : `atelier.component.spec` (plafond puis renvoi, mentions d'un autre sujet), `terminal-chantiers-board.component.spec` (version sans clic), `client-board.models` (libellé).
 - Isolation utilisateur : `requireOwned` en premier sur tous les chemins ; `valider_plan` prend `userId`/workspace du tour, jamais des paramètres.
 - Suites complètes back et front, build.
