@@ -55,7 +55,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     voice = jasmine.createSpyObj<JarvisVoiceService>('JarvisVoiceService', ['speak', 'stop', 'unlock', 'level']);
     voice.speak.and.resolveTo();
     voice.level.and.returnValue(0);
-    jarvisApi = jasmine.createSpyObj<JarvisService>('JarvisService', ['usage', 'companion', 'companions']);
+    jarvisApi = jasmine.createSpyObj<JarvisService>('JarvisService', ['usage', 'companion', 'companions', 'timings']);
     jarvisApi.companions.and.returnValue(of([]));
     jarvisApi.companion.and.returnValue(of(NO_COMPANION));
     userAgent = 'Mozilla/5.0 (X11; Linux x86_64) Chrome/130';
@@ -146,11 +146,21 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       false, [], null, false, 'JARVIS');
     expect(jarvis.state()).toBe('reflexion');
 
+    handlers!.onText('🎙 La migration');
     handlers!.onDone({ reply: '🎙 La migration est à l’étape 4.\n\nDétail…', actions: [], messageId: 'm-1' });
     flushMicrotasks();
-    expect(voice.speak).toHaveBeenCalledWith('La migration est à l’étape 4.', 'w-2');
+    expect(voice.speak).toHaveBeenCalledWith('La migration est à l’étape 4.', 'w-2', jasmine.any(Object));
     expect(jarvis.detail()).toContain('Détail');
     expect(jarvis.state()).toBe('repos');
+    // F-233 / SF-233-01 — le tour vocal est chronométré, sans contenu.
+    expect(jarvisApi.timings).toHaveBeenCalledTimes(1);
+    const report = jarvisApi.timings.calls.mostRecent().args[0];
+    expect(report.workspaceId).toBe('w-2');
+    expect(report.transcriptMs).not.toBeNull();
+    expect(report.sentMs).not.toBeNull();
+    expect(report.firstTokenMs).not.toBeNull();
+    expect(report.doneMs).not.toBeNull();
+    expect(JSON.stringify(report)).not.toContain('migration');
   }));
 
   it('« passe sur AGENOR » change de sujet sur l’appareil, sans tour', fakeAsync(() => {

@@ -9,7 +9,8 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AtelierConfirmRequest, AtelierStreamDone, WorkspaceSummary } from '../core/models/atelier.models';
 import { AtelierService } from '../core/services/atelier.service';
 import { DictationError, DictationService } from '../core/services/dictation.service';
-import { JarvisVoiceError, JarvisVoiceService } from '../core/services/jarvis-voice.service';
+import { JarvisVoiceError, JarvisVoiceService, SpeakHooks } from '../core/services/jarvis-voice.service';
+import { TurnClock } from './jarvis-turn-clock';
 import { MarkdownPipe } from '../shared/markdown.pipe';
 import { EndOfSpeech, MicMeter } from './jarvis-mic-meter';
 import { asksConfirmation, classifyConfirmation, confirmationQuestion } from './jarvis-confirm';
@@ -423,6 +424,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
     this.stopMeter();
     this.state.set('reflexion');
+    // F-233 / SF-233-01 — t0 = la fin de parole détectée ; le chronomètre suit le tour jusqu'à la réponse dite.
+    const endOfSpeech = performance.now();
+    const clock = new TurnClock(endOfSpeech, endOfSpeech - this.listenStartedAt);
+    clock.workspaceId = this.subjectId();
     // SF-231-05 — la mesure d'adoption : les secondes parlées (D9).
     this.jarvis.usage('SPOKEN', Math.max(0, (performance.now() - this.listenStartedAt) / 1000));
     let text = '';
@@ -442,6 +447,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
       }
       return;
     }
+    clock.mark('transcript');
+    this.pendingClock = clock;
     this.said.set(text);
     await this.handle(text);
   }
@@ -498,14 +505,23 @@ export class JarvisComponent implements OnInit, OnDestroy {
     // être lue deux fois.
     const seq = ++this.sendSeq;
     const latest = () => seq === this.sendSeq;
+    this.startClock();
     if (!this.turnRunning) {
       this.turnStartedAt = Date.now();
     }
     this.turnRunning = true;
     this.armAck(subjectId, latest);
     void this.atelier.streamChat(subjectId, text, {
-      onAction: () => undefined,
-      onText: () => undefined,
+      onAction: () => {
+        if (latest() && this.clock) {
+          this.clock.toolTurn = true;
+        }
+      },
+      onText: () => {
+        if (latest()) {
+          this.clock?.mark('firstToken');
+        }
+      },
       onDone: (done) => this.zone.run(() => {
         if (latest()) {
           void this.onDone(done);
@@ -535,6 +551,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       }),
       onClosed: () => this.zone.run(() => {
         if (latest()) {
+          this.reportClock();
           this.endTurn();
           this.state.set('repos');
           this.notice.set('La réponse n’est pas arrivée ici : elle sera dans le terminal.');
@@ -544,6 +561,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
   }
 
   private sendSeq = 0;
+  /** F-233 / SF-233-01 — le chronomètre du tour en cours, et celui de la phrase qui vient d'être transcrite. */
+  private clock: TurnClock | null = null;
+  private pendingClock: TurnClock | null = null;
   /** Un tour tourne pour un envoi de cet écran. */
   private turnRunning = false;
   private turnStartedAt = 0;
@@ -571,6 +591,33 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** SF-233-01 — l'envoi part : le chronomètre de la phrase transcrite devient celui du tour. */
+  private startClock(): void {
+    this.reportClock();
+    this.clock = this.pendingClock;
+    this.pendingClock = null;
+    this.clock?.mark('sent');
+  }
+
+  /** SF-233-01 — déclare la mesure du tour (une seule fois), sans contenu. */
+  private reportClock(): void {
+    const clock = this.clock;
+    this.clock = null;
+    const report = clock?.takeReport();
+    if (report) {
+      this.jarvis.timings(report);
+    }
+  }
+
+  /** SF-233-01 — les crochets de lecture qui posent premier octet et premier son. */
+  private clockHooks(): SpeakHooks | undefined {
+    const clock = this.clock;
+    return clock ? {
+      onFirstByte: () => clock.mark('firstAudioByte'),
+      onPlaying: () => clock.mark('firstSound'),
+    } : undefined;
+  }
+
   private endTurn(): void {
     this.turnRunning = false;
     this.clearAck();
@@ -586,8 +633,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.detail.set(done.reply);
     const phrase = oralPhrase(done.reply) || 'C’est fait. Le détail est à l’écran.';
     this.pendingConfirm = null;
+    this.clock?.mark('firstOralSentence');
     // SF-231-03 — un tour long s'annonce : le PO a pu passer à autre chose.
-    await this.say(withEndAnnouncement(phrase, elapsed));
+    await this.say(withEndAnnouncement(phrase, elapsed), this.clockHooks());
+    this.clock?.mark('done');
+    this.reportClock();
     // SF-231-04 — l'agent a reformulé une action qui engage et attend « oui » : Jarvis écoute la réponse.
     if (asksConfirmation(phrase)) {
       this.awaitingVerbal = true;
@@ -635,17 +685,18 @@ export class JarvisComponent implements OnInit, OnDestroy {
   }
 
   private onTurnError(code: string, reason?: string): void {
+    this.reportClock();
     this.endTurn();
     this.state.set('repos');
     this.notice.set(reason ?? (code === 'forbidden' ? 'Ce sujet ne t’est pas ouvert.' : 'Le tour n’a pas abouti.'));
   }
 
   /** Dit `phrase` à voix haute ; si la voix manque, elle reste écrite. */
-  async say(phrase: string): Promise<void> {
+  async say(phrase: string, hooks?: SpeakHooks): Promise<void> {
     this.spoken.set(phrase);
     this.state.set('parole');
     try {
-      await this.voice.speak(phrase, this.subjectId());
+      await (hooks ? this.voice.speak(phrase, this.subjectId(), hooks) : this.voice.speak(phrase, this.subjectId()));
     } catch (error) {
       this.notice.set(voiceMessage(error as JarvisVoiceError));
     }
