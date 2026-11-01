@@ -133,6 +133,14 @@ export const routes: Routes = [
       import('./onboarding/onboarding.component').then((m) => m.OnboardingComponent),
   },
 
+  // F-231 / SF-231-02 — LE MODE JARVIS : plein écran, donc hors coquille, sous la même garde d'authentification.
+  // `?sujet=` choisit le sujet ; `?alerte=` (F-230, SF-231-05) fait lire une alerte de veille.
+  {
+    path: 'jarvis',
+    canActivate: [authGuard],
+    loadComponent: () => import('./jarvis/jarvis.component').then((m) => m.JarvisComponent),
+  },
+
   // ---- Zone authentifiée : enveloppée par la coquille de navigation (F-19) ----
   // Route parente pathless : les URLs des enfants restent inchangées (/chat, /billing, …)
   // et l'authGuard est centralisé sur le parent.

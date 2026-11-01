@@ -1,0 +1,144 @@
+// F-231 / SF-231-02 — L'écran Jarvis : plein écran, téléphone d'abord, navy du design system (§2), orbe en orange.
+// Aucune couleur nouvelle : --cg-navy, --cg-navy-2, --cg-accent, --cg-orange-2, --cg-cream, --cg-divider.
+
+:host {
+  display: block;
+  min-height: 100dvh;
+  background: radial-gradient(ellipse at 50% 35%, var(--cg-navy-2) 0%, var(--cg-navy) 70%);
+  color: var(--cg-cream);
+  font-family: var(--cg-font-body);
+}
+
+.jv {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--cg-space-2) var(--cg-space-4) calc(var(--cg-space-4) + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+.jv__top {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+}
+
+.jv__back,
+.jv__terminal {
+  color: var(--cg-cream);
+  flex: none;
+}
+
+.jv__subject {
+  flex: 1;
+  min-width: 0;
+  justify-content: center;
+  color: var(--cg-cream);
+  font-weight: 600;
+}
+
+.jv__subject-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 0 var(--cg-space-1);
+}
+
+.jv__stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--cg-space-3);
+  min-height: 0;
+}
+
+.jv__orb-button {
+  width: min(76vw, 440px);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--cg-accent);
+    outline-offset: 8px;
+  }
+}
+
+.jv__orb {
+  width: 100%;
+}
+
+.jv__status {
+  margin: 0;
+  font-size: 16px;
+  letter-spacing: 0.02em;
+  opacity: 0.85;
+  text-align: center;
+}
+
+.jv__exchange {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cg-space-2);
+  min-height: 96px;
+  margin-bottom: var(--cg-space-3);
+}
+
+.jv__said {
+  margin: 0;
+  font-size: 14px;
+  opacity: 0.75;
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+
+.jv__spoken {
+  margin: 0;
+  font-family: var(--cg-font-heading);
+  font-size: 20px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.jv__notice {
+  margin: 0;
+  padding: var(--cg-space-1) var(--cg-space-2);
+  border-left: 4px solid var(--cg-orange-2);
+  font-size: 14px;
+}
+
+.jv__detail-toggle {
+  align-self: flex-start;
+  color: var(--cg-cream);
+}
+
+.jv__detail {
+  max-height: 40dvh;
+  overflow: auto;
+  padding: var(--cg-space-2) var(--cg-space-3);
+  border: 1px solid var(--cg-divider);
+  border-radius: 8px;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.jv__controls {
+  display: flex;
+  justify-content: center;
+}
+
+.jv__talk {
+  min-width: 200px;
+}
+
+@media (min-width: 960px) {
+  .jv__spoken {
+    font-size: 24px;
+  }
+}
