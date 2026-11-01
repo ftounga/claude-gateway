@@ -89,6 +89,31 @@
   font-size: 13px;
 }
 
+/* F-235 / SF-235-05 — les délégations vivantes à Opus, discrètes, sous l'orbe. */
+.jv__delegations {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--cg-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.jv__delegation {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+
+  mat-icon {
+    width: 16px;
+    height: 16px;
+    font-size: 16px;
+  }
+}
+
 .jv__exchange {
   display: flex;
   flex-direction: column;
