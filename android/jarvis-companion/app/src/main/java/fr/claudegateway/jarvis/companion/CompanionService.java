@@ -17,6 +17,8 @@ import android.media.AudioAttributes;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
+import android.media.audiofx.AcousticEchoCanceler;
+import android.media.audiofx.NoiseSuppressor;
 import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Handler;
@@ -33,6 +35,7 @@ import java.util.List;
 import java.util.Locale;
 
 import fr.claudegateway.jarvis.companion.core.AnnouncementPolicy;
+import fr.claudegateway.jarvis.companion.core.SpeechInterruptPolicy;
 
 import fr.claudegateway.jarvis.companion.core.BatteryPolicy;
 import fr.claudegateway.jarvis.companion.core.WakeEngine;
@@ -87,6 +90,8 @@ public final class CompanionService extends Service {
     private HandlerThread network;
     private Handler networkHandler;
     private TextToSpeech tts;
+    /** F-233 / SF-233-10 — couper le compagnon en parlant. */
+    private final SpeechInterruptPolicy interruptPolicy = new SpeechInterruptPolicy();
     private volatile boolean ttsReady;
     /** Vrai pendant que le compagnon parle : le micro est rendu (pas d'écho dans le mot d'éveil). */
     private boolean speaking;
@@ -134,7 +139,8 @@ public final class CompanionService extends Service {
                 tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
                     @Override
                     public void onStart(String utteranceId) {
-                        // Rien : le micro est déjà rendu.
+                        // F-233 / SF-233-10 : le micro reste ouvert ; l'écho du début de phrase est ignoré.
+                        interruptPolicy.onUtteranceStart(android.os.SystemClock.elapsedRealtime());
                     }
 
                     @Override
@@ -148,6 +154,8 @@ public final class CompanionService extends Service {
                     public void onError(String utteranceId) {
                         main.post(() -> {
                             speaking = false;
+                            interruptPolicy.onSpeakingEnd();
+                            stopCapture();
                             refresh();
                         });
                     }
@@ -209,8 +217,9 @@ public final class CompanionService extends Service {
     private void refresh() {
         main.removeCallbacks(retryMic);
         WakeProfile profile = prefs.profile();
-        if (replyWindow) {
-            // L'écoute courte de la réponse tient le micro ; elle rend la main à sa fin.
+        if (replyWindow || (speaking && capturing)) {
+            // L'écoute courte de la réponse — ou l'écoute pendant une annonce (SF-233-10) — tient le micro ; elle
+            // rend la main à sa fin.
             notifyListen();
             return;
         }
@@ -278,7 +287,9 @@ public final class CompanionService extends Service {
         int size = Math.max(min, WakeEngine.RATE / 5 * 2);
         AudioRecord record;
         try {
-            record = new AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, WakeEngine.RATE,
+            // F-233 / SF-233-10 (D12) : source « communication » — le traitement d'écho du téléphone s'y applique,
+            // pour que la voix du compagnon au haut-parleur ne se déclenche pas elle-même.
+            record = new AudioRecord(MediaRecorder.AudioSource.VOICE_COMMUNICATION, WakeEngine.RATE,
                     AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, size);
         } catch (RuntimeException e) {
             micUnavailable(e);
@@ -289,6 +300,8 @@ public final class CompanionService extends Service {
             micUnavailable(null);
             return;
         }
+        AcousticEchoCanceler echo = attachEchoCanceler(record.getAudioSessionId());
+        NoiseSuppressor noise = attachNoiseSuppressor(record.getAudioSessionId());
         capturing = true;
         Thread thread = new Thread(() -> {
             short[] pcm = new short[WakeEngine.RATE / 10];
@@ -310,11 +323,51 @@ public final class CompanionService extends Service {
                 } catch (RuntimeException ignored) {
                     // Déjà arrêté.
                 }
+                if (echo != null) {
+                    echo.release();
+                }
+                if (noise != null) {
+                    noise.release();
+                }
                 record.release();
             }
         }, "jarvis-wake");
         capture = thread;
         thread.start();
+    }
+
+    /** SF-233-10 (D12) — l'annulation d'écho de l'appareil, quand il l'offre ; sinon rien. */
+    private static AcousticEchoCanceler attachEchoCanceler(int session) {
+        try {
+            if (!AcousticEchoCanceler.isAvailable()) {
+                return null;
+            }
+            AcousticEchoCanceler effect = AcousticEchoCanceler.create(session);
+            if (effect != null) {
+                effect.setEnabled(true);
+            }
+            return effect;
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Annulation d'écho indisponible", e);
+            return null;
+        }
+    }
+
+    /** SF-233-10 (D12) — la réduction de bruit de l'appareil, quand il l'offre ; sinon rien. */
+    private static NoiseSuppressor attachNoiseSuppressor(int session) {
+        try {
+            if (!NoiseSuppressor.isAvailable()) {
+                return null;
+            }
+            NoiseSuppressor effect = NoiseSuppressor.create(session);
+            if (effect != null) {
+                effect.setEnabled(true);
+            }
+            return effect;
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Réduction de bruit indisponible", e);
+            return null;
+        }
     }
 
     private void micUnavailable(Exception cause) {
@@ -384,16 +437,44 @@ public final class CompanionService extends Service {
 
     private void speak(List<AnnouncementPolicy.Item> items) {
         speaking = true;
-        refresh(); // rend le micro du mot d'éveil : pas d'écho de notre propre voix
+        // F-233 / SF-233-10 (D8) : le micro reste ouvert pendant l'annonce (annulation d'écho) ; un mot entendu la
+        // coupe et ouvre Jarvis, qui écoute. Sans micro autorisé, on parle sans écouter, comme avant.
+        stopCapture();
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            startCapture(new WakeListener(features -> {
+                if (interruptPolicy.shouldInterrupt(features.length, android.os.SystemClock.elapsedRealtime())) {
+                    main.post(this::onInterruptedWhileSpeaking);
+                }
+            }));
+        }
+        refresh();
         for (int i = 0; i < items.size(); i++) {
             String id = i == items.size() - 1 ? LAST_UTTERANCE : "jarvis-" + i;
             tts.speak(items.get(i).text, TextToSpeech.QUEUE_ADD, null, id);
         }
     }
 
+    /** SF-233-10 — le PO a parlé pendant l'annonce : le compagnon se tait net et ouvre Jarvis, qui écoute. */
+    private void onInterruptedWhileSpeaking() {
+        if (!speaking) {
+            return;
+        }
+        speaking = false;
+        interruptPolicy.onSpeakingEnd();
+        if (tts != null) {
+            tts.stop();
+        }
+        stopCapture();
+        onWake();
+    }
+
     /** Fin de la dernière annonce : on écoute la réponse quelques secondes, sans mot d'éveil. */
     private void afterSpeaking() {
+        if (!speaking) {
+            return; // déjà coupé par la voix (SF-233-10)
+        }
         speaking = false;
+        interruptPolicy.onSpeakingEnd();
         if (awaitingResume || !prefs.listening() || battery.pausedForBattery()
                 || checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             refresh();
