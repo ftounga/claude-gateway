@@ -85,8 +85,10 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     dictation.start.and.resolveTo();
     voice = jasmine.createSpyObj<JarvisVoiceService>('JarvisVoiceService',
       ['speak', 'stop', 'unlock', 'level', 'preloadClips', 'playClip', 'hasClip', 'enqueue', 'idle', 'status',
-        'duck', 'interrupt', 'resetHeard']);
+        'duck', 'interrupt', 'resetHeard', 'audioAllowed']);
     voice.interrupt.and.returnValue(null);
+    // SF-233-12 — par défaut le navigateur bloque le son : l'invite plein écran attend un toucher.
+    voice.audioAllowed.and.resolveTo(false);
     voice.status.and.returnValue(of({
       enabled: true, voice: 'onyx', monthlyBudgetEur: 100, monthSpentEur: 0, budgetReached: false, provider: 'openai',
     }));
@@ -482,13 +484,15 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     jarvis.ngOnDestroy();
   }));
 
-  it('F-233 / SF-233-11 — l’interrupteur : Commencer, puis Pause / Reprendre ; plus jamais « J’ai fini »',
+  it('F-233 / SF-233-11 / SF-233-12 — l’interrupteur : Pause / Reprendre ; jamais « Commencer » ni « J’ai fini »',
     fakeAsync(() => {
       const fixture = TestBed.createComponent(JarvisComponent);
       fixture.detectChanges();
+      flushMicrotasks();
+      fixture.detectChanges();
       const jarvis = fixture.componentInstance;
       const button = () => ((fixture.nativeElement as HTMLElement).querySelector('.jv__talk')?.textContent ?? '').trim();
-      expect(button()).toContain('Commencer');
+      expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('Commencer');
       fixture.autoDetectChanges();
 
       void jarvis.toggleConversation();
@@ -508,6 +512,51 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       expect(jarvis.conversation.mode()).toBe('paused');
       expect(button()).toContain('Reprendre la conversation');
       expect(dictation.start).toHaveBeenCalledTimes(1);
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-233 / SF-233-12 — son bloqué : invite plein écran ; un toucher n’importe où démarre la conversation',
+    fakeAsync(() => {
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      flushMicrotasks();
+      fixture.detectChanges();
+      const jarvis = fixture.componentInstance;
+      const el = fixture.nativeElement as HTMLElement;
+      const gate = el.querySelector<HTMLButtonElement>('.jv__wake-gate');
+      expect(gate).not.toBeNull();
+      expect(gate?.textContent).toContain('Touchez l’écran pour réveiller Jarvis');
+      expect(jarvis.conversation.mode()).toBe('idle');
+      expect(dictation.start).not.toHaveBeenCalled();
+      fixture.autoDetectChanges();
+
+      gate?.click();
+      tick(300);
+      fixture.detectChanges();
+      expect(voice.unlock).toHaveBeenCalled();
+      expect(el.querySelector('.jv__wake-gate')).toBeNull();
+      expect(jarvis.conversation.mode()).toBe('active');
+      expect(jarvis.state()).toBe('ecoute');
+      expect(el.textContent).not.toContain('Commencer');
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-233 / SF-233-12 — son permis : la conversation démarre à l’ouverture, sans invite ni toucher',
+    fakeAsync(() => {
+      voice.audioAllowed.and.resolveTo(true);
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.autoDetectChanges();
+      flushMicrotasks();
+      tick(300);
+      fixture.detectChanges();
+      const jarvis = fixture.componentInstance;
+      const el = fixture.nativeElement as HTMLElement;
+      expect(el.querySelector('.jv__wake-gate')).toBeNull();
+      expect(jarvis.wakeGate()).toBeFalse();
+      expect(jarvis.conversation.mode()).toBe('active');
+      expect(jarvis.state()).toBe('ecoute');
+      expect(dictation.start).toHaveBeenCalledTimes(1);
+      expect(el.textContent).not.toContain('Commencer');
       jarvis.ngOnDestroy();
     }));
 

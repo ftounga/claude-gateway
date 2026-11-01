@@ -50,11 +50,11 @@ import {
   LONG_TURN_MS, OralStream, classifyInterruption, isStopCommand, oralPhrase, subjectSwitch, withEndAnnouncement,
 } from './jarvis-oral';
 import {
-  Conversation, IDLE_PHRASE, IDLE_WAKE_HINT, PAUSE_PHRASE, RELISTEN_DELAY_MS, canAutoStart, isNoise, isPauseCommand,
-  rememberReady,
+  Conversation, IDLE_PHRASE, IDLE_WAKE_HINT, PAUSE_PHRASE, RELISTEN_DELAY_MS, isNoise, isPauseCommand,
 } from './jarvis-conversation';
 import { ExchangeFiller, FILLER_DELAY_MS, FORMULA_CLIPS, FormulaPicker } from './jarvis-phrases';
 import { JarvisOrbComponent, JarvisState } from './jarvis-orb.component';
+import { JarvisAppUpdate } from './jarvis-app-update';
 import { JarvisCompanionsComponent } from './jarvis-companions.component';
 import { JarvisSceneBus } from './scenes/jarvis-scene-bus.service';
 import { JarvisSceneComponent } from './scenes/jarvis-scene.component';
@@ -112,6 +112,7 @@ export function companionOffer(version: JarvisCompanionVersion, installed: numbe
   imports: [JarvisCompanionsComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, MarkdownPipe, MatButtonModule, MatIconModule, MatMenuModule, RouterLink],
   templateUrl: './jarvis.component.html',
   styleUrl: './jarvis.component.scss',
+  providers: [JarvisAppUpdate],
 })
 export class JarvisComponent implements OnInit, OnDestroy {
   private readonly atelier = inject(AtelierService);
@@ -236,6 +237,14 @@ export class JarvisComponent implements OnInit, OnDestroy {
       const mode = this.conversation.mode();
       untracked(() => this.onConversationState(state, mode));
     });
+    // SF-233-12 — une nouvelle version attend : appliquée dès que Jarvis revient au repos (rien en cours).
+    effect(() => {
+      this.state();
+      this.delegations();
+      this.enrolling();
+      this.appUpdate.pending();
+      untracked(() => this.appUpdate.settle());
+    });
     // L'écoute du mot d'éveil se tait pendant que la dictée tient le micro (et pendant la conversation), et reprend
     // ensuite.
     effect(() => {
@@ -257,6 +266,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.useJarvisManifest();
     this.jarvis.usage('SESSION');
+    // SF-233-12 — mise à jour automatique : vérifiée à l'ouverture et toutes les 10 min, appliquée au repos.
+    this.appUpdate.start(() => this.isQuiet());
     // F-233 / SF-233-02 — les clips de réaction, chargés une fois, joués localement au moment de réagir.
     void this.voice.preloadClips(FORMULA_CLIPS);
     // SF-233-06 — le fournisseur de la voix, pour la mesure (SF-233-01).
@@ -287,9 +298,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
           // Le PO vient de dire « Jarvis » au téléphone : on l'écoute, et le réveil compte (D9). SF-233-11 : la
           // conversation démarre directement en mains libres.
           void this.onWake();
-        } else if (list.length > 0 && canAutoStart()) {
-          // SF-233-11 — le premier geste a déjà eu lieu : la conversation démarre seule.
-          this.startConversation();
+        } else if (list.length > 0) {
+          // SF-233-12 — ouvrir Jarvis, c'est parler : démarrage direct si le navigateur permet le son.
+          void this.autoStart();
         }
       },
       error: () => this.notice.set('Les sujets n’ont pas pu être lus. Réessaie.'),
@@ -1601,21 +1612,57 @@ export class JarvisComponent implements OnInit, OnDestroy {
         switch (this.conversation.mode()) {
           case 'paused': return 'En pause — micro coupé';
           case 'active': return 'Conversation en cours';
-          default: return this.started() ? 'En veille' : 'Touchez Commencer pour converser';
+          default: return this.wakeGate() ? 'Touchez l’écran pour réveiller Jarvis' : 'En veille';
         }
     }
   }
 
   // ---- F-233 / SF-233-11 : la conversation mains libres ----
   readonly conversation = new Conversation();
-  /** La conversation a démarré au moins une fois sur cette ouverture (« Commencer » n'est plus proposé). */
+  /** La conversation a démarré au moins une fois sur cette ouverture. */
   readonly started = signal(false);
+  /** SF-233-12 — le son est bloqué par le navigateur : l'invite plein écran attend un toucher, n'importe où. */
+  readonly wakeGate = signal(false);
+  protected readonly appUpdate = inject(JarvisAppUpdate);
   private relistenTimer: ReturnType<typeof setTimeout> | null = null;
   private previousState: JarvisState = 'repos';
 
-  /** Le libellé de l'interrupteur : « Commencer », « Pause » ou « Reprendre la conversation ». */
+  /** Le libellé de l'interrupteur : « Pause », « Reprendre la conversation » (ou « Parler » s'il n'a jamais démarré). */
   readonly toggleLabel = computed(() => this.conversation.mode() === 'active' ? 'Pause'
-    : this.started() ? 'Reprendre la conversation' : 'Commencer');
+    : this.started() ? 'Reprendre la conversation' : 'Parler');
+
+  /**
+   * SF-233-12 — à l'ouverture : le son est-il permis sans geste ? Oui → la conversation démarre (le micro est demandé
+   * directement s'il ne l'a jamais été) ; non → l'invite plein écran, et seulement dans ce cas.
+   */
+  private async autoStart(): Promise<void> {
+    if (this.started() || this.conversation.active) {
+      return;
+    }
+    const allowed = await this.voice.audioAllowed();
+    if (this.started() || this.conversation.active) {
+      return;
+    }
+    if (allowed) {
+      this.startConversation();
+    } else {
+      this.wakeGate.set(true);
+    }
+  }
+
+  /** SF-233-12 — le toucher de l'invite plein écran : débloque le son et démarre la conversation. */
+  async wakeUp(): Promise<void> {
+    this.wakeGate.set(false);
+    if (!this.conversation.active) {
+      await this.toggleConversation();
+    }
+  }
+
+  /** SF-233-12 — rien en cours : ni écoute, ni parole, ni tour, ni délégation, ni apprentissage du mot d'éveil. */
+  private isQuiet(): boolean {
+    return this.state() === 'repos' && !this.turnRunning && this.delegations().length === 0
+      && this.enrolling() === null;
+  }
 
   /** L'interrupteur : démarre ou reprend la conversation (geste exigé par le navigateur), ou la met en pause. */
   async toggleConversation(): Promise<void> {
@@ -1624,7 +1671,6 @@ export class JarvisComponent implements OnInit, OnDestroy {
       return;
     }
     this.voice.unlock();
-    rememberReady();
     this.startConversation();
     if (this.pendingAlert && this.state() === 'repos') {
       await this.talk();
@@ -1633,6 +1679,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   /** Démarre (ou reprend) la conversation ; l'écoute s'ouvre dès que Jarvis est au repos. */
   startConversation(): void {
+    this.wakeGate.set(false);
     this.started.set(true);
     this.conversation.start();
   }

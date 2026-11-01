@@ -126,6 +126,32 @@ export class JarvisVoiceService {
   }
 
   /**
+   * SF-233-12 — le navigateur laisse-t-il Jarvis parler **sans geste** ? (PWA installée, site à fort engagement média,
+   * geste déjà fait.) La politique d'autoplay si le navigateur l'expose ; sinon on tente de réveiller l'`AudioContext`
+   * (Chrome laisse `resume()` en suspens sans geste : délai borné) puis on lit son état. Sans `AudioContext` : permis.
+   */
+  async audioAllowed(timeoutMs = 400): Promise<boolean> {
+    const policy = (typeof navigator !== 'undefined'
+      ? (navigator as unknown as { getAutoplayPolicy?: (type: string) => string }).getAutoplayPolicy : undefined);
+    if (policy) {
+      try {
+        return policy.call(navigator, 'audiocontext') === 'allowed';
+      } catch {
+        // Politique illisible : on teste le contexte.
+      }
+    }
+    const context = this.ensureContext();
+    if (!context || context.state === 'running') {
+      return true;
+    }
+    await Promise.race([
+      context.resume().catch(() => undefined),
+      new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
+    ]);
+    return (context.state as string) === 'running';
+  }
+
+  /**
    * Dit `text` à voix haute. La promesse se résout à la fin de la phrase (ou à son interruption) ; elle est rejetée
    * avec un {@link JarvisVoiceError} si la voix n'a pas pu parler.
    */

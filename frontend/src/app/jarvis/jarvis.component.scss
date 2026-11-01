@@ -214,3 +214,60 @@
 .jv__constellation .jv__orb-button {
   width: 52%;
 }
+
+// F-233 / SF-233-12 — l'invite plein écran, seulement quand le navigateur bloque le son : tout l'écran est la cible.
+.jv__wake-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--cg-space-4);
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: var(--cg-space-4);
+  border: 0;
+  background: radial-gradient(ellipse at 50% 40%, var(--cg-navy-2) 0%, var(--cg-navy) 75%);
+  color: var(--cg-cream);
+  font-family: var(--cg-font-body);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.jv__wake-gate-halo {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--cg-orange-2) 0%, var(--cg-accent) 45%, transparent 70%);
+  animation: jv-wake-breathe 2.4s ease-in-out infinite;
+}
+
+.jv__wake-gate-text {
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-align: center;
+}
+
+@keyframes jv-wake-breathe {
+  0%, 100% { transform: scale(0.9); opacity: 0.75; }
+  50% { transform: scale(1.08); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jv__wake-gate-halo { animation: none; }
+}
+
+// F-233 / SF-233-12 — la version servie, en petit dans le coin.
+.jv__version {
+  position: fixed;
+  right: var(--cg-space-2);
+  bottom: calc(var(--cg-space-1) + env(safe-area-inset-bottom));
+  font-size: 0.65rem;
+  opacity: 0.45;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
