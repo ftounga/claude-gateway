@@ -312,13 +312,29 @@ public class JarvisFastBrainService {
     }
 
     Outcome decide(Request request, Sink sink) {
+        return decide(request, sink, null, null);
+    }
+
+    /**
+     * F-235 / SF-235-08 (D16) — <b>le banc</b> : la même décision, à blanc, sur un modèle candidat ; ni mémoire de
+     * session, ni trace dans le fil, ni registre, ni synthèse (rien de tout cela n'est dans {@code decide}) ; le coût
+     * de l'appel reste inscrit au journal. Le plafond propre ne s'applique pas (le banc est un geste ADMIN borné à
+     * 60 cas) ; le quota du compte, si.
+     */
+    public Outcome bench(Request request, String model, String fixedContext) {
+        return decide(request, null, model, fixedContext);
+    }
+
+    private Outcome decide(Request request, Sink sink, String benchModel, String fixedContext) {
         Sink out = sink == null ? delta -> { } : sink;
         UUID userId = request.userId();
+        boolean bench = benchModel != null;
+        String model = bench ? benchModel : properties.model();
         // D9d : « vérifie », « demande à Opus », « c'est faux »… ⇒ Opus, sans appel au cerveau rapide.
         if (JarvisFastGuards.forcesDelegation(request.text())) {
             return forced(request);
         }
-        if (overBudget(userId)) {
+        if (!bench && overBudget(userId)) {
             return fallback(REASON_BUDGET);
         }
         if (quota != null) {
@@ -329,10 +345,14 @@ public class JarvisFastBrainService {
             }
         }
         String apiKey = byok == null ? null : byok.resolveActiveApiKey(userId).orElse(null);
-        String context = context(request);
-        SentenceGate gate = new SentenceGate(context, request.text(), recentSentences(userId), out);
-        AgentTurnRequest call = new AgentTurnRequest(properties.model(), systemFor(userId),
-                messages(request, context), List.of(JarvisFastBrainPrompt.delegateTool()), apiKey,
+        String context = fixedContext != null ? fixedContext : context(request);
+        SentenceGate gate = new SentenceGate(context, request.text(), bench ? List.of() : recentSentences(userId),
+                out);
+        AgentTurnRequest call = new AgentTurnRequest(model, systemFor(userId),
+                bench ? List.of(AgentMessage.userText(message(context, request.text())
+                        + (sober(request, context) ? "\n\n" + fr.claudegateway.jarvis.preferences.JarvisSobriety.NOTE
+                                : ""))) : messages(request, context),
+                List.of(JarvisFastBrainPrompt.delegateTool()), apiKey,
                 AgentReasoning.off(properties.effort()), AgentContextPolicy.none(), AgentTurnMode.ACT,
                 AgentCallShape.compact(properties.maxTokens()));
 

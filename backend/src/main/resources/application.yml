@@ -630,6 +630,10 @@ app:
       max-tokens: ${APP_JARVIS_FAST_MAX_TOKENS:600}
       monthly-budget-eur: ${APP_JARVIS_FAST_MONTHLY_BUDGET_EUR:20}
       first-token-timeout: ${APP_JARVIS_FAST_FIRST_TOKEN_TIMEOUT:PT3S}
+    # F-235 / SF-235-08 (D16) : LE BANC du cerveau rapide (POST /api/admin/jarvis/fast-brain/bench, ADMIN) — le juge
+    # qui note chaque cas. La mise en service (enabled=true ci-dessus) suit un passage dont la porte est franchie.
+    fast-brain-bench:
+      judge-model: ${APP_JARVIS_FAST_JUDGE_MODEL:claude-opus-5-5}
     # LE MODE JARVIS (F-231). La voix (SF-231-01) relaie la voix off (app.speech.*, meme fournisseur, meme cle,
     # memes tarifs) : AUCUN NOUVEAU SECRET. Voix masculine posee par defaut (onyx), phrases courtes, plafond
     # mensuel en euros (0 = voix coupee, l'ecran retombe sur le texte).
