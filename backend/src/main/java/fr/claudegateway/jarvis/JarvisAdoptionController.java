@@ -55,7 +55,7 @@ public class JarvisAdoptionController {
         return service.measure(currentUser.requireId(), days == null || days <= 0 ? DEFAULT_DAYS : days);
     }
 
-    /** Corps de {@code POST /api/jarvis/usage} : {@code SESSION}, {@code SPOKEN} (+ secondes) ou {@code WAKE}. */
+    /** Corps de {@code POST /api/jarvis/usage} : {@code SESSION}, {@code SPOKEN} (+ secondes), {@code WAKE} ou {@code IDLE_END} (SF-233-11). */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record UsageEvent(String event, Long seconds) {
     }

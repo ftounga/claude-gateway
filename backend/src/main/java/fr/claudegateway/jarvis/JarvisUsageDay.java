@@ -64,6 +64,11 @@ public class JarvisUsageDay {
     @Column(name = "wakes", nullable = false)
     private int wakes = 0;
 
+    /** F-233 / SF-233-11 — retours au repos par fin de conversation mains libres (silence prolongé). */
+    @Builder.Default
+    @Column(name = "conversation_idle_ends", nullable = false)
+    private int conversationIdleEnds = 0;
+
     /** F-233 / SF-233-04 — secondes de transcription en flux (écoute), comptées à la durée. */
     @Builder.Default
     @Column(name = "stt_stream_seconds", nullable = false)

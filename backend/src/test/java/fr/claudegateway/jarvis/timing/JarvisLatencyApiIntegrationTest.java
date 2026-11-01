@@ -127,6 +127,9 @@ class JarvisLatencyApiIntegrationTest {
         report(adminToken, "{\"falseTriggers\":-2}").andExpect(status().isBadRequest());
         report(adminToken, "{\"sttProvider\":\"Open AI!\"}").andExpect(status().isBadRequest());
         report(adminToken, "{\"listenMode\":\"PIGEON\"}").andExpect(status().isBadRequest());
+        // SF-233-11 — un tour pris en conversation mains libres.
+        report(adminToken, "{\"listenMode\":\"CONV_STREAM\"}").andExpect(status().isNoContent());
+        latency(adminToken).andExpect(jsonPath("$.byListenMode.CONV_STREAM").value(1));
         String userToken = jwtService.generateToken(user("jarvis-lat-u-" + UUID.randomUUID() + "@ex.com",
                 UserRole.USER));
         latency(userToken).andExpect(status().isForbidden());

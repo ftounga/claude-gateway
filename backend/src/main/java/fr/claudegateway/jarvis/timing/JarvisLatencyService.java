@@ -34,7 +34,8 @@ public class JarvisLatencyService {
     static final int MAX_DAYS = 90;
 
     private static final Pattern PROVIDER = Pattern.compile("^[a-z0-9-]{1,32}$");
-    private static final List<String> LISTEN_MODES = List.of("BATCH", "STREAM");
+    /** SF-233-11 — {@code CONV_*} : le tour a été pris en conversation mains libres. */
+    private static final List<String> LISTEN_MODES = List.of("BATCH", "STREAM", "CONV_BATCH", "CONV_STREAM");
 
     /** Les étapes mesurées, dans l'ordre du tour. */
     static final Map<String, Function<JarvisTurnTiming, Integer>> STEPS = steps();

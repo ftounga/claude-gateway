@@ -90,7 +90,8 @@ export interface JarvisCompanionDevice {
 /** F-233 / SF-233-01 — Ce que l'écran déclare (`POST /api/jarvis/timings`). */
 export interface TurnTimingReport {
   workspaceId: string | null;
-  listenMode: 'BATCH' | 'STREAM';
+  /** SF-233-11 — `CONV_*` : le tour a été pris en conversation mains libres. */
+  listenMode: 'BATCH' | 'STREAM' | 'CONV_BATCH' | 'CONV_STREAM';
   sttProvider: string | null;
   ttsProvider: string | null;
   toolTurn: boolean;

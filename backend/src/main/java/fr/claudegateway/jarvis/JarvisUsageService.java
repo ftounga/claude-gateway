@@ -71,6 +71,11 @@ public class JarvisUsageService {
         bump(userId, day -> day.setWakes(day.getWakes() + 1));
     }
 
+    /** F-233 / SF-233-11 — un retour au repos par fin de conversation (silence prolongé). */
+    public void addIdleEnd(UUID userId) {
+        bump(userId, day -> day.setConversationIdleEnds(day.getConversationIdleEnds() + 1));
+    }
+
     /** SF-231-05 — les journées du compte depuis {@code days} jours (aujourd'hui compris), les plus anciennes d'abord. */
     public java.util.List<JarvisUsageDay> lastDays(UUID userId, int days) {
         return repository.findByUserIdAndDayGreaterThanEqualOrderByDayAsc(userId, today().minusDays(Math.max(1, days) - 1L));

@@ -43,7 +43,7 @@ public class JarvisAdoptionService {
 
     /** Ce que l'écran déclare. */
     public enum Event {
-        SESSION, SPOKEN, WAKE;
+        SESSION, SPOKEN, WAKE, IDLE_END;
 
         static Event parse(String raw) {
             if (raw == null) {
@@ -66,6 +66,7 @@ public class JarvisAdoptionService {
         switch (Event.parse(event)) {
             case SESSION -> usage.addSession(userId);
             case WAKE -> usage.addWake(userId);
+            case IDLE_END -> usage.addIdleEnd(userId);
             case SPOKEN -> usage.addSpoken(userId,
                     Math.min(MAX_SPOKEN_SECONDS, Math.max(0L, seconds == null ? 0L : seconds)));
         }
@@ -78,6 +79,7 @@ public class JarvisAdoptionService {
         int sessions = 0;
         long spoken = 0;
         int wakes = 0;
+        int idleEnds = 0;
         long chars = 0;
         BigDecimal usd = BigDecimal.ZERO;
         for (JarvisUsageDay d : usage.lastDays(userId, window)) {
@@ -86,11 +88,12 @@ public class JarvisAdoptionService {
             sessions += d.getSessions();
             spoken += d.getSpokenSeconds();
             wakes += d.getWakes();
+            idleEnds += d.getConversationIdleEnds();
             chars += d.getCharsSpoken();
             usd = usd.add(d.totalCostUsd());
         }
         int activeDays = (int) rows.stream().filter(r -> r.sessions() > 0).count();
-        return new Measure(window, activeDays, sessions, minutes(spoken), wakes, chars, eur(usd), rows);
+        return new Measure(window, activeDays, sessions, minutes(spoken), wakes, chars, eur(usd), rows, idleEnds);
     }
 
     private BigDecimal eur(BigDecimal usd) {
@@ -108,6 +111,6 @@ public class JarvisAdoptionService {
 
     /** La mesure d'adoption : totaux de la fenêtre et détail par jour. */
     public record Measure(int days, int activeDays, int sessions, BigDecimal spokenMinutes, int wakes,
-            long charsSpoken, BigDecimal voiceCostEur, List<Day> perDay) {
+            long charsSpoken, BigDecimal voiceCostEur, List<Day> perDay, int idleEnds) {
     }
 }

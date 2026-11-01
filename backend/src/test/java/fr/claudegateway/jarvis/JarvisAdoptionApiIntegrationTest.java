@@ -67,6 +67,9 @@ class JarvisAdoptionApiIntegrationTest {
         event(adminToken, "{\"event\":\"spoken\",\"seconds\":90}").andExpect(status().isNoContent());
         event(adminToken, "{\"event\":\"SPOKEN\",\"seconds\":99999}").andExpect(status().isNoContent());
         event(adminToken, "{\"event\":\"WAKE\"}").andExpect(status().isNoContent());
+        // SF-233-11 — les retours au repos de la conversation mains libres.
+        event(adminToken, "{\"event\":\"IDLE_END\"}").andExpect(status().isNoContent());
+        event(adminToken, "{\"event\":\"idle_end\"}").andExpect(status().isNoContent());
 
         measure(adminToken).andExpect(status().isOk())
                 .andExpect(jsonPath("$.days").value(7))
@@ -74,9 +77,11 @@ class JarvisAdoptionApiIntegrationTest {
                 .andExpect(jsonPath("$.sessions").value(2))
                 .andExpect(jsonPath("$.spokenMinutes").value(11.5))
                 .andExpect(jsonPath("$.wakes").value(1))
+                .andExpect(jsonPath("$.idleEnds").value(2))
                 .andExpect(jsonPath("$.voiceCostEur").value(0.0));
 
-        measure(otherAdminToken).andExpect(status().isOk()).andExpect(jsonPath("$.sessions").value(0));
+        measure(otherAdminToken).andExpect(status().isOk()).andExpect(jsonPath("$.sessions").value(0))
+                .andExpect(jsonPath("$.idleEnds").value(0));
     }
 
     @Test

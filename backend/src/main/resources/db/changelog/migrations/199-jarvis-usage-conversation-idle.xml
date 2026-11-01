@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-233 / SF-233-11 - LA CONVERSATION MAINS LIBRES DE JARVIS : RETOURS AU REPOS COMPTES.
+
+      jarvis_usage_days + conversation_idle_ends : combien de fois, par jour et par compte, la conversation
+      mains libres s'est eteinte d'elle-meme apres un long silence. Aucun contenu. Colonne additive avec
+      defaut : les lignes existantes valent 0.
+
+      Rollback : la colonne se retire.
+    -->
+
+    <changeSet id="199-jarvis-usage-conversation-idle" author="claude-gateway">
+        <addColumn tableName="jarvis_usage_days">
+            <column name="conversation_idle_ends" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="jarvis_usage_days" columnName="conversation_idle_ends"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
