@@ -1,6 +1,6 @@
 # CADRAGE F-232 — Le compagnon Android de Jarvis
 
-**Statut :** cadrage du 2026-11-01 · **En attente : porte d'usage** · Famille « Jarvis » : F-230, F-231, **F-232**.
+**Statut :** cadrage du 2026-11-01 · **Porte d'usage levée par le PO le 2026-11-01** (« je vais vraiment l'utiliser ») : livrée dans la vague Jarvis, après F-231 · Famille « Jarvis » : F-230, F-231, **F-232**.
 
 **Demande PO (2026-11-01)** : dire « Jarvis » sans toucher le téléphone, même verrouillé et en poche (Android).
 
@@ -19,7 +19,7 @@ Le vrai mot d'éveil, téléphone verrouillé, exige un petit composant **natif*
 | D1 | **Compagnon minimal** : service de premier plan de type micro (notification permanente « Jarvis écoute »), détection du mot d'éveil **sur l'appareil**. Aucun son ne sort avant le mot. Au mot, il ouvre la PWA en mode Jarvis (F-231). |
 | D2 | **Distribution** : APK signé, téléchargeable depuis l'application (même chemin que les paquets du runner), mise à jour proposée. Pas de Play Store. |
 | D3 | **Interrupteur** : marche/arrêt depuis la notification, arrêt automatique sous un seuil de batterie. |
-| D4 | **Porte d'usage avant tout développement** : F-231 utilisée au moins 5 jours ouvrés par semaine pendant 2 semaines (mesure D9 de F-231). Sinon, F-232 reste en attente. |
+| D4 | ~~Porte d'usage~~ levée par le PO le 2026-11-01. La mesure D9 de F-231 reste lue à J+14 pour juger l'usage réel. |
 
 ## Découpage prévisionnel
 
