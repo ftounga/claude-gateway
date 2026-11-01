@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-222 / SF-222-04 - L'AMENDEMENT SANS CLIC SE VOIT.
+
+      subject_journey_plan_versions.origin : d'ou vient la version - PLAN (premier plan, a valider), AMENDMENT
+      (amendement a revalider) ou IN_SCOPE (amendement dans l'objectif, applique sans clic). Nullable : les versions
+      posees avant restent sans origine (affichage inchange). Aucune reprise.
+
+      Rollback : la colonne se retire.
+    -->
+
+    <changeSet id="183-plan-version-origin" author="claude-gateway">
+        <addColumn tableName="subject_journey_plan_versions">
+            <column name="origin" type="varchar(16)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="subject_journey_plan_versions" columnName="origin"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

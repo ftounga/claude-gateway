@@ -293,6 +293,11 @@ public class SubjectJourneyService {
         AMENDMENT,
         /** Amendement dans le même objectif (F-222 / SF-222-01) : appliqué sans clic, le plan reste validé. */
         AMENDMENT_APPLIED,
+        /**
+         * Amendement annoncé dans l'objectif, mais qui ajoute ou modifie une étape EXTERNE (F-222 / SF-222-04) : jamais
+         * appliqué sans clic, il est à revalider comme un amendement.
+         */
+        AMENDMENT_EXTERNAL,
         /** Le sujet est en Libre : le plan structuré est celui du mode guidé. */
         NOT_GUIDED,
         /** Le sujet est clos. */
@@ -732,27 +737,55 @@ public class SubjectJourneyService {
         JourneyPlan carried = carryProgress(plan, previous);
         boolean amendment = journey.getValidatedVersion() != null;
         OffsetDateTime now = OffsetDateTime.now(clock);
-        if (sameObjective && amendment && journey.getValidatedVersion() == journey.getPlanVersion()
-                && (journey.getPhase() == JourneyPhase.EXECUTION || journey.getPhase() == JourneyPhase.VERIFICATION)) {
+        boolean inScope = sameObjective && amendment && journey.getValidatedVersion() == journey.getPlanVersion()
+                && (journey.getPhase() == JourneyPhase.EXECUTION || journey.getPhase() == JourneyPhase.VERIFICATION);
+        // F-222 / SF-222-04 : une étape externe nouvelle ou modifiée n'entre jamais sans clic, même « dans l'objectif ».
+        String external = inScope ? newExternalStep(JourneyPlan.fromJson(journey.getValidatedPlanJson()), plan) : null;
+        if (inScope && external == null) {
             journey.setPlanJson(carried.toJson());
             journey.setPlanVersion(journey.getPlanVersion() + 1);
             journey.setValidatedVersion(journey.getPlanVersion());
             journey.setValidatedPlanJson(journey.getPlanJson());
             moveTo(journey, JourneyPhase.EXECUTION, now);
             SubjectJourney saved = save(journey, now);
-            recordVersion(saved, carried, now);
-            record(saved, SubjectJourneyEvent.PLAN_AMENDED_IN_SCOPE,
-                    "v" + saved.getPlanVersion() + " · " + carried.steps().size() + " étapes · même objectif");
+            recordVersion(saved, carried, now, SubjectJourneyPlanVersion.ORIGIN_IN_SCOPE);
+            record(saved, SubjectJourneyEvent.PLAN_AMENDED_IN_SCOPE, "chantier " + saved.getChantierNumber()
+                    + " · v" + saved.getPlanVersion() + " · " + carried.steps().size() + " étapes · même objectif");
             return new PlanChange(PlanOutcome.AMENDMENT_APPLIED, saved.getPlanVersion());
         }
         journey.setPlanJson(carried.toJson());
         journey.setPlanVersion(journey.getPlanVersion() + 1);
         moveTo(journey, JourneyPhase.PLAN, now);
         SubjectJourney saved = save(journey, now);
-        recordVersion(saved, carried, now);
+        recordVersion(saved, carried, now,
+                amendment ? SubjectJourneyPlanVersion.ORIGIN_AMENDMENT : SubjectJourneyPlanVersion.ORIGIN_PLAN);
         record(saved, amendment ? SubjectJourneyEvent.PLAN_AMENDED : SubjectJourneyEvent.PLAN_SET,
-                "v" + saved.getPlanVersion() + " · " + carried.steps().size() + " étapes");
+                "v" + saved.getPlanVersion() + " · " + carried.steps().size() + " étapes"
+                        + (external != null ? " · étape externe « " + external + " » : à revalider" : ""));
+        if (external != null) {
+            return new PlanChange(PlanOutcome.AMENDMENT_EXTERNAL, saved.getPlanVersion());
+        }
         return new PlanChange(amendment ? PlanOutcome.AMENDMENT : PlanOutcome.SET, saved.getPlanVersion());
+    }
+
+    /**
+     * Le titre de la première étape EXTERNE de {@code next} absente du plan validé ou modifiée depuis (même titre,
+     * contenu différent), ou {@code null} (F-222 / SF-222-04). Une étape externe déjà validée telle quelle reste
+     * couverte par la validation de l'utilisateur.
+     */
+    static String newExternalStep(JourneyPlan validated, JourneyPlan next) {
+        java.util.List<JourneyPlan.Step> known = validated == null ? java.util.List.of() : validated.steps();
+        for (JourneyPlan.Step step : next.steps()) {
+            if (step.risk() != JourneyPlan.Risk.EXTERNE) {
+                continue;
+            }
+            boolean covered = known.stream().anyMatch(k -> k.risk() == JourneyPlan.Risk.EXTERNE
+                    && k.title().equals(step.title()) && java.util.Objects.equals(k.content(), step.content()));
+            if (!covered) {
+                return step.title();
+            }
+        }
+        return null;
     }
 
     /**
@@ -771,6 +804,20 @@ public class SubjectJourneyService {
     /** [Valider le plan] du chantier ouvert {@code chantier} ({@code null} = le focus) — F-206. Rend le focus. */
     @Transactional
     public SubjectJourney validatePlan(UUID userId, UUID workspaceId, Integer chantier, Integer version) {
+        return validatePlan(userId, workspaceId, chantier, version, CHANNEL_CLICK);
+    }
+
+    /** Le canal d'une validation faite par le bouton [Valider] (F-222 / SF-222-04). */
+    public static final String CHANNEL_CLICK = "clic";
+
+    /**
+     * Même geste, en disant par quel <b>canal</b> l'utilisateur a validé (F-222 / SF-222-04) : {@link #CHANNEL_CLICK},
+     * ou {@code écrit « citation »} pour l'outil {@code valider_plan}. Le canal est journalisé dans
+     * {@link SubjectJourneyEvent#PLAN_VALIDATED}.
+     */
+    @Transactional
+    public SubjectJourney validatePlan(UUID userId, UUID workspaceId, Integer chantier, Integer version,
+            String channel) {
         workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
         SubjectJourney journey = target(userId, workspaceId, chantier);
         if (journey.getCreatedAt() == null) {
@@ -794,7 +841,9 @@ public class SubjectJourneyService {
         moveTo(journey, JourneyPhase.EXECUTION, now);
         SubjectJourney saved = save(journey, now);
         record(saved, SubjectJourneyEvent.PLAN_VALIDATED,
-                "v" + saved.getPlanVersion() + (amendment ? " · amendement" : ""));
+                "chantier " + saved.getChantierNumber() + " · v" + saved.getPlanVersion()
+                        + (amendment ? " · amendement" : "")
+                        + " · " + (channel == null || channel.isBlank() ? CHANNEL_CLICK : channel));
         return focusAfter(saved, userId, workspaceId);
     }
 
@@ -1069,7 +1118,7 @@ public class SubjectJourneyService {
      * Écrit la version posée dans l'historique (F-208 / SF-208-02). <b>Best-effort</b> : un historique qui
      * casse ne casse pas le plan qu'il raconte.
      */
-    private void recordVersion(SubjectJourney journey, JourneyPlan plan, OffsetDateTime now) {
+    private void recordVersion(SubjectJourney journey, JourneyPlan plan, OffsetDateTime now, String origin) {
         if (planVersions == null) {
             return;
         }
@@ -1080,6 +1129,7 @@ public class SubjectJourneyService {
                     .chantierNumber(Math.max(1, journey.getChantierNumber()))
                     .version(journey.getPlanVersion())
                     .planJson(plan.toJson())
+                    .origin(origin)
                     .createdAt(now)
                     .build());
         } catch (RuntimeException ex) {

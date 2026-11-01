@@ -48,8 +48,38 @@ public class JourneyToolExecutor {
         }
     }
 
-    /** Aiguille un appel d'outil du parcours. */
+    /**
+     * Ce que le tour sait de son utilisateur (F-222 / SF-222-04) : s'il tourne <b>sans utilisateur</b> (course
+     * autonome, routine) et ce que l'utilisateur a <b>écrit</b> pendant ce tour (message et précisions). Sert à
+     * vérifier une validation écrite : jamais une citation inventée, jamais dans une course autonome.
+     *
+     * @param headless  aucun utilisateur n'écrit dans ce tour
+     * @param userWords les textes écrits par l'utilisateur pendant ce tour, dans l'ordre
+     */
+    public record TurnContext(boolean headless, java.util.List<String> userWords) {
+
+        /** Contexte inconnu : traité comme un tour sans utilisateur (aucune validation écrite possible). */
+        public static final TurnContext UNKNOWN = new TurnContext(true, java.util.List.of());
+
+        public TurnContext {
+            userWords = userWords == null ? java.util.List.of()
+                    : userWords.stream().filter(java.util.Objects::nonNull).toList();
+        }
+
+        /** Un tour d'utilisateur, avec ce qu'il a écrit. */
+        public static TurnContext ofUser(java.util.List<String> userWords) {
+            return new TurnContext(false, userWords);
+        }
+    }
+
+    /** Aiguille un appel d'outil du parcours, sans contexte du tour (aucune validation écrite possible). */
     public Outcome execute(UUID userId, Workspace workspace, String tool, JsonNode input) {
+        return execute(userId, workspace, tool, input, TurnContext.UNKNOWN);
+    }
+
+    /** Aiguille un appel d'outil du parcours. */
+    public Outcome execute(UUID userId, Workspace workspace, String tool, JsonNode input, TurnContext turn) {
+        TurnContext context = turn == null ? TurnContext.UNKNOWN : turn;
         try {
             return switch (tool) {
                 case JourneyToolCatalog.PROPOSE_GUIDED -> proposeGuided(userId, workspace, input);
@@ -60,7 +90,7 @@ public class JourneyToolExecutor {
                 case JourneyToolCatalog.UPDATE_SUB_STEPS -> updateSubSteps(userId, workspace, input);
                 case JourneyToolCatalog.LAUNCH_AUTONOMOUS -> launchAutonomous(userId, workspace, input);
                 case JourneyToolCatalog.CONFIRM_DIAGNOSIS -> confirmDiagnosis(userId, workspace, input);
-                case JourneyToolCatalog.VALIDATE_PLAN -> validatePlan(userId, workspace, input);
+                case JourneyToolCatalog.VALIDATE_PLAN -> validatePlan(userId, workspace, input, context);
                 default -> Outcome.error("Outil du parcours inconnu : " + tool);
             };
         } catch (InvalidJourneyException e) {
@@ -108,6 +138,10 @@ public class JourneyToolExecutor {
             case AMENDMENT_APPLIED -> Outcome.ok("Amendement dans l'objectif : plan v" + change.version()
                     + " appliqué SANS CLIC et journalisé ; le plan reste validé. Annonce-le en une phrase dans ta "
                     + "réponse (ce qui change et pourquoi), puis continue l'exécution.");
+            case AMENDMENT_EXTERNAL -> Outcome.ok("Amendement : plan v" + change.version() + " posé, mais il AJOUTE "
+                    + "ou MODIFIE une étape externe / irréversible : même dans l'objectif, il n'est pas appliqué sans "
+                    + "clic. Il doit être REVALIDÉ par l'utilisateur (un clic, ou un « go » écrit → valider_plan). "
+                    + "Dis-lui ce qui change et pourquoi, et ne modifie rien avant sa validation.");
             case NOT_GUIDED -> Outcome.error("Le sujet est en mode Libre : le plan structuré sert au mode "
                     + "guidé. Utilise set_plan pour organiser ton tour, ou propose le mode guidé.");
             case CLOSED -> Outcome.error("Le sujet est clos : rien à planifier. S'il faut reprendre, "
@@ -229,21 +263,75 @@ public class JourneyToolExecutor {
     }
 
     /**
-     * La validation écrite du plan (F-222 / SF-222-01) : un « go » vaut le clic [Valider]. Le chantier est explicite,
-     * la citation de l'utilisateur est exigée : jamais d'initiative.
+     * La validation écrite du plan (F-222 / SF-222-01, durcie par SF-222-04) : un « go » vaut le clic [Valider]. Le
+     * chantier et la <b>version lue</b> sont explicites ; la citation doit figurer dans ce que l'utilisateur a écrit
+     * pendant ce tour ; jamais dans un tour sans utilisateur (course autonome, routine). Le journal garde le canal.
      */
-    private Outcome validatePlan(UUID userId, Workspace workspace, JsonNode input) {
+    private Outcome validatePlan(UUID userId, Workspace workspace, JsonNode input, TurnContext turn) {
         Integer chantier = chantier(input); // explicite : jamais déduit du fil
         if (chantier == null) {
             return Outcome.error("chantier est requis : le numéro du chantier dont l'utilisateur valide le plan.");
         }
-        if (text(input, "user_words").isEmpty()) {
+        Integer version = version(input);
+        if (version == null) {
+            return Outcome.error("version est requise : la version du plan (vN) que l'utilisateur a lue et valide. "
+                    + "Un plan amendé depuis se revalide.");
+        }
+        String words = text(input, "user_words");
+        if (words.isEmpty()) {
             return Outcome.error("user_words est requis : cite les mots de l'utilisateur qui valident. Sans "
                     + "validation de sa part, ne valide pas.");
         }
-        service.validatePlan(userId, workspace.getId(), chantier, null);
-        return prefixed(chantier, Outcome.ok("Plan validé par l'utilisateur : le chantier passe en EXÉCUTION. "
-                + "Exécute ses étapes jusqu'au bout (update_plan_step après chacune)."));
+        if (turn.headless()) {
+            return Outcome.error("Une course autonome (ou une routine) ne valide jamais un plan : personne n'y écrit. "
+                    + "Laisse le plan en attente ; l'utilisateur le validera d'un clic ou par écrit.");
+        }
+        if (!quoted(words, turn.userWords())) {
+            return Outcome.error("Ces mots ne figurent pas dans ce que l'utilisateur a écrit pendant ce tour : cite-le "
+                    + "exactement. Sans validation écrite de sa part dans ce tour, laisse le plan en attente.");
+        }
+        service.validatePlan(userId, workspace.getId(), chantier, version,
+                "écrit « " + (words.length() > 120 ? words.substring(0, 120) + "…" : words) + " »");
+        return prefixed(chantier, Outcome.ok("Plan v" + version + " validé par l'utilisateur : le chantier passe en "
+                + "EXÉCUTION. Exécute ses étapes jusqu'au bout (update_plan_step après chacune)."));
+    }
+
+    /** La version donnée ({@code 3}, {@code "v3"}), ou {@code null}. */
+    static Integer version(JsonNode input) {
+        if (input == null || !input.hasNonNull("version")) {
+            return null;
+        }
+        JsonNode value = input.get("version");
+        int n = value.isNumber() ? value.asInt(0) : value.isTextual() ? parse(value.asText()) : 0;
+        return n >= 1 ? n : null;
+    }
+
+    /**
+     * Vrai si la citation figure, mot pour mot, dans l'un des textes de l'utilisateur — casse, accents, ponctuation
+     * et espaces ignorés (F-222 / SF-222-04). Une citation sans aucun mot ne vaut rien.
+     */
+    static boolean quoted(String words, java.util.List<String> userWords) {
+        String needle = normalized(words);
+        if (needle.isEmpty() || userWords == null) {
+            return false;
+        }
+        for (String said : userWords) {
+            String hay = normalized(said);
+            if (!hay.isEmpty() && (" " + hay + " ").contains(" " + needle + " ")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Minuscules, sans accents, la ponctuation remplacée par des espaces, les espaces resserrés. */
+    static String normalized(String value) {
+        if (value == null) {
+            return "";
+        }
+        String plain = java.text.Normalizer.normalize(value.toLowerCase(java.util.Locale.ROOT),
+                java.text.Normalizer.Form.NFD).replaceAll("\\p{M}+", "");
+        return plain.replaceAll("[^\\p{L}\\p{N}]+", " ").strip();
     }
 
     private Outcome reopen(UUID userId, Workspace workspace, JsonNode input) {

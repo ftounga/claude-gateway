@@ -52,4 +52,20 @@ public class SubjectJourneyPlanVersion {
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
+
+    /**
+     * D'où vient cette version (F-222 / SF-222-04) : {@link #ORIGIN_PLAN}, {@link #ORIGIN_AMENDMENT} ou
+     * {@link #ORIGIN_IN_SCOPE} ; {@code null} pour les versions posées avant.
+     */
+    @Column(name = "origin", length = 16, updatable = false)
+    private String origin;
+
+    /** Premier plan du chantier, à valider. */
+    public static final String ORIGIN_PLAN = "PLAN";
+
+    /** Amendement à revalider. */
+    public static final String ORIGIN_AMENDMENT = "AMENDMENT";
+
+    /** Amendement dans l'objectif, appliqué sans clic (F-222 / SF-222-01). */
+    public static final String ORIGIN_IN_SCOPE = "IN_SCOPE";
 }

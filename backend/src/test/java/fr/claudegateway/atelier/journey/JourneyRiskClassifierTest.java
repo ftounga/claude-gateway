@@ -72,7 +72,10 @@ class JourneyRiskClassifierTest {
         "cat $(ls)", "inconnu --fait-quelque-chose", "find . -name x -delete", "tee out.log",
         // F-222 / SF-222-02 : la liste blanche reste conservatrice.
         "python3 jira.py creer PROJ-1", "python3 -c 'print(1)' voir", "node -e 'x()' --dry-run",
-        "python3 jira.py voir PROJ-1 > rapport.txt", "./deploy.sh", "bash -c 'releve'", "python3 -m pip install x"
+        "python3 jira.py voir PROJ-1 > rapport.txt", "./deploy.sh", "bash -c 'releve'", "python3 -m pip install x",
+        // F-222 / SF-222-04 : options groupées, préchargement, verbe après une option à valeur.
+        "python3 -Bc 'import os' voir", "node --require=./x.js jira.js voir", "node -r ./x.js jira.js voir",
+        "python3 -W ignore jira.py voir", "python3 jira.py --mode voir creer", "python3 jira.py creer voir"
     })
     @DisplayName("prudence : le reste est une modification (réversible)")
     void modifies(String command) {

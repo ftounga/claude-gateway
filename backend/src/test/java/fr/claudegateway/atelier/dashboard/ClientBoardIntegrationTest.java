@@ -308,14 +308,14 @@ class ClientBoardIntegrationTest {
                 .andExpect(jsonPath("$.horsChantier[2].unblocker.waitingOn", is("Marc Dupont")))
                 .andExpect(jsonPath("$.horsChantier[2].unblocker.since", org.hamcrest.Matchers.notNullValue()))
                 .andExpect(jsonPath("$.horsChantier[2].idleDays", is(5)))
-                .andExpect(jsonPath("$.horsChantier[2].dormant", is(true)))
+                .andExpect(jsonPath("$.horsChantier[2].dormant", is(false))) // SF-222-04 : on attend Marc, ce n'est pas un sommeil
                 .andExpect(jsonPath("$.horsChantier[2].followUpDue", is(true)))
                 .andExpect(jsonPath("$.counts.horsChantier", is(3)))
                 // le chantier de migration peut avancer (étape 1) : l'outil ; les tâches s'ajoutent aux couleurs
                 .andExpect(jsonPath("$.counts.outil", is(1)))
                 .andExpect(jsonPath("$.counts.autrui", is(1)))
                 .andExpect(jsonPath("$.counts.moi", is(2)))
-                .andExpect(jsonPath("$.counts.dormant", is(1)));
+                .andExpect(jsonPath("$.counts.dormant", is(0)));
     }
 
     @Test

@@ -2493,12 +2493,20 @@ public class AtelierChatService implements RelayInterruptTarget {
     }
 
     /** Exécute un outil du parcours (F-176) : le terminal et le compte sont ceux du tour. */
-    private ToolOutcome applyJourneyTool(UUID userId, Workspace workspace, AgentToolCall call) {
+    private ToolOutcome applyJourneyTool(UUID userId, Workspace workspace, AgentToolCall call,
+            List<String> userWordsOfTurn) {
         if (journeyToolExecutor == null || !journeyToolCatalog.isOpenFor(userId, workspace)) {
             return ToolOutcome.error("Le parcours du sujet n'est pas ouvert dans ce terminal.");
         }
+        // F-222 / SF-222-04 : un tour dont la notification de fin est tue est une course autonome ou une routine —
+        // personne n'y écrit, aucune validation écrite n'y est possible. Sinon, ce que l'utilisateur a écrit pendant
+        // ce tour (message et précisions) sert à vérifier la citation d'un « go ».
+        boolean headless = mutedOutcomeTurns.contains(turnKey(userId, workspace.getId(), workspace.getTurnChantier()));
+        fr.claudegateway.atelier.journey.JourneyToolExecutor.TurnContext context = headless
+                ? fr.claudegateway.atelier.journey.JourneyToolExecutor.TurnContext.UNKNOWN
+                : fr.claudegateway.atelier.journey.JourneyToolExecutor.TurnContext.ofUser(userWordsOfTurn);
         fr.claudegateway.atelier.journey.JourneyToolExecutor.Outcome outcome =
-                journeyToolExecutor.execute(userId, workspace, call.name(), call.input());
+                journeyToolExecutor.execute(userId, workspace, call.name(), call.input(), context);
         return outcome.error() ? ToolOutcome.error(outcome.content()) : ToolOutcome.info(outcome.content());
     }
 
@@ -4160,7 +4168,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                             appRequestsOfTurn);
                 } else if (fr.claudegateway.atelier.journey.JourneyToolCatalog.isJourneyTool(call.name())) {
                     // F-176 : le parcours du sujet est tenu par la gateway, jamais par la machine.
-                    outcome = applyJourneyTool(userId, workspace, call);
+                    outcome = applyJourneyTool(userId, workspace, call, requestsOfTurn);
                     if (!outcome.isError()) {
                         // F-208 / SF-208-02 : l'écran relit le parcours PENDANT le tour.
                         try {

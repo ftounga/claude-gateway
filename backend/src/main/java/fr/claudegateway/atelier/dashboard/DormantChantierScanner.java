@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import fr.claudegateway.atelier.AtelierMessageRepository;
+import fr.claudegateway.atelier.journey.ChantierUnblocker;
 import fr.claudegateway.atelier.journey.JourneyMode;
 import fr.claudegateway.atelier.journey.SubjectJourney;
 import fr.claudegateway.atelier.journey.SubjectJourneyChantier;
@@ -43,7 +44,8 @@ public class DormantChantierScanner {
 
     public DormantChantierScanner(SubjectJourneyRepository journeys, SubjectJourneyChantierRepository chantiers,
             ChantierSnoozeRepository snoozes, AtelierMessageRepository messages,
-            @Value("${app.client-board.dormant-days:2}") int dormantAfterDays) {
+            // F-222 / SF-222-04 : « en sommeil » = 3 jours partout (SubjectJourneyChantier.STALE_DAYS).
+            @Value("${app.client-board.dormant-days:3}") int dormantAfterDays) {
         this.journeys = journeys;
         this.chantiers = chantiers;
         this.snoozes = snoozes;
@@ -62,7 +64,11 @@ public class DormantChantierScanner {
         Map<UUID, List<Candidate>> byUser = new LinkedHashMap<>();
         for (SubjectJourney j : journeys.findByModeAndUpdatedAtBefore(JourneyMode.GUIDE, threshold)) {
             if (j.getUserId() != null && j.hasOpenFocus() && j.getChantierNumber() > 0
-                    && (j.getChantierOpenedAt() == null || j.getChantierOpenedAt().isBefore(threshold))) {
+                    && (j.getChantierOpenedAt() == null || j.getChantierOpenedAt().isBefore(threshold))
+                    // F-222 / SF-222-04 : un chantier qui attend un tiers attend ; il ne dort pas.
+                    && !ChantierUnblocker.awaitsThirdParty(j.getPhase(), j.getPlanJson(), j.getPlanVersion(),
+                            j.getValidatedVersion(), j.getDiagnosisProposedAt() != null,
+                            j.getCloseProposedAt() != null)) {
                 byUser.computeIfAbsent(j.getUserId(), k -> new ArrayList<>())
                         .add(new Candidate(j.getWorkspaceId(), j.getChantierNumber(), true));
             }
@@ -70,7 +76,9 @@ public class DormantChantierScanner {
         Map<String, Optional<SubjectJourney>> journeyOf = new HashMap<>();
         for (SubjectJourneyChantier c : chantiers.findByStatusAndUpdatedAtBefore(SubjectJourneyChantier.OPEN,
                 threshold)) {
-            if (c.getUserId() == null) {
+            if (c.getUserId() == null || ChantierUnblocker.awaitsThirdParty(c.getPhase(), c.getPlanJson(),
+                    c.getPlanVersion() == null ? 0 : c.getPlanVersion(), c.getValidatedVersion(),
+                    c.getDiagnosisProposedAt() != null, c.getCloseProposedAt() != null)) {
                 continue;
             }
             Optional<SubjectJourney> journey = journeyOf.computeIfAbsent(c.getUserId() + "/" + c.getWorkspaceId(),

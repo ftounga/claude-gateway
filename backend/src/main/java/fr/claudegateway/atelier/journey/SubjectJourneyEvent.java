@@ -57,7 +57,10 @@ public class SubjectJourneyEvent {
     /** L'agent a précisé qui exécute une étape ({@code detail} = étape · acteur) (F-219 / SF-219-06). */
     public static final String STEP_ACTOR_SET = "STEP_ACTOR_SET";
 
-    /** [Valider le plan] (SF-176-03). */
+    /**
+     * [Valider le plan] (SF-176-03). {@code detail} = chantier · version · canal : {@code clic} ou
+     * {@code écrit « citation »} (outil valider_plan) — F-222 / SF-222-04.
+     */
     public static final String PLAN_VALIDATED = "PLAN_VALIDATED";
 
     /** La porte a refusé une modification ({@code detail} = classe · outil, jamais la commande) (SF-176-04). */

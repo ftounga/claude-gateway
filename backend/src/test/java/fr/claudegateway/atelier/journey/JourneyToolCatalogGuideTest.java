@@ -18,5 +18,12 @@ class JourneyToolCatalogGuideTest {
         assertThat(JourneyToolCatalog.GUIDE).contains("EXTERNE comprise (push, merge, apply, envoi), sans redemander");
         // La validation du plan elle-même (F-176) est gardée.
         assertThat(JourneyToolCatalog.GUIDE).contains("L'utilisateur valide le PREMIER plan d'un chantier d'un clic");
+        // F-222 / SF-222-04 : version et mots exacts, jamais en autonome ; l'externe ne passe pas sans clic ; sommeil.
+        assertThat(JourneyToolCatalog.GUIDE).contains("la version qu'il a lue (vN) et ses mots EXACTS de ce tour")
+                .contains("jamais dans une course autonome ni une routine")
+                .contains("Une étape EXTERNE ajoutée ou modifiée n'entre jamais sans clic")
+                .contains("EN SOMMEIL : un chantier en Exécution sans aucun geste depuis 3 jours")
+                .contains("si son PREMIER argument est un verbe de lecture");
+        assertThat(JourneyToolCatalog.validatePlanDefinition().inputSchema().toString()).contains("version");
     }
 }

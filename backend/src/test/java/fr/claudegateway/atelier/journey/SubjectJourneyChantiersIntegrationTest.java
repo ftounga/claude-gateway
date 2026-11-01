@@ -294,7 +294,7 @@ class SubjectJourneyChantiersIntegrationTest {
     }
 
     @Test
-    @DisplayName("SF-222-01 : un « go » écrit valide le plan d'un chantier, numéro et citation exigés")
+    @DisplayName("SF-222-01/04 : un « go » écrit valide le plan lu (version), sur des mots écrits, jamais en autonome")
     void validatePlanTool() throws Exception {
         chantierOneExecuting();
         post(aliceToken, "chantiers", "{\"title\":\"Logs vers Loki\"}");
@@ -302,17 +302,88 @@ class SubjectJourneyChantiersIntegrationTest {
         service.confirmDiagnosis(aliceId, ws(), 2);
         service.setPlan(aliceId, ws(), 2, plan("Installer Fluent Bit"));
         post(aliceToken, "chantiers/1/focus", null);
-        assertThat(tool(JourneyToolCatalog.VALIDATE_PLAN, "{\"user_words\":\"go\"}").error()).isTrue();
-        assertThat(tool(JourneyToolCatalog.VALIDATE_PLAN, "{\"chantier\":2}").error()).isTrue();
+        JourneyToolExecutor.TurnContext said = JourneyToolExecutor.TurnContext.ofUser(
+                java.util.List.of("Ok, GO pour le chantier 2 !"));
+        // Sans numéro, sans version, sans citation : refusé, rien ne bouge.
+        assertThat(tool(JourneyToolCatalog.VALIDATE_PLAN, "{\"version\":1,\"user_words\":\"go\"}", said).error())
+                .isTrue();
+        assertThat(tool(JourneyToolCatalog.VALIDATE_PLAN, "{\"chantier\":2,\"user_words\":\"go\"}", said).content())
+                .contains("version est requise");
+        assertThat(tool(JourneyToolCatalog.VALIDATE_PLAN, "{\"chantier\":2,\"version\":1}", said).error()).isTrue();
+        // Citation inventée : refusée.
+        assertThat(tool(JourneyToolCatalog.VALIDATE_PLAN,
+                "{\"chantier\":2,\"version\":1,\"user_words\":\"je valide\"}", said).content())
+                .contains("ne figurent pas");
+        // Course autonome / routine (ou contexte inconnu) : refusée même avec de vrais mots.
+        assertThat(tool(JourneyToolCatalog.VALIDATE_PLAN,
+                "{\"chantier\":2,\"version\":1,\"user_words\":\"go\"}").content()).contains("course autonome");
+        // Version dépassée : refusée.
+        assertThat(tool(JourneyToolCatalog.VALIDATE_PLAN,
+                "{\"chantier\":2,\"version\":3,\"user_words\":\"go\"}", said).content()).contains("Le plan a changé");
         getJourney(aliceToken).andExpect(jsonPath("$.chantiers[1].phase", is("PLAN")));
         JourneyToolExecutor.Outcome ok = tool(JourneyToolCatalog.VALIDATE_PLAN,
-                "{\"chantier\":2,\"user_words\":\"go pour le chantier 2\"}");
+                "{\"chantier\":2,\"version\":\"v1\",\"user_words\":\"« go pour le chantier 2 »\"}", said);
         assertThat(ok.error()).isFalse();
-        assertThat(ok.content()).startsWith("Chantier 2 : Plan validé");
+        assertThat(ok.content()).startsWith("Chantier 2 : Plan v1 validé");
         getJourney(aliceToken).andExpect(jsonPath("$.chantiers[1].phase", is("EXECUTION")))
                 .andExpect(jsonPath("$.chantier.number", is(1)));
+        // Le journal garde le canal : le clic du chantier 1, l'écrit du chantier 2.
+        java.util.List<String> details = eventRepository.findAll().stream()
+                .filter(e -> SubjectJourneyEvent.PLAN_VALIDATED.equals(e.getType()))
+                .map(SubjectJourneyEvent::getDetail).toList();
+        assertThat(details).anyMatch(d -> d.startsWith("chantier 1 · v1") && d.endsWith("· clic"))
+                .anyMatch(d -> d.startsWith("chantier 2 · v1") && d.contains("écrit « « go pour le chantier 2 » »"));
         // Plus rien à valider : erreur lisible, pas d'exception.
-        assertThat(tool(JourneyToolCatalog.VALIDATE_PLAN, "{\"chantier\":2,\"user_words\":\"go\"}").error()).isTrue();
+        assertThat(tool(JourneyToolCatalog.VALIDATE_PLAN, "{\"chantier\":2,\"version\":1,\"user_words\":\"go\"}",
+                said).error()).isTrue();
+    }
+
+    @Test
+    @DisplayName("SF-222-04 : la citation est cherchée mot pour mot, casse, accents et ponctuation ignorés")
+    void quotedWords() {
+        java.util.List<String> said = java.util.List.of("Le plan me va. Validé, tu peux y aller !");
+        assertThat(JourneyToolExecutor.quoted("valide tu peux", said)).isTrue();
+        assertThat(JourneyToolExecutor.quoted("« VALIDÉ »", said)).isTrue();
+        assertThat(JourneyToolExecutor.quoted("go", said)).isFalse();
+        assertThat(JourneyToolExecutor.quoted("val", said)).isFalse(); // un morceau de mot ne vaut pas
+        assertThat(JourneyToolExecutor.quoted("« »", said)).isFalse();
+        assertThat(JourneyToolExecutor.quoted("go", java.util.List.of())).isFalse();
+    }
+
+    @Test
+    @DisplayName("SF-222-04 : un amendement « même objectif » qui ajoute une étape EXTERNE se revalide ; l'origine se voit")
+    void inScopeAmendmentRefusesNewExternalStep() throws Exception {
+        chantierOneExecuting(); // v1 : « Remplacer le certificat » (REVERSIBLE)
+        JourneyToolExecutor.Outcome external = tool(JourneyToolCatalog.SET_PLAN, "{\"same_objective\":true,"
+                + "\"steps\":[{\"title\":\"Remplacer le certificat\",\"risk\":\"REVERSIBLE\",\"actor\":\"OUTIL\"},"
+                + "{\"title\":\"Pousser en prod\",\"risk\":\"EXTERNE\",\"actor\":\"OUTIL\"}]}");
+        assertThat(external.content()).contains("étape externe").contains("REVALIDÉ");
+        getJourney(aliceToken).andExpect(jsonPath("$.phase", is("PLAN")))
+                .andExpect(jsonPath("$.plan.awaitingValidation", is(true)));
+        assertThat(eventRepository.countByUserIdAndWorkspaceIdAndType(aliceId, ws(),
+                SubjectJourneyEvent.PLAN_AMENDED_IN_SCOPE)).isZero();
+        // Validé d'un clic, l'étape externe est couverte : un ajout réversible ensuite passe sans clic.
+        service.validatePlan(aliceId, ws(), 2);
+        assertThat(service.setPlan(aliceId, ws(), null, planJson("[{\"title\":\"Remplacer le certificat\","
+                + "\"risk\":\"REVERSIBLE\"},{\"title\":\"Pousser en prod\",\"risk\":\"EXTERNE\",\"actor\":\"OUTIL\"},"
+                + "{\"title\":\"Purger le cache\",\"risk\":\"REVERSIBLE\"}]"), true).outcome())
+                .isEqualTo(SubjectJourneyService.PlanOutcome.AMENDMENT_APPLIED);
+        // L'étape externe MODIFIÉE (même titre, autre retour arrière) n'entre pas sans clic.
+        assertThat(service.setPlan(aliceId, ws(), null, planJson("[{\"title\":\"Remplacer le certificat\","
+                + "\"risk\":\"REVERSIBLE\"},{\"title\":\"Pousser en prod\",\"risk\":\"EXTERNE\",\"actor\":\"OUTIL\","
+                + "\"rollback\":\"aucun\"},"
+                + "{\"title\":\"Purger le cache\",\"risk\":\"REVERSIBLE\"}]"), true).outcome())
+                .isEqualTo(SubjectJourneyService.PlanOutcome.AMENDMENT_EXTERNAL);
+        mockMvc.perform(get("/api/workspaces/" + workspaceId + "/journey/chantiers/1/versions").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].origin", is("PLAN")))
+                .andExpect(jsonPath("$[1].origin", is("AMENDMENT")))
+                .andExpect(jsonPath("$[2].origin", is("IN_SCOPE")))
+                .andExpect(jsonPath("$[3].origin", is("AMENDMENT")));
+        mockMvc.perform(get("/api/workspaces/" + workspaceId + "/journey/chantiers/1/versions").contextPath("/api")
+                        .header("Authorization", "Bearer " + bobToken))
+                .andExpect(status().isNotFound());
     }
 
     @Test
@@ -330,6 +401,17 @@ class SubjectJourneyChantiersIntegrationTest {
                 .andExpect(jsonPath("$.chantiers[0].stale", is(true)))
                 .andExpect(jsonPath("$.chantiers[0].phase", is("EXECUTION")))
                 .andExpect(jsonPath("$.chantiers[1].stale", is(false)));
+        assertThat(one.isStale(java.time.OffsetDateTime.now())).isTrue();
+        // SF-222-04 : un chantier qui attend un tiers attend ; il n'est jamais « en sommeil ».
+        one = chantierRepository.findFirstByUserIdAndWorkspaceIdAndNumber(aliceId, ws(), 1).orElseThrow();
+        one.setPlanJson(planJson("[{\"title\":\"Le client signe le bon\",\"risk\":\"REVERSIBLE\",\"actor\":\"TIERS\"}]")
+                .toJson());
+        one.setUpdatedAt(java.time.OffsetDateTime.now().minusDays(4));
+        chantierRepository.save(one);
+        getJourney(aliceToken).andExpect(jsonPath("$.chantiers[0].stale", is(false)))
+                .andExpect(jsonPath("$.chantiers[0].unblocker.who", is("AUTRUI")));
+        assertThat(one.isIdleInExecution(java.time.OffsetDateTime.now())).isTrue();
+        assertThat(one.isStale(java.time.OffsetDateTime.now())).isFalse();
         // Bob ne voit rien du parcours d'Alice.
         getJourney(bobToken).andExpect(status().isNotFound());
     }
@@ -425,6 +507,13 @@ class SubjectJourneyChantiersIntegrationTest {
         fr.claudegateway.atelier.Workspace w = workspaceRepository.findById(ws()).orElseThrow();
         return journeyTools.execute(w.getUserId(), w, name,
                 new com.fasterxml.jackson.databind.ObjectMapper().readTree(json));
+    }
+
+    private JourneyToolExecutor.Outcome tool(String name, String json, JourneyToolExecutor.TurnContext turn)
+            throws Exception {
+        fr.claudegateway.atelier.Workspace w = workspaceRepository.findById(ws()).orElseThrow();
+        return journeyTools.execute(w.getUserId(), w, name,
+                new com.fasterxml.jackson.databind.ObjectMapper().readTree(json), turn);
     }
 
     @Test

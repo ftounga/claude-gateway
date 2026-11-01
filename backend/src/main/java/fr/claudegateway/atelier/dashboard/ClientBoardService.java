@@ -85,7 +85,8 @@ public class ClientBoardService {
             ChantierPreflightService preflights, AutonomyService autonomy, AtelierMessageRepository messages,
             LiveTurnRegistry liveTurns, ChantierSnoozeRepository snoozes, TerminalActionRepository actions,
             TerminalActionFollowUp followUp, Clock clock,
-            @Value("${app.client-board.dormant-days:2}") int dormantAfterDays) {
+            // F-222 / SF-222-04 : « en sommeil » = 3 jours partout (SubjectJourneyChantier.STALE_DAYS).
+            @Value("${app.client-board.dormant-days:3}") int dormantAfterDays) {
         this.hosts = hosts;
         this.workspaces = workspaces;
         this.journeyRepository = journeyRepository;
@@ -171,11 +172,12 @@ public class ClientBoardService {
                 long idle = last == null ? 0 : Math.max(0, Duration.between(last, now).toDays());
                 Integer planned = ranging.planned(a);
                 Integer chantier = planned != null ? planned : chantierOf(a, openChantiers);
+                ChantierUnblocker.Mark mark = markOf(a);
                 tasks.add(new ClientBoard.LooseTask(a.getId(), workspace.getId(), workspace.getName(),
                         workspace.isHostTerminal(), a.getDescription(), a.getBlocks(), a.getStatus().name(),
                         a.getQui() == null ? null : a.getQui().name(),
                         a.getCategorie() == null ? null : a.getCategorie().name(), a.getPerson(), a.getRequestedTo(),
-                        a.getRequestedAt(), a.getCreatedAt(), markOf(a), last, idle, idle >= dormantAfterDays,
+                        a.getRequestedAt(), a.getCreatedAt(), mark, last, idle, asleep(idle, mark),
                         followUp.isDue(a, now), chantier,
                         a.getProposedStatus() == null ? null : a.getProposedStatus().name(), a.getProposedReason(),
                         a.hasProposal() ? a.getProposalSource() : null,
@@ -324,6 +326,14 @@ public class ClientBoardService {
     }
 
     /**
+     * <b>En sommeil</b> (F-222 / SF-222-04) : sans geste depuis le seuil (3 jours par défaut, le même partout), et
+     * jamais quand c'est un tiers qui doit agir — cela, c'est une attente, pas un sommeil.
+     */
+    boolean asleep(long idleDays, ChantierUnblocker.Mark mark) {
+        return idleDays >= dormantAfterDays && (mark == null || mark.who() != ChantierUnblocker.Who.AUTRUI);
+    }
+
+    /**
      * Qui débloque une attente hors chantier (SF-220-07, même code couleur que SF-220-01) : un geste
      * {@code qui=MOI}, ou une demande pas encore partie ({@code A_FAIRE}), c'est <b>ma décision</b> ; une demande
      * partie ({@code DEMANDE}) envers le client ou un tiers, c'est <b>quelqu'un</b> — à qui, depuis quand.
@@ -434,7 +444,7 @@ public class ClientBoardService {
                     c.number(), c.title(), c.phase(), c.phaseLabel(), c.focus(), c.openedAt(), c.done(), c.total(),
                     nextStep(c), c.unblocker(), pf != null && pf.ready(),
                     pf == null ? List.of() : pf.reasons().stream().map(ChantierPreflight.Reason::label).toList(),
-                    last, idle, idle >= dormantAfterDays, running || (c.focus() && turn.isPresent()),
+                    last, idle, asleep(idle, c.unblocker()), running || (c.focus() && turn.isPresent()),
                     c.focus() ? question : null, run, snoozed.get(workspace.getId() + "#" + c.number()),
                     pf != null && pf.advance() != null && pf.advance().possible(), c.diagnosisPending()));
         }
