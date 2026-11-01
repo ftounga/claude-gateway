@@ -43,7 +43,8 @@ export const DOUBT_PHRASE = 'Je n’ai pas compris : je ne fais rien. Vous pouve
 /** SF-231-04 — ce que Jarvis dit quand personne ne répond. */
 export const NO_ANSWER_PHRASE = 'Sans réponse, je ne fais rien.';
 import {
-  ACK_DELAY_MS, ACK_PHRASE, LONG_TURN_MS, OralStream, REACTION_CLIPS, WAKE_CLIP, isStopCommand, oralPhrase,
+  ACK_DELAY_MS, ACK_PHRASE, LONG_TURN_MS, OralStream, REACTION_CLIPS, WAKE_CLIP, classifyInterruption, isStopCommand,
+  oralPhrase,
   subjectSwitch, withEndAnnouncement,
 } from './jarvis-oral';
 import { JarvisOrbComponent, JarvisState } from './jarvis-orb.component';
@@ -646,9 +647,66 @@ export class JarvisComponent implements OnInit, OnDestroy {
     await this.handleInterruption(text);
   }
 
-  /** SF-233-08 — ce qui a été dit en coupant Jarvis. Dans le doute, c'est une demande (D9). */
+  /** SF-233-09 — la part entendue de la réponse coupée, à joindre au prochain envoi (D10), ou `null`. */
+  private heardBeforeCut: string | null = null;
+
+  /**
+   * SF-233-09 (D9, D10, D11) — ce qui a été dit en coupant Jarvis : acquiescement ⇒ il reprend à la phrase coupée ;
+   * silence ⇒ il se tait ; annulation ⇒ l'interruption du travail (existante) ; sinon c'est une demande, et le
+   * message porte la part réellement entendue de la réponse coupée. Dans le doute, c'est une demande.
+   */
   protected async handleInterruption(text: string): Promise<void> {
+    const cut = this.lastCut;
+    this.lastCut = null;
+    const kind = classifyInterruption(text);
+    if (kind === 'ack') {
+      this.countPending('acknowledgements');
+      this.dropPendingClock();
+      const resume = cut?.resume ?? [];
+      if (resume.length === 0) {
+        this.state.set(this.turnRunning ? 'reflexion' : 'repos');
+        return;
+      }
+      this.state.set('parole');
+      const subjectId = this.subjectId();
+      resume.forEach((sentence) => this.voice.enqueue(sentence, subjectId));
+      await this.voice.idle();
+      if (this.state() === 'parole') {
+        this.state.set(this.turnRunning ? 'reflexion' : 'repos');
+      }
+      return;
+    }
+    if (kind === 'silence') {
+      this.dropPendingClock();
+      this.state.set(this.turnRunning ? 'reflexion' : 'repos');
+      return;
+    }
+    if (kind === 'cancel') {
+      this.dropPendingClock();
+      await this.handle(text);
+      return;
+    }
+    this.heardBeforeCut = cut?.heard || null;
     await this.handle(text);
+    this.heardBeforeCut = null;
+  }
+
+  /** SF-233-09 — compte sur le chronomètre de la parole en attente (sinon sur le tour courant). */
+  private countPending(counter: TurnCounter): void {
+    if (this.pendingClock) {
+      this.pendingClock.count(counter);
+    } else {
+      this.countInterruption(counter);
+    }
+  }
+
+  /** SF-233-09 — la parole n'a pas ouvert de tour : sa mesure est déclarée telle quelle. */
+  private dropPendingClock(): void {
+    const report = this.pendingClock?.takeReport();
+    this.pendingClock = null;
+    if (report) {
+      this.jarvis.timings(report);
+    }
   }
 
   /** Arrête l'écoute, transcrit, puis agit sur ce qui a été dit. */
@@ -750,6 +808,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.spoken.set(null);
     // Seul le dernier envoi parle : une précision dite pendant un tour suit le même tour, et sa fin ne doit pas
     // être lue deux fois.
+    // SF-233-09 — une précision (tour déjà en cours) ne porte jamais la note de coupure : elle vaut pour un tour neuf.
+    const heardBeforeCut = this.turnRunning ? null : this.heardBeforeCut;
     const seq = ++this.sendSeq;
     const latest = () => seq === this.sendSeq;
     this.startClock();
@@ -822,7 +882,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
           this.notice.set('La réponse n’est pas arrivée ici : elle sera dans le terminal.');
         }
       }),
-    }, 'ACT', false, [], null, false, 'JARVIS');
+    }, 'ACT', false, [], null, false, 'JARVIS', heardBeforeCut);
   }
 
   private sendSeq = 0;

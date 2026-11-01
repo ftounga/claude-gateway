@@ -120,8 +120,25 @@ class AtelierChatControllerForceTest {
 
         assertThat(capture.latch.await(5, TimeUnit.SECONDS)).isTrue();
         org.mockito.InOrder order = Mockito.inOrder(chatService);
-        order.verify(chatService).markVoiceTurn(USER, WORKSPACE, 8);
+        order.verify(chatService).markVoiceTurn(USER, WORKSPACE, 8, null);
         order.verify(chatService).chatStreaming(any(), any(), any(), any(), any(), any(), anyBoolean(), any());
+    }
+
+    @Test
+    void sf233_09_laPartEntendueDUneReponseCoupeeVoyageAvecLaMarque() throws Exception {
+        Capture capture = capture();
+
+        controller().stream(WORKSPACE, new AtelierChatRequest("et les tests ?", null, null, null, 8, null, "JARVIS",
+                "  La migration est  "));
+
+        assertThat(capture.latch.await(5, TimeUnit.SECONDS)).isTrue();
+        Mockito.verify(chatService).markVoiceTurn(USER, WORKSPACE, 8, "La migration est");
+    }
+
+    @Test
+    void sf233_09_unMessageTapeNePorteJamaisDeNoteDeCoupure() {
+        assertThat(new AtelierChatRequest("x", null, null, null, null, null, null, "entendu").heardBeforeCutOrNull())
+                .isNull();
     }
 
     @Test
@@ -132,6 +149,7 @@ class AtelierChatControllerForceTest {
 
         assertThat(capture.latch.await(5, TimeUnit.SECONDS)).isTrue();
         Mockito.verify(chatService, Mockito.never()).markVoiceTurn(any(), any(), any());
+        Mockito.verify(chatService, Mockito.never()).markVoiceTurn(any(), any(), any(), any());
     }
 
     /** Une requête portant explicitement le drapeau, comme l'écran l'envoie après un refus. */

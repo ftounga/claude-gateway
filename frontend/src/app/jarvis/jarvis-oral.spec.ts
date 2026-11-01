@@ -1,5 +1,5 @@
 import {
-  OralStream, firstSentences, isStopCommand, oralPhrase, oralSentences, subjectSwitch, withEndAnnouncement,
+  OralStream, classifyInterruption, firstSentences, isStopCommand, oralPhrase, oralSentences, subjectSwitch, withEndAnnouncement,
 } from './jarvis-oral';
 import { EndOfSpeech, END_OF_SPEECH_MS, NO_SPEECH_MS } from './jarvis-mic-meter';
 import { sphere, withAlpha } from './jarvis-orb.component';
@@ -129,5 +129,23 @@ describe('La parole au fil de l’écriture (F-233 / SF-233-03)', () => {
     oral.push('🎙 Les tests passent. ');
     expect(oral.remaining('Les tests passent. Je pousse ?')).toBe('Je pousse ?');
     expect(oral.remaining('Les tests passent.')).toBe('');
+  });
+});
+
+describe('Comprendre l’interruption (F-233 / SF-233-09)', () => {
+  it('acquiescement, silence, annulation, sinon demande (dans le doute, une demande)', () => {
+    expect(classifyInterruption('OK.')).toBe('ack');
+    expect(classifyInterruption('mmh')).toBe('ack');
+    expect(classifyInterruption('Oui oui')).toBe('ack');
+    expect(classifyInterruption('D’accord')).toBe('ack');
+    expect(classifyInterruption('Stop !')).toBe('silence');
+    expect(classifyInterruption('Tais-toi')).toBe('silence');
+    expect(classifyInterruption('c’est bon')).toBe('silence');
+    expect(classifyInterruption('Jarvis, laisse tomber')).toBe('cancel');
+    expect(classifyInterruption('Arrête ça')).toBe('cancel');
+    expect(classifyInterruption('Ok mais vérifie les tests')).toBe('request');
+    expect(classifyInterruption('Non, l’autre branche')).toBe('request');
+    expect(classifyInterruption('')).toBe('request');
+    expect(isStopCommand('arrête ça')).toBeTrue();
   });
 });

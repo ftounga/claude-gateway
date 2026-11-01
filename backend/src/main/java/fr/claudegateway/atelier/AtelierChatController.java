@@ -126,7 +126,8 @@ public class AtelierChatController {
         atelierChatService.setLaneSplit(currentUser.requireId(), id, request.chantier(), request.splitOrDefault());
         if (request.viaJarvis()) {
             // F-231 / SF-231-06 : le tour qui s'ouvre est né à la voix.
-            atelierChatService.markVoiceTurn(currentUser.requireId(), id, request.chantier());
+            atelierChatService.markVoiceTurn(currentUser.requireId(), id, request.chantier(),
+                    request.heardBeforeCutOrNull());
         }
         AtelierChatResult result = atelierChatService.chat(currentUser.requireId(), id, request.chantier(),
                 request.message(), request.modeOrDefault(), request.forceOrDefault(),
@@ -174,7 +175,7 @@ public class AtelierChatController {
         SseEmitter emitter = newEmitter();
         fr.claudegateway.chat.SseStreamDispatch.submit(chatStreamExecutor, emitter,
                 () -> relay(emitter, userId, id, chantier, request.message(), mode, hasAccess, admin, force,
-                        attachedDepositIds, request.viaJarvis()));
+                        attachedDepositIds, request.viaJarvis(), request.heardBeforeCutOrNull()));
         return emitter;
     }
 
@@ -597,7 +598,7 @@ public class AtelierChatController {
 
     private void relay(SseEmitter emitter, UUID userId, UUID workspaceId, Integer chantier, String message,
             fr.claudegateway.agent.AgentTurnMode mode, boolean hasAccess, boolean admin,
-            boolean force, List<UUID> attachedDepositIds, boolean viaJarvis) {
+            boolean force, List<UUID> attachedDepositIds, boolean viaJarvis, String heardBeforeCut) {
         LiveTurn turn;
         if (hasAccess) {
             // UN ENVOI PENDANT UN TOUR EST UNE PRÉCISION (F-84 / SF-84-06, décision du PO du
@@ -851,7 +852,7 @@ public class AtelierChatController {
             boolean voice = viaJarvis;
             for (;;) {
                 if (voice) {
-                    atelierChatService.markVoiceTurn(userId, workspaceId, chantier);
+                    atelierChatService.markVoiceTurn(userId, workspaceId, chantier, heardBeforeCut);
                     voice = false;
                 }
                 AtelierChatResult result = atelierChatService.chatStreaming(

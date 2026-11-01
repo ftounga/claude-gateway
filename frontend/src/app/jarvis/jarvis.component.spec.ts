@@ -171,7 +171,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     void jarvis.talk();
     flushMicrotasks();
     expect(atelier.streamChat).toHaveBeenCalledWith('w-2', 'Où en est la migration ?', jasmine.any(Object), 'ACT',
-      false, [], null, false, 'JARVIS');
+      false, [], null, false, 'JARVIS', null);
     expect(jarvis.state()).toBe('reflexion');
 
     handlers!.onText('🎙 La migration');
@@ -453,7 +453,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       stt!.onCommitted('Où en est la migration ?');
       flushMicrotasks();
       expect(atelier.streamChat).toHaveBeenCalledWith('w-2', 'Où en est la migration ?', jasmine.any(Object), 'ACT',
-        false, [], null, false, 'JARVIS');
+        false, [], null, false, 'JARVIS', null);
       expect(jarvisApi.closeSttSession).toHaveBeenCalledWith('s-1', 4);
       handlers!.onDone({ reply: '🎙 Étape 4.', actions: [], messageId: 'm-1' });
       flushMicrotasks();
@@ -501,7 +501,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       expect(dictation.transcribe).toHaveBeenCalled();
       expect(vadStop).toHaveBeenCalled();
       expect(atelier.streamChat).toHaveBeenCalledWith('w-2', 'Et les tests ?', jasmine.any(Object), 'ACT', false, [],
-        null, false, 'JARVIS');
+        null, false, 'JARVIS', 'La migration est');
       jarvis.ngOnDestroy();
     }));
 
@@ -530,4 +530,38 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       expect(report.interruptionsRestored).toBe(1);
       jarvis.ngOnDestroy();
     }));
+
+  function cutWhileSpeaking(said: string): JarvisComponent {
+    voice.interrupt.and.returnValue({ heard: 'La migration', resume: ['La migration est à l’étape 4.', 'Rien ne bloque.'] });
+    dictation.transcribe.and.resolveTo(said);
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    jarvis.state.set('parole');
+    fixture.detectChanges();
+    flushMicrotasks();
+    vad!.onSpeechStart();
+    vad!.onSpeechConfirmed();
+    fixture.detectChanges();
+    vad!.onSpeechEnd(new Float32Array(4000));
+    flushMicrotasks();
+    return jarvis;
+  }
+
+  it('F-233 / SF-233-09 — « mmh » : il reprend à la phrase coupée, sans rien envoyer', fakeAsync(() => {
+    const jarvis = cutWhileSpeaking('Mmh.');
+    expect(atelier.streamChat).not.toHaveBeenCalled();
+    expect(voice.enqueue.calls.allArgs().map((a) => a[0])).toEqual(['La migration est à l’étape 4.', 'Rien ne bloque.']);
+    expect(jarvisApi.timings.calls.mostRecent().args[0].acknowledgements).toBe(1);
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-233 / SF-233-09 — « chut » : il se tait, et rien d’autre', fakeAsync(() => {
+    const jarvis = cutWhileSpeaking('Chut !');
+    expect(atelier.streamChat).not.toHaveBeenCalled();
+    expect(voice.enqueue).not.toHaveBeenCalled();
+    expect(atelier.interruptChat).not.toHaveBeenCalled();
+    expect(jarvis.state()).toBe('repos');
+    jarvis.ngOnDestroy();
+  }));
 });

@@ -45,7 +45,10 @@ public record AtelierChatRequest(
         Boolean split,
 
         @jakarta.validation.constraints.Pattern(regexp = "^JARVIS$", message = "Origine inconnue.")
-        String via) {
+        String via,
+
+        @Size(max = 2000, message = "La part entendue est trop longue.")
+        String heardBeforeCut) {
 
     /** L'origine d'un message dit à la voix, en mode Jarvis (F-231 / SF-231-06). */
     public static final String VIA_JARVIS = "JARVIS";
@@ -53,12 +56,26 @@ public record AtelierChatRequest(
     /** Forme d'avant Jarvis (F-231 / SF-231-06) : message tapé. */
     public AtelierChatRequest(String message, AgentTurnMode mode, Boolean force, List<UUID> attachedDepositIds,
             Integer chantier, Boolean split) {
-        this(message, mode, force, attachedDepositIds, chantier, split, null);
+        this(message, mode, force, attachedDepositIds, chantier, split, null, null);
+    }
+
+    /** Forme d'avant la note de coupure (F-233 / SF-233-09) : aucune réponse orale coupée. */
+    public AtelierChatRequest(String message, AgentTurnMode mode, Boolean force, List<UUID> attachedDepositIds,
+            Integer chantier, Boolean split, String via) {
+        this(message, mode, force, attachedDepositIds, chantier, split, via, null);
     }
 
     /** Le message est né à la voix, dans l'écran Jarvis (F-231 / SF-231-06) : absent ⇒ non. */
     public boolean viaJarvis() {
         return VIA_JARVIS.equals(via);
+    }
+
+    /**
+     * F-233 / SF-233-09 (D10) — ce que le PO avait réellement entendu de la réponse orale précédente quand il a coupé
+     * Jarvis ; ne vaut que pour un message né à la voix. {@code null} sinon (ou vide).
+     */
+    public String heardBeforeCutOrNull() {
+        return viaJarvis() && heardBeforeCut != null && !heardBeforeCut.isBlank() ? heardBeforeCut.strip() : null;
     }
 
     /** Forme d'avant le fil par chantier (F-221 / SF-221-01) : fil commun. */

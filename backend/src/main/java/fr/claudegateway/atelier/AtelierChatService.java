@@ -3103,20 +3103,38 @@ public class AtelierChatService implements RelayInterruptTarget {
      * Les tours <b>nés à la voix</b> (F-231 / SF-231-06), clefés comme l'état du tour, avec l'instant de la marque. La
      * boucle consomme la marque au début du tour ; une marque restée sans tour (refus avant la boucle) expire.
      */
-    private final java.util.Map<String, Long> voiceTurns = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.Map<String, VoiceMark> voiceTurns = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** F-233 / SF-233-09 — une marque « né à la voix » : son instant, et la part entendue d'une réponse coupée. */
+    record VoiceMark(long at, String heardBeforeCut) {
+    }
 
     /** Au-delà, une marque non consommée ne vaut plus : elle ne doit pas déteindre sur un tour tapé plus tard. */
     static final long VOICE_MARK_TTL_MS = 120_000L;
 
     /** Le tour qui s'ouvre sur ce fil est né à la voix, dans l'écran Jarvis (F-231 / SF-231-06). */
     public void markVoiceTurn(UUID userId, UUID workspaceId, Integer chantier) {
-        voiceTurns.put(turnKey(userId, workspaceId, chantier), System.currentTimeMillis());
+        markVoiceTurn(userId, workspaceId, chantier, null);
+    }
+
+    /**
+     * F-233 / SF-233-09 — le tour né à la voix, avec la part <b>entendue</b> de la réponse orale que le PO a coupée
+     * (ou {@code null}) : elle sera signalée dans le message du tour (D10), jamais dans la consigne système.
+     */
+    public void markVoiceTurn(UUID userId, UUID workspaceId, Integer chantier, String heardBeforeCut) {
+        voiceTurns.put(turnKey(userId, workspaceId, chantier), new VoiceMark(System.currentTimeMillis(),
+                heardBeforeCut));
     }
 
     /** Consomme la marque « né à la voix » de ce fil : vrai une seule fois, et seulement si elle est fraîche. */
     boolean consumeVoiceTurn(UUID userId, UUID workspaceId, Integer chantier) {
-        Long at = voiceTurns.remove(turnKey(userId, workspaceId, chantier));
-        return at != null && System.currentTimeMillis() - at <= VOICE_MARK_TTL_MS;
+        return consumeVoiceMark(userId, workspaceId, chantier) != null;
+    }
+
+    /** Consomme la marque « né à la voix » de ce fil ; {@code null} si absente ou périmée. */
+    VoiceMark consumeVoiceMark(UUID userId, UUID workspaceId, Integer chantier) {
+        VoiceMark mark = voiceTurns.remove(turnKey(userId, workspaceId, chantier));
+        return mark != null && System.currentTimeMillis() - mark.at() <= VOICE_MARK_TTL_MS ? mark : null;
     }
 
     /** Vrai si une boucle tourne sur ce sujet, ici, dans un autre fil que {@code chantier}. */
@@ -3206,7 +3224,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         int iterationCap = maxIterations;
         String userText = rawMessage.trim();
         // F-231 / SF-231-06 : ce tour est-il né à la voix (écran Jarvis) ? La marque est consommée ici, une fois.
-        boolean viaJarvis = consumeVoiceTurn(userId, workspaceId, chantier);
+        VoiceMark voiceMark = consumeVoiceMark(userId, workspaceId, chantier);
+        boolean viaJarvis = voiceMark != null;
 
         // Compaction automatique du fil (F-117 / SF-117-01), AVANT de bâtir la requête : si le texte
         // rejoué dépasse le seuil de sécurité sous la fenêtre du modèle, les tours anciens sont
@@ -3345,6 +3364,9 @@ public class AtelierChatService implements RelayInterruptTarget {
         // parole de l'utilisateur ; le message PERSISTÉ reste sa parole. Tour tapé : consigne inchangée à l'octet près.
         if (viaJarvis) {
             consigne = fr.claudegateway.jarvis.JarvisOralNote.appendTo(consigne);
+            // F-233 / SF-233-09 (D10) — la réponse orale précédente a été coupée : seule la part entendue est
+            // signalée, DANS LE MESSAGE (préfixe intact). Le texte écrit du tour précédent reste intact dans le fil.
+            consigne = fr.claudegateway.jarvis.JarvisOralNote.appendCut(consigne, voiceMark.heardBeforeCut());
         }
         messages.add(AgentMessage.userText(consigne));
         // F-229 / SF-229-01 : le ruban du premier appel comparé à celui du dernier appel du tour précédent

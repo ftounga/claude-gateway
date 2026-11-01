@@ -156,4 +156,25 @@ class AtelierChatServiceVoiceTurnTest {
 
         assertThat(saved()).extracting(AtelierMessage::getVia).containsOnlyNulls();
     }
+
+    @Test
+    void SF_233_09_laPartEntendueDUneReponseCoupeeVaDansLeMessageJamaisDansLeSysteme() {
+        service.markVoiceTurn(userId, workspaceId, null, "La migration est à l'étape");
+        agentProvider.enqueueFinal("🎙 Les tests passent.");
+
+        service.chat(userId, workspaceId, "et les tests ?");
+
+        assertThat(sentToModel()).contains("[Jarvis — ta réponse orale a été coupée après : « La migration est à "
+                + "l'étape ». Le reste n'a pas été entendu.]");
+        assertThat(agentProvider.lastRequest.system()).doesNotContain("coupée");
+        assertThat(saved()).filteredOn(m -> "USER".equals(m.getRole()))
+                .extracting(AtelierMessage::getContent).containsExactly("et les tests ?");
+    }
+
+    @Test
+    void SF_233_09_sansCoupureLaConsigneEstInchangee() {
+        assertThat(fr.claudegateway.jarvis.JarvisOralNote.appendCut("c", null)).isEqualTo("c");
+        assertThat(fr.claudegateway.jarvis.JarvisOralNote.appendCut("c", "  ")).isEqualTo("c");
+        assertThat(fr.claudegateway.jarvis.JarvisOralNote.appendCut("c", "a « b »")).contains("« a \" b \" »");
+    }
 }
