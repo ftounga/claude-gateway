@@ -22,6 +22,23 @@ public interface SpeechProvider {
      */
     SpeechAudio synthesize(String text, String voice, String instructions);
 
+    /**
+     * Lit un texte à voix haute <b>en flux</b> (F-231 / SF-231-01) : les octets mp3 sont écrits dans {@code out}
+     * au fil de leur arrivée, pour que la voix de Jarvis commence avant la fin de la synthèse.
+     *
+     * <p>Méthode par défaut : un fournisseur qui ne sait pas diffuser rend tout l'audio d'un coup (même
+     * résultat, premier octet plus tardif). Les exceptions sont celles de {@link #synthesize}.</p>
+     *
+     * @return le nombre d'octets écrits
+     */
+    default long synthesizeStream(String text, String voice, String instructions, java.io.OutputStream out)
+            throws java.io.IOException {
+        byte[] bytes = synthesize(text, voice, instructions).bytes();
+        out.write(bytes);
+        out.flush();
+        return bytes.length;
+    }
+
     /** Un audio rendu par le fournisseur. */
     record SpeechAudio(byte[] bytes, String contentType) {
     }

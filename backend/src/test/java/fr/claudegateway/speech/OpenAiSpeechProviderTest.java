@@ -101,6 +101,30 @@ class OpenAiSpeechProviderTest {
     }
 
     @Test
+    @DisplayName("F-231 / SF-231-01 — en flux : mêmes corps et en-tête, octets recopiés dans la sortie ; 500 ⇒ exception")
+    void streams() throws IOException {
+        AtomicReference<String> body = new AtomicReference<>();
+        AtomicReference<String> auth = new AtomicReference<>();
+        String base = start("/audio/speech", 200, new byte[] {3, 1, 4, 1, 5}, new AtomicInteger(), body, auth);
+        OpenAiSpeechProvider provider = new OpenAiSpeechProvider(props(base, "sk-secret", true), RestClient.builder(), MAPPER);
+
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        long written = provider.synthesizeStream("Bonjour", "onyx", "posée", out);
+
+        assertThat(written).isEqualTo(5);
+        assertThat(out.toByteArray()).containsExactly(3, 1, 4, 1, 5);
+        assertThat(MAPPER.readTree(body.get()).path("voice").asText()).isEqualTo("onyx");
+        assertThat(auth.get()).isEqualTo("Bearer sk-secret");
+
+        server.stop(0);
+        String failing = start("/audio/speech", 500, "boom".getBytes(StandardCharsets.UTF_8), new AtomicInteger(),
+                new AtomicReference<>(), new AtomicReference<>());
+        OpenAiSpeechProvider broken = new OpenAiSpeechProvider(props(failing, "sk", true), RestClient.builder(), MAPPER);
+        assertThatThrownBy(() -> broken.synthesizeStream("x", "onyx", "", new java.io.ByteArrayOutputStream()))
+                .isInstanceOf(SpeechProviderException.class);
+    }
+
+    @Test
     @DisplayName("STT en mode mots : whisper-1, verbose_json, timestamp_granularities[]=word ; mots relus")
     void transcribesWords() {
         AtomicReference<String> body = new AtomicReference<>();
