@@ -86,12 +86,7 @@ public class JarvisVoiceService {
         if (text.length() > properties.maxRequestChars()) {
             throw new IllegalArgumentException("Texte trop long pour être lu à voix haute.");
         }
-        if (!speech.isActive()) {
-            throw new SpeechProviderUnavailableException("La voix n'est pas configurée sur cette installation.");
-        }
-        if (!speech.allows(properties.voice())) {
-            throw new SpeechProviderUnavailableException("La voix de Jarvis n'est pas dans la liste des voix.");
-        }
+        requireVoice();
         VoiceStatus status = status(userId);
         if (status.budgetReached()) {
             throw new JarvisVoiceBudgetException();
@@ -111,12 +106,47 @@ public class JarvisVoiceService {
      */
     public long speak(Reading reading, OutputStream out) throws IOException {
         long written = provider.synthesizeStream(reading.text(), properties.voice(), properties.instructions(), out);
-        long characters = reading.text().length();
-        ledger.record(reading.userId(), reading.workspaceId(), reading.hostId(), characters, 0d);
-        usage.addSpeech(reading.userId(), characters, costUsd(characters));
-        // On journalise la LONGUEUR, jamais le texte.
-        log.debug("Jarvis a parlé ({} caractères)", characters);
+        account(reading.userId(), reading.workspaceId(), reading.hostId(), reading.text().length());
         return written;
+    }
+
+    /**
+     * F-233 / SF-233-02 — synthétise d'un coup une phrase <b>fixe</b> (clip de réaction), avec la voix de Jarvis, et la
+     * compte. Le plafond est vérifié avant l'appel.
+     *
+     * @throws SpeechProviderUnavailableException voix éteinte ou non configurée
+     * @throws JarvisVoiceBudgetException         plafond du mois atteint
+     */
+    public byte[] synthesizeClip(UUID userId, String text) {
+        requireVoice();
+        if (status(userId).budgetReached()) {
+            throw new JarvisVoiceBudgetException();
+        }
+        byte[] audio = provider.synthesize(text, properties.voice(), properties.instructions()).bytes();
+        account(userId, null, null, text.length());
+        return audio;
+    }
+
+    /** La voix de Jarvis en service (sert de clé aux clips : changer de voix les régénère). */
+    public String voice() {
+        return properties.voice();
+    }
+
+    /** Vérifie que la voix est allumée, configurée et dans la liste blanche. */
+    void requireVoice() {
+        if (!speech.isActive()) {
+            throw new SpeechProviderUnavailableException("La voix n'est pas configurée sur cette installation.");
+        }
+        if (!speech.allows(properties.voice())) {
+            throw new SpeechProviderUnavailableException("La voix de Jarvis n'est pas dans la liste des voix.");
+        }
+    }
+
+    /** Compte une lecture : journal d'usage et journée Jarvis. On journalise la LONGUEUR, jamais le texte. */
+    private void account(UUID userId, UUID workspaceId, UUID hostId, long characters) {
+        ledger.record(userId, workspaceId, hostId, characters, 0d);
+        usage.addSpeech(userId, characters, costUsd(characters));
+        log.debug("Jarvis a parlé ({} caractères)", characters);
     }
 
     /** Le coût en dollars de {@code characters} caractères lus, au tarif de la voix off. */

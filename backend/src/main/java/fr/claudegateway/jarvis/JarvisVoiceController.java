@@ -7,6 +7,7 @@ import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -38,14 +39,48 @@ public class JarvisVoiceController {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final JarvisVoiceService voice;
+    private final JarvisClipService clips;
     private final AtelierAccessService atelierAccess;
     private final CurrentUser currentUser;
 
-    public JarvisVoiceController(JarvisVoiceService voice, AtelierAccessService atelierAccess,
+    public JarvisVoiceController(JarvisVoiceService voice, JarvisClipService clips, AtelierAccessService atelierAccess,
             CurrentUser currentUser) {
         this.voice = voice;
+        this.clips = clips;
         this.atelierAccess = atelierAccess;
         this.currentUser = currentUser;
+    }
+
+    /**
+     * F-233 / SF-233-02 — un clip de réaction (phrase fixe, voix de Jarvis), que l'écran charge à l'ouverture et joue
+     * localement. 404 clip inconnu ; 503 voix absente ; 429 plafond atteint.
+     */
+    @GetMapping("/clips/{name}")
+    public void clip(@PathVariable String name, HttpServletResponse response) throws IOException {
+        atelierAccess.requireAccess();
+        byte[] audio;
+        try {
+            audio = clips.clip(currentUser.requireId(), name);
+        } catch (IllegalArgumentException e) {
+            error(response, HttpStatus.NOT_FOUND, "not_found", "Clip inconnu.");
+            return;
+        } catch (SpeechProviderUnavailableException e) {
+            error(response, HttpStatus.SERVICE_UNAVAILABLE, "speech_unavailable",
+                    "La voix de Jarvis n'est pas disponible sur cette installation.");
+            return;
+        } catch (JarvisVoiceBudgetException e) {
+            error(response, HttpStatus.TOO_MANY_REQUESTS, "jarvis_voice_budget",
+                    "Le plafond mensuel de la voix de Jarvis est atteint.");
+            return;
+        } catch (SpeechProviderException e) {
+            error(response, HttpStatus.BAD_GATEWAY, "speech_failed", "La voix n'a pas répondu : réessayez.");
+            return;
+        }
+        response.setStatus(HttpStatus.OK.value());
+        response.setContentType("audio/mpeg");
+        // Phrase fixe et sans contenu client : le navigateur peut la garder pour la session.
+        response.setHeader("Cache-Control", "private, max-age=3600");
+        response.getOutputStream().write(audio);
     }
 
     @GetMapping("/voice")

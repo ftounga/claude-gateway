@@ -3,8 +3,30 @@ import { rmsLevel } from '../core/services/jarvis-voice.service';
 /** Au-dessus, c'est de la voix ; en dessous, du silence (niveau RMS ramené de 0 à 1). */
 export const SPEECH_LEVEL = 0.12;
 export const SILENCE_LEVEL = 0.06;
-/** Après avoir parlé, autant de silence clôt la phrase. */
-export const END_OF_SPEECH_MS = 1_400;
+/**
+ * Après avoir parlé, autant de silence clôt la phrase. F-233 / SF-233-02 (D6) : 1,4 s → 0,7 s ; une fin prématurée
+ * n'est pas grave (la suite dite dans la seconde part en précision).
+ */
+export const END_OF_SPEECH_MS = 700;
+/** SF-233-02 — le réglage local du silence de fin de phrase (ms), borné. */
+export const SILENCE_MS_KEY = 'cg.jarvis.silenceMs';
+export const MIN_SILENCE_MS = 300;
+export const MAX_SILENCE_MS = 3_000;
+
+/** SF-233-02 — le silence de fin de phrase de cet appareil : réglé (borné), sinon {@link END_OF_SPEECH_MS}. */
+export function silenceMs(): number {
+  let raw: string | null = null;
+  try {
+    raw = localStorage.getItem(SILENCE_MS_KEY);
+  } catch {
+    raw = null;
+  }
+  const value = Number(raw);
+  if (raw === null || raw.trim() === '' || !Number.isFinite(value)) {
+    return END_OF_SPEECH_MS;
+  }
+  return Math.min(MAX_SILENCE_MS, Math.max(MIN_SILENCE_MS, Math.round(value)));
+}
 /** Sans un mot, l'écoute s'arrête d'elle-même au bout de ce temps. */
 export const NO_SPEECH_MS = 8_000;
 
@@ -16,7 +38,7 @@ export class EndOfSpeech {
   private heard = false;
   private quietSince: number | null = null;
 
-  constructor(private readonly startedAt: number) {}
+  constructor(private readonly startedAt: number, private readonly endMs: number = END_OF_SPEECH_MS) {}
 
   /** Vrai quand la phrase est finie (silence après de la voix), ou quand rien n'a été dit depuis trop longtemps. */
   update(level: number, now: number): boolean {
@@ -30,7 +52,7 @@ export class EndOfSpeech {
     }
     if (level <= SILENCE_LEVEL) {
       this.quietSince ??= now;
-      return now - this.quietSince >= END_OF_SPEECH_MS;
+      return now - this.quietSince >= this.endMs;
     }
     return false;
   }
