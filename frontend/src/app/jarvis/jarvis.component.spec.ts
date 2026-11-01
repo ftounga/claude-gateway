@@ -83,8 +83,10 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     voice.playClip.and.resolveTo(false);
     voice.hasClip.and.returnValue(false);
     voice.level.and.returnValue(0);
-    jarvisApi = jasmine.createSpyObj<JarvisService>('JarvisService', ['usage', 'companion', 'companions', 'timings', 'sttSession', 'closeSttSession']);
+    jarvisApi = jasmine.createSpyObj<JarvisService>('JarvisService', ['usage', 'companion', 'companions', 'timings', 'sttSession', 'closeSttSession', 'preferences', 'setHumour']);
     jarvisApi.sttSession.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
+    jarvisApi.preferences.and.returnValue(of({ humour: 'LIGHT' as const }));
+    jarvisApi.setHumour.and.callFake((humour) => of({ humour }));
     opener = jasmine.createSpyObj<JarvisStreamOpener>('JarvisStreamOpener', ['open']);
     vad = null;
     vadStop = jasmine.createSpy('vadStop');
@@ -121,6 +123,27 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       ],
     });
   }
+
+  it('F-235 / SF-235-09 — humour : léger par défaut, bascule vers aucun, retour si l’enregistrement échoue', fakeAsync(() => {
+    configure({});
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    const jarvis = fixture.componentInstance;
+    expect(jarvisApi.preferences).toHaveBeenCalled();
+    expect(jarvis.humour()).toBe('LIGHT');
+    const button: HTMLButtonElement = fixture.nativeElement.querySelector('.jv__humour');
+    expect(button.textContent).toContain('Humour : léger');
+
+    jarvis.toggleHumour();
+    expect(jarvisApi.setHumour).toHaveBeenCalledWith('NONE');
+    expect(jarvis.humour()).toBe('NONE');
+
+    jarvisApi.setHumour.and.returnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
+    jarvis.toggleHumour();
+    expect(jarvis.humour()).toBe('NONE');
+    jarvis.ngOnDestroy();
+  }));
 
   it('SF-231-05 — compte la session, et l’alerte de veille est lue sur son sujet, puis Jarvis écoute', fakeAsync(() => {
     veilles.alert.and.returnValue(of({

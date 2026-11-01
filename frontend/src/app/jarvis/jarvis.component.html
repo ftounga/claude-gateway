@@ -76,6 +76,12 @@
           <mat-icon aria-hidden="true">record_voice_over</mat-icon> Apprendre « Jarvis »
         </button>
       }
+      <!-- F-235 / SF-235-09 (D18) — la personnalité : humour aucun / léger, réglage du compte. -->
+      <button mat-button type="button" class="jv__wake-button jv__humour" [attr.aria-pressed]="humour() === 'LIGHT'"
+              (click)="toggleHumour()">
+        <mat-icon aria-hidden="true">{{ humour() === 'LIGHT' ? 'sentiment_satisfied' : 'sentiment_neutral' }}</mat-icon>
+        Humour : {{ humour() === 'LIGHT' ? 'léger' : 'aucun' }}
+      </button>
     </div>
     <!-- F-232 / SF-232-02 — le compagnon Android : « Jarvis » téléphone verrouillé. Android confirme l'installation. -->
     @if (companion(); as offer) {

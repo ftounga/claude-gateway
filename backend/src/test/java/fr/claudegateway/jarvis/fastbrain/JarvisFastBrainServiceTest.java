@@ -436,6 +436,36 @@ class JarvisFastBrainServiceTest {
         assertThat(outcome.spokenText()).isEqualTo("Bonsoir, Monsieur. Le chantier en est aux tests.");
     }
 
+    // ------------------------------------------------------------- SF-235-09 : personnalité
+
+    @Test
+    void theAccountsHumourPicksTheFrozenSystemVariantAndTroubleAddsTheSoberNote() {
+        JarvisFastBrainService service = service(streaming("Entendu, je note."), null, null);
+        fr.claudegateway.jarvis.preferences.JarvisPreferenceService prefs =
+                mock(fr.claudegateway.jarvis.preferences.JarvisPreferenceService.class);
+        when(prefs.humour(alice)).thenReturn(fr.claudegateway.jarvis.preferences.JarvisHumour.NONE);
+        service.setPersonality(prefs, null);
+
+        service.converse(ask("On a un incident en production"), null);
+        service.converse(ask("Bonjour"), null);
+
+        assertThat(calls.get(0).system())
+                .isEqualTo(JarvisFastBrainPrompt.system(fr.claudegateway.jarvis.preferences.JarvisHumour.NONE))
+                .isEqualTo(calls.get(1).system());
+        assertThat(text(calls.get(0), 0)).endsWith(fr.claudegateway.jarvis.preferences.JarvisSobriety.NOTE);
+        assertThat(text(calls.get(1), calls.get(1).messages().size() - 1))
+                .doesNotContain(fr.claudegateway.jarvis.preferences.JarvisSobriety.NOTE);
+    }
+
+    @Test
+    void aSentenceImitatingTheWorkIsRemoved() {
+        JarvisFastBrainService.Outcome outcome = service(streaming("Comme dirait Stark, c'est parti. ",
+                "Le chantier en est aux tests."), null, null).converse(ask("Et le chantier ?"), null);
+
+        assertThat(outcome.spokenText()).isEqualTo("Le chantier en est aux tests.");
+        assertThat(outcome.guards().imitationsRemoved()).isEqualTo(1);
+    }
+
     private static String text(AgentTurnRequest request, int index) {
         return ((fr.claudegateway.agent.AgentContentBlock.Text) request.messages().get(index).content().get(0)).text();
     }

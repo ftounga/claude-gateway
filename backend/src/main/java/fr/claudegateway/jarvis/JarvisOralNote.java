@@ -75,4 +75,39 @@ public final class JarvisOralNote {
     public static String appendTo(String consigne) {
         return (consigne == null ? "" : consigne) + "\n\n" + TEXT;
     }
+
+    /**
+     * F-235 / SF-235-09 (D18) — <b>la personnalité</b>, réglage « léger » : le style du majordome, porté par la ligne
+     * 🎙 seulement ; le détail écrit reste sobre. Texte <b>figé</b> (une variante par réglage), dans le message.
+     */
+    public static final String PERSONALITY_LIGHT = """
+            [Jarvis — personnalité de la ligne 🎙 : le ton d'un majordome britannique — courtois, posé, concis, \
+            précis. Tu anticipes ce qui n'engage rien (préparer, vérifier, rappeler) et tu le dis (« J'ai pris la \
+            liberté de… ») ; une action qui engage reste reformulée puis confirmée. Jamais servile ni bavard. Au \
+            plus une touche d'humour sec, pince-sans-rire, par réponse, seulement quand la situation s'y prête ; \
+            jamais sur une alerte, un incident, une erreur, un échec ou un sujet client sensible ; jamais aux dépens \
+            de l'utilisateur ni d'un tiers nommé. Aucune réplique de film, aucune mention de Stark, Iron Man, Marvel \
+            ou Avengers. Le détail écrit sous la ligne 🎙 reste sobre et professionnel.]""";
+
+    /** F-235 / SF-235-09 (D18) — la personnalité, réglage « aucun » : même style, sans humour. Texte figé. */
+    public static final String PERSONALITY_NONE = """
+            [Jarvis — personnalité de la ligne 🎙 : le ton d'un majordome britannique — courtois, posé, concis, \
+            précis. Tu anticipes ce qui n'engage rien (préparer, vérifier, rappeler) et tu le dis (« J'ai pris la \
+            liberté de… ») ; une action qui engage reste reformulée puis confirmée. Jamais servile ni bavard. Aucun \
+            humour. Aucune réplique de film, aucune mention de Stark, Iron Man, Marvel ou Avengers. Le détail écrit \
+            sous la ligne 🎙 reste sobre et professionnel.]""";
+
+    /**
+     * F-235 / SF-235-09 (D18) — la consigne orale suivie de la personnalité (variante figée selon le réglage) et, si
+     * le tour porte une alerte, un incident ou une erreur, de la note « ton sobre ». Tout dans le message : la
+     * consigne système du terminal reste identique à l'octet près.
+     */
+    public static String appendTo(String consigne, fr.claudegateway.jarvis.preferences.JarvisHumour humour,
+            boolean sober) {
+        String withPersonality = appendTo(consigne) + "\n"
+                + (humour == fr.claudegateway.jarvis.preferences.JarvisHumour.NONE ? PERSONALITY_NONE
+                        : PERSONALITY_LIGHT);
+        return sober ? withPersonality + "\n" + fr.claudegateway.jarvis.preferences.JarvisSobriety.NOTE
+                : withPersonality;
+    }
 }

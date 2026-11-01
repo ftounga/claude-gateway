@@ -85,6 +85,26 @@ public final class JarvisFastGuards {
         return !n.isEmpty() && FILLERS.contains(n);
     }
 
+    /** F-235 / SF-235-09 (D18) — les noms de l'œuvre que Jarvis n'imite jamais (normalisés). */
+    static final List<String> WORK_NAMES = List.of("stark", "tony stark", "iron man", "ironman", "marvel",
+            "avengers");
+
+    /**
+     * Vrai si la phrase cite l'œuvre (Stark, Iron Man, Marvel, Avengers) alors que ce nom n'est ni dans le contexte
+     * ni dans la parole (D18) : la phrase est retirée.
+     */
+    public static boolean imitates(String sentence, String context, String said) {
+        String n = " " + normalize(sentence) + " ";
+        String known = " " + normalize((context == null ? "" : context) + " " + (said == null ? "" : said)) + " ";
+        for (String name : WORK_NAMES) {
+            String token = " " + name + " ";
+            if (n.contains(token) && !known.contains(token)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** Vrai si la phrase répète l'une des phrases déjà dites (D11c), à la normalisation près. */
     public static boolean isRepeat(String sentence, List<String> recentSentences) {
         String n = normalize(sentence);
