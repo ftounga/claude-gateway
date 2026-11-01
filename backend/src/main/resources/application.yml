@@ -619,6 +619,17 @@ app:
     # F-231 / SF-231-05 : l'écran /jarvis existe ; les alertes de veille (F-230) y mènent (/jarvis?alerte=…).
     # false = repli sur le fil du sujet (/atelier/{sujet}?alerte=…).
     route-enabled: ${APP_JARVIS_ROUTE_ENABLED:true}
+    # F-235 : LE CERVEAU RAPIDE (deux cerveaux). Un modele rapide tient la conversation vocale ; tout ce qui agit
+    # ou demande reflexion est DELEGUE au tour Opus du terminal, inchange. COUPE-CIRCUIT (D17) : false =>
+    # /api/jarvis/converse en 503 et l'ecran fait exactement ce qu'il faisait (tout a Opus). Eteint jusqu'au banc
+    # (SF-235-08). Plafond mensuel PROPRE en euros (D15) ; atteint => mode d'avant, sans erreur a l'oral.
+    fast-brain:
+      enabled: ${APP_JARVIS_FAST_BRAIN_ENABLED:false}
+      model: ${APP_JARVIS_FAST_MODEL:claude-haiku-5-5}
+      effort: ${APP_JARVIS_FAST_EFFORT:low}
+      max-tokens: ${APP_JARVIS_FAST_MAX_TOKENS:600}
+      monthly-budget-eur: ${APP_JARVIS_FAST_MONTHLY_BUDGET_EUR:20}
+      first-token-timeout: ${APP_JARVIS_FAST_FIRST_TOKEN_TIMEOUT:PT3S}
     # LE MODE JARVIS (F-231). La voix (SF-231-01) relaie la voix off (app.speech.*, meme fournisseur, meme cle,
     # memes tarifs) : AUCUN NOUVEAU SECRET. Voix masculine posee par defaut (onyx), phrases courtes, plafond
     # mensuel en euros (0 = voix coupee, l'ecran retombe sur le texte).
@@ -1124,6 +1135,13 @@ app:
           output: 10.00
           cache-read: 0.20
           cache-write: 4.00
+        # F-235 / SF-235-01 (D3) : le cerveau rapide de Jarvis. Grille <= 100 k jetons de prompt seulement (le
+        # contexte rapide est borne bien en dessous) ; ecriture au TTL 1 h = 2x l'entree, convention de la grille.
+        claude-haiku-5-5:
+          input: 0.10
+          output: 0.50
+          cache-read: 0.01
+          cache-write: 0.20
         claude-haiku-4-5:
           input: 1.00
           output: 5.00

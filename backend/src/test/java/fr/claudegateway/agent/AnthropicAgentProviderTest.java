@@ -1032,6 +1032,105 @@ class AnthropicAgentProviderTest {
         }
     }
 
+    // --- F-235 / SF-235-01 : raisonnement éteint et appel compact (cerveau rapide de Jarvis) ----------
+
+    /** Capture le corps d'un appel au modèle donné, avec raisonnement, outils et forme d'appel. */
+    private JsonNode captureCall(String model, AgentReasoning reasoning, List<AgentTool> tools,
+            AgentCallShape shape, boolean streamed) {
+        java.util.concurrent.atomic.AtomicReference<String> captured = new java.util.concurrent.atomic.AtomicReference<>();
+        server.expect(requestTo(URL))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(request -> captured.set(
+                        ((org.springframework.mock.http.client.MockClientHttpRequest) request).getBodyAsString()))
+                .andRespond(withSuccess("""
+                        {"content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn",
+                         "usage": {"input_tokens": 1, "output_tokens": 1}}
+                        """, MediaType.APPLICATION_JSON));
+        AgentTurnRequest request = new AgentTurnRequest(model, "consigne", List.of(AgentMessage.userText("bonjour")),
+                tools, null, reasoning, null, null, shape);
+        if (streamed) {
+            // Le serveur simulé rend du JSON, pas du SSE : le flux se replie sur l'appel complet, dont le corps
+            // est celui qu'on veut lire (le même, sans `stream`).
+            server.expect(requestTo(URL)).andRespond(withSuccess("""
+                    {"content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn",
+                     "usage": {"input_tokens": 1, "output_tokens": 1}}
+                    """, MediaType.APPLICATION_JSON));
+            provider.nextTurn(request, AiAgentProvider.AgentTextListener.NONE);
+        } else {
+            provider.nextTurn(request);
+        }
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().readTree(captured.get());
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex);
+        }
+    }
+
+    private static AgentTool delegateTool() {
+        return new AgentTool("deleguer", "Confie la demande.", java.util.Map.of("type", "object",
+                "properties", java.util.Map.of("demande", java.util.Map.of("type", "string")),
+                "required", List.of("demande"), "additionalProperties", false));
+    }
+
+    @Test
+    void reasoningOffIsSentAsDisabledOnHaikuFiveFiveWithItsEffort() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        JsonNode body = captureCall("claude-haiku-5-5", AgentReasoning.off("low"), List.of(delegateTool()),
+                AgentCallShape.compact(600), false);
+
+        assertThat(body.path("thinking").path("type").asText()).isEqualTo("disabled");
+        assertThat(body.path("thinking").size()).isEqualTo(1);
+        assertThat(body.path("output_config").path("effort").asText()).isEqualTo("low");
+        assertThat(body.has("fallbacks")).isFalse();
+    }
+
+    @Test
+    void reasoningOffIsSentAsBetweenToolsOnSonnetFiveFiveAndNothingElseRidesOnIt() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        JsonNode body = captureCall("claude-sonnet-5-5", AgentReasoning.off("low"), List.of(delegateTool()),
+                AgentCallShape.compact(600), false);
+
+        // Sonnet 5.5 refuse `disabled` et n'accepte aucun autre champ à côté de `between_tools` (ni `display`).
+        assertThat(body.path("thinking").path("type").asText()).isEqualTo("between_tools");
+        assertThat(body.path("thinking").size()).isEqualTo(1);
+        assertThat(body.has("fallbacks")).isFalse();
+    }
+
+    @Test
+    void aCompactCallDeclaresOnlyItsStrictToolWithItsOwnOutputCap() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        JsonNode body = captureCall("claude-haiku-5-5", AgentReasoning.off("low"), List.of(delegateTool()),
+                AgentCallShape.compact(600), false);
+
+        assertThat(body.path("max_tokens").asInt()).isEqualTo(600);
+        assertThat(body.path("tools")).hasSize(1);
+        assertThat(body.path("tools").get(0).path("name").asText()).isEqualTo("deleguer");
+        assertThat(body.path("tools").get(0).path("strict").asBoolean()).isTrue();
+        // Le marqueur de cache reste posé sur le dernier outil : consigne + outil forment le préfixe caché.
+        assertThat(body.path("tools").get(0).has("cache_control")).isTrue();
+    }
+
+    @Test
+    void aCompactStreamedCallKeepsItsOwnOutputCap() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        JsonNode body = captureCall("claude-haiku-5-5", AgentReasoning.off("low"), List.of(delegateTool()),
+                AgentCallShape.compact(600), true);
+
+        assertThat(body.path("max_tokens").asInt()).isEqualTo(600);
+    }
+
+    @Test
+    void aStandardCallIsUnchangedServerToolsAndNoStrictFlag() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        JsonNode body = captureCall("claude-opus-5-5", new AgentReasoning(true, "high"), List.of(delegateTool()),
+                null, false);
+
+        assertThat(body.path("tools")).hasSize(3);
+        assertThat(body.path("tools").get(0).has("strict")).isFalse();
+        assertThat(body.path("thinking").path("type").asText()).isEqualTo("adaptive");
+        assertThat(body.has("fallbacks")).isTrue();
+    }
+
     @Test
     void asksForAdaptiveThinkingAndTheConfiguredEffort() {
         build(null);
