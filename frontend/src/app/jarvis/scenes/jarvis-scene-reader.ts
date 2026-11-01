@@ -90,7 +90,24 @@ export interface SceneData {
   repere?: string;
   /** S13 — une orbe satellite par délégation (la question, tronquée). */
   satellites?: string[];
+  /** S7 — ce qui prend forme, et son titre (ou nom de fichier). */
+  creation?: 'page' | 'pdf' | 'diagram' | 'image' | 'office' | 'video' | 'audio';
+  title?: string;
+  /** S7 — salle de montage : nombre de suivis du rendu (l'avancement). */
+  checks?: number;
+  /** S5b — la vidéo regardée (nom du fichier) et ce qui en est extrait. */
+  film?: string;
+  extract?: string;
 }
+
+/** S7 — ce que fabrique chaque outil de création. */
+const CREATION: Record<string, SceneData['creation']> = {
+  page_publish: 'page', page_lire: 'page', pages_lister: 'page', page_pdf: 'pdf', render_diagram: 'diagram',
+  generate_image: 'image', build_presentation: 'office', presentation_publish: 'office', build_document: 'office',
+  build_spreadsheet: 'office', voix_off: 'audio', audio_publier: 'audio',
+};
+/** S5b — une étape `video` qui regarde (extraction des plans, zoom) plutôt qu'elle ne monte. */
+const WATCH = /^(?:extraction|zoom|suivi de l'extraction)/i;
 
 /** S13 — satellites au plus. */
 export const MAX_SATELLITES = 4;
@@ -237,6 +254,8 @@ export class JarvisSceneReader {
   private showRequest: ShowRequest | null = null;
   /** S3 — la sortie de la commande en cours (fin seulement). */
   private output = '';
+  /** S7 — l'avancement de la salle de montage pendant ce tour. */
+  private montage: SceneData | null = null;
   /** S9 — étapes faites pendant ce tour, par chantier, pas encore comptées par l'univers. */
   private stepsDone: Record<string, number> = {};
   private line = '';
@@ -265,6 +284,7 @@ export class JarvisSceneReader {
     this.scanned = 0;
     this.block = null;
     this.showRequest = null; // SF-234-13 : le tour suivant rend l'écran à son état normal
+    this.montage = null;
   }
 
   /** SF-234-13 — « c'est bon » : l'écran revient à l'état normal. Rend vrai si quelque chose était montré. */
@@ -287,9 +307,13 @@ export class JarvisSceneReader {
     const source = resolved.scene === 'S3' ? ticketSource(action.path) : null;
     // S1 — les captures de preuve (F-212) passent par l'étape `bash` : elles sont une preuve jointe, pas une commande.
     const proof = type === 'bash' && /^captures de preuve\b/i.test(action.path ?? '');
-    const sceneId = proof ? 'S1' : source ? 'S4' : resolved.scene;
+    // S5b / S7 — l'étape `video` regarde (extraction, zoom) ou monte (rendu, relecture, briques).
+    const watch = type === 'video' && WATCH.test(action.path ?? '');
+    const sceneId = proof ? 'S1' : source ? 'S4' : watch ? 'S5b' : resolved.scene;
     // S11 — pose, mise à jour et levée d'une attente forment une seule scène (avec la carte `attente`).
-    const key = source ? `tickets-${source}` : sceneId === 'S11' ? 'attente' : type;
+    // S7 — rendu et suivis répétés de la salle de montage forment une seule scène, avec l'avancement.
+    const key = source ? `tickets-${source}` : sceneId === 'S11' ? 'attente' : watch ? 'video-watch'
+      : sceneId === 'S7' && (type === 'video' || type.startsWith('video_')) ? 'video-montage' : type;
     const current = this.scene;
     const entity = named[0] ?? this.currentSubject();
     if (sceneId === 'S3') {
@@ -298,16 +322,21 @@ export class JarvisSceneReader {
     if (current && !current.pinned && current.key === key && now - current.updatedAt <= BURST_MS) {
       const count = current.count + 1;
       this.scene = {
-        ...current, count, libelle: source ? ticketLabel(source) : burstLabel(resolved, count),
+        ...current, count,
+        libelle: source ? ticketLabel(source) : key.startsWith('video-') || proof ? current.libelle
+          : burstLabel(resolved, count),
         detail: sceneDetail(action.path) ?? current.detail, entity: named[0] ?? current.entity, updatedAt: now,
         data: this.sceneData(sceneId, type, action.path, source, current.data),
       };
       return;
     }
+    // S7 — les suivis d'un rendu s'espacent : la salle de montage garde son avancement d'une scène à l'autre du tour.
+    const carried = key === 'video-montage' ? this.montage ?? undefined : undefined;
     this.show({
-      id: sceneId, key, libelle: proof ? 'Preuves capturées' : source ? ticketLabel(source) : resolved.libelle, count: 1,
+      id: sceneId, key, libelle: proof ? 'Preuves capturées' : source ? ticketLabel(source)
+        : watch ? 'Regarder une vidéo' : key === 'video-montage' ? 'Salle de montage' : resolved.libelle, count: 1,
       detail: sceneDetail(action.path), entity, pinned: false, since: now, updatedAt: now,
-      data: this.sceneData(sceneId, type, action.path, source, undefined),
+      data: this.sceneData(sceneId, type, action.path, source, carried),
     }, now);
   }
 
@@ -340,6 +369,25 @@ export class JarvisSceneReader {
     }
     if (sceneId === 'S9') {
       return this.progressData(type, path);
+    }
+    if (sceneId === 'S7') {
+      const creation = CREATION[type] ?? 'video';
+      const title = (path ?? '').replace(/^(rendu vidéo|relecture vidéo|briques vidéo|recherche d'icônes)\s*:\s*/i, '')
+        .trim();
+      const data: SceneData = {
+        creation, title: (/^suivi/i.test(title) ? null : sceneDetail(title)) ?? previous?.title,
+        checks: creation === 'video' ? (previous?.checks ?? 0) + (/^suivi/i.test(path ?? '') ? 1 : 0) : undefined,
+      };
+      if (creation === 'video') {
+        this.montage = data;
+      }
+      return data;
+    }
+    if (sceneId === 'S5b') {
+      const parts = (path ?? '').split(' · ');
+      return parts.length > 1
+        ? { film: sceneDetail(parts[parts.length - 1]) ?? undefined, extract: sceneDetail(parts.slice(0, -1).join(' · ')) ?? undefined }
+        : { ...previous, extract: sceneDetail(path) ?? previous?.extract };
     }
     if (sceneId === 'S6') {
       const address = (path ?? '').trim();
@@ -476,6 +524,17 @@ export class JarvisSceneReader {
       id: 'S12', key: base?.key ?? 'recall', libelle: 'Souvenir rappelé', count: 1, detail: base?.detail ?? null,
       entity: this.currentSubject(), pinned: false, since: now, updatedAt: now,
       data: { ...base?.data, repere: sceneDetail(repere) ?? undefined },
+    }, now);
+  }
+
+  /** SF-234-09 — S7 : une page ou une vidéo est publiée (événements `page` / `video`) — son titre s'écrit. */
+  created(creation: 'page' | 'pdf' | 'video', title: string, now: number): void {
+    const key = creation === 'video' ? 'video-montage' : 'page_publish';
+    const previous = this.scene?.key === key ? this.scene.data : this.next?.key === key ? this.next.data : undefined;
+    this.place({
+      id: 'S7', key, libelle: creation === 'video' ? 'Vidéo publiée' : creation === 'pdf' ? 'PDF prêt' : 'Page publiée',
+      count: 1, detail: null, entity: this.currentSubject(), pinned: false, since: now, updatedAt: now,
+      data: { ...previous, creation, title: sceneDetail(title) ?? previous?.title },
     }, now);
   }
 
