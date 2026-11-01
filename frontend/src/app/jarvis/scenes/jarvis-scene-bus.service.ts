@@ -14,7 +14,7 @@ export const JARVIS_UNIVERSE_URL = '/api/jarvis/universe';
  */
 const TICK_MS = 250;
 
-const EMPTY: ReaderState = { lit: [], scene: null, pulses: 0, toSendAdded: 0, show: null };
+const EMPTY: ReaderState = { lit: [], scene: null, pulses: 0, toSendAdded: 0, show: null, stepsDone: {} };
 
 /**
  * **Le fil des scènes** (F-234 / SF-234-02) — l'unique point d'accroche entre l'écran Jarvis (F-231/F-233) et
@@ -118,9 +118,44 @@ export class JarvisSceneBus implements OnDestroy {
     }
   }
 
-  confirm(detail: string | null): void {
-    this.reader.confirm(detail, this.now());
+  confirm(detail: string | null, timeoutMs?: number | null): void {
+    this.reader.confirm(detail, this.now(), timeoutMs);
     this.publish();
+    this.ensureTimer();
+  }
+
+  /** SF-234-06 — une question structurée attend sa réponse (S2, variante question). */
+  question(timeoutMs?: number | null): void {
+    this.reader.question(this.now(), timeoutMs);
+    this.publish();
+    this.ensureTimer();
+  }
+
+  questionResolved(): void {
+    this.reader.questionResolved(this.now());
+    this.publish();
+  }
+
+  /** SF-234-06 — S9 : le plan du tour. */
+  plan(steps: { title: string; status: string }[]): void {
+    this.reader.plan(steps, this.now());
+    this.publish();
+    this.ensureTimer();
+  }
+
+  /** SF-234-06 — S11 : une carte d'attente (posée ou levée). */
+  attente(event: { status?: string | null; qui?: string | null; requestedTo?: string | null;
+      categorie?: string | null }): void {
+    this.reader.attente(event, this.now());
+    this.publish();
+    this.ensureTimer();
+  }
+
+  /** SF-234-06 — S14 : les points de route du tour. */
+  questions(list: { libelle: string; state: string }[]): void {
+    this.reader.questions(list, this.now());
+    this.publish();
+    this.ensureTimer();
   }
 
   confirmResolved(): void {

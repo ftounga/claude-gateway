@@ -48,7 +48,39 @@ export interface SceneData {
   mode?: 'read' | 'write' | 'list' | 'search';
   /** S5 — le motif cherché (loupe). */
   pattern?: string;
+  /** S9 — ce qui avance : une étape, le plan, la phase, l'autonomie. */
+  progress?: 'step' | 'plan' | 'phase' | 'autonomy';
+  /** S9 / S11 — le chantier concerné (clé `sujet#n`), s'il est reconnu. */
+  chantierKey?: string;
+  /** S9 — le rang de l'étape. */
+  step?: number;
+  /** S9 — l'état écrit (« faite », « vérifiée », « bloquée »…) ou la taille du plan. */
+  status?: string;
+  /** S11 — la personne attendue et la nature de l'attente. */
+  person?: string;
+  category?: string;
+  /** S11 — attachée (posée) ou détachée (levée, annulée). */
+  attached?: boolean;
+  /** S2 — l'échéance de l'autorisation (horloge du lecteur) et les secondes restantes. */
+  deadline?: number;
+  remaining?: number;
+  /** S2 — une question posée à l'écran du terminal, plutôt qu'une autorisation. */
+  question?: boolean;
+  /** S14 — les points de route du tour. */
+  questions?: { libelle: string; state: string }[];
 }
+
+/** S9 — ce que fait chaque outil de chantier. */
+const PROGRESS: Record<string, SceneData['progress']> = {
+  update_plan_step: 'step', update_sub_steps: 'step',
+  set_subject_plan: 'plan', set_plan: 'plan', valider_plan: 'plan', exit_plan_mode: 'plan',
+  submit_diagnosis: 'phase', confirmer_diagnostic: 'phase', reopen_investigation: 'phase', propose_guided_mode: 'phase',
+  lancer_chantier_autonome: 'autonomy',
+};
+/** S9 — les états d'étape écrits par l'étiquette passerelle (SF-234-04). */
+const STEP_STATES = ['faite', 'vérifiée', 'en échec', 'bloquée', 'à faire', 'sous-étapes'];
+/** S14 — un point de route, au plus. */
+const ROUTE_CHARS = 48;
 
 /** S3 : lignes de sortie montrées (D11). */
 export const OUTPUT_LINES = 2;
@@ -132,6 +164,8 @@ export interface ReaderState {
   toSendAdded: number;
   /** SF-234-13 — ce que le PO a demandé à voir (ligne « 🖥 montrer: »), jusqu'au tour suivant ou « c'est bon ». */
   show: ShowRequest | null;
+  /** SF-234-06 — étapes faites pendant le tour, par chantier (`done/total` avance avant la relecture de l'univers). */
+  stepsDone: Record<string, number>;
 }
 
 /** Masque les motifs de secret d'une ligne (D11) : jetons, en-têtes d'autorisation, mots de passe, clés. */
@@ -174,6 +208,8 @@ export class JarvisSceneReader {
   private showRequest: ShowRequest | null = null;
   /** S3 — la sortie de la commande en cours (fin seulement). */
   private output = '';
+  /** S9 — étapes faites pendant ce tour, par chantier, pas encore comptées par l'univers. */
+  private stepsDone: Record<string, number> = {};
   private line = '';
   private scanned = 0;
   private block: { kind: BlockKind; to: string | null; subject: string | null } | null = null;
@@ -187,6 +223,7 @@ export class JarvisSceneReader {
   setIndex(index: NameIndex): void {
     this.index = index;
     this.toSendAdded = 0; // l'univers relu compte déjà les messages finis
+    this.stepsDone = {}; // … et les étapes faites
   }
 
   setSubject(subjectId: string | null): void {
@@ -220,7 +257,8 @@ export class JarvisSceneReader {
     // S4 — une commande qui vise Jira / Confluence devient des cartes de tickets (heuristique, D11).
     const source = resolved.scene === 'S3' ? ticketSource(action.path) : null;
     const sceneId = source ? 'S4' : resolved.scene;
-    const key = source ? `tickets-${source}` : type;
+    // S11 — pose, mise à jour et levée d'une attente forment une seule scène (avec la carte `attente`).
+    const key = source ? `tickets-${source}` : sceneId === 'S11' ? 'attente' : type;
     const current = this.scene;
     const entity = named[0] ?? this.currentSubject();
     if (sceneId === 'S3') {
@@ -269,6 +307,12 @@ export class JarvisSceneReader {
       const tickets = [...new Set([...(previous?.tickets ?? []), ...ticketKeys(path)])].slice(-MAX_TICKETS);
       return { tickets, source };
     }
+    if (sceneId === 'S9') {
+      return this.progressData(type, path);
+    }
+    if (sceneId === 'S11') {
+      return attenteData(type, path);
+    }
     const mode = fileMode(type);
     if (sceneId === 'S5' && mode) {
       if (mode === 'search') {
@@ -299,14 +343,80 @@ export class JarvisSceneReader {
   }
 
   /** Une autorisation attend un « oui » : elle passe devant tout (D14). */
-  confirm(detail: string | null, now: number): void {
-    if (this.scene && !this.scene.pinned) {
-      this.next = this.scene;
-    }
-    this.scene = {
+  confirm(detail: string | null, now: number, timeoutMs?: number | null): void {
+    this.pin({
       id: 'S2', key: 'confirm', libelle: 'J’attends votre « oui »', count: 1, detail: sceneDetail(detail),
-      entity: this.currentSubject(), pinned: true, since: now, updatedAt: now,
-    };
+      entity: this.currentSubject(), pinned: true, since: now, updatedAt: now, data: deadline(now, timeoutMs),
+    });
+  }
+
+  /** SF-234-06 — une question structurée attend sa réponse à l'écran du terminal (S2, variante question). */
+  question(now: number, timeoutMs?: number | null): void {
+    this.pin({
+      id: 'S2', key: 'question', libelle: 'J’ai une question pour vous', count: 1,
+      detail: 'Réponse attendue à l’écran du terminal', entity: this.currentSubject(), pinned: true, since: now,
+      updatedAt: now, data: { ...deadline(now, timeoutMs), question: true },
+    });
+  }
+
+  /** SF-234-06 — S9 : le plan du tour se pose (événement `plan`, F-39). */
+  plan(steps: { title: string; status: string }[], now: number): void {
+    if (!steps.length) {
+      return;
+    }
+    const done = steps.filter((s) => /^(done|fait|faite|completed|verifie)/i.test(s.status ?? '')).length;
+    const size = `${steps.length} étape${steps.length > 1 ? 's' : ''}`;
+    this.place({
+      id: 'S9', key: 'plan', libelle: 'Le plan se pose', count: 1,
+      detail: sceneDetail(done ? `${size} · ${done} faite${done > 1 ? 's' : ''}` : size),
+      entity: this.currentSubject(), pinned: false, since: now, updatedAt: now,
+      data: { progress: 'plan', status: `${done}/${steps.length}` },
+    }, now);
+  }
+
+  /** SF-234-06 — S11 : une carte d'attente arrive (événement `attente`, F-175) — posée, ou levée. */
+  attente(event: { status?: string | null; qui?: string | null; requestedTo?: string | null; categorie?: string | null },
+      now: number): void {
+    const person = (event.qui ?? event.requestedTo ?? '').trim() || undefined;
+    const attached = event.status !== 'FAIT' && event.status !== 'ANNULE';
+    const named = person ? this.index.match(person, this.contextSubject()) : [];
+    for (const node of named) {
+      this.light(node, 2, now);
+    }
+    const previous = this.scene?.key === 'attente' ? this.scene.data : undefined;
+    this.place({
+      id: 'S11', key: 'attente', libelle: attached ? 'Attente posée' : 'Attente levée', count: 1,
+      detail: null, entity: named[0] ?? this.currentSubject(), pinned: false, since: now, updatedAt: now,
+      data: {
+        ...previous, person: person ?? previous?.person,
+        category: event.categorie?.toLowerCase() ?? previous?.category, attached,
+      },
+    }, now);
+  }
+
+  /** SF-234-06 — S14 : les points de route du tour (événement `questions`, F-210). */
+  questions(list: { libelle: string; state: string }[], now: number): void {
+    if (!list.length) {
+      return;
+    }
+    const done = list.filter((q) => q.state === 'TERMINEE').length;
+    this.place({
+      id: 'S14', key: 'questions', libelle: `Points de route · ${done}/${list.length}`, count: 1, detail: null,
+      entity: this.currentSubject(), pinned: false, since: now, updatedAt: now,
+      data: {
+        questions: list.slice(0, 6).map((q) => ({
+          libelle: q.libelle.length <= ROUTE_CHARS ? q.libelle : `${q.libelle.slice(0, ROUTE_CHARS - 1)}…`,
+          state: q.state,
+        })),
+      },
+    }, now);
+  }
+
+  /** La question structurée est tranchée. */
+  questionResolved(now: number): void {
+    if (this.scene?.pinned && this.scene.key === 'question') {
+      this.confirmResolved(now);
+    }
   }
 
   /** L'autorisation est tranchée (ici, ailleurs, ou expirée). */
@@ -336,6 +446,19 @@ export class JarvisSceneReader {
       changed = true;
     }
     if (this.scene?.pinned) {
+      // S2 — le compte à rebours ; à l'échéance, l'autorisation expire d'elle-même.
+      const due = this.scene.data?.deadline;
+      if (due !== undefined) {
+        const remaining = Math.max(0, Math.ceil((due - now) / 1000));
+        if (remaining === 0) {
+          this.confirmResolved(now);
+          return true;
+        }
+        if (remaining !== this.scene.data?.remaining) {
+          this.scene = { ...this.scene, data: { ...this.scene.data, remaining } };
+          return true;
+        }
+      }
       return changed;
     }
     if (this.next && (!this.scene || now - this.scene.since >= MIN_SCENE_MS)) {
@@ -352,11 +475,49 @@ export class JarvisSceneReader {
   state(): ReaderState {
     return {
       lit: [...this.lit], scene: this.scene, pulses: this.pulses, toSendAdded: this.toSendAdded,
-      show: this.showRequest,
+      show: this.showRequest, stepsDone: { ...this.stepsDone },
     };
   }
 
   // ---- interne ----
+
+  /** Une scène qui attend une réponse : devant tout, la scène en cours reprend ensuite. */
+  private pin(scene: SceneView): void {
+    if (this.scene && !this.scene.pinned) {
+      this.next = this.scene;
+    }
+    this.scene = scene;
+  }
+
+  /** Une scène d'événement : remplace la même (mise à jour) ou suit les règles d'affichage. */
+  private place(scene: SceneView, now: number): void {
+    if (this.scene && !this.scene.pinned && this.scene.key === scene.key) {
+      this.scene = { ...scene, since: this.scene.since };
+      return;
+    }
+    if (this.next?.key === scene.key) {
+      this.next = scene;
+      return;
+    }
+    this.show(scene, now);
+  }
+
+  /** S9 — l'étiquette « chantier 3 · étape 2 · faite » lue (SF-234-04) ; le chantier rapproché de l'univers. */
+  private progressData(type: string, label: string | undefined): SceneData {
+    const text = (label ?? '').toLowerCase();
+    const number = /chantier\s+(\d{1,3})/.exec(text);
+    const step = /étape\s+(\d{1,3})/.exec(text);
+    const node = number
+      ? this.contextSubject().map((s) => this.index.chantier(s, Number(number[1]))).find((n) => !!n) ?? null
+      : null;
+    const status = STEP_STATES.find((st) => text.includes(st))
+      ?? /plan en \d+ étapes?/.exec(text)?.[0] ?? /confiance [a-z ]+/.exec(text)?.[0] ?? undefined;
+    const progress = PROGRESS[type] ?? 'step';
+    if (node && progress === 'step' && (status === 'faite' || status === 'vérifiée')) {
+      this.stepsDone[node.key] = (this.stepsDone[node.key] ?? 0) + 1;
+    }
+    return { progress, chantierKey: node?.key, step: step ? Number(step[1]) : undefined, status };
+  }
 
   private show(scene: SceneView, now: number): void {
     if (this.scene && (this.scene.pinned || now - this.scene.since < MIN_SCENE_MS)) {
@@ -489,4 +650,24 @@ export class JarvisSceneReader {
 /** « Jira · consultation », « Confluence · page ». */
 function ticketLabel(source: 'Jira' | 'Confluence'): string {
   return source === 'Jira' ? 'Jira · consultation' : 'Confluence · page';
+}
+
+/** L'échéance d'une autorisation (S2), si le flux la donne. */
+function deadline(now: number, timeoutMs?: number | null): SceneData {
+  return timeoutMs && timeoutMs > 0
+    ? { deadline: now + timeoutMs, remaining: Math.ceil(timeoutMs / 1000) }
+    : {};
+}
+
+/** S11 — l'étiquette « Zahi · validation » (record), « Zahi · demandé » (update), « levée » (close). */
+function attenteData(type: string, label: string | undefined): SceneData {
+  const parts = (label ?? '').split(' · ').map((p) => p.trim()).filter(Boolean);
+  if (type === 'close_blocker') {
+    return { attached: false, status: parts[0] };
+  }
+  const first = parts[0];
+  // Une personne commence par une capitale ; la catégorie seule est en minuscules (étiquette passerelle).
+  const person = first && first[0] !== first[0].toLowerCase() ? first : undefined;
+  const category = person ? parts[1] : first;
+  return { person, category, attached: true };
 }

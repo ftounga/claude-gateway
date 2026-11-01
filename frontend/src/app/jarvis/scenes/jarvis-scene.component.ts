@@ -11,6 +11,15 @@ import { JarvisSceneBus } from './jarvis-scene-bus.service';
  * <p>Décorative pour un lecteur d'écran (`aria-hidden`) : l'équivalent accessible est le fil d'Ariane et l'état dit
  * de Jarvis (SF-234-03). Aucune couleur nouvelle (navy, crème, orange du design system).</p>
  */
+/** Le chantier d'une scène, tel que dessiné. */
+export interface SceneChantier {
+  number: number;
+  title: string;
+  phaseLabel: string | null;
+  done: number;
+  total: number;
+}
+
 @Component({
   selector: 'app-jarvis-scene',
   template: `
@@ -58,6 +67,61 @@ import { JarvisSceneBus } from './jarvis-scene-bus.service';
               } @else if (s.detail) {
                 <p class="scene__detail">{{ s.detail }}</p>
               }
+            }
+            @case ('S9') {
+              <!-- SF-234-06 — S9 : le losange du chantier, sa phase, l'étape qui se coche, done/total. -->
+              @if (chantierOf(s.data?.chantierKey); as c) {
+                <p class="chantier">
+                  <span class="chantier__diamond" aria-hidden="true"></span>
+                  <span class="chantier__name">Ch. {{ c.number }} — {{ c.title }}</span>
+                  @if (c.phaseLabel) { <span class="chantier__phase">{{ c.phaseLabel }}</span> }
+                </p>
+                <div class="progress" [attr.data-done]="c.done" [attr.data-total]="c.total">
+                  <span class="progress__bar"><span class="progress__fill" [style.width.%]="c.total ? (100 * c.done) / c.total : 0"></span></span>
+                  <span class="progress__count">{{ c.done }}/{{ c.total }}</span>
+                </div>
+              }
+              @if (s.data?.step || s.data?.status) {
+                <p class="stepline" [class.is-done]="s.data?.status === 'faite' || s.data?.status === 'vérifiée'">
+                  <span class="stepline__tick" aria-hidden="true"></span>
+                  @if (s.data?.step) { Étape {{ s.data?.step }} }
+                  @if (s.data?.status) { <span class="stepline__status">{{ s.data?.status }}</span> }
+                </p>
+              } @else if (s.detail && !chantierOf(s.data?.chantierKey)) {
+                <p class="scene__detail">{{ s.detail }}</p>
+              }
+            }
+            @case ('S11') {
+              <!-- SF-234-06 — S11 : la personne s'attache au chantier (trait pointillé) ou s'en détache. -->
+              <p class="attente" [class.is-off]="s.data?.attached === false">
+                <span class="attente__person" aria-hidden="true"></span>
+                <span class="attente__name">{{ s.data?.person ?? 'Quelqu’un' }}</span>
+                @if (s.data?.category) { <span class="attente__cat">· {{ s.data?.category }}</span> }
+                <span class="attente__link" aria-hidden="true"></span>
+                @if (chantierOf(s.data?.chantierKey); as c) {
+                  <span class="attente__chantier">Ch. {{ c.number }}</span>
+                }
+              </p>
+            }
+            @case ('S2') {
+              <!-- SF-234-06 — S2 : le « oui » attendu, compte à rebours ; la seule scène qui demande. -->
+              @if (s.detail) { <p class="ask__detail">{{ s.detail }}</p> }
+              <p class="ask__hint">
+                {{ s.data?.question ? 'Répondez à l’écran du terminal.' : 'Dites « oui » — sinon je ne fais rien.' }}
+                @if (s.data?.remaining !== undefined) {
+                  <span class="ask__clock">{{ clock(s.data!.remaining!) }}</span>
+                }
+              </p>
+            }
+            @case ('S14') {
+              <!-- SF-234-06 — S14 : une puce par point de route, pleine quand il est traité. -->
+              <ul class="route">
+                @for (q of s.data?.questions ?? []; track $index) {
+                  <li class="route__item" [attr.data-state]="q.state">
+                    <span class="route__dot" aria-hidden="true"></span>{{ q.libelle }}
+                  </li>
+                }
+              </ul>
             }
             @default {
               @if (s.detail) {
@@ -151,6 +215,72 @@ import { JarvisSceneBus } from './jarvis-scene-bus.service';
       background: var(--cg-orange-2); transform: rotate(-45deg);
     }
     @keyframes term-up { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+    .chantier { display: flex; align-items: center; gap: 6px; margin: 4px 0 0; min-width: 0; font-size: 14px; }
+    .chantier__diamond {
+      flex: none; width: 9px; height: 9px; background: var(--cg-accent); transform: rotate(45deg);
+    }
+    .chantier__name {
+      color: var(--cg-orange-2); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .chantier__phase {
+      flex: none; font-size: 12px; padding: 1px 6px; border-radius: 8px; color: var(--cg-cream);
+      border: 1px solid color-mix(in srgb, var(--cg-cream) 30%, transparent);
+    }
+    .progress { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+    .progress__bar {
+      flex: 1; height: 4px; border-radius: 2px; overflow: hidden;
+      background: color-mix(in srgb, var(--cg-cream) 15%, transparent);
+    }
+    .progress__fill { display: block; height: 100%; background: var(--cg-terminal-success); transition: width 400ms ease; }
+    .progress__count { font-family: var(--cg-font-mono); font-size: 12px; color: var(--cg-cream); }
+    .stepline {
+      display: flex; align-items: center; gap: 6px; margin: 4px 0 0; font-size: 14px;
+      color: color-mix(in srgb, var(--cg-cream) 85%, transparent);
+    }
+    .stepline__tick {
+      flex: none; width: 12px; height: 12px; border-radius: 50%;
+      border: 1.5px solid color-mix(in srgb, var(--cg-cream) 50%, transparent);
+    }
+    .stepline.is-done .stepline__tick {
+      border-color: var(--cg-terminal-success); background: var(--cg-terminal-success);
+      animation: scene-in 300ms ease-out;
+    }
+    .stepline__status { font-weight: 600; }
+    .stepline.is-done .stepline__status { color: var(--cg-terminal-success); }
+    .attente { display: flex; align-items: center; gap: 6px; margin: 4px 0 0; font-size: 14px; flex-wrap: wrap; }
+    .attente__person {
+      flex: none; width: 10px; height: 10px; border-radius: 3px; background: var(--cg-accent);
+    }
+    .attente__name { color: var(--cg-orange-2); font-weight: 600; }
+    .attente__cat { color: color-mix(in srgb, var(--cg-cream) 80%, transparent); }
+    .attente__link {
+      flex: none; width: 24px; border-top: 1.5px dashed color-mix(in srgb, var(--cg-cream) 50%, transparent);
+    }
+    .attente__chantier { font-family: var(--cg-font-mono); font-size: 12px; color: var(--cg-cream); }
+    .attente.is-off { opacity: 0.6; }
+    .attente.is-off .attente__link { width: 10px; }
+    .attente.is-off .attente__name { text-decoration: line-through; }
+    .ask__detail { margin: 4px 0 0; font-size: 14px; color: var(--cg-cream); }
+    .ask__hint {
+      display: flex; justify-content: space-between; gap: 8px; margin: 4px 0 0; font-size: 13px;
+      color: color-mix(in srgb, var(--cg-cream) 80%, transparent);
+    }
+    .ask__clock { font-family: var(--cg-font-mono); color: var(--cg-orange-2); font-weight: 600; }
+    .route { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 2px; }
+    .route__item {
+      display: flex; align-items: center; gap: 6px; font-size: 13px; min-width: 0;
+      color: color-mix(in srgb, var(--cg-cream) 85%, transparent);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .route__dot {
+      flex: none; width: 9px; height: 9px; border-radius: 50%;
+      border: 1.5px solid color-mix(in srgb, var(--cg-cream) 55%, transparent);
+    }
+    .route__item[data-state='EN_COURS'] .route__dot {
+      border-color: var(--cg-orange-2); background: linear-gradient(90deg, var(--cg-orange-2) 50%, transparent 50%);
+    }
+    .route__item[data-state='TERMINEE'] .route__dot { border-color: var(--cg-terminal-success); background: var(--cg-terminal-success); }
+    .route__item[data-state='NON_ABOUTIE'] { text-decoration: line-through; opacity: 0.7; }
     .show { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 2px; }
     .show__item {
       display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: 14px;
@@ -174,6 +304,8 @@ import { JarvisSceneBus } from './jarvis-scene-bus.service';
     @media (prefers-reduced-motion: reduce) {
       .scene, .scene__pulse, .term__line, .ticket { animation: none; }
       .ticket { transform: none; }
+      .progress__fill { transition: none; }
+      .stepline.is-done .stepline__tick { animation: none; }
     }
   `,
 })
@@ -186,6 +318,40 @@ export class JarvisSceneComponent implements OnInit {
   }
 
   readonly scene = computed(() => this.bus.state().scene);
+
+  /**
+   * SF-234-06 — le chantier d'une scène, lu sur l'univers (titre, phase, `done/total` + les étapes faites pendant le
+   * tour) ; sans clé, le chantier au focus du sujet courant.
+   */
+  chantierOf(key: string | null | undefined): SceneChantier | null {
+    const universe = this.bus.universe();
+    const subjectId = key ? key.split('#')[0] : this.bus.subjectId();
+    const number = key ? Number(key.split('#')[1]) : null;
+    for (const client of universe?.clients ?? []) {
+      const subject = client.subjects.find((x) => x.id === subjectId);
+      if (!subject) {
+        continue;
+      }
+      const chantier = number !== null
+        ? subject.chantiers.find((c) => c.number === number)
+        : subject.chantiers.find((c) => c.focus) ?? (subject.chantiers.length === 1 ? subject.chantiers[0] : undefined);
+      if (!chantier) {
+        return null;
+      }
+      const added = this.bus.state().stepsDone[`${subject.id}#${chantier.number}`] ?? 0;
+      return {
+        number: chantier.number, title: chantier.title, phaseLabel: chantier.phaseLabel,
+        done: Math.min(chantier.total, chantier.done + added), total: chantier.total,
+      };
+    }
+    return null;
+  }
+
+  /** « 0:42 ». */
+  clock(seconds: number): string {
+    const s = Math.max(0, Math.floor(seconds));
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  }
   /** SF-234-13 — ce que le PO a demandé à voir (affiché quand aucune action n'est en cours). */
   readonly focus = computed(() => this.bus.focus());
   /** « × n » seulement quand le libellé ne dit pas déjà le nombre (pluriel du registre). */
