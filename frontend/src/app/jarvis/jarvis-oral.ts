@@ -68,6 +68,24 @@ function cutOral(text: string): string {
   return `${(space > 0 ? head.slice(0, space) : head).trimEnd()}…`;
 }
 
+/** SF-231-03 — l'accusé d'un tour qui ne répond pas tout de suite (D3). */
+export const ACK_PHRASE = 'Je m’en occupe.';
+/** SF-231-03 — au-delà, l'accusé est dit (le tour ne répond pas en un clin d'œil). */
+export const ACK_DELAY_MS = 5_000;
+/** SF-231-03 — au-delà, la réponse est précédée d'une annonce de fin : le PO a pu passer à autre chose. */
+export const LONG_TURN_MS = 30_000;
+
+/** SF-231-03 — la phrase dite, précédée de l'annonce de fin pour un tour long. */
+export function withEndAnnouncement(phrase: string, elapsedMs: number): string {
+  return elapsedMs >= LONG_TURN_MS ? `C’est terminé. ${phrase}` : phrase;
+}
+
+/** SF-231-03 — « stop », « arrête », « annule » : l'ordre d'interrompre le travail en cours (dit seul). */
+export function isStopCommand(said: string): boolean {
+  const words = normalize(said).replace(/^jarvis\s+/, '');
+  return /^(stop|arrete|arrete tout|arrete toi|annule|laisse tomber|interromps)$/.test(words);
+}
+
 /** Sans accents ni casse, espaces repliés : de quoi comparer ce qui a été dit à un nom de sujet. */
 export function normalize(text: string): string {
   return text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();

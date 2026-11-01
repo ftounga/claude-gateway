@@ -1,4 +1,4 @@
-import { firstSentences, oralPhrase, subjectSwitch } from './jarvis-oral';
+import { firstSentences, isStopCommand, oralPhrase, subjectSwitch, withEndAnnouncement } from './jarvis-oral';
 import { EndOfSpeech, END_OF_SPEECH_MS, NO_SPEECH_MS } from './jarvis-mic-meter';
 import { sphere, withAlpha } from './jarvis-orb.component';
 
@@ -27,6 +27,20 @@ describe('Jarvis — ce qu’il dit (F-231 / SF-231-02)', () => {
 
   it('firstSentences garde la ponctuation', () => {
     expect(firstSentences('Un. Deux ! Trois ?', 2)).toBe('Un. Deux !');
+  });
+});
+
+describe('Jarvis — parler court (F-231 / SF-231-03)', () => {
+  it('annonce la fin d’un tour long, pas d’un tour bref', () => {
+    expect(withEndAnnouncement('Les tests passent.', 31_000)).toBe('C’est terminé. Les tests passent.');
+    expect(withEndAnnouncement('Les tests passent.', 4_000)).toBe('Les tests passent.');
+  });
+
+  it('reconnaît l’ordre d’arrêt dit seul, pas une phrase qui le contient', () => {
+    expect(isStopCommand('Stop !')).toBeTrue();
+    expect(isStopCommand('Jarvis, arrête.')).toBeTrue();
+    expect(isStopCommand('annule')).toBeTrue();
+    expect(isStopCommand('arrête le serveur de recette')).toBeFalse();
   });
 });
 
