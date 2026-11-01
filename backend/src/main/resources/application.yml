@@ -615,6 +615,14 @@ app:
       voice: ${APP_JARVIS_VOICE:onyx}
       max-chars: ${APP_JARVIS_VOICE_MAX_CHARS:600}
       monthly-budget-eur: ${APP_JARVIS_VOICE_MONTHLY_BUDGET_EUR:15}
+    # LE COMPAGNON ANDROID (F-232 / SF-232-02), servi par GET /runner/download/android SEULEMENT si sa
+    # signature v1 est faite par le certificat dont l'empreinte SHA-256 est donnee ici (format keytool
+    # accepte). L'empreinte d'un certificat est PUBLIQUE : ce n'est pas un secret. Vide => rien n'est servi.
+    companion:
+      apk-path: ${APP_JARVIS_COMPANION_APK_PATH:}
+      version-code: ${APP_JARVIS_COMPANION_VERSION_CODE:0}
+      version-name: ${APP_JARVIS_COMPANION_VERSION_NAME:}
+      signing-cert-sha256: ${APP_JARVIS_COMPANION_SIGNING_CERT_SHA256:}
   videos:
     # DEVIS D'UNE VIDEO (F-216 / SF-216-01) : outil video_devis, calcule par la gateway avant toute fabrication.
     # voix = caracteres x tarif de voix_off + minutes x tarif d'horodatage (app.speech.*, jamais dupliques) ;

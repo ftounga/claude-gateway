@@ -3,13 +3,21 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 
-import { JarvisComponent } from './jarvis.component';
+import { JARVIS_USER_AGENT, JarvisComponent, companionOffer } from './jarvis.component';
 import { AtelierStreamHandlers, WorkspaceSummary } from '../core/models/atelier.models';
 import { AtelierService } from '../core/services/atelier.service';
 import { DictationService } from '../core/services/dictation.service';
 import { JarvisVoiceService } from '../core/services/jarvis-voice.service';
 import { JarvisService } from '../core/services/jarvis.service';
 import { VeilleService } from '../core/services/veille.service';
+
+const NO_COMPANION = {
+  available: false, versionCode: null, versionName: null, sha256: null, signingCertSha256: null, sizeBytes: null,
+};
+const COMPANION_V4 = {
+  available: true, versionCode: 4, versionName: '0.4.0', sha256: 'a'.repeat(64), signingCertSha256: 'b'.repeat(64),
+  sizeBytes: 1200000,
+};
 
 function subject(id: string, name: string): WorkspaceSummary {
   return { id, name, createdAt: '2026-11-01T08:00:00Z', source: 'LOCAL', gitRepo: null } as WorkspaceSummary;
@@ -23,6 +31,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
   let handlers: AtelierStreamHandlers | null;
   let jarvisApi: jasmine.SpyObj<JarvisService>;
   let veilles: jasmine.SpyObj<VeilleService>;
+  let userAgent: string;
 
   beforeEach(() => {
     try {
@@ -46,7 +55,9 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     voice = jasmine.createSpyObj<JarvisVoiceService>('JarvisVoiceService', ['speak', 'stop', 'unlock', 'level']);
     voice.speak.and.resolveTo();
     voice.level.and.returnValue(0);
-    jarvisApi = jasmine.createSpyObj<JarvisService>('JarvisService', ['usage']);
+    jarvisApi = jasmine.createSpyObj<JarvisService>('JarvisService', ['usage', 'companion']);
+    jarvisApi.companion.and.returnValue(of(NO_COMPANION));
+    userAgent = 'Mozilla/5.0 (X11; Linux x86_64) Chrome/130';
     veilles = jasmine.createSpyObj<VeilleService>('VeilleService', ['alert', 'openAlert']);
     veilles.openAlert.and.returnValue(of(undefined));
     configure({ sujet: 'w-2' });
@@ -63,6 +74,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
         { provide: JarvisVoiceService, useValue: voice },
         { provide: JarvisService, useValue: jarvisApi },
         { provide: VeilleService, useValue: veilles },
+        { provide: JARVIS_USER_AGENT, useFactory: () => userAgent },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: convertToParamMap(params) } } },
       ],
     });
@@ -269,4 +281,51 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(text).toContain('Plafond du mois atteint');
     expect(jarvis.state()).toBe('repos');
   }));
+
+  // ---- F-232 / SF-232-02 : le compagnon Android ----
+
+  it('F-232 — sur Android, propose d’installer le compagnon servi par la gateway', () => {
+    userAgent = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) Chrome/130 Mobile';
+    jarvisApi.companion.and.returnValue(of(COMPANION_V4));
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+
+    const link = (fixture.nativeElement as HTMLElement).querySelector<HTMLAnchorElement>('.jv__companion');
+    expect(link?.textContent).toContain('installer le compagnon Android (v0.4.0)');
+    expect(link?.getAttribute('href')).toBe('/api/runner/download/android');
+    expect(link?.hasAttribute('download')).toBeTrue();
+  });
+
+  it('F-232 — hors Android et sans compagnon, rien n’est demandé ni affiché', () => {
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+
+    expect(jarvisApi.companion).not.toHaveBeenCalled();
+    expect((fixture.nativeElement as HTMLElement).querySelector('.jv__companion')).toBeNull();
+  });
+
+  it('F-232 — ouvert par un compagnon plus ancien : propose la mise à jour, écoute aussitôt et compte le réveil',
+    fakeAsync(() => {
+      jarvisApi.companion.and.returnValue(of(COMPANION_V4));
+      configure({ source: 'compagnon', compagnon: '3' });
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      flushMicrotasks();
+      fixture.detectChanges();
+
+      const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+      expect(text).toContain('Mise à jour du compagnon disponible (v0.4.0)');
+      expect(jarvisApi.usage).toHaveBeenCalledWith('WAKE');
+      expect(dictation.start).toHaveBeenCalled();
+      expect(fixture.componentInstance.state()).toBe('ecoute');
+      fixture.componentInstance.ngOnDestroy();
+    }));
+
+  it('F-232 — le compagnon à jour : aucune proposition', () => {
+    expect(companionOffer(COMPANION_V4, 4, true)).toBeNull();
+    expect(companionOffer(COMPANION_V4, 5, true)).toBeNull();
+    expect(companionOffer(COMPANION_V4, 3, false)).toEqual({ kind: 'update', versionName: '0.4.0' });
+    expect(companionOffer(COMPANION_V4, null, false)).toBeNull();
+    expect(companionOffer(NO_COMPANION, null, true)).toBeNull();
+  });
 });

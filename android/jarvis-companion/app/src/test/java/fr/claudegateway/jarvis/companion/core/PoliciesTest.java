@@ -62,5 +62,7 @@ public class PoliciesTest {
         assertNull(JarvisLink.normalizeGateway(null));
         assertEquals("https://portal.example.com/jarvis?source=compagnon",
                 JarvisLink.jarvisUrl("https://portal.example.com"));
+        assertEquals("https://portal.example.com/jarvis?source=compagnon&compagnon=3",
+                JarvisLink.jarvisUrl("https://portal.example.com", 3));
     }
 }

@@ -152,6 +152,14 @@
   opacity: 0.85;
 }
 
+/* F-232 / SF-232-02 — le lien du compagnon Android, discret comme les réglages du mot d'éveil. */
+.jv__companion {
+  color: var(--cg-cream);
+  font-size: 13px;
+  white-space: normal;
+  text-align: center;
+}
+
 .jv__talk {
   min-width: 200px;
 }

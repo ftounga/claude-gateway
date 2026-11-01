@@ -43,7 +43,24 @@ export JARVIS_SIGNING_STORE_PASSWORD=…  JARVIS_SIGNING_KEY_ALIAS=jarvis  JARVI
 Le keystore **ne doit jamais entrer dans le dépôt** (`*.jks`, `*.keystore` ignorés). Perdre la clé
 interdit toute mise à jour : Android refuse un APK signé par une autre clé (il faudrait désinstaller).
 
-Le service de l'APK par la gateway, sa version et l'empreinte du certificat : SF-232-02.
+## Servir l'APK depuis la gateway (SF-232-02)
+
+La gateway sert l'APK par `GET /api/runner/download/android`, à côté des paquets du runner (F-44),
+**seulement si sa signature v1 est faite par le certificat attendu** (l'APK est signé v1 et v2 ; la
+gateway vérifie v1 avec le seul JDK). L'écran Jarvis propose l'installation sur Android, puis la mise
+à jour quand le compagnon qui l'ouvre (`?compagnon=<versionCode>`) est plus ancien.
+
+Variables du backend (aucun secret : l'empreinte d'un certificat est publique) :
+
+| Variable | Valeur |
+|---|---|
+| `APP_JARVIS_COMPANION_APK_PATH` | chemin de l'APK dans l'image, ex. `/app/jarvis-compagnon.apk` |
+| `APP_JARVIS_COMPANION_VERSION_CODE` | le `jarvisVersionCode` de la construction |
+| `APP_JARVIS_COMPANION_VERSION_NAME` | le `jarvisVersionName` |
+| `APP_JARVIS_COMPANION_SIGNING_CERT_SHA256` | `keytool -list -v -keystore jarvis.jks -alias jarvis` → ligne « SHA256 » |
+
+Tant que ces variables ne sont pas posées et l'APK absent de l'image, la gateway ne sert rien et
+l'écran n'affiche aucun lien.
 
 ## Essai sur téléphone (à faire une fois construit)
 

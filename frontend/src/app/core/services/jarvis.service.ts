@@ -2,7 +2,10 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
-import { JarvisAbsence, JarvisToSendList } from '../models/jarvis.models';
+import { JarvisAbsence, JarvisCompanionVersion, JarvisToSendList } from '../models/jarvis.models';
+
+/** F-232 / SF-232-02 — l'APK du compagnon Android, servi par le chemin des paquets du runner (F-44). */
+export const JARVIS_COMPANION_DOWNLOAD_PATH = '/api/runner/download/android';
 
 /**
  * **Le mode Jarvis** (F-231), côté passerelle.
@@ -32,5 +35,10 @@ export class JarvisService {
   /** Les encarts mail ou message pas encore marqués envoyés, pour les sujets d'un poste. */
   toSend(hostId: string): Observable<JarvisToSendList> {
     return this.http.get<JarvisToSendList>('/api/jarvis/to-send', { params: new HttpParams().set('hostId', hostId) });
+  }
+
+  /** F-232 / SF-232-02 — la version du compagnon Android que cette gateway sert (route publique). */
+  companion(): Observable<JarvisCompanionVersion> {
+    return this.http.get<JarvisCompanionVersion>(`${JARVIS_COMPANION_DOWNLOAD_PATH}/version`);
   }
 }

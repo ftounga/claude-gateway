@@ -67,6 +67,17 @@
         </button>
       }
     </div>
+    <!-- F-232 / SF-232-02 — le compagnon Android : « Jarvis » téléphone verrouillé. Android confirme l'installation. -->
+    @if (companion(); as offer) {
+      <a mat-button class="jv__companion" [href]="companionHref" download="jarvis-compagnon.apk">
+        <mat-icon aria-hidden="true">{{ offer.kind === 'update' ? 'system_update' : 'install_mobile' }}</mat-icon>
+        @if (offer.kind === 'update') {
+          Mise à jour du compagnon disponible (v{{ offer.versionName }})
+        } @else {
+          Jarvis téléphone verrouillé : installer le compagnon Android (v{{ offer.versionName }})
+        }
+      </a>
+    }
     <button mat-fab extended color="primary" type="button" class="jv__talk" (click)="talk()">
       <mat-icon>{{ state() === 'ecoute' ? 'send' : state() === 'parole' ? 'stop' : 'mic' }}</mat-icon>
       {{ state() === 'ecoute' ? 'J’ai fini' : state() === 'parole' ? 'Interrompre' : 'Parler' }}
