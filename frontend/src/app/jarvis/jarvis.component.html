@@ -116,4 +116,15 @@
       {{ toggleLabel() }}
     </button>
   </footer>
+  <!-- F-233 / SF-233-12 — seulement si le navigateur bloque le son : un toucher n'importe où réveille Jarvis. -->
+  @if (wakeGate()) {
+    <button type="button" class="jv__wake-gate" (click)="wakeUp()" autofocus>
+      <span class="jv__wake-gate-halo" aria-hidden="true"></span>
+      <span class="jv__wake-gate-text">Touchez l’écran pour réveiller Jarvis</span>
+    </button>
+  }
+  <!-- F-233 / SF-233-12 — la version servie, discrète : pour savoir si l'appli est à jour. -->
+  @if (appUpdate.version(); as v) {
+    <span class="jv__version" aria-label="Version de l’application">{{ v }}{{ appUpdate.pending() ? ' → nouvelle' : '' }}</span>
+  }
 </main>
