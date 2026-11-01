@@ -223,6 +223,22 @@ describe('AtelierComponent', () => {
       component.send();
       expect(sends()).toBe(3);
     });
+
+    it('SF-222-04 : un envoi refusé par le plafond de terminaux peut repartir aussitôt', () => {
+      setup();
+      component.selectWorkspace(summary);
+      component.engine.set('LOCAL_MACHINE');
+      service.streamChat.and.returnValue(new Promise<void>(() => undefined));
+      const live = TestBed.inject(LiveTerminalService);
+      const limit = spyOn(live, 'limitReached').and.returnValue(true);
+      component.draft.set('relance le déploiement');
+      component.send();
+      expect(service.streamChat).not.toHaveBeenCalled();
+      limit.and.returnValue(false);
+      component.draft.set('relance le déploiement');
+      component.send();
+      expect(service.streamChat).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('alerte d\'onglet en fin de tour (F-185 / SF-185-05)', () => {

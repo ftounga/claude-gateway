@@ -31,7 +31,7 @@
         <button type="button" class="cb__filter cb__filter--DORMANT" [class.cb__filter--on]="filter() === 'DORMANT'"
           [attr.aria-pressed]="filter() === 'DORMANT'" data-filter="DORMANT" (click)="toggleFilter('DORMANT')">
           <mat-icon aria-hidden="true">bedtime</mat-icon>
-          <span class="cb__filter-label">Dormants</span>
+          <span class="cb__filter-label">En sommeil</span>
           <span class="cb__filter-count">{{ b.counts.dormant }}</span>
         </button>
       </div>

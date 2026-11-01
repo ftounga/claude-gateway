@@ -392,6 +392,10 @@ const RING = 2 * Math.PI * 18;
                         @for (v of versionsNewestFirst(); track v.version) {
                           <li class="board__version">
                             <strong>v{{ v.version }}</strong> · {{ v.stepCount }} étape{{ v.stepCount > 1 ? 's' : '' }}
+                            @if (v.origin === 'IN_SCOPE') {
+                              <!-- F-222 / SF-222-04 : l'amendement appliqué sans clic se voit. -->
+                              <span class="board__version-inscope">appliqué sans clic · même objectif</span>
+                            }
                             @for (t of v.added; track $index) {
                               <span class="board__diff board__diff--added">+ {{ t }}</span>
                             }
@@ -1051,6 +1055,13 @@ const RING = 2 * Math.PI * 18;
 
     .board__diff--added {
       color: var(--cg-success);
+    }
+
+    /* F-222 / SF-222-04 : amendement appliqué sans clic — une mention, jamais une alerte. */
+    .board__version-inscope {
+      font-size: 12px;
+      color: var(--cg-text-secondary);
+      font-style: italic;
     }
 
     .board__plan-btn {

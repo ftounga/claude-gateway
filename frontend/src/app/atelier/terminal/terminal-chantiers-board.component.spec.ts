@@ -205,11 +205,14 @@ describe('F-208 / SF-208-03 — le tableau des chantiers', () => {
     fixture.detectChanges();
     http.expectOne('/api/workspaces/w1/journey/chantiers/4/versions').flush([
       { version: 1, createdAt: '2026-10-24T08:00:00Z', stepCount: 1, added: ['Lire la config'], removed: [], modified: [] },
-      { version: 2, createdAt: '2026-10-24T09:00:00Z', stepCount: 2, added: ['Sauvegarder la base'], removed: ['Vieux'], modified: ['Lire la config'] },
+      { version: 2, createdAt: '2026-10-24T09:00:00Z', stepCount: 2, added: ['Sauvegarder la base'], removed: ['Vieux'], modified: ['Lire la config'], origin: 'IN_SCOPE' },
     ]);
     fixture.detectChanges();
     const versions = Array.from(el.querySelectorAll('.board__version')).map((v) => v.textContent ?? '');
     expect(versions[0]).toContain('v2');
+    // F-222 / SF-222-04 : l'amendement appliqué sans clic se voit ; les autres versions ne portent rien.
+    expect(versions[0]).toContain('appliqué sans clic · même objectif');
+    expect(versions[1]).not.toContain('sans clic');
     expect(versions[0]).toContain('+ Sauvegarder la base');
     expect(versions[0]).toContain('− Vieux');
     expect(versions[0]).toContain('~ Lire la config');

@@ -170,7 +170,7 @@ describe('ClientBoardComponent', () => {
 
   it('montre l\'ancienneté, à qui et depuis quand, la question, la prochaine étape et ce qui manque', () => {
     build(board([autruiDormant, moiQuestion, outilReady]));
-    expect(el().querySelector('[data-key="w5#3"] .cb__age--dormant')?.textContent).toContain('dormant depuis 6 j');
+    expect(el().querySelector('[data-key="w5#3"] .cb__age--dormant')?.textContent).toContain('en sommeil depuis 6 j');
     const dormant = expand('[data-key="w5#3"]');
     expect(dormant.textContent).toContain('Gino');
     // SF-220-09 : toutes les raisons, plus de « +n autres »
@@ -367,7 +367,7 @@ describe('ClientBoardComponent', () => {
     expect(w1.querySelector('.cb__block-name')?.textContent).toContain('ingress');
     const theirs = el().querySelector('[data-subject="w2"] [data-action="a2"]') as HTMLElement;
     expect(theirs.textContent).toContain('Marc');
-    expect(theirs.textContent).toContain('dormant depuis 5 j');
+    expect(theirs.textContent).toContain('en sommeil depuis 5 j');
     expect(theirs.textContent).toContain('à relancer');
     expect(theirs.querySelector('.cb__task-requested')).toBeNull();
   });
@@ -507,7 +507,7 @@ describe('ClientBoardComponent', () => {
     expect(outil.querySelector('mat-icon')?.textContent).toContain('bolt');
     expect(head.querySelector('[data-count="AUTRUI"]')?.textContent).toContain('1 on attend');
     expect(head.querySelector('[data-count="MOI"]')).toBeNull();
-    expect(head.querySelector('.cb__age--dormant')?.textContent).toContain('dormant depuis 6 j');
+    expect(head.querySelector('.cb__age--dormant')?.textContent).toContain('en sommeil depuis 6 j');
     const link = head.querySelector('.cb__block-open') as HTMLAnchorElement;
     expect(link.getAttribute('href')).toBe('/atelier/w5');
     expect(link.getAttribute('aria-label')).toBe('Ouvrir le terminal du sujet vault');

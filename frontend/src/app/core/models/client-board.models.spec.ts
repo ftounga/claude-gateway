@@ -28,7 +28,7 @@ describe('client-board.models', () => {
   });
 
   it('ancienneté : dormant mis en avant, sinon aujourd\'hui ou il y a n j', () => {
-    expect(idleLabel({ idleDays: 6, dormant: true })).toBe('dormant depuis 6 j');
+    expect(idleLabel({ idleDays: 6, dormant: true })).toBe('en sommeil depuis 6 j');
     expect(idleLabel({ idleDays: 0, dormant: false })).toBe('actif aujourd\'hui');
     expect(idleLabel({ idleDays: 1, dormant: false })).toBe('il y a 1 j');
   });

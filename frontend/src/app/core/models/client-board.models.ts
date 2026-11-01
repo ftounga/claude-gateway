@@ -158,10 +158,10 @@ export const UNBLOCKER_SHORT: Record<Unblocker, string> = {
   AUTRUI: 'on attend',
 };
 
-/** « dormant depuis 6 j », « actif aujourd'hui », « il y a 1 j ». */
+/** « en sommeil depuis 6 j » (F-222 / SF-222-04 : le même mot partout), « actif aujourd'hui », « il y a 1 j ». */
 export function idleLabel(chantier: Pick<ClientBoardChantier, 'idleDays' | 'dormant'>): string {
   if (chantier.dormant) {
-    return `dormant depuis ${chantier.idleDays} j`;
+    return `en sommeil depuis ${chantier.idleDays} j`;
   }
   return chantier.idleDays <= 0 ? 'actif aujourd\'hui' : `il y a ${chantier.idleDays} j`;
 }

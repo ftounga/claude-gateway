@@ -203,6 +203,11 @@ export interface JourneyPlanVersion {
   added: string[];
   removed: string[];
   modified: string[];
+  /**
+   * D'où vient la version (F-222 / SF-222-04) : premier plan, amendement à revalider, ou amendement dans l'objectif
+   * appliqué SANS CLIC. Absent (ou `null`) pour les versions posées avant.
+   */
+  origin?: 'PLAN' | 'AMENDMENT' | 'IN_SCOPE' | null;
 }
 
 /** L'état affiché d'une étape (F-208) — « en cours » et « bloquée » sont dérivés. */
