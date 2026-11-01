@@ -141,4 +141,18 @@ class JarvisWatchAlerterTest {
         assertThat(new JarvisAlertLinks(true).linkFor(alert, ws)).isEqualTo("/jarvis?alerte=" + alert);
         assertThat(new JarvisAlertLinks(false).linkFor(alert, ws)).isEqualTo("/atelier/" + ws + "?alerte=" + alert);
     }
+
+    @Test
+    void SF_232_03_leCompagnonAndroidRecoitLaPhraseEtLeLienDeLAlerte() {
+        fr.claudegateway.jarvis.companion.JarvisCompanionAnnouncements companion =
+                mock(fr.claudegateway.jarvis.companion.JarvisCompanionAnnouncements.class);
+        alerter.setCompanion(companion);
+        when(ai.complete(any())).thenReturn(new ChatCompletionResult("Agenor : AG-2 est bloqué.", "m", 400, 30));
+
+        alerter.onChange(watch, subject, null, changes);
+
+        JarvisWatchAlert alert = saved();
+        verify(companion).watchAlert(userId, "Agenor : AG-2 est bloqué.",
+                "/atelier/" + subject.getId() + "?alerte=" + alert.getId());
+    }
 }

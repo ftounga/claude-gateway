@@ -22,9 +22,14 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import android.speech.tts.TextToSpeech;
+
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
+import fr.claudegateway.jarvis.companion.core.CompanionApi;
 import fr.claudegateway.jarvis.companion.core.WakeEngine;
 import fr.claudegateway.jarvis.companion.core.WakeListener;
 import fr.claudegateway.jarvis.companion.core.WakeProfile;
@@ -45,6 +50,11 @@ public final class MainActivity extends Activity {
     private Button learn;
     private Button toggle;
     private volatile boolean enrolling;
+    private EditText codeInput;
+    private Button pairButton;
+    private TextView pairingState;
+    private volatile boolean pairing;
+    private TextToSpeech voiceTest;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -77,8 +87,9 @@ public final class MainActivity extends Activity {
 
         column.addView(text("Jarvis, téléphone verrouillé", 22));
         column.addView(text("Ce compagnon écoute le mot « Jarvis » sur le téléphone, et seulement lui : "
-                + "rien n'est enregistré, rien ne sort avant le mot. Au mot, il ouvre l'écran Jarvis de "
-                + "l'application, avec ta session habituelle. Il ne porte aucun jeton.", 15));
+                + "rien n'est enregistré, rien du micro ne sort du téléphone. Au mot, il ouvre l'écran Jarvis de "
+                + "l'application, avec ta session habituelle. Appairé, il reçoit aussi les annonces de Jarvis "
+                + "et te les dit à voix haute — son jeton ne sert qu'à cela.", 15));
 
         column.addView(text("1. L'adresse de l'application", 17));
         EditText gateway = new EditText(this);
@@ -97,7 +108,33 @@ public final class MainActivity extends Activity {
         });
         column.addView(save);
 
-        column.addView(text("2. Les autorisations", 17));
+        // SF-232-03 — l'appairage : sans lui, le compagnon n'entend que « Jarvis » ; avec lui, il te parle aussi.
+        column.addView(text("2. Appairer ce téléphone", 17));
+        column.addView(text("Pour que Jarvis te dise à voix haute, même téléphone verrouillé, qu'une demande est "
+                + "finie ou qu'une veille a bougé. Dans l'application, écran Jarvis → « Compagnon Android » → "
+                + "« Appairer un téléphone », puis tape le code ici.", 14));
+        codeInput = new EditText(this);
+        codeInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+                | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        codeInput.setHint("Code à 8 caractères");
+        column.addView(codeInput);
+        pairButton = new Button(this);
+        pairButton.setOnClickListener(v -> {
+            if (prefs.token() != null) {
+                forgetPairing();
+            } else {
+                pair(codeInput.getText().toString());
+            }
+        });
+        column.addView(pairButton);
+        pairingState = text("", 14);
+        column.addView(pairingState);
+        Button voice = new Button(this);
+        voice.setText("Tester la voix de Jarvis");
+        voice.setOnClickListener(v -> testVoice());
+        column.addView(voice);
+
+        column.addView(text("3. Les autorisations", 17));
         column.addView(text("Le micro, pour entendre le mot ; les notifications, pour « Jarvis écoute » "
                 + "et l'ouverture au mot.", 14));
         Button permissions = new Button(this);
@@ -120,13 +157,13 @@ public final class MainActivity extends Activity {
             column.addView(fullScreen);
         }
 
-        column.addView(text("3. Apprendre ta voix", 17));
+        column.addView(text("4. Apprendre ta voix", 17));
         column.addView(text("Dis « Jarvis » trois fois, en marquant une petite pause entre chaque.", 14));
         learn = new Button(this);
         learn.setOnClickListener(v -> learnWake());
         column.addView(learn);
 
-        column.addView(text("4. L'écoute", 17));
+        column.addView(text("5. L'écoute", 17));
         toggle = new Button(this);
         toggle.setOnClickListener(v -> {
             if (prefs.listening()) {
@@ -160,7 +197,93 @@ public final class MainActivity extends Activity {
         state.setText(message);
     }
 
+    // ------------------------------------------------------------------ appairage (SF-232-03)
+
+    private void renderPairing() {
+        boolean paired = prefs.token() != null;
+        codeInput.setEnabled(!paired && !pairing);
+        codeInput.setVisibility(paired ? View.GONE : View.VISIBLE);
+        pairButton.setEnabled(!pairing);
+        pairButton.setText(paired ? "Oublier l'appairage" : pairing ? "Appairage…" : "Appairer");
+        if (!pairing) {
+            pairingState.setText(paired
+                    ? "Appairé : Jarvis te parlera ici quand une demande est finie ou qu'une veille bouge."
+                    : "Pas appairé : le compagnon n'entend que « Jarvis ».");
+        }
+    }
+
+    /** Échange le code contre le jeton dédié, hors du fil principal. */
+    private void pair(String raw) {
+        String code = raw == null ? "" : raw.replaceAll("[\\s-]", "").toUpperCase(Locale.ROOT);
+        if (code.length() != 8) {
+            pairingState.setText("Le code fait 8 caractères.");
+            return;
+        }
+        pairing = true;
+        renderPairing();
+        pairingState.setText("Appairage…");
+        String gateway = prefs.gateway();
+        String name = (Build.MANUFACTURER + " " + Build.MODEL).trim();
+        new Thread(() -> {
+            String message;
+            boolean ok = false;
+            try {
+                CompanionApi.Paired paired = CompanionApi.pair(gateway, code, name);
+                prefs.setToken(paired.token);
+                ok = true;
+                message = "Appairé. Dis « Jarvis » quand tu veux ; Jarvis te parlera ici.";
+            } catch (CompanionApi.Refused e) {
+                message = "companion_limit".equals(e.code)
+                        ? "Cinq téléphones sont déjà appairés : révoque-en un dans l'application."
+                        : "Code refusé : il est faux, expiré (10 minutes) ou déjà utilisé.";
+            } catch (IOException | RuntimeException e) {
+                message = "La gateway ne répond pas (" + gateway + "). Vérifie l'adresse et le réseau.";
+            }
+            boolean done = ok;
+            String shown = message;
+            main.post(() -> {
+                pairing = false;
+                if (done) {
+                    codeInput.setText("");
+                    if (prefs.listening()) {
+                        // Le service relit l'appairage et lance la réception des annonces.
+                        startListening();
+                    }
+                }
+                renderPairing();
+                pairingState.setText(shown);
+            });
+        }, "jarvis-pair").start();
+    }
+
+    /** Oublie le jeton sur le téléphone. La révocation côté application reste à faire dans l'écran Jarvis. */
+    private void forgetPairing() {
+        prefs.clearPairing();
+        if (prefs.listening()) {
+            startListening();
+        }
+        renderPairing();
+        pairingState.setText("Appairage oublié ici. Révoque aussi ce téléphone dans l'écran Jarvis de l'application.");
+    }
+
+    /** Fait dire une phrase par la synthèse vocale de l'appareil : la voix des annonces. */
+    private void testVoice() {
+        if (voiceTest != null) {
+            voiceTest.shutdown();
+        }
+        voiceTest = new TextToSpeech(this, code -> {
+            if (code == TextToSpeech.SUCCESS) {
+                voiceTest.setLanguage(Locale.FRANCE);
+                voiceTest.speak("Jarvis est prêt. Je te dirai ici quand une demande est finie.",
+                        TextToSpeech.QUEUE_FLUSH, null, "test");
+            } else {
+                main.post(() -> say("Synthèse vocale indisponible : installe ou active « Services vocaux Google »."));
+            }
+        });
+    }
+
     private void render() {
+        renderPairing();
         boolean mic = hasMic();
         boolean learned = prefs.profile() != null;
         learn.setText(enrolling ? "Annuler l'apprentissage" : learned ? "Réapprendre « Jarvis »" : "Apprendre « Jarvis »");
@@ -229,6 +352,10 @@ public final class MainActivity extends Activity {
             render();
             return;
         }
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            render();
+            return;
+        }
         boolean wasListening = prefs.listening();
         if (wasListening) {
             startService(new Intent(this, CompanionService.class).setAction(CompanionService.ACTION_QUIT));
@@ -293,6 +420,9 @@ public final class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         enrolling = false;
+        if (voiceTest != null) {
+            voiceTest.shutdown();
+        }
         main.removeCallbacksAndMessages(null);
         super.onDestroy();
     }

@@ -3,11 +3,15 @@
 Un petit APK, installé hors store, qui écoute « Jarvis » **sur le téléphone**, même verrouillé, et
 ouvre alors l'écran Jarvis de l'application (`/jarvis`, F-231).
 
-- **Rien ne sort** : la reconnaissance du mot se fait sur l'appareil (même moteur que SF-231-05,
-  porté en Java : empreinte MFCC, alignement DTW, trois gabarits appris). Le manifeste ne demande
-  même pas la permission `INTERNET`.
-- **Aucun jeton** : l'écran Jarvis s'ouvre dans le navigateur (ou la PWA installée), avec la session
-  habituelle.
+- **Rien du micro ne sort** : la reconnaissance du mot se fait sur l'appareil (même moteur que
+  SF-231-05, porté en Java : empreinte MFCC, alignement DTW, trois gabarits appris).
+- **Il parle téléphone verrouillé** (SF-232-03) : appairé par un code, il reçoit les annonces de la
+  gateway (fin d'une demande dite à Jarvis, alerte de veille) par attente longue et les **dit avec la
+  synthèse vocale de l'appareil** ; pendant 8 secondes, le premier mot entendu (sans « Jarvis ») ouvre
+  l'écran Jarvis sur le sujet. Seule la permission `INTERNET` s'ajoute : le téléphone ne parle qu'à
+  l'adresse de la gateway, avec un **jeton dédié** qui n'ouvre que les annonces et se révoque depuis
+  l'application.
+- L'écran Jarvis s'ouvre dans le navigateur (ou la PWA installée), avec la session habituelle.
 - **Interrupteur** dans la notification (Pause / Reprendre / Quitter) ; pause automatique sous 15 %
   de batterie hors charge, reprise à 20 % ou en charge.
 
@@ -20,7 +24,8 @@ ouvre alors l'écran Jarvis de l'application (`/jarvis`, F-231).
 | Compilation Gradle, APK | **faite** le 2026-11-01 (SF-232-04) : wrapper Gradle 8.7 versionné, SDK 34 |
 | Signature | **faite** : v1 + v2, clé de release dans AWS Secrets Manager (voir plus bas) |
 | Empaquetage dans l'image backend | étage Docker `jarvis-build` (SF-232-04) |
-| Essai sur téléphone | à faire par le PO (aucun appareil branché sur la machine de livraison) |
+| Annonces, appairage, jeton dédié (SF-232-03) | livrés en 0.2.0 (`jarvisVersionCode=2`) |
+| Essai sur téléphone | à faire par le PO (aucun appareil branché sur la machine de livraison) — parcours ci-dessous |
 
 ## Construire
 
@@ -113,14 +118,30 @@ Variables du backend (aucun secret : l'empreinte d'un certificat est publique) :
 Tant que l'empreinte n'est pas posée ou que l'APK est absent de l'image, la gateway ne sert rien et
 l'écran n'affiche aucun lien.
 
-## Essai sur téléphone (à faire une fois construit)
+## Installer et essayer (parcours du PO)
 
-1. Installer l'APK (« sources inconnues » autorisées pour Chrome ou le gestionnaire de fichiers).
-2. Ouvrir « Jarvis » : autoriser micro + notifications, l'exemption de batterie, l'ouverture plein
-   écran (Android 14+).
-3. Apprendre « Jarvis » (trois fois), démarrer l'écoute : la notification « Jarvis écoute » apparaît.
-4. Verrouiller, dire « Jarvis » : l'écran s'allume, le déverrouillage est demandé, puis `/jarvis`
-   s'ouvre.
+1. Sur le téléphone, ouvrir l'application (Chrome) → écran **Jarvis** → encart **« Compagnon Android »**
+   → « Télécharger le compagnon » (`/api/runner/download/android`). Chrome demande d'autoriser cette
+   source (« Installer des applis inconnues ») : accepter, puis « Installer ».
+2. Ouvrir **Jarvis** (l'application installée), dans l'ordre de l'écran :
+   1. vérifier l'adresse (`https://portal.ng-itconsulting.com` par défaut) ;
+   2. **appairer** : dans l'écran Jarvis de l'application (téléphone ou ordinateur), encart « Compagnon
+      Android » → « Appairer un téléphone » → taper le code de 8 caractères (10 minutes) → « Appairer » ;
+      « Tester la voix de Jarvis » vérifie la synthèse vocale de l'appareil ;
+   3. autoriser micro + notifications, « ne pas couper Jarvis pour économiser la batterie », l'ouverture
+      plein écran (Android 14+) ;
+   4. apprendre « Jarvis » (trois fois) ;
+   5. « Démarrer l'écoute » : la notification « Jarvis écoute » apparaît.
+3. Verrouiller, dire « Jarvis » : l'écran s'allume, le déverrouillage est demandé, puis `/jarvis` s'ouvre.
+4. Depuis l'écran Jarvis, demander quelque chose à voix haute, puis verrouiller le téléphone : à la fin
+   du tour, le téléphone dit « C'est fait : … » (ou « Le message pour X est prêt. ») ; répondre dans les
+   8 secondes rouvre Jarvis sur le sujet.
 5. Éteindre l'écran : l'écoute reprend. Toucher « Pause » : la notification passe à « En pause ».
 6. Redémarrer le téléphone : la notification « Réactiver Jarvis » apparaît (Android 14+ interdit de
    relancer un micro au démarrage sans geste).
+7. Révoquer le téléphone dans l'encart « Compagnon Android » : au prochain appel, le compagnon affiche
+   « Appairage révoqué » et cesse de recevoir les annonces.
+
+Mise à jour : quand la gateway sert une version plus récente, l'écran Jarvis ouvert par le compagnon
+propose « Mise à jour du compagnon disponible » ; Android confirme l'installation (même clé : réglages,
+appairage et gabarits conservés).

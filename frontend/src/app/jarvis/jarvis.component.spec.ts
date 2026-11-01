@@ -296,11 +296,20 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(link?.hasAttribute('download')).toBeTrue();
   });
 
-  it('F-232 — hors Android et sans compagnon, rien n’est demandé ni affiché', () => {
+  it('F-232 — hors Android et sans compagnon servi, ni lien ni encart', () => {
     const fixture = TestBed.createComponent(JarvisComponent);
     fixture.detectChanges();
 
-    expect(jarvisApi.companion).not.toHaveBeenCalled();
+    expect((fixture.nativeElement as HTMLElement).querySelector('.jv__companion')).toBeNull();
+    expect((fixture.nativeElement as HTMLElement).querySelector('app-jarvis-companion-panel')).toBeNull();
+  });
+
+  it('SF-232-03 — compagnon servi : l’encart d’appairage s’affiche, même hors Android (pas de lien d’installation)', () => {
+    jarvisApi.companion.and.returnValue(of(COMPANION_V4));
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).querySelector('app-jarvis-companion-panel')).not.toBeNull();
     expect((fixture.nativeElement as HTMLElement).querySelector('.jv__companion')).toBeNull();
   });
 

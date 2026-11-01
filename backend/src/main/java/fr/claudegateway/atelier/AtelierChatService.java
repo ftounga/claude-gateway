@@ -1830,6 +1830,18 @@ public class AtelierChatService implements RelayInterruptTarget {
     }
 
     /**
+     * Les annonces du compagnon Android (F-232 / SF-232-03), branchées par mutateur : {@code null} (formes
+     * historiques / tests) ⇒ aucune annonce, comportement d'avant.
+     */
+    private fr.claudegateway.jarvis.companion.JarvisCompanionAnnouncements companionAnnouncements;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setCompanionAnnouncements(
+            fr.claudegateway.jarvis.companion.JarvisCompanionAnnouncements companionAnnouncements) {
+        this.companionAnnouncements = companionAnnouncements;
+    }
+
+    /**
      * Branche l'outil de génération d'images décoratives (F-142 / SF-142-04) par mutateur, pour ne
      * toucher à aucun constructeur conservé : {@code null} (formes historiques / tests) ⇒ l'outil n'est
      * jamais donné, comportement d'avant F-142.
@@ -4599,6 +4611,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         // F-162 / SF-162-06 : embed la réponse de l'assistant pour le rappel sémantique — asynchrone,
         // best-effort (NONE par défaut ⇒ ne fait rien).
         embedForRecall(assistant);
+        // F-232 / SF-232-03 — un tour né à la voix s'achève : le compagnon Android le dira, téléphone
+        // verrouillé. Best-effort, rien sans téléphone appairé ; tour tapé : rien.
+        if (viaJarvis && companionAnnouncements != null) {
+            companionAnnouncements.turnDone(userId, workspaceId, reply);
+        }
 
         // F-136 / SF-136-01 — la carte du client a pu changer pendant ce tour (promotion). On la
         // relit MAINTENANT, une fois la réponse prête : lire au début d'un tour coûterait six

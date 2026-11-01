@@ -153,4 +153,29 @@ class AtelierChatServiceVoiceTurnTest {
 
         assertThat(saved()).extracting(AtelierMessage::getVia).containsOnlyNulls();
     }
+
+    @Test
+    void SF_232_03_laFinDUnTourNeALaVoixEstAnnonceeAuCompagnon() {
+        fr.claudegateway.jarvis.companion.JarvisCompanionAnnouncements companion =
+                Mockito.mock(fr.claudegateway.jarvis.companion.JarvisCompanionAnnouncements.class);
+        service.setCompanionAnnouncements(companion);
+        service.markVoiceTurn(userId, workspaceId, null);
+        agentProvider.enqueueFinal("🎙 C'est fait.");
+
+        service.chat(userId, workspaceId, "valide l'étape trois");
+
+        verify(companion).turnDone(userId, workspaceId, "🎙 C'est fait.");
+    }
+
+    @Test
+    void SF_232_03_unTourTapeNEstPasAnnonce() {
+        fr.claudegateway.jarvis.companion.JarvisCompanionAnnouncements companion =
+                Mockito.mock(fr.claudegateway.jarvis.companion.JarvisCompanionAnnouncements.class);
+        service.setCompanionAnnouncements(companion);
+        agentProvider.enqueueFinal("ok");
+
+        service.chat(userId, workspaceId, "bonjour");
+
+        verify(companion, Mockito.never()).turnDone(any(), any(), any());
+    }
 }

@@ -71,4 +71,17 @@ public final class JarvisLink {
     public static String jarvisUrl(String gateway, int versionCode) {
         return jarvisUrl(gateway) + "&compagnon=" + versionCode;
     }
+
+    /**
+     * Le lien d'une annonce (SF-232-03) : le chemin rendu par la gateway ({@code /jarvis?sujet=…},
+     * {@code /jarvis?alerte=…}), complété de {@code source=compagnon&compagnon=<version>} pour que l'écran écoute
+     * aussitôt. Un chemin absent ou qui n'est pas interne ({@code //hôte}, schéma) retombe sur l'écran Jarvis.
+     */
+    public static String announcementUrl(String gateway, String path, int versionCode) {
+        if (path == null || !path.startsWith("/") || path.startsWith("//") || path.contains("://")) {
+            return jarvisUrl(gateway, versionCode);
+        }
+        String sep = path.contains("?") ? "&" : "?";
+        return gateway + path + sep + "source=compagnon&compagnon=" + versionCode;
+    }
 }

@@ -1395,6 +1395,20 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   demande dite à la voix dans l'écran Jarvis **et** la réponse de ce tour, `NULL` sinon. Donnée d'affichage : marque
   « 🎙 via Jarvis », encart « Pendant ton absence » (`GET /api/workspaces/{id}/jarvis/absence`), point de situation,
   compteur « À envoyer (n) » (`GET /api/jarvis/to-send`).
+- **jarvis_companion_devices** — **les téléphones appairés au compagnon Android** (F-232 / SF-232-03, migration
+  `192`) : `user_id`, `name (80)`, `token_hash (64, unique)` (SHA-256 du **jeton dédié** `jcp_…`, jamais le clair),
+  `created_at`, `last_seen_at` (au plus une écriture par minute), `revoked_at` (non nul ⇒ jeton sans valeur). Le
+  jeton n'ouvre que `GET /api/companion/announcements` (chaîne `CompanionSecurityConfig`, `/companion/**`, vérifié
+  par le contrôleur, rien dans le `SecurityContext`). 5 actifs au plus par compte. Liste et révocation :
+  `GET|DELETE /api/jarvis/companion/devices[/{id}]` (JWT, sous `user_id`).
+- **jarvis_companion_pairing_codes** — **les codes d'appairage d'un téléphone** (F-232 / SF-232-03, migration `192`) :
+  `user_id`, `code_hash (64, unique)`, `expires_at` (10 min), `consumed_at` (usage unique), `created_at`. Émis par
+  `POST /api/jarvis/companion/pairing-code`, échangés par `POST /api/companion/pair`.
+- **jarvis_companion_announcements** — **ce que le téléphone dit à voix haute** (F-232 / SF-232-03, migration `192`) :
+  `user_id`, `kind` (`TURN` fin d'un tour né à la voix, `ALERT` alerte de veille), `text (600)`, `link (300)` (chemin
+  interne ouvert par la réponse), `created_at` (index `user_id, created_at`). Rangées **seulement si** le compte a un
+  téléphone actif ; servies par attente longue (≤ 30 s, 10 au plus, rien de plus vieux que 15 min) ; purgées après
+  2 jours.
 - **interlocuteurs** — **les interlocuteurs d'un poste** (F-180 / SF-180-03, migration `160`) : une
   personne dont on attend quelque chose, normalisée. `id`, `user_id`, `host_id` (NOT NULL — un terminal
   hébergé garde le texte libre), `display_name (120)`, `normalized_name (120)` (unique par `user_id` +

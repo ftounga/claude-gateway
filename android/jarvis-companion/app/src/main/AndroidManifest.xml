@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  F-232 / SF-232-01 — Le compagnon Android de Jarvis.
-  Volontairement AUCUNE permission INTERNET : le compagnon n'envoie rien ; il ouvre l'écran Jarvis
-  dans le navigateur (ou la PWA installée), qui porte seul la session.
+  F-232 / SF-232-01 — Le compagnon Android de Jarvis. Il ouvre l'écran Jarvis dans le navigateur (ou la
+  PWA installée), qui porte seul la session.
+  SF-232-03 : INTERNET pour l'appairage par code et la réception des annonces (jeton dédié, adresse de
+  la gateway seulement). Rien du micro ne sort : le mot d'éveil et la fenêtre de réponse sont sur
+  l'appareil, et les annonces sont dites par la synthèse vocale de l'appareil.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />

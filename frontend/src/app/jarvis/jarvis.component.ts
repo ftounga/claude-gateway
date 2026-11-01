@@ -18,6 +18,7 @@ import {
 } from './jarvis-wake';
 import { JARVIS_COMPANION_DOWNLOAD_PATH, JarvisService } from '../core/services/jarvis.service';
 import { JarvisCompanionVersion } from '../core/models/jarvis.models';
+import { JarvisCompanionPanelComponent } from './jarvis-companion-panel.component';
 import { VeilleService } from '../core/services/veille.service';
 
 /** SF-231-05 — le mot d'éveil allumé sur cet appareil. */
@@ -84,7 +85,10 @@ export function companionOffer(version: JarvisCompanionVersion, installed: numbe
  */
 @Component({
   selector: 'app-jarvis',
-  imports: [JarvisOrbComponent, MarkdownPipe, MatButtonModule, MatIconModule, MatMenuModule, RouterLink],
+  imports: [
+    JarvisCompanionPanelComponent, JarvisOrbComponent, MarkdownPipe, MatButtonModule, MatIconModule, MatMenuModule,
+    RouterLink,
+  ],
   templateUrl: './jarvis.component.html',
   styleUrl: './jarvis.component.scss',
 })
@@ -137,6 +141,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
   private readonly userAgent = inject(JARVIS_USER_AGENT);
   /** Le compagnon à installer ou mettre à jour, ou `null`. */
   readonly companion = signal<CompanionOffer | null>(null);
+  /** F-232 / SF-232-03 — la passerelle sert le compagnon : l'encart d'appairage s'affiche. */
+  readonly companionServed = signal(false);
   readonly companionHref = JARVIS_COMPANION_DOWNLOAD_PATH;
 
   constructor() {
@@ -190,12 +196,17 @@ export class JarvisComponent implements OnInit, OnDestroy {
   /** F-232 / SF-232-02 — propose le compagnon Android ; une gateway qui ne le sert pas n'affiche rien. */
   private loadCompanion(installed: number | null): void {
     const android = /Android/i.test(this.userAgent);
-    if (installed === null && !android) {
-      return;
-    }
+    // SF-232-03 : l'encart « Compagnon Android » (appairage, téléphones) s'affiche partout — le code se lit
+    // volontiers sur l'ordinateur et se tape sur le téléphone — dès que la passerelle sert le compagnon.
     this.jarvis.companion().subscribe({
-      next: (version) => this.companion.set(companionOffer(version, installed, android)),
-      error: () => this.companion.set(null),
+      next: (version) => {
+        this.companionServed.set(version.available);
+        this.companion.set(installed === null && !android ? null : companionOffer(version, installed, android));
+      },
+      error: () => {
+        this.companionServed.set(false);
+        this.companion.set(null);
+      },
     });
   }
 

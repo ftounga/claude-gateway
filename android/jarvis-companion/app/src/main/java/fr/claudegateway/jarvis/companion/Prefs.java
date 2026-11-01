@@ -7,8 +7,9 @@ import fr.claudegateway.jarvis.companion.core.JarvisLink;
 import fr.claudegateway.jarvis.companion.core.WakeProfile;
 
 /**
- * Ce que le compagnon garde : l'adresse de la gateway, les gabarits du mot d'éveil, l'interrupteur.
- * Préférences <b>privées</b> de l'application ; <b>aucun jeton, aucun secret</b> (SF-232-01).
+ * Ce que le compagnon garde : l'adresse de la gateway, les gabarits du mot d'éveil, l'interrupteur, et depuis
+ * SF-232-03 le <b>jeton dédié</b> obtenu à l'appairage (il n'ouvre que la réception des annonces) et le curseur
+ * des annonces. Préférences <b>privées</b> de l'application (sauvegarde Android désactivée dans le manifeste).
  */
 final class Prefs {
 
@@ -16,6 +17,8 @@ final class Prefs {
     private static final String GATEWAY = "gateway";
     private static final String PROFILE = "wake_profile";
     private static final String LISTENING = "listening";
+    private static final String TOKEN = "companion_token";
+    private static final String CURSOR = "announcements_cursor";
 
     private final SharedPreferences prefs;
 
@@ -53,5 +56,28 @@ final class Prefs {
 
     void setListening(boolean on) {
         prefs.edit().putBoolean(LISTENING, on).apply();
+    }
+
+    /** Le jeton dédié (SF-232-03), ou {@code null} : téléphone pas appairé. */
+    String token() {
+        return prefs.getString(TOKEN, null);
+    }
+
+    /** Enregistre le jeton d'un nouvel appairage ; le curseur repart de zéro (aucun rejeu). */
+    void setToken(String token) {
+        prefs.edit().putString(TOKEN, token).remove(CURSOR).apply();
+    }
+
+    /** Oublie l'appairage (révoqué, ou à la demande). */
+    void clearPairing() {
+        prefs.edit().remove(TOKEN).remove(CURSOR).apply();
+    }
+
+    String cursor() {
+        return prefs.getString(CURSOR, null);
+    }
+
+    void setCursor(String cursor) {
+        prefs.edit().putString(CURSOR, cursor).apply();
     }
 }

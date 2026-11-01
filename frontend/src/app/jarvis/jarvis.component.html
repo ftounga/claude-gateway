@@ -78,6 +78,10 @@
         }
       </a>
     }
+    <!-- F-232 / SF-232-03 — appairer un téléphone (annonces à voix haute), liste et révocation. -->
+    @if (companionServed()) {
+      <app-jarvis-companion-panel [downloadable]="true" />
+    }
     <button mat-fab extended color="primary" type="button" class="jv__talk" (click)="talk()">
       <mat-icon>{{ state() === 'ecoute' ? 'send' : state() === 'parole' ? 'stop' : 'mic' }}</mat-icon>
       {{ state() === 'ecoute' ? 'J’ai fini' : state() === 'parole' ? 'Interrompre' : 'Parler' }}

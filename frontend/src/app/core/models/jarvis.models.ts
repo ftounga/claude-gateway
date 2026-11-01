@@ -72,3 +72,17 @@ export interface JarvisCompanionVersion {
   signingCertSha256: string | null;
   sizeBytes: number | null;
 }
+
+/** F-232 / SF-232-03 — le code d'appairage d'un téléphone (`POST /api/jarvis/companion/pairing-code`), affiché une fois. */
+export interface JarvisCompanionPairingCode {
+  code: string;
+  expiresAt: string;
+}
+
+/** F-232 / SF-232-03 — un téléphone appairé (`GET /api/jarvis/companion/devices`). */
+export interface JarvisCompanionDevice {
+  id: string;
+  name: string;
+  pairedAt: string;
+  lastSeenAt: string | null;
+}

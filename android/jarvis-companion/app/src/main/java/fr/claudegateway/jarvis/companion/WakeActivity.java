@@ -20,6 +20,9 @@ import fr.claudegateway.jarvis.companion.core.JarvisLink;
  */
 public final class WakeActivity extends Activity {
 
+    /** SF-232-03 : le chemin de l'annonce à ouvrir (« /jarvis?sujet=… ») ; absent ⇒ l'écran Jarvis. */
+    static final String EXTRA_PATH = "path";
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -54,7 +57,10 @@ public final class WakeActivity extends Activity {
     }
 
     private void openJarvis() {
-        String url = JarvisLink.jarvisUrl(new Prefs(this).gateway(), BuildConfig.VERSION_CODE);
+        String path = getIntent().getStringExtra(EXTRA_PATH);
+        String gateway = new Prefs(this).gateway();
+        String url = path == null ? JarvisLink.jarvisUrl(gateway, BuildConfig.VERSION_CODE)
+                : JarvisLink.announcementUrl(gateway, path, BuildConfig.VERSION_CODE);
         Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try {
             startActivity(view);

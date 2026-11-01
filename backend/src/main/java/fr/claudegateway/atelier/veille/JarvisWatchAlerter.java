@@ -100,6 +100,14 @@ public class JarvisWatchAlerter implements JarvisWatchChangeListener {
         this.push = push;
     }
 
+    /** F-232 / SF-232-03 : le compagnon Android dit l'alerte à voix haute. {@code null} ⇒ rien, comme avant. */
+    private fr.claudegateway.jarvis.companion.JarvisCompanionAnnouncements companion;
+
+    @Autowired(required = false)
+    public void setCompanion(fr.claudegateway.jarvis.companion.JarvisCompanionAnnouncements companion) {
+        this.companion = companion;
+    }
+
     @Override
     public void onChange(JarvisWatch watch, Workspace workspace, JarvisWatchRun run,
             List<JarvisWatchDiff.Change> changes) {
@@ -120,6 +128,11 @@ public class JarvisWatchAlerter implements JarvisWatchChangeListener {
             } catch (RuntimeException e) {
                 // Best-effort : la notification ne fait jamais échouer une alerte.
             }
+        }
+        if (companion != null) {
+            // Best-effort elle aussi (le service n'échoue jamais vers l'appelant).
+            companion.watchAlert(watch.getUserId(), sentence.text(),
+                    links.linkFor(alert.getId(), watch.getWorkspaceId()));
         }
     }
 
