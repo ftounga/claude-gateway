@@ -3,6 +3,7 @@ package fr.claudegateway.atelier.journey;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -69,9 +70,17 @@ public final class JourneyRiskClassifier {
      */
     private static final Set<String> SCRIPT_INTERPRETERS = Set.of("python", "python3", "node", "bash", "sh");
 
-    /** Les options d'interpréteur qui exécutent du code en ligne ou un module : jamais une lecture de script. */
-    private static final Set<String> INLINE_CODE_OPTIONS = Set.of("-c", "-e", "-m", "-p", "-i", "--eval", "--print",
-            "--interactive");
+    /**
+     * Les SEULES options d'interpréteur admises avant le script d'une lecture (F-222 / SF-222-04) : elles ne chargent
+     * ni n'exécutent aucun autre code. Toute autre option (code en ligne {@code -c}/{@code -e}, module {@code -m},
+     * grappe {@code -Bc}, préchargement {@code --require}/{@code --import}, option à valeur) : pas une lecture.
+     */
+    private static final Map<String, Set<String>> SAFE_INTERPRETER_OPTIONS = Map.of(
+            "python", Set.of("-u", "-B", "-I", "-E", "-s", "-S", "-O", "-OO", "-q"),
+            "python3", Set.of("-u", "-B", "-I", "-E", "-s", "-S", "-O", "-OO", "-q"),
+            "bash", Set.of("-e", "-u", "-x"),
+            "sh", Set.of("-e", "-u", "-x"),
+            "node", Set.of());
 
     /** Les verbes de lecture reconnus en premier argument d'un script (sans accents, en minuscules). */
     private static final Set<String> READ_VERBS = Set.of("voir", "lire", "liste", "lister", "list", "show", "get",
@@ -334,10 +343,11 @@ public final class JourneyRiskClassifier {
         String script;
         List<String> rest;
         if (SCRIPT_INTERPRETERS.contains(program)) {
+            Set<String> safe = SAFE_INTERPRETER_OPTIONS.getOrDefault(program, Set.of());
             int i = 0;
             while (i < args.size() && args.get(i).startsWith("-")) {
-                if (INLINE_CODE_OPTIONS.contains(args.get(i))) {
-                    return false;
+                if (!safe.contains(args.get(i))) {
+                    return false; // F-222 / SF-222-04 : en cas de doute, la classification d'avant
                 }
                 i++;
             }
@@ -361,8 +371,9 @@ public final class JourneyRiskClassifier {
                 return true;
             }
         }
-        String verb = rest.stream().filter(a -> !a.startsWith("-")).findFirst().map(JourneyRiskClassifier::plain)
-                .orElse("");
+        // F-222 / SF-222-04 : le verbe est le PREMIER argument du script — jamais la valeur d'une option
+        // (`jira.py --mode voir creer` n'est pas une lecture).
+        String verb = rest.isEmpty() ? "" : plain(rest.get(0));
         return READ_VERBS.contains(verb);
     }
 

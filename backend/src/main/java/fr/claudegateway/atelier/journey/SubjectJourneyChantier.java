@@ -135,6 +135,16 @@ public class SubjectJourneyChantier {
      * en silence.
      */
     public boolean isStale(OffsetDateTime now) {
+        return isIdleInExecution(now) && !ChantierUnblocker.awaitsThirdParty(phase, planJson,
+                planVersion == null ? 0 : planVersion, validatedVersion, diagnosisProposedAt != null,
+                closeProposedAt != null);
+    }
+
+    /**
+     * Ouvert, en Exécution, sans geste depuis {@link #STALE_DAYS} jours — avant de savoir s'il attend un tiers. Un
+     * chantier qui attend un tiers n'est jamais « en sommeil » : il attend (F-222 / SF-222-04).
+     */
+    public boolean isIdleInExecution(OffsetDateTime now) {
         return isOpen() && phase == JourneyPhase.EXECUTION && updatedAt != null && now != null
                 && updatedAt.isBefore(now.minusDays(STALE_DAYS));
     }

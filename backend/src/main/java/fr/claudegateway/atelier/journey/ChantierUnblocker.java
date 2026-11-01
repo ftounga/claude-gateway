@@ -147,6 +147,17 @@ public final class ChantierUnblocker {
     }
 
     /** La marque du chantier décrit par {@code in} — jamais {@code null}. */
+    /**
+     * Vrai si ce chantier guidé <b>attend un tiers</b> ({@link Who#AUTRUI}), lu sur son plan seul, sans les
+     * attentes détaillées (F-222 / SF-222-04) : une étape qui attend une clé non suivie compte comme une attente de
+     * tiers. Un chantier qui attend un tiers n'est jamais « en sommeil ».
+     */
+    public static boolean awaitsThirdParty(JourneyPhase phase, String planJson, int planVersion,
+            Integer validatedVersion, boolean diagnosisPending, boolean closeProposed) {
+        return chantier(new Input(true, phase, planJson, planVersion, validatedVersion, diagnosisPending,
+                closeProposed, false, Map.of())).who() == Who.AUTRUI;
+    }
+
     public static Mark chantier(Input in) {
         JourneyPlan plan = JourneyPlan.fromJson(in.planJson());
         if (in.questionPending()) {

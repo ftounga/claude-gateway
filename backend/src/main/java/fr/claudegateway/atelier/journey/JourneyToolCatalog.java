@@ -107,16 +107,19 @@ public class JourneyToolCatalog {
             + "le bloc « Parcours du sujet » te demande de préciser des acteurs, fais-le avec update_plan_step "
             + "actor (sans status) : ce n'est pas un amendement.\n"
             + "L'utilisateur valide le PREMIER plan d'un chantier d'un clic [Valider], ou en te le disant "
-            + "(« go », « je valide le plan du chantier 4 ») — alors valider_plan (chantier et citation exigés), "
-            + "jamais de ta propre initiative ni dans une course autonome. Tant qu'il ne l'a pas validé, ne "
-            + "modifie rien. Garde PLAN-ACTION.md cohérent avec ce plan.\n"
+            + "(« go », « je valide le plan du chantier 4 ») — alors valider_plan avec le chantier, la version "
+            + "qu'il a lue (vN) et ses mots EXACTS de ce tour ; jamais de ta propre initiative, jamais sur un accord "
+            + "d'un tour passé, jamais dans une course autonome ni une routine (personne n'y écrit). Tant qu'il ne "
+            + "l'a pas validé, ne modifie rien. Garde PLAN-ACTION.md cohérent avec ce plan.\n"
             + "EXÉCUTION : n'exécute que des étapes du plan validé. Une modification hors plan est un "
             + "AMENDEMENT : rappelle set_subject_plan avec le plan complet modifié. MÊME OBJECTIF (le chantier "
             + "garde son but : une étape ajoutée, précisée, découpée ou réordonnée, une correction trouvée en "
             + "route) : same_objective=true — l'amendement s'applique SANS CLIC, il est journalisé, le plan reste "
             + "validé, et tu l'annonces en une phrase dans ta réponse (ce qui change et pourquoi). OBJECTIF "
             + "CHANGÉ (autre cible, autre périmètre, autre résultat attendu) : sans same_objective — il repasse "
-            + "par la validation de l'utilisateur. Dans le doute, c'est un changement d'objectif. Le plan validé "
+            + "par la validation de l'utilisateur. Dans le doute, c'est un changement d'objectif. Une étape "
+            + "EXTERNE ajoutée ou modifiée n'entre jamais sans clic, même dans l'objectif : l'amendement repasse "
+            + "par sa validation. Le plan validé "
             + "VAUT FEU VERT : chacune de ses étapes s'exécute "
             + "jusqu'au bout, EXTERNE comprise (push, merge, apply, envoi), sans redemander de "
             + "confirmation (F-218). Après chaque étape exécutée : update_plan_step status=FAIT. Une "
@@ -128,11 +131,16 @@ public class JourneyToolCatalog {
             + "diagnostic : reopen_investigation (le plan est gardé) ou un amendement. Toutes vertes : "
             + "l'utilisateur voit la proposition de clore. Un VRAI blocage (information manquante, échec "
             + "sans remède) : update_plan_step status=BLOQUE avec la raison, et arrête-toi sur ce chantier.\n"
+            + "EN SOMMEIL : un chantier en Exécution sans aucun geste depuis 3 jours, et qui n'attend pas un tiers "
+            + "(un chantier qui attend quelqu'un attend, il ne dort pas). N'y touche pas sans demande ; si "
+            + "l'utilisateur en parle, propose de le clore — jamais de clôture en silence.\n"
             + "LA PORTE : en mode guidé, le harnais REFUSE toute modification hors des notes du sujet "
             + "(édition de fichier, commande qui écrit, push, apply, envoi…) tant que le plan n'est pas "
             + "validé ; la lecture et les notes (STATE.md, PLAN-ACTION.md, notes/, carte/) restent libres. "
             + "Une commande que la porte ne reconnaît pas comme une lecture est traitée comme une "
-            + "modification : pour investiguer, préfère des commandes de lecture simples. Un refus de la "
+            + "modification : pour investiguer, préfère des commandes de lecture simples. Un script du poste est "
+            + "une lecture s'il est nommé releve…, si son PREMIER argument est un verbe de lecture (voir, lister, "
+            + "status, show, get…) ou s'il porte --dry-run — sans option d'interpréteur avant lui. Un refus de la "
             + "porte n'est pas une panne : ne cherche pas de contournement, dis où en est le plan. Avec "
             + "plusieurs chantiers ouverts, la porte s'ouvre dès qu'UN chantier est en Exécution sur son plan "
             + "validé : n'exécute pour autant que des étapes du plan validé du chantier que la modification "
@@ -243,14 +251,19 @@ public class JourneyToolCatalog {
                 "Valide le PLAN d'un chantier qui attend sa validation quand l'utilisateur te le dit explicitement "
                         + "dans son message (« go », « je valide le plan du chantier 4 », « c'est bon, lance ») : "
                         + "le chantier passe en Exécution, comme sur un clic [Valider]. Exécute ensuite son plan. "
-                        + "Jamais de ta propre initiative, ni dans une course autonome.",
+                        + "Jamais de ta propre initiative, ni sur un accord d'un tour passé, ni dans une course "
+                        + "autonome ou une routine.",
                 Map.of("type", "object",
                         "properties", Map.of(
                                 "chantier", Map.of("type", "integer",
                                         "description", "Le numéro du chantier dont le plan est validé."),
+                                "version", Map.of("type", "integer",
+                                        "description", "La version du plan (vN) que l'utilisateur a lue et valide. "
+                                                + "Un plan amendé depuis se revalide."),
                                 "user_words", Map.of("type", "string",
-                                        "description", "Les mots de l'utilisateur qui valident, cités.")),
-                        "required", List.of("chantier", "user_words")));
+                                        "description", "Les mots EXACTS de l'utilisateur qui valident, cités tels "
+                                                + "qu'il les a écrits dans ce tour.")),
+                        "required", List.of("chantier", "version", "user_words")));
     }
 
     static AgentTool submitDiagnosisDefinition() {

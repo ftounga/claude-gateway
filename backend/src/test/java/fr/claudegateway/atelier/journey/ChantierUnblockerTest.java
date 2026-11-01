@@ -169,4 +169,17 @@ class ChantierUnblockerTest {
         JourneyPlan p = plan("[{\"title\":\"Pousser la MR\",\"risk\":\"EXTERNE\"}]");
         assertThat(ChantierUnblocker.steps(p, Map.of()).get(0).who()).isEqualTo(Who.OUTIL);
     }
+
+    @Test
+    @DisplayName("SF-222-04 : un chantier qui attend un tiers (acteur TIERS, clé non suivie) n'est pas en sommeil")
+    void awaitsThirdParty() {
+        String tiers = plan("[{\"title\":\"Le client signe\",\"risk\":\"REVERSIBLE\",\"actor\":\"TIERS\"}]").toJson();
+        String waits = plan("[{\"title\":\"Ouvrir le flux\",\"risk\":\"REVERSIBLE\",\"waits_on\":\"vpn\"}]").toJson();
+        String tool = plan("[{\"title\":\"Relancer\",\"risk\":\"REVERSIBLE\"}]").toJson();
+        assertThat(ChantierUnblocker.awaitsThirdParty(JourneyPhase.EXECUTION, tiers, 1, 1, false, false)).isTrue();
+        assertThat(ChantierUnblocker.awaitsThirdParty(JourneyPhase.EXECUTION, waits, 1, 1, false, false)).isTrue();
+        assertThat(ChantierUnblocker.awaitsThirdParty(JourneyPhase.EXECUTION, tool, 1, 1, false, false)).isFalse();
+        // Une clôture proposée attend l'utilisateur, pas un tiers.
+        assertThat(ChantierUnblocker.awaitsThirdParty(JourneyPhase.EXECUTION, tiers, 1, 1, false, true)).isFalse();
+    }
 }

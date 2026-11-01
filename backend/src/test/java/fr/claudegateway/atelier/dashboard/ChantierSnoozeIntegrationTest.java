@@ -190,13 +190,19 @@ class ChantierSnoozeIntegrationTest {
     }
 
     @Test
-    @DisplayName("rappel : un chantier dormant → « Des chantiers dorment », une fois par jour ; reporté → rien")
+    @DisplayName("rappel : un chantier en sommeil (3 j) → « Des chantiers sont en sommeil », une fois par jour ; reporté → rien")
     void dormantReminder() throws Exception {
         PushNotificationService push = mock(PushNotificationService.class);
         OffsetDateTime now = OffsetDateTime.now();
 
         digestAt(push, now).run();
         verify(push, never()).notify(eq(aliceId), any(), any()); // actif : rien
+
+        // F-222 / SF-222-04 : « en sommeil » = 3 jours partout ; 2 jours ne suffisent plus.
+        backdate(2);
+        assertThat(scanner.usersWithDormant(now)).doesNotContain(aliceId);
+        backdate(3);
+        assertThat(scanner.usersWithDormant(now)).contains(aliceId);
 
         backdate(6);
         assertThat(scanner.usersWithDormant(now)).contains(aliceId);

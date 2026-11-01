@@ -62,8 +62,13 @@ public record SubjectJourneyResponse(
                                ChantierUnblocker.Mark unblocker, OffsetDateTime lastActivityAt, boolean stale,
                                List<LinkedAttente> attentes) {
 
-        /** Le même chantier, daté de son dernier geste (F-222 / SF-222-03). */
-        OpenChantier withActivity(OffsetDateTime lastActivityAt, boolean stale) {
+        /**
+         * Le même chantier, daté de son dernier geste (F-222 / SF-222-03). {@code idle} = en Exécution sans geste
+         * depuis {@link SubjectJourneyChantier#STALE_DAYS} jours ; il n'est « en sommeil » que s'il n'attend pas un
+         * tiers (F-222 / SF-222-04).
+         */
+        OpenChantier withActivity(OffsetDateTime lastActivityAt, boolean idle) {
+            boolean stale = idle && (unblocker == null || unblocker.who() != ChantierUnblocker.Who.AUTRUI);
             return new OpenChantier(number, title, openedAt, phase, phaseLabel, focus, planVersion, validatedVersion,
                     awaitingValidation, diagnosisPending, closeProposed, executing, done, total, plan, unblocker,
                     lastActivityAt, stale, attentes);
@@ -148,7 +153,7 @@ public record SubjectJourneyResponse(
                     c.getPlanVersion() == null ? 0 : c.getPlanVersion(), c.getValidatedVersion(), c.getPlanJson(),
                     c.getDiagnosisProposedAt(), c.getCloseProposedAt(), c.getValidatedPlanJson(),
                     c.getPlanValidatedAt(), waits, guided, questionPending)
-                    .withActivity(c.getUpdatedAt(), c.isStale(now)));
+                    .withActivity(c.getUpdatedAt(), c.isIdleInExecution(now)));
         }
         open.sort(java.util.Comparator.comparingInt(OpenChantier::number));
         return List.copyOf(open);
@@ -273,13 +278,16 @@ public record SubjectJourneyResponse(
      * @param added    titres des étapes ajoutées (toutes, pour la première version)
      * @param removed  titres des étapes retirées
      * @param modified titres des étapes au contenu modifié
+     * @param origin   {@code PLAN}, {@code AMENDMENT} ou {@code IN_SCOPE} (amendement appliqué sans clic) ;
+     *                 {@code null} avant F-222 / SF-222-04
      */
     public record PlanVersion(int version, OffsetDateTime createdAt, int stepCount, List<String> added,
-                              List<String> removed, List<String> modified) {
+                              List<String> removed, List<String> modified, String origin) {
 
         static PlanVersion from(SubjectJourneyService.PlanVersionView view) {
             return new PlanVersion(view.row().getVersion(), view.row().getCreatedAt(), view.plan().steps().size(),
-                    view.changes().added(), view.changes().removed(), view.changes().modified());
+                    view.changes().added(), view.changes().removed(), view.changes().modified(),
+                    view.row().getOrigin());
         }
     }
 

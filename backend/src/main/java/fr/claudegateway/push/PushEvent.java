@@ -77,10 +77,11 @@ public enum PushEvent {
     AUTONOMY_STOPPED("Un chantier autonome s'est arrêté", "Ouvrez le sujet pour voir ce qui le bloque.", true),
 
     /**
-     * Récapitulatif quotidien (F-220 / SF-220-05) : des chantiers ouverts dorment (aucun geste depuis quelques
-     * jours, non reportés). Le moins prioritaire du récapitulatif : une seule notification par jour.
+     * Récapitulatif quotidien (F-220 / SF-220-05) : des chantiers ouverts sont en sommeil (aucun geste depuis 3 jours,
+     * non reportés, sans attente de tiers — F-222 / SF-222-04). Le moins prioritaire du récapitulatif : une seule
+     * notification par jour.
      */
-    CHANTIERS_DORMANT("Des chantiers dorment", "Ouvrez la Forge pour retrouver ce qui reste à faire.");
+    CHANTIERS_DORMANT("Des chantiers sont en sommeil", "Ouvrez la Forge pour les reprendre ou les clore.");
 
     private final String title;
     private final String body;
