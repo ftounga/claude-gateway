@@ -18,6 +18,7 @@ Le vrai mot d'éveil, téléphone verrouillé, exige un petit composant **natif*
 |---|---|
 | D1 | **Compagnon minimal** : service de premier plan de type micro (notification permanente « Jarvis écoute »), détection du mot d'éveil **sur l'appareil**. Aucun son ne sort avant le mot. Au mot, il ouvre la PWA en mode Jarvis (F-231). |
 | D1b | **Il parle aussi téléphone verrouillé.** Quand un tour lancé via Jarvis se termine (ou qu'une alerte de veille arrive), le compagnon reçoit l'annonce et la **dit à voix haute** même écran éteint (« Le message pour X est prêt », « C'est fait : … »), puis écoute la réponse sans mot d'éveil pendant quelques secondes. Sans compagnon, la PWA en arrière-plan ne peut que sonner une notification. | Conversation continue toute la journée, sans relancer |
+| D1c | **Installation** : téléchargement de l'APK depuis l'application, autorisation « sources inconnues » pour Chrome, permissions micro, notifications et exemption d'optimisation de batterie demandées au premier lancement avec explication, puis appairage par code. Démarrage automatique avec le téléphone. Mise à jour proposée par l'application, confirmée par Android. |
 | D2 | **Distribution** : APK signé, téléchargeable depuis l'application (même chemin que les paquets du runner), mise à jour proposée. Pas de Play Store. |
 | D3 | **Interrupteur** : marche/arrêt depuis la notification, arrêt automatique sous un seuil de batterie. |
 | D4 | ~~Porte d'usage~~ levée par le PO le 2026-11-01. La mesure D9 de F-231 reste lue à J+14 pour juger l'usage réel. |
@@ -33,7 +34,7 @@ Le vrai mot d'éveil, téléphone verrouillé, exige un petit composant **natif*
 ## Préoccupations transversales
 
 - **Navigation** : ouverture de `/jarvis` depuis le compagnon (lien profond F-231).
-- **Auth** : le compagnon ne porte **aucun** jeton ; la session reste celle de la PWA.
+- **Auth** (corrigé le 2026-11-01) : pour recevoir les annonces téléphone verrouillé (D1b), le compagnon est **appairé** au compte par un code affiché dans l'application (même geste que l'appairage d'un poste). Il reçoit un **jeton dédié**, limité à la réception des annonces Jarvis (aucune autre route), révocable depuis l'application et visible dans la liste des appareils. Les écrans restent ceux de la PWA, avec sa propre session. Composants à vérifier : filtre d'authentification, liste des appareils et révocation, isolation `user_id` des annonces.
 
 ## Hors périmètre
 
