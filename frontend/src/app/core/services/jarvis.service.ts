@@ -30,8 +30,20 @@ export class JarvisService {
    * SF-231-05 — la mesure d'adoption (D9) : une ouverture (`SESSION`), des secondes parlées (`SPOKEN`), un réveil par
    * le mot « Jarvis » (`WAKE`). Aucun contenu ; best-effort, jamais une raison de gêner l'écran.
    */
-  usage(event: 'SESSION' | 'SPOKEN' | 'WAKE' | 'IDLE_END', seconds?: number): void {
+  usage(event: 'SESSION' | 'SPOKEN' | 'WAKE' | 'IDLE_END' | 'TOUCH' | 'SOBER', seconds?: number): void {
     this.http.post<void>('/api/jarvis/usage', seconds === undefined ? { event } : { event, seconds: Math.round(seconds) })
+      .subscribe({ error: () => undefined });
+  }
+
+  /**
+   * F-234 / SF-234-11 (D16) — ce que l'écran vivant a montré pendant un tour : compte par identifiant de scène, nœuds
+   * allumés, demandes « Montrer ». Aucun contenu ; best-effort. Rien n'est envoyé pour un tour sans scène.
+   */
+  scenes(stats: { scenes: Record<string, number>; lit: number; shows: number }): void {
+    if (Object.keys(stats.scenes).length === 0 && stats.lit === 0 && stats.shows === 0) {
+      return;
+    }
+    this.http.post<void>('/api/jarvis/usage', { event: 'SCENES', scenes: stats.scenes, lit: stats.lit, shows: stats.shows })
       .subscribe({ error: () => undefined });
   }
 

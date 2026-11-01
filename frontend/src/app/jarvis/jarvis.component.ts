@@ -643,6 +643,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     duck: (on) => this.voice.duck(on),
     cut: () => {
       this.lastCut = this.voice.interrupt();
+      this.scenes.cut(); // F-234 / SF-234-11 (D13) : la scène se fige 1 s, puis s'efface
       this.clearAck();
       this.state.set('ecoute');
     },
@@ -940,6 +941,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
         if (latest()) {
           if (!done.followUp) {
             this.scenes.done(done.costEur ?? null);
+            this.jarvis.scenes(this.scenes.takeStats()); // SF-234-11 (D16) : la mesure du tour, sans contenu
           }
           void this.onDone(done);
         }
@@ -1135,7 +1137,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
         // SF-233-08 — une nouvelle réponse : ce qui sera « entendu » repart de zéro.
         this.voice.resetHeard();
       }
-      this.voice.enqueue(sentence, subjectId, first ? this.clockHooks() : undefined);
+      // F-234 / SF-234-11 (D13) — le nom surligné suit la phrase DITE (au moment où elle commence à jouer).
+      this.voice.enqueue(sentence, subjectId, this.sayingHooks(sentence, first ? this.clockHooks() : undefined));
     }
     // La file dite, le tour continue (outils) : l'orbe repasse en réflexion.
     void this.voice.idle().then(() => this.zone.run(() => {
@@ -1143,6 +1146,34 @@ export class JarvisComponent implements OnInit, OnDestroy {
         this.state.set('reflexion');
       }
     }));
+  }
+
+  /** SF-234-11 — les crochets d'une phrase : ceux du chronomètre, plus la surbrillance de ses noms. */
+  private sayingHooks(sentence: string, hooks?: SpeakHooks): SpeakHooks {
+    return {
+      ...hooks,
+      onPlaying: () => {
+        hooks?.onPlaying?.();
+        this.scenes.saying(sentence);
+      },
+    };
+  }
+
+  /** F-234 / SF-234-11 (D12, D16) — toucher un sujet de la constellation : le choisir, et le compter. */
+  touchSubject(id: string): void {
+    this.jarvis.usage('TOUCH');
+    this.chooseSubject(id);
+  }
+
+  /** F-234 / SF-234-11 (D9) — le mode sobre : orbe et fil d'Ariane seuls. */
+  readonly sober = computed(() => this.scenes.sober());
+
+  toggleSober(): void {
+    const on = !this.scenes.sober();
+    this.scenes.setSober(on);
+    if (on) {
+      this.jarvis.usage('SOBER');
+    }
   }
 
   private async onDone(done: AtelierStreamDone): Promise<void> {

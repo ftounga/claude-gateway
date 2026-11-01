@@ -83,7 +83,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     voice.playClip.and.resolveTo(false);
     voice.hasClip.and.returnValue(false);
     voice.level.and.returnValue(0);
-    jarvisApi = jasmine.createSpyObj<JarvisService>('JarvisService', ['usage', 'companion', 'companions', 'timings', 'sttSession', 'closeSttSession']);
+    jarvisApi = jasmine.createSpyObj<JarvisService>('JarvisService', ['usage', 'companion', 'companions', 'timings', 'sttSession', 'closeSttSession', 'scenes']);
     jarvisApi.sttSession.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
     opener = jasmine.createSpyObj<JarvisStreamOpener>('JarvisStreamOpener', ['open']);
     vad = null;
@@ -581,7 +581,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
 
     jarvis.send('w-2', 'Regarde les logs du build');
     handlers!.onText('🎙 Je regarde les logs du build, Monsieur. ');
-    expect(voice.enqueue).toHaveBeenCalledWith('Je regarde les logs du build, Monsieur.', 'w-2', undefined);
+    expect(voice.enqueue).toHaveBeenCalledWith('Je regarde les logs du build, Monsieur.', 'w-2', jasmine.objectContaining({ onPlaying: jasmine.any(Function) })); // SF-234-11 : le nom surligné suit la phrase dite
     expect(jarvis.state()).toBe('parole');
     handlers!.onText('\n\n```\n🎙 pas ceci.\n```\n');
     handlers!.onText('🎙 Le build casse sur un test');
