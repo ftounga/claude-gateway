@@ -56,6 +56,20 @@ public class JarvisUsageService {
         });
     }
 
+    /** F-235 / SF-235-01 (D15) — un appel au cerveau rapide et son coût en dollars. */
+    public void addFastBrain(UUID userId, BigDecimal costUsd) {
+        bump(userId, day -> {
+            day.setFastBrainCalls(day.getFastBrainCalls() + 1);
+            day.setFastBrainCostUsd(day.getFastBrainCostUsd().add(costUsd == null ? BigDecimal.ZERO : costUsd));
+        });
+    }
+
+    /** F-235 / SF-235-01 (D15) — le dollar dépensé par le cerveau rapide depuis le premier jour du mois. */
+    public BigDecimal monthFastBrainCostUsd(UUID userId) {
+        BigDecimal sum = repository.sumFastBrainCostUsdSince(userId, today().withDayOfMonth(1));
+        return sum == null ? BigDecimal.ZERO : sum;
+    }
+
     /** SF-231-05 — une ouverture de l'écran Jarvis (mesure d'adoption, D9). */
     public void addSession(UUID userId) {
         bump(userId, day -> day.setSessions(day.getSessions() + 1));

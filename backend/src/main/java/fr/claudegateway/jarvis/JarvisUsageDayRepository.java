@@ -24,4 +24,9 @@ public interface JarvisUsageDayRepository extends JpaRepository<JarvisUsageDay, 
     @Query("select coalesce(sum(d.speechCostUsd + d.sttStreamCostUsd), 0) from JarvisUsageDay d"
             + " where d.userId = :userId and d.day >= :from")
     BigDecimal sumSpeechCostUsdSince(@Param("userId") UUID userId, @Param("from") LocalDate from);
+
+    /** F-235 / SF-235-01 (D15) — le coût du cerveau rapide du compte depuis {@code from} (inclus), en dollars. */
+    @Query("select coalesce(sum(d.fastBrainCostUsd), 0) from JarvisUsageDay d"
+            + " where d.userId = :userId and d.day >= :from")
+    BigDecimal sumFastBrainCostUsdSince(@Param("userId") UUID userId, @Param("from") LocalDate from);
 }

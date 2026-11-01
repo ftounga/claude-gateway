@@ -18,15 +18,25 @@ import java.util.List;
  * @param mode      mode du tour (F-120 / SF-120-02) : {@link AgentTurnMode#ANSWER_PLAN} ou
  *                  {@link AgentTurnMode#ACT} ; {@code null} ⇒ {@link AgentTurnMode#ACT},
  *                  c'est-à-dire le comportement d'avant (panoplie complète)
+ * @param shape     forme de l'appel (F-235 / SF-235-01) : plafond de sortie propre, outils du fournisseur,
+ *                  outils stricts ; {@code null} ⇒ {@link AgentCallShape#standard()}, le comportement d'avant
  */
 public record AgentTurnRequest(String model, String system, List<AgentMessage> messages,
         List<AgentTool> tools, String apiKey, AgentReasoning reasoning,
-        AgentContextPolicy contextPolicy, AgentTurnMode mode) {
+        AgentContextPolicy contextPolicy, AgentTurnMode mode, AgentCallShape shape) {
 
     public AgentTurnRequest {
         reasoning = reasoning == null ? AgentReasoning.none() : reasoning;
         contextPolicy = contextPolicy == null ? AgentContextPolicy.none() : contextPolicy;
         mode = mode == null ? AgentTurnMode.ACT : mode;
+        shape = shape == null ? AgentCallShape.standard() : shape;
+    }
+
+    /** Tour sans forme d'appel — forme conservée pour les appelants qui l'attendent (forme standard). */
+    public AgentTurnRequest(String model, String system, List<AgentMessage> messages,
+            List<AgentTool> tools, String apiKey, AgentReasoning reasoning,
+            AgentContextPolicy contextPolicy, AgentTurnMode mode) {
+        this(model, system, messages, tools, apiKey, reasoning, contextPolicy, mode, AgentCallShape.standard());
     }
 
     /** Tour sans mode — forme conservée pour les appelants qui l'attendent (défaut {@code ACT}). */

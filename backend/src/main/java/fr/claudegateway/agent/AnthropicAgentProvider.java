@@ -96,6 +96,12 @@ public class AnthropicAgentProvider implements AiAgentProvider {
      */
     private static final Map<String, Object> CACHE_CONTROL = Map.of("type", "ephemeral", "ttl", "1h");
     /**
+     * Modèles qui <b>refusent</b> {@code thinking: {type: "disabled"}} et n'acceptent l'extinction que sous la forme
+     * {@code between_tools} (F-235 / SF-235-01, D2 — relevé de la référence fournisseur, novembre 2026). Les autres
+     * reçoivent {@code disabled}. Ce savoir reste ici : le domaine demande « éteint », jamais une forme d'API.
+     */
+    private static final java.util.Set<String> BETWEEN_TOOLS_MODELS = java.util.Set.of("claude-sonnet-5-5");
+    /**
      * Types MIME qu'Anthropic « voit » nativement (F-121 / SF-121-15) : les quatre formats d'image
      * de l'API {@code /v1/messages} et le PDF. Provider-First : c'est le fournisseur qui déclare ce
      * qu'il sait voir, la gateway ne pose un bloc média que pour ces types.
@@ -278,7 +284,8 @@ public class AnthropicAgentProvider implements AiAgentProvider {
 
         Map<String, Object> body = new HashMap<>();
         body.put("model", request.model());
-        body.put("max_tokens", properties.agentMaxTokens());
+        AgentCallShape shape = request.shape();
+        body.put("max_tokens", shape.maxTokens() != null ? shape.maxTokens() : properties.agentMaxTokens());
         body.put("messages", toApiMessages(request.messages()));
         if (StringUtils.hasText(request.system())) {
             // Forme « liste de blocs » : seule forme qui accepte un `cache_control`. Le contenu est
@@ -287,9 +294,19 @@ public class AnthropicAgentProvider implements AiAgentProvider {
             body.put("system", List.of(cached(Map.of("type", "text", "text", request.system()))));
         }
         if (request.tools() != null && !request.tools().isEmpty()) {
-            body.put("tools", toApiTools(request.tools()));
+            body.put("tools", toApiTools(request.tools(), shape));
         }
         applyReasoning(body, request.reasoning());
+        if (request.reasoning().disabled()) {
+            // F-235 / SF-235-01 (D2) : raisonnement éteint — un appel court où chaque dixième de seconde compte.
+            // Aucune des capacités ci-dessous (repli serveur, notes de progression, liaison du raisonnement,
+            // effort implicite) ne s'applique : elles supposent un raisonnement actif.
+            body.put("thinking", Map.of("type", BETWEEN_TOOLS_MODELS.contains(request.model())
+                    ? "between_tools" : "disabled"));
+            boolean contextEditingOff = applyContextPolicy(body, request.contextPolicy());
+            return new Prepared(apiKey, body, contextEditingOff, false, List.of(), request.model(), false,
+                    shape.maxTokens() != null ? shape.maxTokens() : streamedMaxTokens(request));
+        }
         boolean contextEditing = applyContextPolicy(body, request.contextPolicy());
         // L'en-tête n'est posé QUE si une consigne d'effort voyage réellement dans la conversation :
         // annoncer une bêta qu'on n'utilise pas, c'est s'exposer à son retrait sans raison.
@@ -329,7 +346,8 @@ public class AnthropicAgentProvider implements AiAgentProvider {
             extraBetas.add(BINDING_CONTROLS_BETA);
         }
         return new Prepared(apiKey, body, contextEditing, perMessageEffort, List.copyOf(extraBetas),
-                request.model(), progressUpdates, streamedMaxTokens(request));
+                request.model(), progressUpdates,
+                shape.maxTokens() != null ? shape.maxTokens() : streamedMaxTokens(request));
     }
 
     @SuppressWarnings("unchecked")
@@ -944,15 +962,26 @@ public class AnthropicAgentProvider implements AiAgentProvider {
      * sans marqueur — le fournisseur ne pouvait donc jamais reprendre la lecture à cet endroit,
      * le plus en amont de tous.</p>
      */
-    private List<Map<String, Object>> toApiTools(List<AgentTool> tools) {
+    private List<Map<String, Object>> toApiTools(List<AgentTool> tools, AgentCallShape shape) {
         List<Map<String, Object>> apiTools = new ArrayList<>(tools.size() + 2);
         for (AgentTool tool : tools) {
-            apiTools.add(Map.of(
-                    "name", tool.name(),
-                    "description", tool.description(),
-                    "input_schema", tool.inputSchema()));
+            if (shape.strictTools()) {
+                // F-235 / SF-235-01 (D7) : arguments toujours conformes au schéma.
+                apiTools.add(Map.of(
+                        "name", tool.name(),
+                        "description", tool.description(),
+                        "input_schema", tool.inputSchema(),
+                        "strict", true));
+            } else {
+                apiTools.add(Map.of(
+                        "name", tool.name(),
+                        "description", tool.description(),
+                        "input_schema", tool.inputSchema()));
+            }
         }
-        apiTools.addAll(SERVER_TOOLS);
+        if (shape.serverTools()) {
+            apiTools.addAll(SERVER_TOOLS);
+        }
         if (!apiTools.isEmpty()) {
             apiTools.set(apiTools.size() - 1, cached(apiTools.get(apiTools.size() - 1)));
         }

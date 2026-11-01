@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-235 / SF-235-01 - LE CERVEAU RAPIDE DE JARVIS, COMPTE ET BORNE (D15).
+
+      jarvis_usage_days + fast_brain_calls / fast_brain_cost_usd : les appels au cerveau rapide
+      (Claude Haiku 5.5 par defaut) et leur cout en dollars ; le plafond mensuel propre
+      (app.jarvis.fast-brain.monthly-budget-eur) somme cette colonne. Aucun contenu.
+      Colonnes additives avec defaut : les lignes existantes valent 0.
+
+      Numero 235 = numero de la feature (evite toute collision avec les vagues paralleles).
+      Rollback : les colonnes se retirent.
+    -->
+
+    <changeSet id="235-jarvis-usage-fast-brain" author="claude-gateway">
+        <addColumn tableName="jarvis_usage_days">
+            <column name="fast_brain_calls" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="fast_brain_cost_usd" type="numeric(12,6)" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="jarvis_usage_days" columnName="fast_brain_cost_usd"/>
+            <dropColumn tableName="jarvis_usage_days" columnName="fast_brain_calls"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

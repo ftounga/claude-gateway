@@ -78,6 +78,16 @@ public class JarvisUsageDay {
     @Column(name = "stt_stream_cost_usd", nullable = false, precision = 12, scale = 6)
     private BigDecimal sttStreamCostUsd = BigDecimal.ZERO;
 
+    /** F-235 / SF-235-01 (D15) — appels au cerveau rapide ce jour-là (pré-chauffages compris). */
+    @Builder.Default
+    @Column(name = "fast_brain_calls", nullable = false)
+    private int fastBrainCalls = 0;
+
+    /** F-235 / SF-235-01 (D15) — leur coût en dollars. Hors plafond de la voix : le cerveau rapide a le sien. */
+    @Builder.Default
+    @Column(name = "fast_brain_cost_usd", nullable = false, precision = 12, scale = 6)
+    private BigDecimal fastBrainCostUsd = BigDecimal.ZERO;
+
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 
