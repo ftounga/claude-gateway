@@ -139,6 +139,18 @@ code, pre { font-family: var(--cg-font-mono); }
   --mdc-outlined-button-disabled-outline-color: color-mix(in srgb, var(--cg-divider) 30%, transparent);
 }
 
+// ---- Boutons pleins du terminal sombre : or, texte NAVY (F-223 / SF-223-03, DESIGN_SYSTEM.md §21) ----
+// Le blanc sur l'or tombait à 2,63:1 (« Valider le plan et lancer » à peine lisible). Sur le terminal, et
+// seulement lui : encre --cg-navy (7,19:1 ; --cg-primary ne fait que 4,42:1). Posé SUR le bouton, comme la
+// règle CTA ci-dessus, sinon la variable du bouton masquerait celle de l'ancêtre.
+.terminal-view:not(.terminal-view--teams) {
+  .mat-mdc-unelevated-button,
+  .mat-mdc-raised-button {
+    --mdc-filled-button-label-text-color: var(--cg-navy);
+    --mdc-protected-button-label-text-color: var(--cg-navy);
+  }
+}
+
 // ---- Îlot clair posé sur un terminal sombre (F-223 / SF-223-02) ----
 // Le terminal redéfinit les encres Material pour son fond navy (libellés clairs) ; un panneau BLANC posé
 // dessus (tableau des chantiers, attentes, bilan) en héritait : « blanc sur blanc ». L'îlot les remet.

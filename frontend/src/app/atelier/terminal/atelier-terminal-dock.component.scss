@@ -3,6 +3,45 @@
    Aucune couleur nouvelle : encre du terminal (`--cg-divider`), accent des attentes (`--cg-orange-2`),
    fonds de la charte (`--cg-primary`, `--cg-navy-2`). */
 
+/* F-223 / SF-223-03 — la décision du parcours ne mange jamais le fil : au plus 40 vh, défilement interne ;
+   la rangée d'actions du plan y reste collée en bas (sticky, dans la bande). */
+.terminal-dock__decision {
+  /* Jamais écrasée par le fil (un conteneur défilant se laisse sinon rétrécir à 0 dans la colonne flex). */
+  flex-shrink: 0;
+  max-height: 40vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* F-223 / SF-223-03 — la reprise différée, visible, annulable. */
+.terminal-dock__deferred {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cg-space-1) var(--cg-space-2);
+  margin: 0 var(--cg-space-3) var(--cg-space-1);
+  color: var(--cg-orange-2);
+  font-size: 12px;
+}
+
+.terminal-dock__deferred-cancel {
+  padding: 0 var(--cg-space-1);
+  border: 0;
+  background: none;
+  color: var(--cg-divider);
+  font: 600 12px var(--cg-font-body);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.terminal-view--teams .terminal-dock__deferred {
+  color: var(--cg-terminal-teams-message);
+}
+
+.terminal-view--teams .terminal-dock__deferred-cancel {
+  color: var(--cg-terminal-teams-step);
+}
+
 /* Le tiroir pend AU-DESSUS de la barre, par-dessus le fil : ouvrir ne fait rien sauter. */
 .terminal-dock {
   position: relative;

@@ -45,7 +45,7 @@ import { Hand, HandTarget } from './terminal-hand';
       align-items: center;
       gap: var(--cg-space-1);
       margin: var(--cg-space-1) 0 0;
-      color: var(--cg-text-secondary);
+      color: var(--cg-terminal-ink-2);
       font-size: 12px;
     }
 

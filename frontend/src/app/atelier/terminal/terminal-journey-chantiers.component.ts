@@ -68,11 +68,19 @@ import { ClosedChantier, confidenceLabel, stepStatusLabel } from '../../core/mod
     }
 
     .chantiers {
+      /* F-223 / SF-223-03 : posé sur le terminal sombre — encre claire, jamais héritée. */
+      color: var(--cg-divider);
       margin: 0 0 var(--cg-space-2);
       padding: var(--cg-space-1) var(--cg-space-3);
       border: 1px solid var(--cg-divider);
       border-radius: 8px;
       font-size: 13px;
+    }
+
+    .chantiers__close {
+      --mdc-icon-button-icon-color: var(--cg-divider);
+      --mat-icon-button-icon-color: var(--cg-divider);
+      color: var(--cg-divider);
     }
 
     .chantiers__head {
@@ -84,7 +92,7 @@ import { ClosedChantier, confidenceLabel, stepStatusLabel } from '../../core/mod
     .chantiers__empty,
     .chantiers__line {
       margin: var(--cg-space-1) 0;
-      color: var(--cg-text-secondary);
+      color: var(--cg-terminal-ink-2);
     }
 
     .chantiers__list,
@@ -119,7 +127,7 @@ import { ClosedChantier, confidenceLabel, stepStatusLabel } from '../../core/mod
 
     .chantiers__dates,
     .chantiers__evidence {
-      color: var(--cg-text-secondary);
+      color: var(--cg-terminal-ink-2);
       font-size: 12px;
     }
 
@@ -128,17 +136,17 @@ import { ClosedChantier, confidenceLabel, stepStatusLabel } from '../../core/mod
     }
 
     .chantiers__status {
-      color: var(--cg-text-secondary);
+      color: var(--cg-terminal-ink-2);
       font-size: 12px;
     }
 
     .chantiers__status[data-status='VERIFIE'],
     .chantiers__status[data-status='FAIT'] {
-      color: var(--cg-success);
+      color: var(--cg-terminal-success);
     }
 
     .chantiers__status[data-status='ECHEC'] {
-      color: var(--cg-error);
+      color: var(--cg-orange-2);
     }
   `,
 })

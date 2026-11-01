@@ -902,8 +902,14 @@ l'AA (4,5:1) : texte secondaire `--cg-text-secondary` 2,66:1, succès `--cg-succ
 classe globale `.cg-light-island`, qui remet les encres Material des écrans clairs ; sinon il hérite des
 libellés clairs du terminal (« blanc sur blanc », ≈ 1,0:1).
 
-**Hors périmètre, signalé** : le blanc sur or des boutons pleins de toute l'application (2,63:1) est un
-point de charte, non tranché ici.
+**Boutons pleins sur le terminal sombre (SF-223-03, 2026-11-01)** : fond or `--cg-accent` inchangé, libellé
+**navy `--cg-navy` `#0B1020`** (7,19:1 ; le blanc faisait 2,63:1 et `--cg-primary` ne fait que 4,42:1). Posé sur
+`.mat-mdc-unelevated-button` / `.mat-mdc-raised-button` sous `.terminal-view` (hors peau Teams), dans `styles.scss`.
+Sur ce fond, une couleur en dur (`#9FB0C4`, `#F9A825`, `#5FD08F`) n'est plus admise : `--cg-terminal-ink-2`,
+`--cg-orange-2`, `--cg-terminal-success`.
+
+**Hors périmètre, signalé** : le blanc sur or des boutons pleins HORS terminal (2,63:1) reste un point de
+charte, non tranché ici.
 
 ## Logo & marque (ajout 2026-07-03)
 
