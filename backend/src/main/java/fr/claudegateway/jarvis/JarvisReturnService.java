@@ -99,9 +99,12 @@ public class JarvisReturnService {
                 }
                 AtelierMessage reply = replyTo(recent, i);
                 if (turns.size() < MAX_ITEMS) {
+                    // F-235 / SF-235-06 : une réponse rapide se dit telle quelle (pas de ligne 🎙) ; le cerveau
+                    // qui a tenu l'échange est rendu pour que l'encart distingue réponses rapides et délégations.
+                    String line = reply == null ? null : reply.isFastBrain() ? cut(reply.getContent())
+                            : JarvisReplies.oralLine(reply.getContent());
                     turns.add(new Turn(m.getId(), cut(m.getContent()), m.getCreatedAt(), m.getChantierNumber(),
-                            reply == null ? null : reply.getId(),
-                            reply == null ? null : JarvisReplies.oralLine(reply.getContent())));
+                            reply == null ? null : reply.getId(), line, m.getBrain()));
                 }
             } else if ("ASSISTANT".equals(m.getRole())) {
                 toSend.addAll(blocksOf(m, workspace, marked, MAX_BODY));
@@ -226,7 +229,7 @@ public class JarvisReturnService {
 
     /** Une demande dite à la voix, et la phrase de sa réponse. */
     public record Turn(UUID messageId, String request, OffsetDateTime at, Integer chantierNumber, UUID replyId,
-            String reply) {
+            String reply, String brain) {
     }
 
     /** Une attente créée depuis la première demande dite à la voix. */

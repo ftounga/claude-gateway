@@ -19,6 +19,8 @@ export function toThreadItem(message: AtelierMessage): AtelierThreadItem {
     ...(message.files && message.files.length > 0 ? { files: message.files } : {}),
     // F-231 / SF-231-06 : la marque « 🎙 via Jarvis » d'un tour né à la voix.
     ...(message.via === 'JARVIS' ? { viaJarvis: true } : {}),
+    // F-235 / SF-235-06 : réponse rapide de Jarvis, ou tour Opus qu'il a délégué.
+    ...(message.brain === 'FAST' || message.brain === 'DELEGATED' ? { brain: message.brain } : {}),
   };
   const stored = message.terminal;
   if (!stored) {

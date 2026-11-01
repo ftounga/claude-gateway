@@ -138,6 +138,32 @@ class JarvisReturnApiIntegrationTest {
                 .andExpect(jsonPath("$.count").value(0));
     }
 
+    @Test
+    @DisplayName("F-235 / SF-235-06 — le cerveau voyage dans l'historique et dans l'encart")
+    void brainInHistoryAndAbsence() throws Exception {
+        UUID fastQ = message("USER", "Où en est le chantier 3 ?", AtelierMessage.VIA_JARVIS);
+        messageRepository.findById(fastQ).ifPresent(m -> {
+            m.setBrain(AtelierMessage.BRAIN_FAST);
+            messageRepository.save(m);
+        });
+        UUID fastA = message("ASSISTANT", "Le chantier 3 en est aux tests.", AtelierMessage.VIA_JARVIS);
+        messageRepository.findById(fastA).ifPresent(m -> {
+            m.setBrain(AtelierMessage.BRAIN_FAST);
+            messageRepository.save(m);
+        });
+        perform(aliceToken, get("/api/workspaces/" + workspaceId + "/chat"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[2].brain").doesNotExist())
+                .andExpect(jsonPath("$[4].brain").value("FAST"))
+                .andExpect(jsonPath("$[5].brain").value("FAST"));
+        perform(aliceToken, get("/api/workspaces/" + workspaceId + "/jarvis/absence")
+                .param("since", OffsetDateTime.now().minusHours(2).toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.turns.length()").value(2))
+                .andExpect(jsonPath("$.turns[1].brain").value("FAST"))
+                .andExpect(jsonPath("$.turns[1].reply").value("Le chantier 3 en est aux tests."));
+    }
+
     // ---- outillage ----
 
     private UUID message(String role, String content, String via) {

@@ -552,6 +552,11 @@ export interface AtelierMessage {
    * `null` pour un message tapé (et tout message d'avant F-231).
    */
   via?: 'JARVIS' | null;
+  /**
+   * F-235 / SF-235-06 — le cerveau qui a tenu le message : `FAST` (réponse rapide de Jarvis, jamais rejouée à Opus),
+   * `DELEGATED` (demande d'un tour Opus lancé par Jarvis) ; absent sinon.
+   */
+  brain?: 'FAST' | 'DELEGATED' | null;
 }
 
 /** Action de fichier réalisée par l'agent pendant un tour : `type` = `read` ou `write`. */
