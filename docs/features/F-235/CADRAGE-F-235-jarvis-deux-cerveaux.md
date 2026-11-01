@@ -116,6 +116,7 @@ traité comme une délégation, jamais dit.
 | **D15** | **Coûts et plafonds** : chaque appel rapide passe `QuotaService.assertWithinQuota` puis `UsageLedgerService.recordAnnex` (modèle, jetons, cache) ⇒ coût au journal et en € ; **plafond mensuel propre** `app.jarvis.fast-brain.monthly-budget-eur` (défaut **20 €**) ; atteint ⇒ mode actuel (tout à Opus), sans erreur à l'oral. Le plafond voix F-233 (100 €) est inchangé. | Visible et borné |
 | **D16** | **Porte d'activation par banc (dry-run)** : `POST /api/admin/jarvis/fast-brain/bench` rejoue sur le cerveau rapide les **60 dernières demandes vocales réelles du compte** (`atelier_messages.via='JARVIS'`, lues en base sous `user_id`, **jamais copiées dans le dépôt**) avec leur contexte reconstruit, sans synthèse ni écriture ; un juge **Opus 5.5** note chaque cas : route attendue (répondre/déléguer), fait non ancré, action non déléguée, formule creuse. **Porte** : 0 action non déléguée ; 0 fait non ancré **dit** (après D9) ; accord de route ≥ 90 % ; ≤ 5 % de réponses creuses/répétées avant retrait. Haiku 5.5 échoue ⇒ Sonnet 5.5 passe au banc ; les deux échouent ⇒ pas d'activation, rapport au PO. | Justesse prouvée avant mise en service |
 | **D17** | **Coupe-circuit** : `app.jarvis.fast-brain.enabled` (`APP_JARVIS_FAST_BRAIN_ENABLED`) — `false` ⇒ `/converse` en 503 et l'écran fait exactement ce qu'il fait aujourd'hui (tout à Opus, accusé, clips) ; sans redéploiement de l'écran. Défaut `false` dans le code jusqu'à SF-235-08, qui le passe à `true` si la porte D16 est franchie. | Retour arrière immédiat |
+| **D18** | **La personnalité de Jarvis** (demande PO du 2026-11-01 : le style du majordome d'Iron Man — un style, pas une copie). **Ton** : courtois, posé, concis, précis ; il **anticipe** (« J'ai pris la liberté de préparer le point sur Edenred. ») — l'anticipation ne porte que sur ce qui n'engage rien (préparer, vérifier, rappeler) ; une action qui engage reste reformulée puis confirmée (D8, SF-231-04) ; jamais servile ni bavard. **Humour** : ironie britannique sèche, pince-sans-rire, par petites touches — **au plus une note par échange**, seulement quand la situation s'y prête ; **jamais** sur une alerte de veille, un incident, une erreur, un échec de délégation ou un sujet client sensible ; jamais aux dépens du PO ni d'un tiers nommé. **Adresse** : vouvoiement et « Monsieur » avec parcimonie (D-PO-8 F-233, D11e). **Où l'écrire** : (a) cerveau rapide — **dans sa propre consigne système** (stable, cachée) : bloc « Personnalité » fixe, en **deux variantes figées** selon le réglage humour (deux préfixes stables, deux entrées de cache ; changer le réglage coûte une écriture de cache) ; (b) tours Opus délégués et tours vocaux actuels — la ligne 🎙 reprend le style par **`JarvisOralNote`, donc dans le message** (deux variantes figées du texte selon le réglage), **jamais dans la consigne système du terminal** ; le détail écrit à l'écran reste **sobre et professionnel** (la consigne le dit). **Sobriété forcée** : quand le contexte du tour porte une alerte, un incident, une erreur de tour ou un échec, le message du tour reçoit une note fixe `[Jarvis — ton sobre, sans humour]` (cerveau rapide et Opus). **Aucune imitation de l'œuvre** : ni réplique ni phrase culte du film, aucune mention de Stark, Tony Stark, Iron Man, Marvel, Avengers ; contrôle serveur : une phrase qui contient l'un de ces noms **absent du contexte** est retirée avant synthèse (et comptée). **Accent britannique** : porté par la voix (candidates britanniques de l'audition SF-233-07, Daniel / George), pas par le texte — rien à écrire. **Réglage par compte** « Humour : aucun / léger », **« léger » par défaut**, table `jarvis_preferences` (`user_id`, `humour`), `GET/PUT /api/jarvis/preferences`, interrupteur dans l'écran Jarvis. | Demande PO ; préfixe stable ; marque et droits |
 
 ## Budget de latence cible
 
@@ -167,12 +168,15 @@ est un effet de bord, pas l'objectif (justesse avant coût) ; elle sera remplac�
 | **Raisonnement désactivé : appel d'outil écrit en texte** | Consigne recommandée par la référence API ; détection ⇒ délégation (D9c) |
 | **Refus du modèle (Haiku : pas de repli serveur)** | Refus ⇒ délégation automatique (D9b) |
 | **Délégation sur le mauvais sujet** | Sujet cible = sujet courant par défaut ; autre sujet seulement s'il est **nommé** dans la parole et présent dans l'univers ; l'`annonce` le dit (« Sur Edenred, je regarde… ») ; interruption « annule » (D8) |
+| **Humour mal placé** (alerte, incident, client sensible, aux dépens de quelqu'un) | Au plus une touche, interdits explicites, note « ton sobre » posée par le serveur sur alerte/incident/erreur (D18) ; jeu de 20 questions (critère 12) ; réglage « aucun » par compte |
+| **Imitation de l'œuvre** (marque, droits) | Aucune réplique ni nom (Stark, Iron Man, Marvel, Avengers) ; filtre serveur (D18) |
+| **Personnalité qui casse le cache d'Opus** | Style dans `JarvisOralNote` (message), jamais dans la consigne système du terminal ; test d'égalité (critère 12) |
 | **Formules creuses / répétitions** | Consigne + liste interdite + retrait serveur + anti-répétition (D11) ; mesure (D14) ; porte (D16) |
 | **Interaction avec SF-233-11 (mains libres)** en cours | SF-235-05 démarre après le merge de SF-233-11 et s'y branche (chaque énoncé finalisé ⇒ `/converse`) ; vérifier `origin/main` avant |
 
 ## Découpage (≤ 2 j chacune)
 
-Ordre : 01 → 02 → 03 → 04 → 05 → 06 → 07 → 08. Le mode actuel reste servi tant que `enabled=false` (01-07).
+Ordre : 01 → 02 → 03 → 09 → 04 → 05 → 06 → 07 → 08. Le mode actuel reste servi tant que `enabled=false` (01-07, 09).
 
 | SF | Objet | Estim. |
 |---|---|---|
@@ -183,9 +187,10 @@ Ordre : 01 → 02 → 03 → 04 → 05 → 06 → 07 → 08. Le mode actuel rest
 | **SF-235-05** | **L'écran Jarvis à deux cerveaux** : `send()` → `/converse` (repli `streamChat` sur 503) ; réponses rapides dites au fil des phrases (`OralStream`) ; annonce de délégation ; **file d'annonces** de fin (FIFO, à la pause, `label`, « redis-moi ») ; 🎙 intermédiaires muettes en délégué ; confirmation en attente ⇒ route Opus directe ; « annule » ⇒ dernière délégation ; accusé supprimé, clips conditionnels (1,2 s) et variés sans répétition (jeu ≥ 6 clips vouvoyés côté `JarvisClipService`) ; `heardBeforeCut` transmis ; branchement mains libres SF-233-11 ; « Montrer » (`🖥 montrer:`) ; délégations vivantes visibles sous l'orbe. Tests : spec composant (ordre des annonces, pas de double réponse, confirmation, repli 503). | 2 j |
 | **SF-235-06** | **Le fil, côté terminal** : badge « 🎙 via Jarvis · réponse rapide », « → délégué à Opus : <label> » avec lien vers le tour, encart « Pendant ton absence » (SF-231-06) qui distingue réponses rapides et délégations ; `DESIGN_SYSTEM` respecté. Tests : rendu, navigation. | 1 j |
 | **SF-235-07** | **Mesure** : colonnes D14 sur `jarvis_turn_timings` (migration), marques écran (`brain`, `fast_first_token`), classement local des corrections, `GET /api/admin/jarvis/fast-brain/measure` (p50/p90 par cerveau, délégation, corrections, creuses/répétées avant/après retrait, coût €, tours Opus évités), purge 90 j existante. Tests : agrégats, filtre `user_id` sur l'écriture, accès ADMIN. | 1,5 j |
+| **SF-235-09** | **La personnalité** (D18) — livrée **après SF-235-03, avant SF-235-05** : bloc « Personnalité » de la consigne système du cerveau rapide (deux variantes figées, aucun / léger) ; `JarvisOralNote` étendue (style de la ligne 🎙, deux variantes, écran sobre) — dans le message, consigne système du terminal intouchée ; note fixe « ton sobre » sur alerte / incident / erreur / échec ; filtre « aucune imitation » (Stark, Iron Man, Marvel, Avengers absents du contexte ⇒ phrase retirée) ; table `jarvis_preferences` + `GET/PUT /api/jarvis/preferences` (filtre `user_id`, défaut « léger ») + interrupteur dans `/jarvis` ; **jeu de 20 questions types** synthétiques (aucune donnée client, versionné en ressource de test) passé au cerveau rapide et jugé par Opus 5.5 (endpoint admin réutilisé par le banc D16). Tests : consignes système identiques octet pour octet par variante ; consigne du terminal inchangée ; note sobre posée sur alerte ; filtre ; isolation des préférences. | 1,5 j |
 | **SF-235-08** | **Banc et mise en service** : `POST /api/admin/jarvis/fast-brain/bench` (D16 : 60 dernières demandes vocales du compte, dry-run, juge Opus 5.5, rapport) ; exécution sur Haiku 5.5 (puis Sonnet 5.5 si échec) ; si porte franchie, `enabled=true` et modèle retenu par défaut dans `application.yml` ; note d'exploitation (coupe-circuit, plafond, mesure J+7). Tests : banc sans écriture ni synthèse, jeu jamais persisté hors base. | 1,5 j |
 
-**Total : 8 SF, ≈ 13 j.**
+**Total : 9 SF, ≈ 14,5 j.** Ordre de livraison : 01, 02, 03, **09**, 04, 05, 06, 07, 08.
 
 ## Critères d'acceptation (feature)
 
@@ -216,6 +221,13 @@ Ordre : 01 → 02 → 03 → 04 → 05 → 06 → 07 → 08. Le mode actuel rest
     (test e2e de l'écran sur 503).
 11. **Isolation** : `/converse`, le contexte, la délégation et la mesure ne lisent ni n'écrivent rien d'un autre
     `user_id` (tests d'isolation par SF).
+12. **Personnalité** (D18), sur le **jeu de 20 questions types** (dont ≥ 5 alertes / incidents / erreurs, ≥ 3 sujets
+    client sensibles, ≥ 4 demandes d'action), réglage « léger », jugé par Opus 5.5 avec grille fixe :
+    (a) vouvoiement **20/20** ; (b) **au plus une touche d'humour** par réponse, 20/20 ; (c) **zéro humour** sur les
+    alertes, incidents, erreurs et sujets sensibles ; (d) réponses courtes : **≤ 3 phrases et ≤ 300 caractères**
+    à l'oral, 20/20 ; (e) aucune mention de Stark / Iron Man / Marvel / Avengers ni réplique du film ; (f) réglage
+    « aucun » ⇒ **zéro** touche d'humour sur les 20. Les tours Opus vocaux portent le style dans la ligne 🎙 et la
+    consigne système du terminal est **identique** avant et après (test d'égalité).
 
 ## Préoccupations transversales
 
@@ -228,7 +240,7 @@ Ordre : 01 → 02 → 03 → 04 → 05 → 06 → 07 → 08. Le mode actuel rest
   `user_id` du principal ; le banc ne lit que les messages du compte appelant. Composants : `JarvisFastBrainService`,
   `JarvisFastContextBuilder`, `AtelierChatService` (chemin JARVIS), `LiveTurnRegistry.openOrSteer`,
   `JarvisAnnouncementService` (filtre `brain`).
-- **Auth / Principal** : nouveaux endpoints authentifiés `POST /api/jarvis/converse` ; ADMIN :
+- **Auth / Principal** : nouveaux endpoints authentifiés `POST /api/jarvis/converse`, `GET/PUT /api/jarvis/preferences` ; ADMIN :
   `GET /api/admin/jarvis/fast-brain/measure`, `POST /api/admin/jarvis/fast-brain/bench`. Aucun changement du
   Principal ; le jeton du compagnon (`X-Jarvis-Token`) n'ouvre toujours que les annonces.
 - **Navigation / routing** : aucune nouvelle route ; vérifier `/jarvis`, `/jarvis?alerte=`, `/jarvis?source=compagnon`,
@@ -236,9 +248,10 @@ Ordre : 01 → 02 → 03 → 04 → 05 → 06 → 07 → 08. Le mode actuel rest
 
 ## Tables / endpoints / composants impactés
 
-- **Tables** : `atelier_messages.brain` (nouvelle colonne, nullable) ; `jarvis_turn_timings` (colonnes D14). Aucune
-  nouvelle table. À reporter dans `ARCHITECTURE_CANONIQUE.md` au merge.
-- **Endpoints** : `POST /api/jarvis/converse` ; `GET /api/admin/jarvis/fast-brain/measure` ;
+- **Tables** : `atelier_messages.brain` (nouvelle colonne, nullable) ; `jarvis_turn_timings` (colonnes D14) ;
+  **`jarvis_preferences`** (nouvelle table, D18 : `user_id` clé, `humour`, `updated_at` ; purge à la suppression du
+  compte). À reporter dans `ARCHITECTURE_CANONIQUE.md` au merge.
+- **Endpoints** : `POST /api/jarvis/converse` ; `GET/PUT /api/jarvis/preferences` ; `GET /api/admin/jarvis/fast-brain/measure` ;
   `POST /api/admin/jarvis/fast-brain/bench`.
 - **Backend** : `agent/AgentReasoning`, `agent/AnthropicAgentProvider` (mapping « désactivé »), `jarvis/fastbrain/*`
   (nouveau paquet), `AtelierChatService` (notes de message, exclusion du rejeu), `JarvisClipService` (jeu élargi),
@@ -266,4 +279,5 @@ Ordre : 01 → 02 → 03 → 04 → 05 → 06 → 07 → 08. Le mode actuel rest
 | D12 | Échanges rapides vus par Opus en **note** au tour suivant, pas rejoués comme des tours | Les rejouer (cache cassé, raisonnement écarté) |
 | D13 | Lignes 🎙 intermédiaires d'Opus **muettes** en délégation | Les dire aussi (plus de vie, risque de doublon) |
 | D15 | Plafond propre **20 €/mois** | Autre montant |
+| D18 | Humour **« léger » par défaut** ; variantes figées (deux préfixes cachés) plutôt qu'un réglage dans le message ; « ton sobre » forcé par le serveur sur alerte/incident/erreur | « Aucun » par défaut ; humour laissé au seul jugement du modèle |
 | D16 | Mise en service **conditionnée au banc** (juge Opus sur 60 demandes réelles) | Activation directe |
