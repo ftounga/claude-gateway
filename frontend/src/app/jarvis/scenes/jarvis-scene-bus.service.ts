@@ -4,7 +4,30 @@ import { Injectable, NgZone, OnDestroy, computed, inject, signal } from '@angula
 import { NameIndex } from './jarvis-name-matcher';
 import { JarvisSceneReader, ReaderAction, ReaderState } from './jarvis-scene-reader';
 import { ShowFocus, resolveShow } from './jarvis-show';
-import { JarvisUniverse } from './jarvis-universe.models';
+import { JarvisUniverse, clientKey } from './jarvis-universe.models';
+
+/** SF-234-10 — un autre sujet appelle : il clignote une fois, pendant ce délai. */
+export const CALLING_MS = 3000;
+/** SF-234-10 — les notifications qui appellent (F-185 `ACTION_EVENTS`). */
+const CALLING_EVENTS: ReadonlySet<string> = new Set([
+  'AUTHORIZATION_REQUESTED', 'QUESTION_ASKED', 'QUESTION_REMINDER', 'PLAN_AWAITING', 'VALIDATION_AWAITING',
+]);
+/** SF-234-10 — la porte du runner (F-161) : le poste ne répond pas. */
+const RUNNER_DOOR_CODES: ReadonlySet<string> = new Set(['runner_offline', 'runner_missing_capability', 'runner_unresponsive']);
+
+/** SF-234-10 — l'ambiance hors tour (A1-A5), montrée au repos seulement (D14), sauf la veille qui sonne. */
+export interface Ambient {
+  /** A1 — le poste (clé de client) dont la porte n'a pas répondu. */
+  hostDown: { clientKey: string; name: string } | null;
+  /** A2 — les sujets dont un terminal travaille en ce moment (univers + registre déjà relevé). */
+  liveSubjects: ReadonlySet<string>;
+  /** A3 — un autre sujet appelle (notification F-185). */
+  calling: { subjectId: string; label: string } | null;
+  /** A4 — le coût du dernier tour, administrateur seulement (`costEur`, F-133). */
+  cost: string | null;
+  /** A5 — la veille qui sonne (ouverture `?alerte=`). */
+  alert: { clientKey: string | null; label: string } | null;
+}
 
 /** La route de l'univers (SF-234-01). */
 export const JARVIS_UNIVERSE_URL = '/api/jarvis/universe';
@@ -36,6 +59,56 @@ export class JarvisSceneBus implements OnDestroy {
   readonly state = signal<ReaderState>(EMPTY);
   /** Le sujet courant de l'écran. */
   readonly subjectId = signal<string | null>(null);
+  /** Un tour tourne (D14 : aucune ambiance pendant un tour, sauf la veille qui sonne). */
+  readonly turnActive = signal(false);
+  private readonly hostDownKey = signal<string | null>(null);
+  private readonly liveTerminalIds = signal<ReadonlySet<string>>(new Set());
+  private readonly callingState = signal<string | null>(null);
+  private readonly costState = signal<string | null>(null);
+  private readonly alertState = signal<{ workspaceId: string | null; label: string } | null>(null);
+  private seenNotifications: Set<string> | null = null;
+  private callingTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** SF-234-10 — l'ambiance hors tour, déduite des relevés existants (aucun relevé nouveau). */
+  readonly ambient = computed<Ambient>(() => {
+    const universe = this.universe();
+    const running = this.turnActive();
+    const subjectId = this.subjectId();
+    const live = new Set<string>();
+    const clientOf = (workspaceId: string | null) =>
+      universe?.clients.find((c) => c.subjects.some((s) => s.id === workspaceId)) ?? null;
+    if (!running) {
+      for (const client of universe?.clients ?? []) {
+        for (const s of client.subjects) {
+          if (s.live && s.id !== subjectId) {
+            live.add(s.id);
+          }
+        }
+      }
+      for (const id of this.liveTerminalIds()) {
+        if (id !== subjectId) {
+          live.add(id);
+        }
+      }
+    }
+    const downKey = this.hostDownKey();
+    const down = downKey ? universe?.clients.find((c) => clientKey(c) === downKey) ?? null : null;
+    const calling = this.callingState();
+    const callingSubject = calling ? clientOf(calling)?.subjects.find((s) => s.id === calling) ?? null : null;
+    const alert = this.alertState();
+    const alertClient = alert ? clientOf(alert.workspaceId) : null;
+    return {
+      hostDown: !running && down ? { clientKey: downKey!, name: down.name } : null,
+      liveSubjects: live,
+      calling: !running && callingSubject ? { subjectId: callingSubject.id, label: callingSubject.name } : null,
+      cost: running ? null : this.costState(),
+      alert: alert ? {
+        clientKey: alertClient ? clientKey(alertClient) : null,
+        label: alertClient ? `${alert.label} · ${alertClient.name}` : alert.label,
+      } : null,
+    };
+  });
+
   /** SF-234-13 — ce que le PO a demandé à voir, résolu sur l'univers déjà chargé (aucun appel). */
   readonly focus = computed<ShowFocus | null>(() => resolveShow(this.universe(), this.state().show));
 
@@ -85,6 +158,9 @@ export class JarvisSceneBus implements OnDestroy {
 
   turnStarted(): void {
     this.turnRunning = true;
+    this.turnActive.set(true);
+    this.costState.set(null);
+    this.alertState.set(null);
     this.reader.startTurn();
     if (this.state().show) {
       this.publish(); // SF-234-13 : ce qui était montré s'efface au tour suivant
@@ -192,9 +268,12 @@ export class JarvisSceneBus implements OnDestroy {
   }
 
   /** Fin du tour : la dernière ligne est lue, puis l'univers est relu (compteurs, étapes, À envoyer). */
-  done(): void {
+  done(costEur?: string | null): void {
     this.reader.done(this.now());
     this.turnRunning = false;
+    this.turnActive.set(false);
+    this.hostDownKey.set(null); // le tour a abouti : le poste a répondu
+    this.costState.set(costEur ?? null);
     this.publish();
     this.load();
   }
@@ -209,8 +288,50 @@ export class JarvisSceneBus implements OnDestroy {
   }
 
   /** Le tour s'arrête sans fin propre (erreur, flux fermé). */
-  aborted(): void {
+  aborted(code?: string | null): void {
     this.turnRunning = false;
+    this.turnActive.set(false);
+    // A1 — la porte du runner (F-161) n'a pas répondu : le poste du sujet s'assombrit.
+    if (code && RUNNER_DOOR_CODES.has(code)) {
+      const subjectId = this.subjectId();
+      const client = this.universe()?.clients.find((c) => c.subjects.some((s) => s.id === subjectId));
+      this.hostDownKey.set(client ? clientKey(client) : null);
+    }
+  }
+
+  /** SF-234-10 / A2 — les terminaux vivants du registre déjà relevé (F-70), lus sans nouvel appel. */
+  liveTerminals(workspaceIds: readonly string[]): void {
+    this.liveTerminalIds.set(new Set(workspaceIds));
+  }
+
+  /**
+   * SF-234-10 / A3 — les notifications du centre déjà relevé (F-185) : une nouvelle demande d'un **autre** sujet le
+   * fait clignoter une fois. Le premier relevé n'est jamais une nouveauté.
+   */
+  notifications(items: readonly { id: string; event: string; workspaceId: string | null }[]): void {
+    if (this.seenNotifications === null) {
+      this.seenNotifications = new Set(items.map((i) => i.id));
+      return;
+    }
+    const fresh = items.filter((i) => !this.seenNotifications!.has(i.id));
+    fresh.forEach((i) => this.seenNotifications!.add(i.id));
+    const call = fresh.find((i) => CALLING_EVENTS.has(i.event) && i.workspaceId && i.workspaceId !== this.subjectId());
+    if (!call) {
+      return;
+    }
+    this.callingState.set(call.workspaceId);
+    if (this.callingTimer) {
+      clearTimeout(this.callingTimer);
+    }
+    this.callingTimer = setTimeout(() => {
+      this.callingTimer = null;
+      this.callingState.set(null);
+    }, CALLING_MS);
+  }
+
+  /** SF-234-10 / A5 — la veille sonne : son client s'allume, une onde part vers l'orbe. */
+  alert(workspaceId: string | null, label: string): void {
+    this.alertState.set({ workspaceId, label });
   }
 
   /** Les tests pilotent l'horloge. */
@@ -231,6 +352,9 @@ export class JarvisSceneBus implements OnDestroy {
 
   ngOnDestroy(): void {
     this.stopTimer();
+    if (this.callingTimer) {
+      clearTimeout(this.callingTimer);
+    }
   }
 
   private publish(): void {

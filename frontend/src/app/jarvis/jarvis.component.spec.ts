@@ -6,6 +6,13 @@ import { of, throwError } from 'rxjs';
 
 import { JARVIS_USER_AGENT, JarvisComponent, companionOffer } from './jarvis.component';
 import { JarvisSceneBus } from './scenes/jarvis-scene-bus.service';
+import { NotificationCenterService } from '../core/services/notification-center.service';
+import { LiveTerminalService } from '../core/services/live-terminal.service';
+import { signal as ngSignal } from '@angular/core';
+
+/** F-234 / SF-234-10 — les relevés existants, vus par leurs signaux seulement. */
+const notificationCenter = { items: ngSignal<{ id: string; event: string; workspaceId: string | null }[]>([]) };
+const liveTerminals = { registry: ngSignal<{ terminals: { workspaceId: string }[] } | null>(null) };
 import { AtelierStreamHandlers, WorkspaceSummary } from '../core/models/atelier.models';
 import { AtelierService } from '../core/services/atelier.service';
 import { DictationService } from '../core/services/dictation.service';
@@ -108,6 +115,8 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
         { provide: JarvisStreamOpener, useValue: opener },
         { provide: JarvisVadService, useValue: vadService },
         { provide: JARVIS_USER_AGENT, useFactory: () => userAgent },
+        { provide: NotificationCenterService, useValue: notificationCenter },
+        { provide: LiveTerminalService, useValue: liveTerminals },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: convertToParamMap(params) } } },
       ],
     });

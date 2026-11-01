@@ -60,7 +60,13 @@ interface LitMark {
           }
           @for (c of layout().clients; track c.key) {
             <g class="cst__client" [class.is-current]="c.current" [class.is-off]="!c.connected"
-               [class.is-lit]="isLit(c.key)" [class.is-shown]="isShown(c.key)" [attr.data-key]="c.key">
+               [class.is-lit]="isLit(c.key)" [class.is-shown]="isShown(c.key)" [attr.data-key]="c.key"
+               [class.is-down]="ambient().hostDown?.clientKey === c.key"
+               [class.is-ringing]="ambient().alert?.clientKey === c.key">
+              @if (ambient().alert?.clientKey === c.key) {
+                <!-- SF-234-10 / A5 — la veille sonne : une onde part du client vers l'orbe. -->
+                <line class="cst__wave" [attr.x1]="c.x" [attr.y1]="c.y" x2="0" y2="0" pathLength="100" />
+              }
               @if (halo(c.key); as h) {
                 <!-- SF-234-13 : poste connecté = halo vert ; déconnecté = halo éteint (la note écrite le dit aussi). -->
                 <circle class="cst__halo" [class.cst__halo--off]="h === 'off'" [attr.cx]="c.x" [attr.cy]="c.y" r="8" />
@@ -74,7 +80,8 @@ interface LitMark {
           <g class="cst__subject" [class.is-cluster]="s.ring === 'cluster'" [class.is-lit]="isLit(s.id)"
              [class.is-wave]="wave() && s.ring === 'current'" [style.--wave]="$index"
              [class.is-shown]="isShown(s.id)"
-             [class.is-current]="s.id === subjectId()" [class.is-live]="s.live" [attr.data-key]="s.id"
+             [class.is-current]="s.id === subjectId()" [class.is-live]="isLive(s.id, s.live)"
+             [class.is-calling]="ambient().calling?.subjectId === s.id" [attr.data-key]="s.id"
              role="button" tabindex="0" [attr.aria-label]="'Passer sur ' + s.name"
              (click)="pick(s)" (keydown.enter)="pick(s)" (keydown.space)="pick(s); $event.preventDefault()">
             <circle class="cst__hit" [attr.cx]="s.x" [attr.cy]="s.y" [attr.r]="hitRadius()" />
@@ -187,6 +194,17 @@ interface LitMark {
     .cst__subject.is-wave .cst__dot {
       animation: cst-wave 1.6s ease-out both; animation-delay: calc(var(--wave, 0) * 90ms);
     }
+    /* SF-234-10 — ambiance hors tour : poste injoignable, sujet qui appelle, veille qui sonne. */
+    .cst__client.is-down circle { stroke-dasharray: 1 1.4; }
+    .cst__client.is-down { opacity: 0.35; }
+    .cst__client.is-ringing circle { stroke: var(--cg-accent); stroke-width: 1.2; }
+    .cst__wave {
+      stroke: var(--cg-accent); stroke-width: 0.8; stroke-linecap: round; stroke-dasharray: 8 92;
+      animation: cst-wave-run 1.4s linear 3;
+    }
+    .cst__subject.is-calling .cst__dot { animation: cst-call 0.5s ease-in-out 3; fill: var(--cg-accent); }
+    @keyframes cst-wave-run { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }
+    @keyframes cst-call { 50% { opacity: 0.2; } }
     .cst__thread--handoff { stroke-dasharray: 100; animation: cst-draw 700ms ease-out; }
     @keyframes cst-wave {
       0% { fill: color-mix(in srgb, var(--cg-cream) 35%, transparent); }
@@ -208,6 +226,7 @@ interface LitMark {
     @media (prefers-reduced-motion: reduce) {
       .cst__thread, .cst__mark, .cst__pulse, .cst__subject.is-live .cst__dot, .cst__halo { animation: none; }
       .cst__subject.is-wave .cst__dot { animation: none; fill: var(--cg-accent); }
+      .cst__wave, .cst__subject.is-calling .cst__dot { animation: none; }
       .cst__pulse { display: none; }
       .cst__dot { transition: none; }
     }
@@ -239,6 +258,14 @@ export class JarvisConstellationComponent implements OnInit {
   });
 
   readonly lit = computed<LitMark[]>(() => this.placeLit(this.bus.universe(), this.layout()));
+
+  /** SF-234-10 — l'ambiance hors tour (au repos seulement, D14). */
+  readonly ambient = computed(() => this.bus.ambient());
+
+  /** A2 — un sujet respire si son terminal travaille (univers) ou s'il vit au registre relevé (au repos). */
+  isLive(subjectId: string, live: boolean): boolean {
+    return this.ambient().liveSubjects.has(subjectId) || (live && !this.bus.turnActive());
+  }
 
   /** SF-234-08 — S15 « le point » : les sujets du client courant s'allument en vague. */
   readonly wave = computed(() => this.bus.state().scene?.id === 'S15');

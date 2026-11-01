@@ -177,6 +177,18 @@ export interface SceneChantier {
           </ul>
         </div>
       </div>
+      } @else {
+        <!-- SF-234-10 — l'ambiance hors tour (A1, A3, A4, A5), au repos seulement (D14). -->
+        @if (ambient(); as a) {
+          @if (a.alert || a.hostDown || a.calling || a.cost) {
+            <div class="ambient" aria-hidden="true" data-scene="AMBIANCE">
+              @if (a.alert) { <p class="ambient__line ambient__line--alert">{{ a.alert.label }}</p> }
+              @if (a.hostDown) { <p class="ambient__line">Le poste {{ a.hostDown.name }} ne répond pas</p> }
+              @if (a.calling) { <p class="ambient__line">{{ a.calling.label }} vous appelle</p> }
+              @if (a.cost) { <p class="ambient__cost">≈ {{ a.cost }} €</p> }
+            </div>
+          }
+        }
       }
     }
   `,
@@ -338,6 +350,10 @@ export interface SceneChantier {
     .tosend__plus { color: var(--cg-orange-2); font-weight: 700; animation: scene-in 300ms ease-out; }
     @keyframes letter-fold { from { transform: scaleY(0.2); opacity: 0; } to { transform: none; opacity: 1; } }
     @keyframes letter-go { 0% { transform: none; } 60% { transform: translateX(6px) scale(0.92); } 100% { transform: none; } }
+    .ambient { display: grid; gap: 2px; justify-items: center; }
+    .ambient__line { margin: 0; font-size: 13px; color: color-mix(in srgb, var(--cg-cream) 80%, transparent); }
+    .ambient__line--alert { color: var(--cg-orange-2); font-weight: 600; }
+    .ambient__cost { margin: 0; font-family: var(--cg-font-mono); font-size: 12px; color: color-mix(in srgb, var(--cg-cream) 60%, transparent); }
     .show { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 2px; }
     .show__item {
       display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: 14px;
@@ -420,6 +436,8 @@ export class JarvisSceneComponent implements OnInit {
   }
   /** SF-234-13 — ce que le PO a demandé à voir (affiché quand aucune action n'est en cours). */
   readonly focus = computed(() => this.bus.focus());
+  /** SF-234-10 — l'ambiance hors tour. */
+  readonly ambient = computed(() => this.bus.ambient());
   /** « × n » seulement quand le libellé ne dit pas déjà le nombre (pluriel du registre). */
   readonly showCount = computed(() => {
     const s = this.scene();
