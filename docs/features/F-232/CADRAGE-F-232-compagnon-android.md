@@ -17,6 +17,7 @@ Le vrai mot d'éveil, téléphone verrouillé, exige un petit composant **natif*
 | # | Décision |
 |---|---|
 | D1 | **Compagnon minimal** : service de premier plan de type micro (notification permanente « Jarvis écoute »), détection du mot d'éveil **sur l'appareil**. Aucun son ne sort avant le mot. Au mot, il ouvre la PWA en mode Jarvis (F-231). |
+| D1b | **Il parle aussi téléphone verrouillé.** Quand un tour lancé via Jarvis se termine (ou qu'une alerte de veille arrive), le compagnon reçoit l'annonce et la **dit à voix haute** même écran éteint (« Le message pour X est prêt », « C'est fait : … »), puis écoute la réponse sans mot d'éveil pendant quelques secondes. Sans compagnon, la PWA en arrière-plan ne peut que sonner une notification. | Conversation continue toute la journée, sans relancer |
 | D2 | **Distribution** : APK signé, téléchargeable depuis l'application (même chemin que les paquets du runner), mise à jour proposée. Pas de Play Store. |
 | D3 | **Interrupteur** : marche/arrêt depuis la notification, arrêt automatique sous un seuil de batterie. |
 | D4 | ~~Porte d'usage~~ levée par le PO le 2026-11-01. La mesure D9 de F-231 reste lue à J+14 pour juger l'usage réel. |
@@ -26,6 +27,7 @@ Le vrai mot d'éveil, téléphone verrouillé, exige un petit composant **natif*
 | SF | Objet | Estim. |
 |---|---|---|
 | SF-232-01 | L'APK : service micro, mot d'éveil, ouverture de Jarvis, interrupteur. | 2 j |
+| SF-232-03 | Les annonces téléphone verrouillé (D1b) : réception des fins de tour Jarvis et alertes de veille, lecture à voix haute, écoute courte de la réponse. | 1,5 j |
 | SF-232-02 | Le servir : téléchargement depuis l'application, signature, mise à jour. | 1 j |
 
 ## Préoccupations transversales
