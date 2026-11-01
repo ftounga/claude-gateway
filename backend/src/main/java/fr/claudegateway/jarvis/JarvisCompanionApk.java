@@ -13,6 +13,7 @@ import java.util.Enumeration;
 import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
@@ -33,11 +34,20 @@ import org.springframework.stereotype.Service;
  *
  * <p>Le résultat est mis en cache par (taille, date de modification) : relire et vérifier quelques
  * mégaoctets à chaque affichage de l'écran Jarvis serait inutile.</p>
+ *
+ * <p><b>Version</b> (SF-232-04) : la variable {@code app.jarvis.companion.version-code} prime ; absente (0),
+ * la gateway lit {@value #VERSION_FILE} à côté de l'APK, écrit par la construction
+ * ({@code android/jarvis-companion/build-release.sh}) depuis la même source que Gradle — l'APK et la
+ * version annoncée ne peuvent plus diverger.</p>
  */
 @Service
 public class JarvisCompanionApk {
 
     private static final Logger log = LoggerFactory.getLogger(JarvisCompanionApk.class);
+
+    /** Écrit à côté de l'APK par la construction : {@code versionCode}, {@code versionName}. */
+    static final String VERSION_FILE = "version.properties";
+    private static final int MAX_VERSION_NAME = 40;
 
     /** Ce que la gateway sait de l'APK qu'elle sert. */
     public record Release(Path path, int versionCode, String versionName, String sha256,
@@ -51,7 +61,7 @@ public class JarvisCompanionApk {
 
     private volatile CachedCheck cache;
 
-    private record CachedCheck(long size, long modified, Release release) {
+    private record CachedCheck(long size, long modified, Version version, Release release) {
     }
 
     public JarvisCompanionApk(@Value("${app.jarvis.companion.apk-path:}") String apkPath,
@@ -66,11 +76,15 @@ public class JarvisCompanionApk {
 
     /** L'APK servable, ou vide s'il est absent, mal configuré ou mal signé. */
     public Optional<Release> current() {
-        if (apkPath.isEmpty() || expectedCert == null || versionCode < 1) {
+        if (apkPath.isEmpty() || expectedCert == null) {
             return Optional.empty();
         }
         Path path = Path.of(apkPath);
         if (!Files.isRegularFile(path) || !Files.isReadable(path)) {
+            return Optional.empty();
+        }
+        Version version = versionFor(path);
+        if (version == null) {
             return Optional.empty();
         }
         long size;
@@ -83,23 +97,59 @@ public class JarvisCompanionApk {
             return Optional.empty();
         }
         CachedCheck cached = cache;
-        if (cached != null && cached.size() == size && cached.modified() == modified) {
+        if (cached != null && cached.size() == size && cached.modified() == modified
+                && version.equals(cached.version())) {
             return Optional.ofNullable(cached.release());
         }
-        Release release = verify(path, size);
-        cache = new CachedCheck(size, modified, release);
+        Release release = verify(path, size, version);
+        cache = new CachedCheck(size, modified, version, release);
         return Optional.ofNullable(release);
     }
 
-    private Release verify(Path path, long size) {
+    private record Version(int code, String name) {
+    }
+
+    /** La variable si elle est posée ; sinon {@value #VERSION_FILE} à côté de l'APK ; {@code null} sinon. */
+    private Version versionFor(Path apk) {
+        if (versionCode >= 1) {
+            return new Version(versionCode, versionName.isEmpty() ? String.valueOf(versionCode) : versionName);
+        }
+        Path parent = apk.toAbsolutePath().getParent();
+        Path file = parent == null ? null : parent.resolve(VERSION_FILE);
+        if (file == null || !Files.isRegularFile(file)) {
+            return null;
+        }
+        Properties props = new Properties();
+        try (InputStream in = Files.newInputStream(file)) {
+            props.load(in);
+        } catch (IOException | IllegalArgumentException e) {
+            log.warn("Compagnon Jarvis : {} illisible ({})", VERSION_FILE, file);
+            return null;
+        }
+        int code;
+        try {
+            code = Integer.parseInt(props.getProperty("versionCode", "").trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        if (code < 1) {
+            return null;
+        }
+        String name = props.getProperty("versionName", "").trim();
+        if (name.isEmpty() || name.length() > MAX_VERSION_NAME) {
+            name = String.valueOf(code);
+        }
+        return new Version(code, name);
+    }
+
+    private Release verify(Path path, long size, Version version) {
         try {
             if (!signedBy(path, expectedCert)) {
                 log.warn("Compagnon Jarvis : APK non servi — signature absente, invalide ou d'un autre certificat ({})",
                         path);
                 return null;
             }
-            return new Release(path, versionCode, versionName.isEmpty() ? String.valueOf(versionCode) : versionName,
-                    sha256(path), expectedCert, size);
+            return new Release(path, version.code(), version.name(), sha256(path), expectedCert, size);
         } catch (IOException | SecurityException e) {
             log.warn("Compagnon Jarvis : APK non servi — vérification impossible ({}) : {}", path,
                     e.getClass().getSimpleName());

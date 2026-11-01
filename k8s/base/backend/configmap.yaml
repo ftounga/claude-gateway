@@ -36,6 +36,10 @@ data:
   # F-38 — Chemin du fat-jar du runner dans l'image (empaqueté par backend/Dockerfile). Sans lui,
   # `GET /runner/download` répond 404 et le bouton de téléchargement de l'écran d'appairage échoue.
   APP_RUNNER_JAR_PATH: "/app/claude-runner.jar"
+  # F-232 / SF-232-04 — Empreinte SHA-256 du certificat qui signe le compagnon Android de Jarvis. PUBLIQUE
+  # (ce n'est pas un secret). La gateway ne sert l'APK (/app/jarvis/, chemin pose par l'image) que s'il
+  # est signe par ce certificat. Cle privee : Secrets Manager claude-gateway/jarvis-companion-signing.
+  APP_JARVIS_COMPANION_SIGNING_CERT_SHA256: "48da5ad897990c883fbe4578e53e3340e9b070ba9b01a1b3ab96c01abf0f40a6"
   # Paquet autonome Windows (F-44) : le runner AVEC sa propre JVM, pour les postes
   # d'entreprise ou aucun Java 21 n'est installable. Empaquete dans l'image a cote du jar.
   APP_RUNNER_WINDOWS_PACKAGE_PATH: "/app/claude-runner-windows-x64.zip"

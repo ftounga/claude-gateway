@@ -100,4 +100,73 @@ class JarvisCompanionApkTest {
 
         assertThat(service.current()).isEmpty();
     }
+
+    // ---- SF-232-04 : la version écrite par la construction, à côté de l'APK
+
+    private static Path inOwnDir(String name, String versionFile) throws Exception {
+        Path sub = Files.createDirectories(dir.resolve("v-" + name));
+        Path apk = SignedApkFixture.signed(sub, name, goodStore, "jarvis");
+        if (versionFile != null) {
+            Files.writeString(sub.resolve(JarvisCompanionApk.VERSION_FILE), versionFile);
+        }
+        return apk;
+    }
+
+    @Test
+    void sansVariable_laVersionVientDuFichierDeConstruction() throws Exception {
+        Path apk = inOwnDir("fichier.apk", "versionCode=7\nversionName=0.7.0\n");
+
+        Optional<JarvisCompanionApk.Release> release =
+                new JarvisCompanionApk(apk.toString(), 0, "", goodFingerprint).current();
+
+        assertThat(release).isPresent();
+        assertThat(release.get().versionCode()).isEqualTo(7);
+        assertThat(release.get().versionName()).isEqualTo("0.7.0");
+    }
+
+    @Test
+    void laVariablePrimeSurLeFichier() throws Exception {
+        Path apk = inOwnDir("variable.apk", "versionCode=7\nversionName=0.7.0\n");
+
+        Optional<JarvisCompanionApk.Release> release =
+                new JarvisCompanionApk(apk.toString(), 9, "0.9.0", goodFingerprint).current();
+
+        assertThat(release.get().versionCode()).isEqualTo(9);
+        assertThat(release.get().versionName()).isEqualTo("0.9.0");
+    }
+
+    @Test
+    void fichierAbsentOuVersionInvalide_rienNEstServi() throws Exception {
+        assertThat(new JarvisCompanionApk(inOwnDir("absent.apk", null).toString(), 0, "", goodFingerprint)
+                .current()).isEmpty();
+        assertThat(new JarvisCompanionApk(inOwnDir("zero.apk", "versionCode=0\n").toString(), 0, "",
+                goodFingerprint).current()).isEmpty();
+        assertThat(new JarvisCompanionApk(inOwnDir("texte.apk", "versionCode=abc\n").toString(), 0, "",
+                goodFingerprint).current()).isEmpty();
+    }
+
+    @Test
+    void nomDeVersionAbsent_leNumeroSert() throws Exception {
+        Path apk = inOwnDir("sansnom.apk", "versionCode=4\n");
+
+        assertThat(new JarvisCompanionApk(apk.toString(), 0, "", goodFingerprint).current().get().versionName())
+                .isEqualTo("4");
+    }
+
+    /**
+     * L'APK réellement construit et signé par la clé de prod (SF-232-04), quand on le fournit :
+     * {@code -Djarvis.realApk=<chemin>} (avec {@code version.properties} à côté) et
+     * {@code -Djarvis.realCert=<empreinte>}. Ignoré sinon — l'APK n'est pas dans le dépôt.
+     */
+    @Test
+    void apkReelConstruit_estReconnu() {
+        String real = System.getProperty("jarvis.realApk");
+        String cert = System.getProperty("jarvis.realCert");
+        org.junit.jupiter.api.Assumptions.assumeTrue(real != null && cert != null);
+
+        Optional<JarvisCompanionApk.Release> release = new JarvisCompanionApk(real, 0, "", cert).current();
+
+        assertThat(release).isPresent();
+        assertThat(release.get().versionCode()).isGreaterThanOrEqualTo(1);
+    }
 }

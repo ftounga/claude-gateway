@@ -5,3 +5,6 @@ local.properties
 *.keystore
 *.jks
 keystore.properties
+*.p12
+*.env
+dist/
