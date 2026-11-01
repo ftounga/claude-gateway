@@ -3844,6 +3844,14 @@ public class AtelierChatService implements RelayInterruptTarget {
                     backgroundText = spokenText;
                 }
             }
+            // F-234 / SF-234-04 (D5) : les outils serveur (recherche web, page lue) s'exécutent chez le
+            // fournisseur et n'ont donc pas d'étape ; leur cible lisible (requête, domaine seul) part à
+            // l'écran à l'arrivée de la réponse. Écran seulement : ni message, ni journal, ni consigne.
+            for (fr.claudegateway.atelier.scene.SceneStepLabels.WebStep web
+                    : fr.claudegateway.atelier.scene.SceneStepLabels.webSteps(turn.reasoning())) {
+                listener.onAction(new AtelierProgressListener.AtelierStepEvent(
+                        fr.claudegateway.atelier.scene.SceneStepLabels.WEB_STEP, web.target()));
+            }
             // F-188 / SF-188-01 — PAUSE DU FOURNISSEUR (`pause_turn`) : un tour long d'outils serveur
             // (recherche web) a été suspendu. Ce n'est pas une fin : on rejoue CE message assistant
             // tel quel (raisonnement, recherches et résultats, texte) et on rappelle le modèle, qui
@@ -7750,9 +7758,12 @@ public class AtelierChatService implements RelayInterruptTarget {
                     fr.claudegateway.atelier.questions.QuestionToolCatalog.TRACK -> null;
             // Tout autre outil (volet Teams, outils à venir) se montre quand il COMMENCE, avec sa
             // cible d'audit — ce qu'on a demandé, jamais ce qui est revenu (F-88 / SF-88-03, D2).
+            // F-234 / SF-234-04 (D5) : un outil métier muet (chantier, attente, passation…) reçoit une
+            // étiquette de scène, POUR L'ÉCRAN SEULEMENT — le journal garde auditTarget, inchangé.
             default -> call.name() == null || call.name().isBlank()
                     ? null
-                    : new AtelierProgressListener.AtelierStepEvent(call.name(), auditTarget(call));
+                    : new AtelierProgressListener.AtelierStepEvent(call.name(),
+                            sceneLabelOrAuditTarget(call));
         };
     }
 
@@ -9132,6 +9143,12 @@ public class AtelierChatService implements RelayInterruptTarget {
             return text;
         }
         return "agent " + agent.strip() + " — " + (text == null ? "" : text);
+    }
+
+    /** F-234 / SF-234-04 : l'étiquette de scène d'un outil, sinon sa cible d'audit (l'une et l'autre peuvent manquer). */
+    private String sceneLabelOrAuditTarget(AgentToolCall call) {
+        String label = fr.claudegateway.atelier.scene.SceneStepLabels.label(call.name(), call.input());
+        return label != null ? label : auditTarget(call);
     }
 
     String auditTarget(AgentToolCall call) {

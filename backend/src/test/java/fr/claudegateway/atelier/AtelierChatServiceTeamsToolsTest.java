@@ -233,6 +233,14 @@ class AtelierChatServiceTeamsToolsTest {
                 "{\"conversation_id\":\"19:abc\"}")).isEqualTo("conversation_id=19:abc");
     }
 
+    @Test
+    @DisplayName("F-234 / SF-234-04 : les étiquettes de scène ne touchent pas le journal d'audit")
+    void sceneLabelsLeaveTheAuditTargetUnchanged() {
+        assertThat(auditTargetOf("update_plan_step", "{\"step\":2,\"status\":\"FAIT\",\"chantier\":3}")).isNull();
+        assertThat(auditTargetOf("record_blocker", "{\"person\":\"Zahi\",\"description\":\"x\"}")).isNull();
+        assertThat(auditTargetOf("ouvrir_sujet", "{\"sujet\":\"Migration Forge\"}")).isNull();
+    }
+
     private String auditTargetOf(String tool, String input) {
         try {
             return service.auditTarget(new fr.claudegateway.agent.AgentToolCall("call-1", tool,

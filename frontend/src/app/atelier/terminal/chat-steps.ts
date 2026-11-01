@@ -65,6 +65,9 @@ function stepCommand(step: AtelierStreamAction): string {
     // F-190 / SF-190-05 : regarder une vidéo — le mode, le fichier, le son, dits en clair.
     case 'video':
       return step.path ? `vidéo · ${step.path}` : 'vidéo';
+    // F-234 / SF-234-04 : les outils serveur du fournisseur — la requête cherchée, ou le domaine d'une page lue.
+    case 'web':
+      return step.path ? `web · ${step.path}` : 'web';
     default:
       // F-104 / SF-104-03 : un outil Radar sans cible se dit « Radar », jamais par son nom technique.
       if (step.type.startsWith('radar_')) {
