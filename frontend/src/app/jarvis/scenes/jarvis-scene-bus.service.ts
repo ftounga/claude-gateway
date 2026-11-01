@@ -98,6 +98,15 @@ export class JarvisSceneBus implements OnDestroy {
     this.ensureTimer();
   }
 
+  /** S3 — un morceau de sortie de la commande en cours (relayé par l'écran, F-38). */
+  output(chunk: string): void {
+    const before = this.reader.state().scene;
+    this.reader.commandOutput(chunk, this.now());
+    if (this.reader.state().scene !== before) {
+      this.publish();
+    }
+  }
+
   text(delta: string): void {
     const before = this.reader.state();
     this.reader.text(delta, this.now());
