@@ -151,6 +151,27 @@ export class JarvisSceneBus implements OnDestroy {
     this.ensureTimer();
   }
 
+  /** SF-234-08 — S12 : le souvenir retrouvé. */
+  recalled(repere: string): void {
+    this.reader.recalled(repere, this.now());
+    this.publish();
+    this.ensureTimer();
+  }
+
+  /** SF-234-08 — S12 : le fil se résume. */
+  compaction(summarizedTurns: number): void {
+    this.reader.compaction(summarizedTurns, this.now());
+    this.publish();
+    this.ensureTimer();
+  }
+
+  /** SF-234-08 — S10 : la passation proposée. */
+  handoff(name: string, workspaceId: string | null): void {
+    this.reader.handoff(name, workspaceId, this.now());
+    this.publish();
+    this.ensureTimer();
+  }
+
   /** SF-234-06 — S14 : les points de route du tour. */
   questions(list: { libelle: string; state: string }[]): void {
     this.reader.questions(list, this.now());

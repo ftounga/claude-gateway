@@ -53,6 +53,11 @@ interface LitMark {
           @for (m of lit(); track m.key) {
             <line class="cst__thread" [attr.x1]="m.x" [attr.y1]="m.y" x2="0" y2="0" pathLength="100" />
           }
+          @if (handoffLine(); as h) {
+            <!-- SF-234-08 — S10 : le fil glisse du sujet courant vers le sujet ouvert. -->
+            <line class="cst__thread cst__thread--handoff" [attr.x1]="h.x1" [attr.y1]="h.y1" [attr.x2]="h.x2"
+                  [attr.y2]="h.y2" pathLength="100" />
+          }
           @for (c of layout().clients; track c.key) {
             <g class="cst__client" [class.is-current]="c.current" [class.is-off]="!c.connected"
                [class.is-lit]="isLit(c.key)" [class.is-shown]="isShown(c.key)" [attr.data-key]="c.key">
@@ -67,6 +72,7 @@ interface LitMark {
         </g>
         @for (s of layout().subjects; track s.id) {
           <g class="cst__subject" [class.is-cluster]="s.ring === 'cluster'" [class.is-lit]="isLit(s.id)"
+             [class.is-wave]="wave() && s.ring === 'current'" [style.--wave]="$index"
              [class.is-shown]="isShown(s.id)"
              [class.is-current]="s.id === subjectId()" [class.is-live]="s.live" [attr.data-key]="s.id"
              role="button" tabindex="0" [attr.aria-label]="'Passer sur ' + s.name"
@@ -177,6 +183,16 @@ interface LitMark {
       fill: none; stroke: var(--cg-accent); stroke-width: 0.6; opacity: 0; animation: cst-pulse 900ms ease-out;
     }
     .cst__subject.is-live .cst__dot { animation: cst-breathe 2.4s ease-in-out infinite; }
+    /* SF-234-08 — S15 : tous les sujets du client s'allument en vague. */
+    .cst__subject.is-wave .cst__dot {
+      animation: cst-wave 1.6s ease-out both; animation-delay: calc(var(--wave, 0) * 90ms);
+    }
+    .cst__thread--handoff { stroke-dasharray: 100; animation: cst-draw 700ms ease-out; }
+    @keyframes cst-wave {
+      0% { fill: color-mix(in srgb, var(--cg-cream) 35%, transparent); }
+      40% { fill: var(--cg-accent); }
+      100% { fill: color-mix(in srgb, var(--cg-cream) 35%, transparent); }
+    }
     .cst__crumbs {
       display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; margin: var(--cg-space-1) 0 0;
       font-size: 13px; color: color-mix(in srgb, var(--cg-cream) 80%, transparent); min-height: 18px;
@@ -191,6 +207,7 @@ interface LitMark {
     @keyframes cst-breathe { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
     @media (prefers-reduced-motion: reduce) {
       .cst__thread, .cst__mark, .cst__pulse, .cst__subject.is-live .cst__dot, .cst__halo { animation: none; }
+      .cst__subject.is-wave .cst__dot { animation: none; fill: var(--cg-accent); }
       .cst__pulse { display: none; }
       .cst__dot { transition: none; }
     }
@@ -222,6 +239,21 @@ export class JarvisConstellationComponent implements OnInit {
   });
 
   readonly lit = computed<LitMark[]>(() => this.placeLit(this.bus.universe(), this.layout()));
+
+  /** SF-234-08 — S15 « le point » : les sujets du client courant s'allument en vague. */
+  readonly wave = computed(() => this.bus.state().scene?.id === 'S15');
+
+  /** SF-234-08 — S10 : le fil du sujet courant vers le sujet de la passation (s'ils sont dessinés). */
+  readonly handoffLine = computed(() => {
+    const scene = this.bus.state().scene;
+    if (scene?.id !== 'S10' || !scene.data?.toKey) {
+      return null;
+    }
+    const subjects = this.layout().subjects;
+    const from = subjects.find((s) => s.id === this.subjectId());
+    const to = subjects.find((s) => s.id === scene.data?.toKey);
+    return from && to && from !== to ? { x1: from.x, y1: from.y, x2: to.x, y2: to.y } : null;
+  });
 
   /** SF-234-13 — ce que le PO a demandé à voir. */
   readonly focus = computed<ShowFocus | null>(() => this.bus.focus());

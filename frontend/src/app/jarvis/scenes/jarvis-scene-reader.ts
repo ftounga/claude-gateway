@@ -79,7 +79,25 @@ export interface SceneData {
   forMe?: boolean;
   /** S1 — des preuves sont jointes (F-212 : l'objectif photographie). */
   proof?: boolean;
+  /** S6 — la barre d'adresse : une requête, ou le domaine d'une page lue. */
+  address?: string;
+  web?: 'search' | 'page';
+  /** S10 — le fil glisse du sujet courant vers ce sujet. */
+  fromLabel?: string;
+  toLabel?: string;
+  toKey?: string;
+  /** S12 — le repère d'un souvenir (« tour 34 »), ou le nombre de tours résumés. */
+  repere?: string;
+  /** S13 — une orbe satellite par délégation (la question, tronquée). */
+  satellites?: string[];
 }
+
+/** S13 — satellites au plus. */
+export const MAX_SATELLITES = 4;
+/** S13 — une question de satellite, au plus. */
+const SATELLITE_CHARS = 40;
+/** S6 — un domaine seul (`web_fetch`), plutôt qu'une requête (`web_search`). */
+const DOMAIN = /^(?:[a-z0-9-]+\.)+[a-z]{2,}$/i;
 
 /** S9 — ce que fait chaque outil de chantier. */
 const PROGRESS: Record<string, SceneData['progress']> = {
@@ -323,6 +341,22 @@ export class JarvisSceneReader {
     if (sceneId === 'S9') {
       return this.progressData(type, path);
     }
+    if (sceneId === 'S6') {
+      const address = (path ?? '').trim();
+      return address ? { address, web: DOMAIN.test(address) ? 'page' : 'search' } : {};
+    }
+    if (sceneId === 'S10') {
+      const target = path ? this.index.match(path, this.contextSubject()).find((n) => n.kind === 'subject') : undefined;
+      return {
+        fromLabel: this.currentSubject()?.label, toLabel: target?.label ?? (sceneDetail(path) ?? undefined),
+        toKey: target?.key,
+      };
+    }
+    if (sceneId === 'S13') {
+      const question = (path ?? '').replace(/\s+/g, ' ').trim();
+      const short = question.length <= SATELLITE_CHARS ? question : `${question.slice(0, SATELLITE_CHARS - 1)}…`;
+      return { satellites: [...(previous?.satellites ?? []), maskSecrets(short)].slice(-MAX_SATELLITES) };
+    }
     if (sceneId === 'S1') {
       // `email_me` (« Courriel · objet ») ou captures de preuve (« captures de preuve : titre »).
       const subject = (path ?? '').replace(/^(courriel\s*·|captures de preuve\s*:)\s*/i, '').trim() || undefined;
@@ -429,6 +463,42 @@ export class JarvisSceneReader {
           state: q.state,
         })),
       },
+    }, now);
+  }
+
+  /** SF-234-08 — S12 : le souvenir retrouvé (événement `recall`, F-162) — « tour 34 » remonte. */
+  recalled(repere: string, now: number): void {
+    if (!repere) {
+      return;
+    }
+    const base = this.scene?.id === 'S12' ? this.scene : this.next?.id === 'S12' ? this.next : null;
+    this.place({
+      id: 'S12', key: base?.key ?? 'recall', libelle: 'Souvenir rappelé', count: 1, detail: base?.detail ?? null,
+      entity: this.currentSubject(), pinned: false, since: now, updatedAt: now,
+      data: { ...base?.data, repere: sceneDetail(repere) ?? undefined },
+    }, now);
+  }
+
+  /** SF-234-08 — S12 : le fil se résume (événement `compaction`, F-117). */
+  compaction(summarizedTurns: number, now: number): void {
+    this.place({
+      id: 'S12', key: 'compaction', libelle: 'Le fil se résume', count: 1,
+      detail: summarizedTurns > 0 ? `${summarizedTurns} tours pliés` : null, entity: this.currentSubject(),
+      pinned: false, since: now, updatedAt: now, data: {},
+    }, now);
+  }
+
+  /** SF-234-08 — S10 : la passation proposée (événement `handoff`, F-179) — le fil glisse vers ce sujet. */
+  handoff(name: string, workspaceId: string | null, now: number): void {
+    const target = this.index.node(workspaceId) ?? this.index.match(name, this.contextSubject())
+      .find((n) => n.kind === 'subject') ?? null;
+    if (target) {
+      this.light(target, 2, now);
+    }
+    this.place({
+      id: 'S10', key: 'ouvrir_sujet', libelle: 'Passation vers un sujet', count: 1, detail: sceneDetail(name),
+      entity: target ?? this.currentSubject(), pinned: false, since: now, updatedAt: now,
+      data: { fromLabel: this.currentSubject()?.label, toLabel: target?.label ?? name, toKey: target?.key },
     }, now);
   }
 
