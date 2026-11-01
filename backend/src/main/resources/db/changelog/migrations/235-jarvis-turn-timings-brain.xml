@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-235 / SF-235-07 - LA MESURE DU CERVEAU RAPIDE (D14).
+
+      jarvis_turn_timings + brain (FAST | FAST_DELEGATED | OPUS), fast_model, fast_first_token_ms, compteurs des
+      garde-fous (grounding_trips, fillers_removed, repeats_removed, imitations_removed), forced_delegation,
+      delegation_reason (liste fermee), correction (la parole suivante a corrige la reponse rapide). AUCUN contenu.
+      Colonnes additives : les lignes existantes valent NULL / 0 / false. Purge 90 j existante inchangee.
+
+      Numero 235 = numero de la feature. Rollback : les colonnes se retirent.
+    -->
+
+    <changeSet id="235-jarvis-turn-timings-brain" author="claude-gateway">
+        <addColumn tableName="jarvis_turn_timings">
+            <column name="brain" type="varchar(16)"/>
+            <column name="fast_model" type="varchar(64)"/>
+            <column name="fast_first_token_ms" type="int"/>
+            <column name="grounding_trips" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="fillers_removed" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="repeats_removed" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="imitations_removed" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="forced_delegation" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="delegation_reason" type="varchar(16)"/>
+            <column name="correction" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="jarvis_turn_timings" columnName="correction"/>
+            <dropColumn tableName="jarvis_turn_timings" columnName="delegation_reason"/>
+            <dropColumn tableName="jarvis_turn_timings" columnName="forced_delegation"/>
+            <dropColumn tableName="jarvis_turn_timings" columnName="imitations_removed"/>
+            <dropColumn tableName="jarvis_turn_timings" columnName="repeats_removed"/>
+            <dropColumn tableName="jarvis_turn_timings" columnName="fillers_removed"/>
+            <dropColumn tableName="jarvis_turn_timings" columnName="grounding_trips"/>
+            <dropColumn tableName="jarvis_turn_timings" columnName="fast_first_token_ms"/>
+            <dropColumn tableName="jarvis_turn_timings" columnName="fast_model"/>
+            <dropColumn tableName="jarvis_turn_timings" columnName="brain"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

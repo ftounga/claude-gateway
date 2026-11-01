@@ -119,6 +119,17 @@ export interface TurnTimingReport {
   interruptionsConfirmed: number;
   acknowledgements: number;
   falseTriggers: number;
+  /** F-235 / SF-235-07 (D14) — le cerveau du tour et ce que ses garde-fous ont fait (facultatif, sans contenu). */
+  brain?: 'FAST' | 'FAST_DELEGATED' | 'OPUS';
+  fastModel?: string | null;
+  fastFirstTokenMs?: number | null;
+  groundingTrips?: number;
+  fillersRemoved?: number;
+  repeatsRemoved?: number;
+  imitationsRemoved?: number;
+  forcedDelegation?: boolean;
+  delegationReason?: string | null;
+  correction?: boolean;
 }
 
 /** F-233 / SF-233-04 — une session d'écoute en flux : de quoi parler directement au fournisseur (jamais la clé). */

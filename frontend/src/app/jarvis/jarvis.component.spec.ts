@@ -941,4 +941,47 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(voice.speak).toHaveBeenCalledWith('Pour quel client ou quel sujet, Monsieur ?', null);
     jarvis.ngOnDestroy();
   }));
+
+  it('F-235 / SF-235-07 — la mesure du tour porte le cerveau et les garde-fous ; une correction est comptée',
+    fakeAsync(() => {
+      const jarvis = fastOn();
+      dictation.stop.and.resolveTo('Où en est le chantier 3 ?');
+      void jarvis.talk();
+      flushMicrotasks();
+      void jarvis.talk();
+      flushMicrotasks();
+      fast!.onText('Le chantier 3 en est aux tests.');
+      fast!.onDone({ brain: 'FAST', spokenText: 'x', firstTokenMs: 420, model: 'claude-haiku-5-5',
+        guards: { groundingTrips: 0, fillersRemoved: 1, repeatsRemoved: 0, forcedDelegation: false, toolText: false,
+          imitationsRemoved: 0 } });
+      fastDone!('ok');
+      flushMicrotasks();
+      const first = jarvisApi.timings.calls.mostRecent().args[0];
+      expect(first.brain).toBe('FAST');
+      expect(first.fastModel).toBe('claude-haiku-5-5');
+      expect(first.fastFirstTokenMs).toBe(420);
+      expect(first.fillersRemoved).toBe(1);
+      expect(first.correction).toBeUndefined();
+      expect(JSON.stringify(first)).not.toContain('chantier 3');
+
+      dictation.stop.and.resolveTo('Non, c’est faux');
+      void jarvis.talk();
+      flushMicrotasks();
+      void jarvis.talk();
+      flushMicrotasks();
+      fast!.onDelegated({ delegationId: 'd', subjectId: 'w-2', chantier: null, label: '', announce: 'Je vérifie, Monsieur.',
+        demande: 'x', automatic: true, reason: 'forced' });
+      fast!.onDone({ brain: 'FAST_DELEGATED', spokenText: '', firstTokenMs: -1, model: 'm',
+        guards: { groundingTrips: 0, fillersRemoved: 0, repeatsRemoved: 0, forcedDelegation: true, toolText: false,
+          imitationsRemoved: 0 } });
+      fastDone!('ok');
+      flushMicrotasks();
+      const second = jarvisApi.timings.calls.mostRecent().args[0];
+      expect(second.brain).toBe('FAST_DELEGATED');
+      expect(second.correction).toBeTrue();
+      expect(second.forcedDelegation).toBeTrue();
+      expect(second.delegationReason).toBe('forced');
+      expect(second.fastFirstTokenMs).toBeNull();
+      jarvis.ngOnDestroy();
+    }));
 });

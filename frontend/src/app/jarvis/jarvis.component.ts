@@ -61,7 +61,8 @@ import { JarvisSceneComponent } from './scenes/jarvis-scene.component';
 import { JarvisConstellationComponent } from './scenes/jarvis-constellation.component';
 import { isShowDismiss, stripShowLines } from './scenes/jarvis-show';
 import {
-  ASK_SUBJECT, AnnouncementQueue, FastDelegation, JarvisFastBrainClient, announcementText, isRepeatCommand,
+  ASK_SUBJECT, AnnouncementQueue, CORRECTION_WINDOW_MS, FastDelegation, FastDone, JarvisFastBrainClient,
+  announcementText, isCorrection, isRepeatCommand,
 } from './jarvis-fast-brain';
 
 /** Le sujet retenu sur cet appareil, d'une ouverture de Jarvis à l'autre. */
@@ -192,6 +193,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
   private announceTimer: ReturnType<typeof setInterval> | null = null;
   /** Le sujet de la délégation qui attend « oui » : la réponse va directement au tour Opus (D8). */
   private verbalSubject: string | null = null;
+  /** F-235 / SF-235-07 — l'instant de la dernière réponse rapide (classement des corrections). */
+  private lastFastAnswerAt = 0;
 
   // ---- F-235 / SF-235-09 (D18) : la personnalité, réglage d'humour par compte ----
   /** Le réglage d'humour du compte (léger par défaut, tant que la passerelle n'a pas répondu). */
@@ -981,9 +984,17 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const seq = ++this.sendSeq;
     const latest = () => seq === this.sendSeq;
     this.startClock();
+    // F-235 / SF-235-07 (D14) — une parole qui corrige la réponse rapide d'il y a ≤ 30 s est comptée (sans contenu).
+    const clock = this.clock;
+    if (clock && this.lastFastAnswerAt > 0 && Date.now() - this.lastFastAnswerAt <= CORRECTION_WINDOW_MS
+        && isCorrection(text)) {
+      clock.fast = { ...clock.fast, correction: true };
+    }
     this.armFastFiller(latest);
     let said = '';
     let fellBack = false;
+    let finished: FastDone | null = null;
+    let delegationReason: string | null = null;
     const sayNow = (sentence: string) => {
       if (!latest()) {
         return;
@@ -1004,13 +1015,16 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const outcome = await this.fastBrain.converse({ subjectId, text, heardBeforeCut }, {
       onText: (sentence) => this.zone.run(() => sayNow(sentence)),
       onDelegated: (delegation) => this.zone.run(() => {
+        delegationReason = delegation.automatic ? delegation.reason : null;
         sayNow(delegation.announce);
         this.startDelegation(delegation, text, heardBeforeCut);
       }),
       onFallback: () => {
         fellBack = true;
       },
-      onDone: () => undefined,
+      onDone: (done) => {
+        finished = done;
+      },
     });
     await this.zone.run(async () => {
       if (outcome === 'unavailable') {
@@ -1031,6 +1045,25 @@ export class JarvisComponent implements OnInit, OnDestroy {
         return;
       }
       this.clearAck();
+      const done = finished as FastDone | null;
+      if (clock && done) {
+        const guards = done.guards;
+        clock.fast = {
+          ...clock.fast,
+          brain: done.brain,
+          fastModel: done.model ?? null,
+          fastFirstTokenMs: done.firstTokenMs >= 0 ? Math.min(600_000, Math.round(done.firstTokenMs)) : null,
+          groundingTrips: guards?.groundingTrips ?? 0,
+          fillersRemoved: guards?.fillersRemoved ?? 0,
+          repeatsRemoved: guards?.repeatsRemoved ?? 0,
+          imitationsRemoved: guards?.imitationsRemoved ?? 0,
+          forcedDelegation: guards?.forcedDelegation ?? false,
+          delegationReason,
+        };
+        if (done.brain === 'FAST') {
+          this.lastFastAnswerAt = Date.now();
+        }
+      }
       this.clock?.mark('done');
       this.reportClock();
       await this.voice.idle();

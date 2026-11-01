@@ -29,6 +29,10 @@ export class TurnClock {
   ttsProvider: string | null = null;
   toolTurn = false;
   workspaceId: string | null = null;
+  /** F-235 / SF-235-07 (D14) — posé par l'échange avec le cerveau rapide ; absent pour un tour Opus d'avant. */
+  fast: Partial<Pick<TurnTimingReport, 'brain' | 'fastModel' | 'fastFirstTokenMs' | 'groundingTrips'
+    | 'fillersRemoved' | 'repeatsRemoved' | 'imitationsRemoved' | 'forcedDelegation' | 'delegationReason'
+    | 'correction'>> = {};
   private reported = false;
 
   /**
@@ -81,6 +85,7 @@ export class TurnClock {
       firstSoundMs: ms('firstSound'),
       doneMs: ms('done'),
       ...this.counters,
+      ...this.fast,
     };
   }
 }

@@ -28,6 +28,29 @@ export interface FastDone {
   spokenText: string;
   firstTokenMs: number;
   model: string;
+  /** SF-235-03 — ce que les garde-fous ont fait (compté, sans contenu). */
+  guards?: FastGuards | null;
+}
+
+/** Les compteurs des garde-fous du serveur (SF-235-03, SF-235-09). */
+export interface FastGuards {
+  groundingTrips: number;
+  fillersRemoved: number;
+  repeatsRemoved: number;
+  forcedDelegation: boolean;
+  toolText: boolean;
+  imitationsRemoved: number;
+}
+
+/** F-235 / SF-235-07 (D14) — une parole qui corrige la réponse rapide précédente (dite il y a ≤ 30 s). */
+export const CORRECTION_WINDOW_MS = 30_000;
+
+/** « Non », « c'est faux », « vérifie », « demande à Opus »… (liste fermée, classement local, sans modèle). */
+export function isCorrection(text: string): boolean {
+  const n = text.toLowerCase().normalize('NFD').replace(/\p{M}+/gu, '').replace(/[^a-z ]+/g, ' ')
+    .replace(/\s+/g, ' ').trim().replace(/^(jarvis|monsieur) /, '');
+  return /^(non|non non|c est faux|non c est faux|c est pas ca|ce n est pas ca|non c est pas ca|faux|verifie|verifie ca|verifiez|demande a opus|demande le a opus|reflechis|reflechis y|tu te trompes|vous vous trompez)$/
+    .test(n);
 }
 
 export interface FastBrainHandlers {

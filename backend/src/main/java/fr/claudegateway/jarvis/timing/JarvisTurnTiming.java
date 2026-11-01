@@ -104,4 +104,45 @@ public class JarvisTurnTiming {
     @Builder.Default
     @Column(name = "false_triggers", nullable = false)
     private int falseTriggers = 0;
+
+    // ---- F-235 / SF-235-07 (D14) : le cerveau qui a tenu le tour, et ce que ses garde-fous ont fait. Sans contenu.
+
+    /** {@code FAST}, {@code FAST_DELEGATED} ou {@code OPUS} ; {@code null} pour les tours d'avant F-235. */
+    @Column(name = "brain", length = 16)
+    private String brain;
+
+    @Column(name = "fast_model", length = 64)
+    private String fastModel;
+
+    @Column(name = "fast_first_token_ms")
+    private Integer fastFirstTokenMs;
+
+    @Builder.Default
+    @Column(name = "grounding_trips", nullable = false)
+    private int groundingTrips = 0;
+
+    @Builder.Default
+    @Column(name = "fillers_removed", nullable = false)
+    private int fillersRemoved = 0;
+
+    @Builder.Default
+    @Column(name = "repeats_removed", nullable = false)
+    private int repeatsRemoved = 0;
+
+    @Builder.Default
+    @Column(name = "imitations_removed", nullable = false)
+    private int imitationsRemoved = 0;
+
+    @Builder.Default
+    @Column(name = "forced_delegation", nullable = false)
+    private boolean forcedDelegation = false;
+
+    /** La raison d'une délégation d'office (liste fermée : grounding, refusal, error, timeout, empty, tool_text…). */
+    @Column(name = "delegation_reason", length = 16)
+    private String delegationReason;
+
+    /** La parole suivante (≤ 30 s) a corrigé cette réponse rapide (« non », « c'est faux », « vérifie »…). */
+    @Builder.Default
+    @Column(name = "correction", nullable = false)
+    private boolean correction = false;
 }
