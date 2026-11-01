@@ -26,6 +26,47 @@ export interface JarvisWatch {
   nextRunAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** SF-230-02 — le dernier passage. */
+  lastRunAt: string | null;
+  lastRunStatus: JarvisWatchRunStatus | null;
+  /** SF-230-02 — deux échecs d'affilée : la veille est en panne (D6). */
+  broken: boolean;
+  consecutiveFailures: number;
+}
+
+/** L'issue d'un passage (SF-230-02). */
+export type JarvisWatchRunStatus = 'BASELINE' | 'NO_CHANGE' | 'CHANGED' | 'FAILED' | 'MISSED_OFFLINE';
+
+/** Un passage (SF-230-02), sans contenu. */
+export interface JarvisWatchRun {
+  id: string;
+  watchId: string;
+  slotAt: string | null;
+  trigger: 'SCHEDULED' | 'CATCH_UP' | 'MANUAL';
+  status: JarvisWatchRunStatus;
+  changeCount: number;
+  errorCode: string | null;
+  durationMs: number | null;
+  startedAt: string;
+  finishedAt: string | null;
+}
+
+/** L'issue d'un passage, en mots. */
+export function runStatusLabel(status: JarvisWatchRunStatus | null, changeCount = 0): string {
+  switch (status) {
+    case 'BASELINE':
+      return 'base posée';
+    case 'NO_CHANGE':
+      return 'rien de neuf';
+    case 'CHANGED':
+      return changeCount > 1 ? `${changeCount} changements` : 'un changement';
+    case 'FAILED':
+      return 'sonde en échec';
+    case 'MISSED_OFFLINE':
+      return 'manqué — poste hors ligne';
+    default:
+      return 'pas encore passée';
+  }
 }
 
 /** Le résultat d'un test de sonde devant le PO. */
@@ -44,9 +85,12 @@ export function watchScheduleLabel(watch: Pick<JarvisWatch, 'runTimes'>): string
 }
 
 /** L'état d'une veille, en mots. */
-export function watchStateLabel(watch: Pick<JarvisWatch, 'active' | 'proposed'>): string {
+export function watchStateLabel(watch: Pick<JarvisWatch, 'active' | 'proposed' | 'broken'>): string {
   if (watch.proposed) {
     return 'Proposée — à tester puis activer';
+  }
+  if (watch.broken) {
+    return 'En panne — à faire réparer';
   }
   return watch.active ? 'Active' : 'En pause';
 }

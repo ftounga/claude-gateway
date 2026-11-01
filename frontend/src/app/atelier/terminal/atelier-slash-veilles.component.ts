@@ -6,8 +6,8 @@ import { MatIconModule } from '@angular/material/icon';
 import { Observable } from 'rxjs';
 
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../chat/confirm-dialog/confirm-dialog.component';
-import { shortDateTime } from '../../core/models/routine.models';
-import { JarvisWatch, watchScheduleLabel, watchStateLabel } from '../../core/models/veille.models';
+import { ago, shortDateTime } from '../../core/models/routine.models';
+import { JarvisWatch, runStatusLabel, watchScheduleLabel, watchStateLabel } from '../../core/models/veille.models';
 import { VeilleService } from '../../core/services/veille.service';
 
 /**
@@ -37,6 +37,9 @@ import { VeilleService } from '../../core/services/veille.service';
             </div>
             <p class="veilles__line">{{ watch.platform }} · {{ schedule(watch) }}@if (watch.chantierNumber) { · chantier {{ watch.chantierNumber }}}</p>
             <p class="veilles__line veilles__scope">{{ watch.scope }}</p>
+            @if (watch.lastRunAt) {
+              <p class="veilles__line">Dernier passage : {{ since(watch.lastRunAt) }} · {{ lastRun(watch) }}</p>
+            }
             @if (watch.nextRunAt) {
               <p class="veilles__line">Prochain passage : {{ when(watch.nextRunAt) }}</p>
             }
@@ -122,6 +125,14 @@ export class AtelierSlashVeillesComponent {
 
   when(iso: string | null): string {
     return shortDateTime(iso);
+  }
+
+  since(iso: string | null): string {
+    return ago(iso);
+  }
+
+  lastRun(watch: JarvisWatch): string {
+    return runStatusLabel(watch.lastRunStatus);
   }
 
   remove(watch: JarvisWatch): void {

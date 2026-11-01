@@ -211,10 +211,39 @@ public class JarvisWatchService {
         return RoutineService.isRoutineCapable(workspace);
     }
 
-    /** Point d'extension : une veille reproposée repart d'un instantané vierge (SF-230-02). */
+    /** Une veille reproposée repart d'un instantané vierge : sa sonde a pu changer de forme (SF-230-02). */
     void onReproposed(JarvisWatch watch) {
-        // Aucun instantané avant SF-230-02.
+        if (snapshots != null && watch.getId() != null) {
+            snapshots.deleteForWatch(watch.getId(), watch.getUserId());
+        }
     }
+
+    /** Les instantanés et le journal des passages (SF-230-02) ; absents des formes historiques / tests unitaires. */
+    private JarvisWatchSnapshotRepository snapshots;
+    private JarvisWatchRunRepository runs;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setPassageStores(JarvisWatchSnapshotRepository snapshots, JarvisWatchRunRepository runs) {
+        this.snapshots = snapshots;
+        this.runs = runs;
+    }
+
+    /** Les 20 derniers passages d'une veille (SF-230-02). */
+    @Transactional(readOnly = true)
+    public List<JarvisWatchDtos.JarvisWatchRunView> history(UUID userId, UUID workspaceId, UUID watchId) {
+        workspaceService.requireOwned(userId, workspaceId);
+        JarvisWatch watch = require(userId, workspaceId, watchId);
+        if (runs == null) {
+            return List.of();
+        }
+        return runs.findByWatchIdAndUserIdOrderByStartedAtDesc(watch.getId(), userId,
+                        org.springframework.data.domain.PageRequest.of(0, HISTORY)).stream()
+                .map(JarvisWatchDtos.JarvisWatchRunView::of)
+                .toList();
+    }
+
+    /** Passages rendus par l'historique. */
+    public static final int HISTORY = 20;
 
     JarvisWatchView view(JarvisWatch watch, OffsetDateTime now) {
         return JarvisWatchView.of(watch, now);

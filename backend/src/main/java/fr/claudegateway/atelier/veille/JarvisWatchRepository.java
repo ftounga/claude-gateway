@@ -45,6 +45,16 @@ public interface JarvisWatchRepository extends JpaRepository<JarvisWatch, UUID> 
             + "and (w.lastSlotAt is null or w.lastSlotAt < :slot)")
     int markMissed(@Param("id") UUID id, @Param("slot") OffsetDateTime slot);
 
+    /**
+     * L'issue d'un passage (SF-230-02), par un {@code UPDATE} ciblé : une pause posée par le PO pendant le passage
+     * n'est jamais écrasée.
+     */
+    @Modifying
+    @Query("update JarvisWatch w set w.lastRunAt = :at, w.lastRunStatus = :status, "
+            + "w.consecutiveFailures = :failures, w.broken = :broken where w.id = :id and w.userId = :userId")
+    int recordOutcome(@Param("id") UUID id, @Param("userId") UUID userId, @Param("at") OffsetDateTime at,
+            @Param("status") String status, @Param("failures") int failures, @Param("broken") boolean broken);
+
     /** Purge à la suppression du compte. */
     @Modifying
     @Query("delete from JarvisWatch w where w.userId = :userId")

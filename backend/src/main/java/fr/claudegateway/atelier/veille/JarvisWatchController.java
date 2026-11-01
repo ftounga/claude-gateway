@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import fr.claudegateway.atelier.veille.JarvisWatchDtos.JarvisWatchRunView;
 import fr.claudegateway.atelier.veille.JarvisWatchDtos.JarvisWatchTestView;
 import fr.claudegateway.atelier.veille.JarvisWatchDtos.JarvisWatchView;
 import fr.claudegateway.auth.CurrentUser;
@@ -25,10 +26,12 @@ import fr.claudegateway.auth.CurrentUser;
 public class JarvisWatchController {
 
     private final JarvisWatchService service;
+    private final JarvisWatchPlanner planner;
     private final CurrentUser currentUser;
 
-    public JarvisWatchController(JarvisWatchService service, CurrentUser currentUser) {
+    public JarvisWatchController(JarvisWatchService service, JarvisWatchPlanner planner, CurrentUser currentUser) {
         this.service = service;
+        this.planner = planner;
         this.currentUser = currentUser;
     }
 
@@ -47,6 +50,18 @@ public class JarvisWatchController {
     @PostMapping("/{watchId}/accept")
     public JarvisWatchView accept(@PathVariable UUID workspaceId, @PathVariable UUID watchId) {
         return service.accept(currentUser.requireId(), workspaceId, watchId);
+    }
+
+    /** « Lancer maintenant » (SF-230-02) : synchrone, rend le passage terminé. */
+    @PostMapping("/{watchId}/run")
+    public JarvisWatchRunView run(@PathVariable UUID workspaceId, @PathVariable UUID watchId) {
+        return JarvisWatchRunView.of(planner.runNow(currentUser.requireId(), workspaceId, watchId));
+    }
+
+    /** Les 20 derniers passages (SF-230-02). */
+    @GetMapping("/{watchId}/runs")
+    public List<JarvisWatchRunView> runs(@PathVariable UUID workspaceId, @PathVariable UUID watchId) {
+        return service.history(currentUser.requireId(), workspaceId, watchId);
     }
 
     @DeleteMapping("/{watchId}")
