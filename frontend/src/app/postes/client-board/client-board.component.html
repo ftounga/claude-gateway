@@ -17,6 +17,9 @@
   <!-- F-230 / SF-230-04 — CE QUE JARVIS SURVEILLE POUR CE POSTE : absent quand il n'y a aucune veille. -->
   <app-client-board-veilles [hostId]="hostId()" />
 
+  <!-- F-231 / SF-231-06 — LES MESSAGES QUI ATTENDENT D'ÊTRE ENVOYÉS, tous sujets du poste : absent s'il n'y en a pas. -->
+  <app-client-board-to-send [hostId]="hostId()" />
+
   @if (board(); as b) {
     <!-- LA BARRE : filtres en chips (point + libellé + nombre — jamais la couleur seule), sélection, relire. -->
     <div class="cb__toolbar">

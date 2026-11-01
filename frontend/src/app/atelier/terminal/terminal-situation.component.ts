@@ -89,6 +89,9 @@ export type SituationFilter = 'all' | 'loose' | number;
             @for (g of pending(); track g.key) {
               <li class="sit__item sit__item--pending" [attr.data-send]="g.key">
                 <span>{{ envoiLabel(g.latest) }} : <strong class="sit__warn">pas marqué envoyé</strong></span>
+                @if (g.latest.viaJarvis) {
+                  <span class="sit__muted"> · 🎙 via Jarvis</span>
+                }
                 @if (g.count > 1) {
                   <span class="sit__muted"> · proposé {{ g.count }} fois</span>
                 }
@@ -148,7 +151,7 @@ export type SituationFilter = 'all' | 'loose' | number;
         <section class="sit__block" aria-label="Dernier échange">
           <h4 class="sit__title">Dernier échange</h4>
           @if (x.request) {
-            <p class="sit__item"><span class="sit__muted">Vous : </span>{{ clip(x.request, 280) }}</p>
+            <p class="sit__item"><span class="sit__muted">Vous{{ x.viaJarvis ? ' (🎙 via Jarvis)' : '' }} : </span>{{ clip(x.request, 280) }}</p>
           }
           @if (essential(); as answer) {
             <p class="sit__item"><span class="sit__muted">Réponse : </span>{{ clip(answer, 600) }}</p>

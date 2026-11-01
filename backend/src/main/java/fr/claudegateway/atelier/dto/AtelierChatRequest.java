@@ -42,7 +42,24 @@ public record AtelierChatRequest(
         @jakarta.validation.constraints.Positive(message = "Le chantier est un numéro positif.")
         Integer chantier,
 
-        Boolean split) {
+        Boolean split,
+
+        @jakarta.validation.constraints.Pattern(regexp = "^JARVIS$", message = "Origine inconnue.")
+        String via) {
+
+    /** L'origine d'un message dit à la voix, en mode Jarvis (F-231 / SF-231-06). */
+    public static final String VIA_JARVIS = "JARVIS";
+
+    /** Forme d'avant Jarvis (F-231 / SF-231-06) : message tapé. */
+    public AtelierChatRequest(String message, AgentTurnMode mode, Boolean force, List<UUID> attachedDepositIds,
+            Integer chantier, Boolean split) {
+        this(message, mode, force, attachedDepositIds, chantier, split, null);
+    }
+
+    /** Le message est né à la voix, dans l'écran Jarvis (F-231 / SF-231-06) : absent ⇒ non. */
+    public boolean viaJarvis() {
+        return VIA_JARVIS.equals(via);
+    }
 
     /** Forme d'avant le fil par chantier (F-221 / SF-221-01) : fil commun. */
     public AtelierChatRequest(String message, AgentTurnMode mode, Boolean force, List<UUID> attachedDepositIds) {

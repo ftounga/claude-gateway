@@ -218,7 +218,8 @@ public class SituationService {
                 }
                 list.add(new Situation.Envoi(m.getId(), block.index(), block.kind().name(), block.subject(),
                         block.recipient(), m.getCreatedAt(), sent == null ? null : sent.getSentAt(),
-                        block.attenteKey(), attenteStatus, excerpt(block.body()), m.getChantierNumber()));
+                        block.attenteKey(), attenteStatus, excerpt(block.body()), m.getChantierNumber(),
+                        m.isViaJarvis()));
             }
         }
         Collections.reverse(list);
@@ -241,7 +242,7 @@ public class SituationService {
         }
         return new Situation.Exchange(request == null ? null : cut(request.getContent()),
                 request == null ? null : request.getCreatedAt(), reply == null ? null : cutReply(reply.getContent()),
-                reply == null ? null : reply.getCreatedAt());
+                reply == null ? null : reply.getCreatedAt(), request != null && request.isViaJarvis());
     }
 
     private List<Situation.Piece> pieces(UUID userId, UUID workspaceId) {

@@ -3099,6 +3099,26 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
     }
 
+    /**
+     * Les tours <b>nés à la voix</b> (F-231 / SF-231-06), clefés comme l'état du tour, avec l'instant de la marque. La
+     * boucle consomme la marque au début du tour ; une marque restée sans tour (refus avant la boucle) expire.
+     */
+    private final java.util.Map<String, Long> voiceTurns = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Au-delà, une marque non consommée ne vaut plus : elle ne doit pas déteindre sur un tour tapé plus tard. */
+    static final long VOICE_MARK_TTL_MS = 120_000L;
+
+    /** Le tour qui s'ouvre sur ce fil est né à la voix, dans l'écran Jarvis (F-231 / SF-231-06). */
+    public void markVoiceTurn(UUID userId, UUID workspaceId, Integer chantier) {
+        voiceTurns.put(turnKey(userId, workspaceId, chantier), System.currentTimeMillis());
+    }
+
+    /** Consomme la marque « né à la voix » de ce fil : vrai une seule fois, et seulement si elle est fraîche. */
+    boolean consumeVoiceTurn(UUID userId, UUID workspaceId, Integer chantier) {
+        Long at = voiceTurns.remove(turnKey(userId, workspaceId, chantier));
+        return at != null && System.currentTimeMillis() - at <= VOICE_MARK_TTL_MS;
+    }
+
     /** Vrai si une boucle tourne sur ce sujet, ici, dans un autre fil que {@code chantier}. */
     boolean otherLaneActive(UUID userId, UUID workspaceId, Integer chantier) {
         java.util.Set<Integer> lanes = activeLanes.get(turnKey(userId, workspaceId));
@@ -3185,6 +3205,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         // interjection prise en compte, sans jamais dépasser le plafond absolu.
         int iterationCap = maxIterations;
         String userText = rawMessage.trim();
+        // F-231 / SF-231-06 : ce tour est-il né à la voix (écran Jarvis) ? La marque est consommée ici, une fois.
+        boolean viaJarvis = consumeVoiceTurn(userId, workspaceId, chantier);
 
         // Compaction automatique du fil (F-117 / SF-117-01), AVANT de bâtir la requête : si le texte
         // rejoué dépasse le seuil de sécurité sous la fenêtre du modèle, les tours anciens sont
@@ -3326,7 +3348,8 @@ public class AtelierChatService implements RelayInterruptTarget {
 
         AtelierMessage savedUserMessage = messageRepository.save(AtelierMessage.builder()
                 .workspaceId(workspaceId).userId(userId).role("USER").content(userText)
-                .chantierNumber(workspace.getTurnChantier()).build());
+                .chantierNumber(workspace.getTurnChantier())
+                .via(viaJarvis ? AtelierMessage.VIA_JARVIS : null).build());
         // F-169 / SF-169-02 : LIER les dépôts joints à CE message, maintenant que son id existe. Le
         // lien (message_id) rend les pièces jointes persistantes — le rechargement du fil les retrouve
         // (GET /chat). Isolation réappliquée au service. Best-effort : un échec de lien ne casse pas le
@@ -4559,6 +4582,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         AtelierMessage assistant = messageRepository.save(AtelierMessage.builder()
                 .workspaceId(workspaceId).userId(userId).role("ASSISTANT")
                 .chantierNumber(workspace.getTurnChantier())
+                // F-231 / SF-231-06 : la réponse d'un tour né à la voix porte la même marque.
+                .via(viaJarvis ? AtelierMessage.VIA_JARVIS : null)
                 .content(reply)
                 .toolTrace(storedTrace.json())
                 .terminalJson(fr.claudegateway.atelier.questions.TurnQuestions.attachTo(

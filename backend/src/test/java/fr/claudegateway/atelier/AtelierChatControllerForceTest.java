@@ -112,6 +112,28 @@ class AtelierChatControllerForceTest {
         Mockito.verify(chatService).setLaneSplit(any(), Mockito.eq(WORKSPACE), Mockito.eq(8), Mockito.eq(true));
     }
 
+    @Test
+    void unMessageNeALaVoixMarqueLeTourAvantLaBoucle() throws Exception {
+        Capture capture = capture();
+
+        controller().stream(WORKSPACE, new AtelierChatRequest("avance", null, null, null, 8, null, "JARVIS"));
+
+        assertThat(capture.latch.await(5, TimeUnit.SECONDS)).isTrue();
+        org.mockito.InOrder order = Mockito.inOrder(chatService);
+        order.verify(chatService).markVoiceTurn(USER, WORKSPACE, 8);
+        order.verify(chatService).chatStreaming(any(), any(), any(), any(), any(), any(), anyBoolean(), any());
+    }
+
+    @Test
+    void unMessageTapeNeMarqueRien() throws Exception {
+        Capture capture = capture();
+
+        controller().stream(WORKSPACE, new AtelierChatRequest("avance"));
+
+        assertThat(capture.latch.await(5, TimeUnit.SECONDS)).isTrue();
+        Mockito.verify(chatService, Mockito.never()).markVoiceTurn(any(), any(), any());
+    }
+
     /** Une requête portant explicitement le drapeau, comme l'écran l'envoie après un refus. */
     private static AtelierChatRequest forceRequest(boolean force) {
         return new AtelierChatRequest("lance les tests", null, force);

@@ -56,6 +56,8 @@ export interface SituationEnvoi {
   excerpt: string | null;
   /** Le fil (chantier) du message qui l'a proposé, `null` = fil commun (SF-225-03). */
   chantierNumber?: number | null;
+  /** Préparé dans un tour né à la voix, dans l'écran Jarvis (F-231 / SF-231-06). */
+  viaJarvis?: boolean;
 }
 
 export interface SituationExchange {
@@ -63,6 +65,8 @@ export interface SituationExchange {
   requestAt: string | null;
   reply: string | null;
   replyAt: string | null;
+  /** La demande a été dite à la voix, dans l'écran Jarvis (F-231 / SF-231-06). */
+  viaJarvis?: boolean;
 }
 
 export interface SituationPiece {

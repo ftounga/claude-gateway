@@ -83,4 +83,20 @@ public class AtelierMessage {
      */
     @Column(name = "chantier_number")
     private Integer chantierNumber;
+
+    /** L'origine d'un message dit à la voix, dans l'écran Jarvis (F-231 / SF-231-06). */
+    public static final String VIA_JARVIS = "JARVIS";
+
+    /**
+     * L'origine du message (F-231 / SF-231-06) : {@link #VIA_JARVIS} pour une demande dite à la voix et sa réponse,
+     * {@code null} sinon (message tapé, et tous les messages d'avant F-231). Donnée d'<b>affichage</b> : la marque
+     * « 🎙 via Jarvis » et l'encart « Pendant ton absence ».
+     */
+    @Column(name = "via", length = 16)
+    private String via;
+
+    /** Vrai si le message est né à la voix, ou répond à une demande née à la voix. */
+    public boolean isViaJarvis() {
+        return VIA_JARVIS.equals(via);
+    }
 }

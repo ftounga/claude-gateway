@@ -17,6 +17,8 @@ export function toThreadItem(message: AtelierMessage): AtelierThreadItem {
     // F-169 / SF-169-03 : les pièces jointes du message, reconstruites depuis le transcript persistant
     // (SF-169-02), rendues dans la bulle au rechargement. Absent pour un message sans pièce jointe.
     ...(message.files && message.files.length > 0 ? { files: message.files } : {}),
+    // F-231 / SF-231-06 : la marque « 🎙 via Jarvis » d'un tour né à la voix.
+    ...(message.via === 'JARVIS' ? { viaJarvis: true } : {}),
   };
   const stored = message.terminal;
   if (!stored) {

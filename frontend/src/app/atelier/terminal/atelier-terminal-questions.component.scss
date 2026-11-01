@@ -116,6 +116,12 @@
   color: var(--cg-divider);
 }
 
+/* F-231 / SF-231-06 — « 🎙 via Jarvis » : même encre que la méta, casse normale. */
+.terminal-via-jarvis {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
 /* --- Le rail « Vos questions » --- */
 .terminal-qrail {
   position: sticky;

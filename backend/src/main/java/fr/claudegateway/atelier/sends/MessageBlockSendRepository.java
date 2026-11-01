@@ -22,4 +22,8 @@ public interface MessageBlockSendRepository extends JpaRepository<MessageBlockSe
     /** Les envois actifs postérieurs à un instant : la matière de la note de tour. */
     List<MessageBlockSend> findByUserIdAndWorkspaceIdAndCancelledAtIsNullAndSentAtAfterOrderBySentAtAsc(
             UUID userId, UUID workspaceId, OffsetDateTime after);
+
+    /** Les envois actifs de plusieurs sujets (F-231 / SF-231-06, compteur « À envoyer » du tableau du client). */
+    List<MessageBlockSend> findByUserIdAndWorkspaceIdInAndCancelledAtIsNull(UUID userId,
+            java.util.Collection<UUID> workspaceIds);
 }
