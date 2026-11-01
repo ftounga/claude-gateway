@@ -869,7 +869,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       // SF-231-04 — une autorisation d'outil (`ask`) : reformulée à l'oral, « oui » requis.
       onConfirmRequest: (request) => this.zone.run(() => {
         if (latest()) {
-          this.scenes.confirm(request.detail);
+          this.scenes.confirm(request.detail, request.timeoutMs);
           void this.askToolConfirmation(request);
         }
       }),
@@ -880,11 +880,29 @@ export class JarvisComponent implements OnInit, OnDestroy {
           this.pendingConfirm = null;
         }
       }),
-      onQuestionRequest: () => this.zone.run(() => {
+      onQuestionRequest: (request) => this.zone.run(() => {
         if (latest()) {
+          this.scenes.question(request.timeoutMs);
           void this.say('J’ai une question pour vous, à l’écran du terminal.');
         }
       }),
+      // F-234 / SF-234-06 — le chantier, les attentes, la question, les points de route : à l'écran (S9, S11, S2, S14).
+      onQuestionResolved: () => this.scenes.questionResolved(),
+      onPlan: (steps) => {
+        if (latest()) {
+          this.scenes.plan(steps);
+        }
+      },
+      onAttente: (event) => {
+        if (latest()) {
+          this.scenes.attente(event.attente);
+        }
+      },
+      onQuestions: (turn) => {
+        if (latest()) {
+          this.scenes.questions(turn.questions);
+        }
+      },
       onClosed: () => this.zone.run(() => {
         if (latest()) {
           this.scenes.aborted();
