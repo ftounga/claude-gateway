@@ -12,7 +12,7 @@ import { DictationError, DictationService } from '../core/services/dictation.ser
 import { JarvisVoiceError, JarvisVoiceService, SpeakHooks } from '../core/services/jarvis-voice.service';
 import { TurnClock } from './jarvis-turn-clock';
 import { MarkdownPipe } from '../shared/markdown.pipe';
-import { EndOfSpeech, MicMeter } from './jarvis-mic-meter';
+import { EndOfSpeech, MicMeter, silenceMs } from './jarvis-mic-meter';
 import { asksConfirmation, classifyConfirmation, confirmationQuestion } from './jarvis-confirm';
 import {
   ENROLL_COUNT, MIN_WORD_FRAMES, TemplateWakeWordEngine, enrollThreshold, readWakeProfile, saveWakeProfile,
@@ -37,7 +37,7 @@ export const DOUBT_PHRASE = 'Je n’ai pas compris : je ne fais rien. Tu peux co
 /** SF-231-04 — ce que Jarvis dit quand personne ne répond. */
 export const NO_ANSWER_PHRASE = 'Sans réponse, je ne fais rien.';
 import {
-  ACK_DELAY_MS, ACK_PHRASE, isStopCommand, oralPhrase, subjectSwitch, withEndAnnouncement,
+  ACK_DELAY_MS, ACK_PHRASE, REACTION_CLIPS, WAKE_CLIP, isStopCommand, oralPhrase, subjectSwitch, withEndAnnouncement,
 } from './jarvis-oral';
 import { JarvisOrbComponent, JarvisState } from './jarvis-orb.component';
 import { JarvisCompanionsComponent } from './jarvis-companions.component';
@@ -163,6 +163,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.useJarvisManifest();
     this.jarvis.usage('SESSION');
+    // F-233 / SF-233-02 — les clips de réaction, chargés une fois, joués localement au moment de réagir.
+    void this.voice.preloadClips([WAKE_CLIP, ...REACTION_CLIPS]);
     const wanted = this.route.snapshot.queryParamMap.get('sujet');
     const alertId = this.route.snapshot.queryParamMap.get('alerte');
     // F-232 : ouvert par le compagnon Android, qui vient d'entendre « Jarvis » et passe sa version.
@@ -319,6 +321,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
     if (this.state() === 'parole') {
       this.voice.stop();
     }
+    // SF-233-02 — « Oui, Monsieur ? » : la réaction, jouée localement, puis l'écoute.
+    await this.voice.playClip(WAKE_CLIP);
     await this.listen();
   }
 
@@ -402,7 +406,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const stream = this.dictation.stream;
     if (stream) {
       this.meter = new MicMeter(stream);
-      const end = new EndOfSpeech(performance.now());
+      const end = new EndOfSpeech(performance.now(), silenceMs());
       this.zone.runOutsideAngular(() => {
         const tick = () => {
           this.micLevel = this.meter?.level() ?? 0;
@@ -428,6 +432,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const endOfSpeech = performance.now();
     const clock = new TurnClock(endOfSpeech, endOfSpeech - this.listenStartedAt);
     clock.workspaceId = this.subjectId();
+    // SF-233-02 (D3) — réagir tout de suite : un clip local, pendant que la transcription part. Pas pendant une
+    // confirmation (la réponse attendue est « oui » ou « non », pas une demande).
+    if (!this.pendingConfirm && !this.awaitingVerbal) {
+      this.react(clock);
+    }
     // SF-231-05 — la mesure d'adoption : les secondes parlées (D9).
     this.jarvis.usage('SPOKEN', Math.max(0, (performance.now() - this.listenStartedAt) / 1000));
     let text = '';
@@ -588,6 +597,16 @@ export class JarvisComponent implements OnInit, OnDestroy {
     if (this.ackTimer) {
       clearTimeout(this.ackTimer);
       this.ackTimer = null;
+    }
+  }
+
+  private reactionSeq = 0;
+
+  /** SF-233-02 — joue un clip de réaction (en alternance), sans attendre ; la marque `reaction` suit le son. */
+  private react(clock: TurnClock): void {
+    const name = REACTION_CLIPS[this.reactionSeq++ % REACTION_CLIPS.length];
+    if (this.voice.hasClip(name)) {
+      void this.voice.playClip(name, { onPlaying: () => clock.mark('reaction') });
     }
   }
 

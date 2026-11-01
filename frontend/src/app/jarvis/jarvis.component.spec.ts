@@ -52,8 +52,12 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     dictation = jasmine.createSpyObj<DictationService>('DictationService', ['start', 'stop', 'cancel'],
       { supported: true, stream: null });
     dictation.start.and.resolveTo();
-    voice = jasmine.createSpyObj<JarvisVoiceService>('JarvisVoiceService', ['speak', 'stop', 'unlock', 'level']);
+    voice = jasmine.createSpyObj<JarvisVoiceService>('JarvisVoiceService',
+      ['speak', 'stop', 'unlock', 'level', 'preloadClips', 'playClip', 'hasClip']);
     voice.speak.and.resolveTo();
+    voice.preloadClips.and.resolveTo();
+    voice.playClip.and.resolveTo(false);
+    voice.hasClip.and.returnValue(false);
     voice.level.and.returnValue(0);
     jarvisApi = jasmine.createSpyObj<JarvisService>('JarvisService', ['usage', 'companion', 'companions', 'timings']);
     jarvisApi.companions.and.returnValue(of([]));
@@ -196,7 +200,10 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     const jarvis = fixture.componentInstance;
 
     jarvis.send('w-2', 'Lance les tests');
-    tick(5_000);
+    tick(1_999);
+    expect(voice.speak).not.toHaveBeenCalled();
+    // F-233 / SF-233-02 — l'accusé à 2 s (et non plus 5).
+    tick(1);
     expect(voice.speak).toHaveBeenCalledWith('Je m’en occupe.', 'w-2');
     expect(jarvis.state()).toBe('reflexion');
 
@@ -339,4 +346,21 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(companionOffer(COMPANION_V4, null, false)).toBeNull();
     expect(companionOffer(NO_COMPANION, null, true)).toBeNull();
   });
+
+  it('F-233 / SF-233-02 — charge les clips, réagit dès la fin de parole, et « Oui, Monsieur ? » au réveil', fakeAsync(() => {
+    voice.hasClip.and.returnValue(true);
+    voice.playClip.and.resolveTo(true);
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    expect(voice.preloadClips).toHaveBeenCalledWith(['oui', 'je-regarde', 'une-seconde']);
+    dictation.stop.and.resolveTo('Où en est la migration ?');
+
+    void jarvis.talk();
+    flushMicrotasks();
+    void jarvis.talk();
+    flushMicrotasks();
+    expect(voice.playClip).toHaveBeenCalledWith('je-regarde', jasmine.any(Object));
+    jarvis.ngOnDestroy();
+  }));
 });

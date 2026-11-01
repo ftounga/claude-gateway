@@ -48,6 +48,8 @@ export class JarvisVoiceService {
   private analyser: AnalyserNode | null = null;
   private samples: Uint8Array | null = null;
   private current: Playback | null = null;
+  /** SF-233-02 — les clips de réaction chargés (URL locales), par nom. */
+  private readonly clips = new Map<string, string>();
 
   /** La voix est-elle là, et combien a-t-elle coûté ce mois ? */
   status(): Observable<JarvisVoiceStatus> {
@@ -97,8 +99,56 @@ export class JarvisVoiceService {
       throw voiceErrorOf(response.status);
     }
     hooks?.onFirstByte?.();
-    const audio = new Audio();
     const url = canStream(response) ? this.streamInto(response) : URL.createObjectURL(await response.blob());
+    return this.play(url, abort, hooks, true);
+  }
+
+  /**
+   * F-233 / SF-233-02 — charge les clips de réaction (phrases fixes, voix de Jarvis) pour les jouer **localement**,
+   * sans appel réseau, au moment de réagir. Best-effort : un clip absent (voix non configurée, plafond) est ignoré.
+   */
+  async preloadClips(names: readonly string[]): Promise<void> {
+    const token = this.auth.token();
+    await Promise.all(names.filter((name) => !this.clips.has(name)).map(async (name) => {
+      try {
+        const response = await fetch(`/api/jarvis/clips/${encodeURIComponent(name)}`, {
+          headers: { Accept: 'audio/mpeg', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        });
+        if (response.ok) {
+          this.clips.set(name, URL.createObjectURL(await response.blob()));
+        }
+      } catch {
+        // Pas de clip : Jarvis réagira par la phrase suivante.
+      }
+    }));
+  }
+
+  /** SF-233-02 — le clip est-il chargé ? */
+  hasClip(name: string): boolean {
+    return this.clips.has(name);
+  }
+
+  /**
+   * SF-233-02 — joue un clip chargé (coupe la phrase en cours). Rend `false` sans rien jouer si le clip n'est pas
+   * chargé ; la promesse se résout à la fin du clip ou à son interruption.
+   */
+  async playClip(name: string, hooks?: SpeakHooks): Promise<boolean> {
+    const url = this.clips.get(name);
+    if (!url) {
+      return false;
+    }
+    this.stop();
+    try {
+      await this.play(url, new AbortController(), hooks, false);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Joue `url` ; une seule lecture à la fois. `revoke` : l'URL est rendue à la fin (une phrase, pas un clip). */
+  private play(url: string, abort: AbortController, hooks: SpeakHooks | undefined, revoke: boolean): Promise<void> {
+    const audio = new Audio();
     audio.src = url;
     this.connect(audio);
     return new Promise<void>((resolve, reject) => {
@@ -109,7 +159,9 @@ export class JarvisVoiceService {
             this.current = null;
           }
           audio.pause();
-          URL.revokeObjectURL(url);
+          if (revoke) {
+            URL.revokeObjectURL(url);
+          }
           // Une interruption n'est pas un échec : la phrase s'arrête, l'écran continue.
           if (error && error !== 'interrompu') {
             reject(error);
