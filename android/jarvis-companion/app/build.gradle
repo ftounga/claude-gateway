@@ -1,0 +1,58 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Adresse de la gateway pré-remplie au premier lancement (modifiable dans l'application).
+def gatewayUrl = project.findProperty('jarvisGatewayUrl') ?: 'https://portal.ng-itconsulting.com'
+
+// Signature : jamais dans le dépôt. Le job de build lit ces valeurs depuis l'environnement
+// (secrets CI) ; sans elles, l'APK release sort non signé et n'est PAS publiable (SF-232-02).
+def signingStore = System.getenv('JARVIS_SIGNING_STORE_FILE')
+
+android {
+    namespace 'fr.claudegateway.jarvis.companion'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'fr.claudegateway.jarvis.companion'
+        minSdk 26
+        targetSdk 34
+        // versionCode : entier croissant, comparé par la mise à jour proposée (SF-232-02).
+        versionCode Integer.parseInt((project.findProperty('jarvisVersionCode') ?: '1').toString())
+        versionName((project.findProperty('jarvisVersionName') ?: '0.1.0').toString())
+        buildConfigField 'String', 'DEFAULT_GATEWAY_URL', "\"${gatewayUrl}\""
+    }
+
+    signingConfigs {
+        release {
+            if (signingStore) {
+                storeFile file(signingStore)
+                storePassword System.getenv('JARVIS_SIGNING_STORE_PASSWORD')
+                keyAlias System.getenv('JARVIS_SIGNING_KEY_ALIAS')
+                keyPassword System.getenv('JARVIS_SIGNING_KEY_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (signingStore) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+}

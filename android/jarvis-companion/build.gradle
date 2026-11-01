@@ -1,0 +1,4 @@
+// F-232 — Le compagnon Android de Jarvis. Projet Gradle autonome, hors du build Maven du dépôt.
+plugins {
+    id 'com.android.application' version '8.5.2' apply false
+}
