@@ -1,0 +1,126 @@
+package fr.claudegateway.atelier;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
+
+import fr.claudegateway.agent.AiAgentProvider;
+import fr.claudegateway.agent.StubAiAgentProvider;
+import fr.claudegateway.byok.ByokKeyService;
+import fr.claudegateway.quota.QuotaService;
+
+/**
+ * F-231 / SF-231-06 — <b>un tour né à la voix porte sa marque</b> : la demande et la réponse sont rangées avec
+ * {@code via = JARVIS} ; la marque ne vaut qu'une fois, et jamais pour un autre fil.
+ */
+@ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
+class AtelierChatServiceVoiceTurnTest {
+
+    @Mock private WorkspaceService workspaceService;
+    @Mock private AtelierMessageRepository messageRepository;
+    @Mock private ByokKeyService byokKeyService;
+    @Mock private QuotaService quotaService;
+    @Mock private fr.claudegateway.git.GitTokenService gitTokenService;
+    @Mock private fr.claudegateway.git.GitHubClient gitHubClient;
+    @Mock private fr.claudegateway.runner.exec.RunnerToolGateway runnerToolGateway;
+    @Mock private fr.claudegateway.runner.channel.RunnerCallDispatcher runnerCallDispatcher;
+    @Mock private fr.claudegateway.runner.exec.RunnerConfirmationGate confirmationGate;
+    @Mock private fr.claudegateway.runner.audit.RunnerAuditService runnerAuditService;
+    @Mock private fr.claudegateway.runner.host.RunnerHostService runnerHostService;
+
+    StubAiAgentProvider agentProvider;
+    AtelierChatService service;
+    final UUID userId = UUID.randomUUID();
+    final UUID workspaceId = UUID.randomUUID();
+
+    @BeforeEach
+    void setUp() {
+        agentProvider = new StubAiAgentProvider();
+        service = new AtelierChatService(workspaceService, messageRepository, (AiAgentProvider) agentProvider,
+                byokKeyService, quotaService,
+                new fr.claudegateway.atelier.git.GitWorkspaceService(workspaceService, gitTokenService,
+                        gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
+                runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
+                fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
+                runnerHostService,
+                new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null, null, true));
+        when(byokKeyService.resolveActiveApiKey(userId)).thenReturn(Optional.empty());
+        when(quotaService.currentUsage(userId)).thenReturn(
+                new fr.claudegateway.quota.UsageSnapshot(0L, 12_000_000L, 12_000_000L, null, null));
+        when(messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspaceId, userId))
+                .thenReturn(List.of());
+        when(messageRepository.save(any(AtelierMessage.class))).thenAnswer(invocation -> {
+            AtelierMessage saved = invocation.getArgument(0);
+            if (saved.getId() == null) {
+                saved.setId(UUID.randomUUID());
+            }
+            return saved;
+        });
+        Workspace workspace = new Workspace();
+        workspace.setId(workspaceId);
+        workspace.setUserId(userId);
+        workspace.setSource(WorkspaceSource.ARCHIVE);
+        when(workspaceService.requireOwned(userId, workspaceId)).thenReturn(workspace);
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+    }
+
+    List<AtelierMessage> saved() {
+        ArgumentCaptor<AtelierMessage> captor = ArgumentCaptor.forClass(AtelierMessage.class);
+        verify(messageRepository, Mockito.atLeastOnce()).save(captor.capture());
+        return captor.getAllValues();
+    }
+
+    @Test
+    void laDemandeEtLaReponseDUnTourNeALaVoixSontMarquees() {
+        service.markVoiceTurn(userId, workspaceId, null);
+        agentProvider.enqueueFinal("🎙 C'est fait.");
+
+        service.chat(userId, workspaceId, "valide l'étape trois");
+
+        assertThat(saved()).filteredOn(m -> "USER".equals(m.getRole()))
+                .extracting(AtelierMessage::getVia).containsExactly(AtelierMessage.VIA_JARVIS);
+        assertThat(saved()).filteredOn(m -> "ASSISTANT".equals(m.getRole()))
+                .extracting(AtelierMessage::getVia).containsExactly(AtelierMessage.VIA_JARVIS);
+    }
+
+    @Test
+    void laMarqueNeVautQuUneFois() {
+        service.markVoiceTurn(userId, workspaceId, null);
+
+        assertThat(service.consumeVoiceTurn(userId, workspaceId, null)).isTrue();
+        assertThat(service.consumeVoiceTurn(userId, workspaceId, null)).isFalse();
+    }
+
+    @Test
+    void laMarqueDUnFilNeDeteintPasSurUnAutre() {
+        service.markVoiceTurn(userId, workspaceId, 7);
+
+        assertThat(service.consumeVoiceTurn(userId, workspaceId, null)).isFalse();
+        assertThat(service.consumeVoiceTurn(userId, workspaceId, 7)).isTrue();
+    }
+
+    @Test
+    void unTourTapeNePorteAucuneMarque() {
+        agentProvider.enqueueFinal("ok");
+
+        service.chat(userId, workspaceId, "bonjour");
+
+        assertThat(saved()).extracting(AtelierMessage::getVia).containsOnlyNulls();
+    }
+}

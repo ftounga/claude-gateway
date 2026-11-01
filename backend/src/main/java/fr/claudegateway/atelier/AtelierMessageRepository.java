@@ -125,6 +125,13 @@ public interface AtelierMessageRepository extends JpaRepository<AtelierMessage, 
             UUID workspaceId, UUID userId, java.time.OffsetDateTime since);
 
     /**
+     * Les réponses de l'agent de plusieurs sujets depuis un instant (F-231 / SF-231-06, compteur « À envoyer » du
+     * tableau du client) : une seule lecture pour tous les sujets d'un poste, sous {@code user_id}.
+     */
+    List<AtelierMessage> findByUserIdAndWorkspaceIdInAndRoleAndCreatedAtGreaterThanEqualOrderByCreatedAtAsc(
+            UUID userId, java.util.Collection<UUID> workspaceIds, String role, java.time.OffsetDateTime since);
+
+    /**
      * Combien de messages sont antérieurs au marqueur de repli du nouveau départ manuel
      * (F-117 / SF-117-05) : le nombre de messages que l'écran replie derrière « Voir l'historique ».
      * Tous rôles confondus — l'affichage replie le fil entier, comme {@code turns} le compte. Filtrée

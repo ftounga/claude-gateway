@@ -46,14 +46,16 @@ public record Situation(OffsetDateTime generatedAt, OffsetDateTime lastActivityA
      * @param attenteStatus l'état de l'attente liée ({@code A_FAIRE}, {@code DEMANDE}…), ou {@code null}
      * @param excerpt       le début du texte proposé (400 caractères au plus), pour [Voir]
      * @param chantierNumber le fil (chantier) du message qui l'a proposé, ou {@code null} : fil commun (SF-225-03)
+     * @param viaJarvis      préparé dans un tour né à la voix, dans l'écran Jarvis (F-231 / SF-231-06)
      */
     public record Envoi(UUID messageId, int blockIndex, String kind, String subject, String recipient,
                         OffsetDateTime proposedAt, OffsetDateTime sentAt, String attenteKey, String attenteStatus,
-                        String excerpt, Integer chantierNumber) {
+                        String excerpt, Integer chantierNumber, boolean viaJarvis) {
     }
 
-    /** La dernière demande de l'utilisateur et la dernière réponse. */
-    public record Exchange(String request, OffsetDateTime requestAt, String reply, OffsetDateTime replyAt) {
+    /** La dernière demande de l'utilisateur et la dernière réponse ; {@code viaJarvis} : la demande a été dite à la voix. */
+    public record Exchange(String request, OffsetDateTime requestAt, String reply, OffsetDateTime replyAt,
+                           boolean viaJarvis) {
     }
 
     /** Une pièce fournie (dépôt F-169), la plus récente d'abord. */

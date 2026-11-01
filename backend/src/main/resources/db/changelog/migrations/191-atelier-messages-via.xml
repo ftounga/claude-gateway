@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-231 / SF-231-06 - LE MODE JARVIS : DE RETOUR AU TERMINAL.
+
+      atelier_messages.via : l'origine d'un message. 'JARVIS' pour une demande dite a la voix dans l'ecran
+      Jarvis ET la reponse de ce tour ; NULL sinon (message tape, et tous les messages d'avant F-231).
+      Donnee d'affichage : marque "via Jarvis", encart "Pendant ton absence", point de situation, compteur
+      "A envoyer". Colonne nullable, sans valeur par defaut : aucune ligne existante n'est reecrite.
+
+      Rollback : la colonne se retire.
+    -->
+
+    <changeSet id="191-atelier-messages-via" author="claude-gateway">
+        <addColumn tableName="atelier_messages">
+            <column name="via" type="varchar(16)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="atelier_messages" columnName="via"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

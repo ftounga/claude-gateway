@@ -98,6 +98,7 @@ import { AtelierSlashCostRoutinesComponent } from './atelier-slash-cost-routines
 import { TerminalRoutinesBandComponent } from './terminal-routines-band.component';
 import { AtelierSlashVeillesComponent } from './atelier-slash-veilles.component';
 import { TerminalVeillesBandComponent } from './terminal-veilles-band.component';
+import { TerminalJarvisAbsenceComponent } from './terminal-jarvis-absence.component';
 import { AtelierCostService } from '../../core/services/atelier-cost.service';
 import { AtelierContextService } from '../../core/services/atelier-context.service';
 import { UsageService } from '../../core/services/usage.service';
@@ -316,7 +317,7 @@ export function plumeErrorMessage(failure: HttpErrorResponse | null | undefined)
     AtelierSlashPosteComponent, AtelierSlashSujetComponent, TerminalSituationComponent,
     AtelierSlashRecallComponent, AtelierSlashActionComponent, AtelierSlashPassationComponent,
     AtelierSlashRoutinesComponent, TerminalRoutinesBandComponent, AtelierSlashCostRoutinesComponent,
-    AtelierSlashVeillesComponent, TerminalVeillesBandComponent,
+    AtelierSlashVeillesComponent, TerminalVeillesBandComponent, TerminalJarvisAbsenceComponent,
     MatButtonToggleModule, MatIconModule, MatMenuModule, MatProgressBarModule, MatProgressSpinnerModule,
     MatTooltipModule, RouterLink,
     WeeklyBudgetComponent, ProjectCostComponent, DictationButtonComponent,
@@ -1008,6 +1009,13 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * fin de tour : une routine a pu tourner ou l'agent en proposer une).
    */
   readonly routinesTick = signal(0);
+
+  /**
+   * F-231 / SF-231-06 — la dernière visite de ce terminal sur cet appareil, lue à l'entrée AVANT d'inscrire celle-ci :
+   * l'encart « Pendant ton absence, via Jarvis » montre ce qui est né à la voix depuis. `undefined` tant que l'entrée
+   * n'est pas faite (et toujours dans un volet du split).
+   */
+  readonly jarvisSince = signal<string | null | undefined>(undefined);
 
   /** F-183 / SF-183-01 — une routine a changé (panneau ou carte) : la bande se relit. */
   onRoutinesChanged(): void {
@@ -3183,6 +3191,8 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
         return;
       }
       const lastVisit = readLastVisit(workspaceId);
+      // F-231 / SF-231-06 : la même dernière visite borne l'encart « Pendant ton absence, via Jarvis ».
+      this.jarvisSince.set(lastVisit);
       this.noteVisit(workspaceId);
       const threshold = situationIdleThreshold();
       if (this.readOnly || threshold <= 0) {

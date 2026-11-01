@@ -547,6 +547,11 @@ export interface AtelierMessage {
    * la bulle au rechargement. Vide / absent pour un message sans pièce jointe (et d'avant SF-169-02).
    */
   files?: DepositedFileRef[];
+  /**
+   * L'origine du message (F-231 / SF-231-06) : `JARVIS` pour une demande dite à la voix et sa réponse ; absent ou
+   * `null` pour un message tapé (et tout message d'avant F-231).
+   */
+  via?: 'JARVIS' | null;
 }
 
 /** Action de fichier réalisée par l'agent pendant un tour : `type` = `read` ou `write`. */

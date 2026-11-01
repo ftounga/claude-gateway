@@ -124,6 +124,10 @@ public class AtelierChatController {
     public AtelierChatResponse chat(@PathVariable UUID id, @Valid @RequestBody AtelierChatRequest request) {
         atelierAccess.requireTerminalAccess(id);
         atelierChatService.setLaneSplit(currentUser.requireId(), id, request.chantier(), request.splitOrDefault());
+        if (request.viaJarvis()) {
+            // F-231 / SF-231-06 : le tour qui s'ouvre est né à la voix.
+            atelierChatService.markVoiceTurn(currentUser.requireId(), id, request.chantier());
+        }
         AtelierChatResult result = atelierChatService.chat(currentUser.requireId(), id, request.chantier(),
                 request.message(), request.modeOrDefault(), request.forceOrDefault(),
                 request.attachedDepositIdsOrEmpty());
@@ -170,7 +174,7 @@ public class AtelierChatController {
         SseEmitter emitter = newEmitter();
         fr.claudegateway.chat.SseStreamDispatch.submit(chatStreamExecutor, emitter,
                 () -> relay(emitter, userId, id, chantier, request.message(), mode, hasAccess, admin, force,
-                        attachedDepositIds));
+                        attachedDepositIds, request.viaJarvis()));
         return emitter;
     }
 
@@ -593,7 +597,7 @@ public class AtelierChatController {
 
     private void relay(SseEmitter emitter, UUID userId, UUID workspaceId, Integer chantier, String message,
             fr.claudegateway.agent.AgentTurnMode mode, boolean hasAccess, boolean admin,
-            boolean force, List<UUID> attachedDepositIds) {
+            boolean force, List<UUID> attachedDepositIds, boolean viaJarvis) {
         LiveTurn turn;
         if (hasAccess) {
             // UN ENVOI PENDANT UN TOUR EST UNE PRÉCISION (F-84 / SF-84-06, décision du PO du
@@ -842,7 +846,14 @@ public class AtelierChatController {
             // Les pièces jointes ne valent que pour la PREMIÈRE demande du tour (F-169 / SF-169-02) :
             // un tour de suite ouvert par une précision (steer) n'en porte pas.
             List<UUID> attachments = attachedDepositIds;
+            // F-231 / SF-231-06 : seule la PREMIÈRE demande est née à la voix — un tour de suite ouvert par une
+            // précision ne l'est pas. La marque est posée ici, après le choix « tour neuf ou précision ».
+            boolean voice = viaJarvis;
             for (;;) {
+                if (voice) {
+                    atelierChatService.markVoiceTurn(userId, workspaceId, chantier);
+                    voice = false;
+                }
                 AtelierChatResult result = atelierChatService.chatStreaming(
                         userId, workspaceId, chantier, demand, mode, listener, force, attachments);
                 if (result.interrupted()) {

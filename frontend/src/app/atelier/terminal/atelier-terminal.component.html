@@ -770,6 +770,13 @@
       [readOnly]="readOnly"
       (changed)="onRoutinesChanged()"
     ></app-terminal-veilles-band>
+    <!-- F-231 / SF-231-06 — DE RETOUR AU TERMINAL : ce que Jarvis a fait à la voix depuis la dernière visite, et les
+         messages à envoyer (Jarvis prépare, le PO envoie). Absent quand Jarvis n'a rien fait ici. -->
+    <app-terminal-jarvis-absence
+      [workspaceId]="projectId"
+      [since]="jarvisSince()"
+      [readOnly]="readOnly"
+    ></app-terminal-jarvis-absence>
     @if (messages.length === 0 && !streaming) {
       @if (readOnly) {
         <!-- LA LECTURE SEULE NE PEUT RIEN INVITER À FAIRE (F-83 / SF-83-01) : il n'y a pas d'invite
@@ -824,7 +831,12 @@
         <div class="terminal-prompt-line terminal-question" [id]="questionAnchorId(message)">
           <span class="terminal-qbadge" aria-hidden="true">Q{{ questionNumber(message) }}</span>
           <span class="terminal-qbody">
-            <span class="terminal-qmeta">Votre question</span>
+            <span class="terminal-qmeta">Votre question
+              <!-- F-231 / SF-231-06 : née à la voix, dans l'écran Jarvis. Typographie seule, aucune couleur nouvelle. -->
+              @if (message.viaJarvis) {
+                <span class="terminal-via-jarvis">· 🎙 via Jarvis</span>
+              }
+            </span>
             <span class="terminal-request">{{ questionText(message) }}</span>
             <!-- LES PIÈCES JOINTES DANS LA BULLE (F-169 / SF-169-03) : nom court + taille, DANS la
                  scrollback → elles défilent avec le fil. En lecture (pas de croix) : ces puces

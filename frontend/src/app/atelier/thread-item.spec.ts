@@ -1,6 +1,20 @@
 import { AtelierMessage, AtelierProofBlock } from '../core/models/atelier.models';
 import { toThreadItem } from './thread-item';
 
+/** F-231 / SF-231-06 — la marque « 🎙 via Jarvis » survit au rechargement. */
+describe('toThreadItem — né à la voix (F-231 / SF-231-06)', () => {
+  const base = { id: 'u1', role: 'USER', content: 'valide l’étape 3', createdAt: '2026-11-01T09:00:00Z' };
+
+  it('porte la marque quand le message est né à la voix', () => {
+    expect(toThreadItem({ ...base, via: 'JARVIS' } as AtelierMessage).viaJarvis).toBeTrue();
+  });
+
+  it('n’ajoute rien pour un message tapé', () => {
+    expect(toThreadItem(base as AtelierMessage).viaJarvis).toBeUndefined();
+    expect(toThreadItem({ ...base, via: null } as AtelierMessage).viaJarvis).toBeUndefined();
+  });
+});
+
 /** F-212 / SF-212-06 — la relecture d'un tour garde ses blocs riches (dont les captures de preuve). */
 describe('toThreadItem — blocs riches (F-212 / SF-212-06)', () => {
   const proof: AtelierProofBlock = {

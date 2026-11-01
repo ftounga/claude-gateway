@@ -36,6 +36,8 @@ export interface AtelierThreadItem {
   role: AtelierRole;
   content: string;
   actions: AtelierAction[];
+  /** Né à la voix, dans l'écran Jarvis (F-231 / SF-231-06) : marque « 🎙 via Jarvis ». Absent sinon. */
+  viaJarvis?: boolean;
   /** Chemins des fichiers modifiés par une session d'exécution (mode « Terminal », SF-28-11). */
   changedFiles?: string[];
   /**
