@@ -1,8 +1,9 @@
 import { HttpClient } from '@angular/common/http';
-import { Injectable, NgZone, OnDestroy, inject, signal } from '@angular/core';
+import { Injectable, NgZone, OnDestroy, computed, inject, signal } from '@angular/core';
 
 import { NameIndex } from './jarvis-name-matcher';
 import { JarvisSceneReader, ReaderAction, ReaderState } from './jarvis-scene-reader';
+import { ShowFocus, resolveShow } from './jarvis-show';
 import { JarvisUniverse } from './jarvis-universe.models';
 
 /** La route de l'univers (SF-234-01). */
@@ -13,7 +14,7 @@ export const JARVIS_UNIVERSE_URL = '/api/jarvis/universe';
  */
 const TICK_MS = 250;
 
-const EMPTY: ReaderState = { lit: [], scene: null, pulses: 0, toSendAdded: 0 };
+const EMPTY: ReaderState = { lit: [], scene: null, pulses: 0, toSendAdded: 0, show: null };
 
 /**
  * **Le fil des scènes** (F-234 / SF-234-02) — l'unique point d'accroche entre l'écran Jarvis (F-231/F-233) et
@@ -35,6 +36,8 @@ export class JarvisSceneBus implements OnDestroy {
   readonly state = signal<ReaderState>(EMPTY);
   /** Le sujet courant de l'écran. */
   readonly subjectId = signal<string | null>(null);
+  /** SF-234-13 — ce que le PO a demandé à voir, résolu sur l'univers déjà chargé (aucun appel). */
+  readonly focus = computed<ShowFocus | null>(() => resolveShow(this.universe(), this.state().show));
 
   private index = new NameIndex(null);
   private reader = new JarvisSceneReader(this.index, null);
@@ -83,6 +86,9 @@ export class JarvisSceneBus implements OnDestroy {
   turnStarted(): void {
     this.turnRunning = true;
     this.reader.startTurn();
+    if (this.state().show) {
+      this.publish(); // SF-234-13 : ce qui était montré s'efface au tour suivant
+    }
     this.ensureTimer();
   }
 
@@ -119,6 +125,15 @@ export class JarvisSceneBus implements OnDestroy {
     this.turnRunning = false;
     this.publish();
     this.load();
+  }
+
+  /** SF-234-13 — « c'est bon » : l'écran revient à l'état normal. Rend vrai si quelque chose était montré. */
+  dismissShow(): boolean {
+    const had = this.reader.clearShow();
+    if (had) {
+      this.publish();
+    }
+    return had;
   }
 
   /** Le tour s'arrête sans fin propre (erreur, flux fermé). */

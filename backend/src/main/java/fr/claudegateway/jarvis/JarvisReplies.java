@@ -35,8 +35,8 @@ public final class JarvisReplies {
                 inFence = !inFence;
                 continue;
             }
-            if (inFence || line.isEmpty()) {
-                continue;
+            if (inFence || line.isEmpty() || line.startsWith(JarvisOralNote.SHOW_MARK)) {
+                continue; // F-234 / SF-234-13 : la ligne « 🖥 montrer: » est pour l'écran, jamais un résumé
             }
             String clean = clean(line);
             if (clean.isEmpty()) {

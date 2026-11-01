@@ -52,6 +52,7 @@ import { JarvisCompanionsComponent } from './jarvis-companions.component';
 import { JarvisSceneBus } from './scenes/jarvis-scene-bus.service';
 import { JarvisSceneComponent } from './scenes/jarvis-scene.component';
 import { JarvisConstellationComponent } from './scenes/jarvis-constellation.component';
+import { isShowDismiss, stripShowLines } from './scenes/jarvis-show';
 
 /** Le sujet retenu sur cet appareil, d'une ouverture de Jarvis à l'autre. */
 export const JARVIS_SUBJECT_KEY = 'cg.jarvis.subject';
@@ -773,6 +774,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
         return;
       }
     }
+    if (!this.turnRunning && isShowDismiss(text) && this.scenes.dismissShow()) {
+      // SF-234-13 — « c'est bon » : ce qui était montré s'efface, sur l'appareil, sans tour.
+      this.state.set('repos');
+      return;
+    }
     if (isStopCommand(text)) {
       // SF-231-03 — l'interruption par la parole : « stop » arrête le travail en cours, comme le bouton du terminal.
       const id = this.subjectId();
@@ -1002,7 +1008,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
     const elapsed = Date.now() - this.turnStartedAt;
     this.endTurn();
-    this.detail.set(done.reply);
+    this.detail.set(done.reply ? stripShowLines(done.reply) : done.reply);
     const phrase = oralPhrase(done.reply) || 'C’est fait. Le détail est à l’écran.';
     this.pendingConfirm = null;
     const oral = this.oral;

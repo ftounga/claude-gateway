@@ -119,6 +119,24 @@ class AtelierChatServiceVoiceTurnTest {
     }
 
     @Test
+    void SF_234_13_montrerPasseParLeMessageEtLePrefixeResteIdentiqueAuTerminal() {
+        agentProvider.enqueueFinal("ok");
+        service.chat(userId, workspaceId, "bonjour");
+        String typedSystem = agentProvider.lastRequest.system();
+        List<String> typedTools = agentProvider.lastRequest.tools().stream().map(t -> t.name()).toList();
+
+        service.markVoiceTurn(userId, workspaceId, null);
+        agentProvider.enqueueFinal("🎙 Voici vos clients.\n🖥 montrer: clients");
+        service.chat(userId, workspaceId, "montre-moi mes clients");
+
+        assertThat(sentToModel()).contains("🖥 montrer: <filtre>").contains("chantiers-bloques")
+                .contains("etapes-en-cours").contains("a-envoyer");
+        // D18 : aucun outil réservé à Jarvis, consigne système inchangée ⇒ préfixe identique au tour tapé.
+        assertThat(agentProvider.lastRequest.system()).isEqualTo(typedSystem).doesNotContain("montrer");
+        assertThat(agentProvider.lastRequest.tools().stream().map(t -> t.name()).toList()).isEqualTo(typedTools);
+    }
+
+    @Test
     void SF_231_03_unTourTapeNeRecoitPasLaConsigneOrale() {
         agentProvider.enqueueFinal("ok");
 

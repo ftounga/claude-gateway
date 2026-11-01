@@ -6,6 +6,7 @@ import {
   CHANTIER_RING, CLIENT_RING, ConstellationLayout, PlacedSubject, SUBJECT_RING, anchorFor, layoutUniverse, polar,
 } from './jarvis-constellation-layout';
 import { JarvisSceneBus } from './jarvis-scene-bus.service';
+import { ShowFocus } from './jarvis-show';
 import { JarvisUniverse, NodeRef, UniverseChantier } from './jarvis-universe.models';
 
 /** Rayons de la carte (repris en dur dans le gabarit : 62 et 88). */
@@ -41,7 +42,8 @@ interface LitMark {
   selector: 'app-jarvis-constellation',
   template: `
     <div class="cst">
-      <svg class="cst__map" viewBox="-100 -100 200 200" preserveAspectRatio="xMidYMid meet">
+      <svg class="cst__map" [class.is-showing]="!!focus()" viewBox="-100 -100 200 200"
+           preserveAspectRatio="xMidYMid meet">
         <g aria-hidden="true">
           <circle class="cst__orbit" r="62" />
           <circle class="cst__orbit cst__orbit--outer" r="88" />
@@ -53,14 +55,19 @@ interface LitMark {
           }
           @for (c of layout().clients; track c.key) {
             <g class="cst__client" [class.is-current]="c.current" [class.is-off]="!c.connected"
-               [class.is-lit]="isLit(c.key)" [attr.data-key]="c.key">
-              <circle [attr.cx]="c.x" [attr.cy]="c.y" r="4.2" />
+               [class.is-lit]="isLit(c.key)" [class.is-shown]="isShown(c.key)" [attr.data-key]="c.key">
+              @if (halo(c.key); as h) {
+                <!-- SF-234-13 : poste connecté = halo vert ; déconnecté = halo éteint (la note écrite le dit aussi). -->
+                <circle class="cst__halo" [class.cst__halo--off]="h === 'off'" [attr.cx]="c.x" [attr.cy]="c.y" r="8" />
+              }
+              <circle [attr.cx]="c.x" [attr.cy]="c.y" [attr.r]="isShown(c.key) ? 5.4 : 4.2" />
               <text [attr.x]="c.x" [attr.y]="c.y + (c.y < 0 ? -7 : 10)" text-anchor="middle">{{ c.name }}</text>
             </g>
           }
         </g>
         @for (s of layout().subjects; track s.id) {
           <g class="cst__subject" [class.is-cluster]="s.ring === 'cluster'" [class.is-lit]="isLit(s.id)"
+             [class.is-shown]="isShown(s.id)"
              [class.is-current]="s.id === subjectId()" [class.is-live]="s.live" [attr.data-key]="s.id"
              role="button" tabindex="0" [attr.aria-label]="'Passer sur ' + s.name"
              (click)="pick(s)" (keydown.enter)="pick(s)" (keydown.space)="pick(s); $event.preventDefault()">
@@ -73,6 +80,21 @@ interface LitMark {
           </g>
         }
         <g aria-hidden="true">
+          @for (m of shown(); track m.key) {
+            <!-- SF-234-13 : chantiers et personnes demandés, au premier plan sur l'anneau des chantiers. -->
+            <line class="cst__thread cst__thread--shown" [attr.x1]="m.x" [attr.y1]="m.y" x2="0" y2="0" pathLength="100" />
+            <g class="cst__mark is-lit is-shown" [attr.data-kind]="m.kind" [attr.data-key]="m.key">
+              @if (m.kind === 'chantier') {
+                <rect [attr.x]="m.x - 2.6" [attr.y]="m.y - 2.6" width="5.2" height="5.2"
+                      [attr.transform]="'rotate(45 ' + m.x + ' ' + m.y + ')'" />
+              } @else {
+                <rect [attr.x]="m.x - 2.4" [attr.y]="m.y - 2.4" width="4.8" height="4.8" rx="1.2" />
+              }
+              <text [attr.x]="m.x + (m.anchor === 'start' ? 5 : m.anchor === 'end' ? -5 : 0)"
+                    [attr.y]="m.y + (m.anchor === 'middle' ? (m.y < 0 ? -5 : 8) : 1.8)"
+                    [attr.text-anchor]="m.anchor">{{ m.label }}</text>
+            </g>
+          }
           @for (m of lit(); track m.key) {
             @if (m.own) {
               <g class="cst__mark is-lit" [attr.data-kind]="m.kind" [attr.data-key]="m.key">
@@ -124,6 +146,20 @@ interface LitMark {
     .cst__client.is-current circle { stroke: var(--cg-cream); stroke-width: 0.9; }
     .cst__client.is-current text { font-weight: 600; fill: var(--cg-cream); }
     .cst__client.is-off { opacity: 0.55; }
+    /* SF-234-13 — « Montrer » : le demandé au premier plan, le reste estompé. */
+    .cst__map.is-showing .cst__client:not(.is-shown), .cst__map.is-showing .cst__subject:not(.is-shown) {
+      opacity: 0.22;
+    }
+    .cst__client.is-shown { opacity: 1; }
+    .cst__client.is-shown text { fill: var(--cg-cream); font-weight: 600; }
+    .cst__halo {
+      fill: none; stroke: var(--cg-terminal-success); stroke-width: 1.1;
+      animation: cst-breathe 2.4s ease-in-out infinite;
+    }
+    .cst__halo--off {
+      stroke: color-mix(in srgb, var(--cg-cream) 30%, transparent); stroke-dasharray: 1 1.6; animation: none;
+    }
+    .cst__thread--shown { opacity: 0.35; }
     .cst__subject { pointer-events: auto; cursor: pointer; outline: none; }
     .cst__subject.is-cluster text { display: none; }
     .cst__hit { fill: transparent; }
@@ -154,7 +190,7 @@ interface LitMark {
     @keyframes cst-pulse { 0% { opacity: 0.7; } 100% { opacity: 0; transform: scale(1.25); } }
     @keyframes cst-breathe { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
     @media (prefers-reduced-motion: reduce) {
-      .cst__thread, .cst__mark, .cst__pulse, .cst__subject.is-live .cst__dot { animation: none; }
+      .cst__thread, .cst__mark, .cst__pulse, .cst__subject.is-live .cst__dot, .cst__halo { animation: none; }
       .cst__pulse { display: none; }
       .cst__dot { transition: none; }
     }
@@ -187,6 +223,32 @@ export class JarvisConstellationComponent implements OnInit {
 
   readonly lit = computed<LitMark[]>(() => this.placeLit(this.bus.universe(), this.layout()));
 
+  /** SF-234-13 — ce que le PO a demandé à voir. */
+  readonly focus = computed<ShowFocus | null>(() => this.bus.focus());
+
+  /** Les nœuds mis au premier plan, et leurs parents (client, sujet) qui ne s'estompent pas. */
+  private readonly shownKeys = computed(() => {
+    const keys = new Set<string>();
+    for (const item of this.focus()?.items ?? []) {
+      keys.add(item.node.key);
+      keys.add(item.node.clientKey);
+      if (item.node.subjectId) {
+        keys.add(item.node.subjectId);
+      }
+    }
+    return keys;
+  });
+
+  /** Chantiers et personnes demandés, répartis sur l'anneau des chantiers (au premier plan, même sur téléphone). */
+  readonly shown = computed<LitMark[]>(() => {
+    const items = (this.focus()?.items ?? []).filter((i) => i.node.kind === 'chantier' || i.node.kind === 'person');
+    return items.map((item, i) => {
+      const at = polar(CHANTIER_RING, -90 + (360 * (i + 0.5)) / items.length);
+      const label = item.node.kind === 'chantier' ? shortChantier(item.node.label) : item.node.label;
+      return { key: item.node.key, kind: item.node.kind, ...at, label, anchor: anchorFor(at.x), own: true };
+    });
+  });
+
   readonly hitRadius = computed(() => {
     const ring = this.layout().subjects.filter((s) => s.ring === 'current').length;
     const spacing = ring > 0 ? (2 * Math.PI * SUBJECT_RING) / ring : 24;
@@ -194,8 +256,13 @@ export class JarvisConstellationComponent implements OnInit {
   });
 
   /** Le fil d'Ariane : client › sujet › chantier › étape — la dernière chose citée, sinon le sujet courant. */
-  readonly crumbs = computed<string[]>(() => breadcrumb(this.bus.universe(), this.bus.state().lit.map((l) => l.node),
-    this.subjectId()));
+  readonly crumbs = computed<string[]>(() => {
+    const focus = this.focus();
+    if (focus) {
+      return [focus.title]; // SF-234-13 : le fil d'Ariane dit ce qui est montré (équivalent accessible)
+    }
+    return breadcrumb(this.bus.universe(), this.bus.state().lit.map((l) => l.node), this.subjectId());
+  });
 
   /** Ce que le lecteur d'écran annonce (limité, D10). */
   readonly announced = signal('');
@@ -227,6 +294,19 @@ export class JarvisConstellationComponent implements OnInit {
 
   isLit(key: string): boolean {
     return this.litKeys().has(key);
+  }
+
+  isShown(key: string): boolean {
+    return this.shownKeys().has(key);
+  }
+
+  /** Le halo d'un poste montré : `on` connecté, `off` déconnecté, `null` sinon (ou « Hébergé »). */
+  halo(key: string): 'on' | 'off' | null {
+    const item = this.focus()?.items.find((i) => i.node.kind === 'client' && i.node.key === key);
+    if (!item || item.connected === null) {
+      return null;
+    }
+    return item.connected ? 'on' : 'off';
   }
 
   anchor(x: number): 'start' | 'middle' | 'end' {
@@ -272,6 +352,12 @@ export class JarvisConstellationComponent implements OnInit {
     }
     return marks;
   }
+}
+
+/** « Chantier 3 — Bascule DNS » → « Ch. 3 — Bascule DNS », au plus 30 caractères. */
+function shortChantier(label: string): string {
+  const short = label.replace(/^Chantier\s+/, 'Ch. ');
+  return short.length > 30 ? `${short.slice(0, 29)}…` : short;
 }
 
 /** « Chantier 3 — Bascule DNS » (le libellé du nœud), raccourci pour la carte. */
