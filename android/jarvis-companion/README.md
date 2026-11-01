@@ -4,10 +4,13 @@ Un petit APK, installé hors store, qui écoute « Jarvis » **sur le téléphon
 ouvre alors l'écran Jarvis de l'application (`/jarvis`, F-231).
 
 - **Rien ne sort** : la reconnaissance du mot se fait sur l'appareil (même moteur que SF-231-05,
-  porté en Java : empreinte MFCC, alignement DTW, trois gabarits appris). Le manifeste ne demande
-  même pas la permission `INTERNET`.
-- **Aucun jeton** : l'écran Jarvis s'ouvre dans le navigateur (ou la PWA installée), avec la session
-  habituelle.
+  porté en Java : empreinte MFCC, alignement DTW, trois gabarits appris). Ce qu'il entend ne sort pas.
+- **Annonces téléphone verrouillé (SF-232-03)** : appairé par un code affiché dans l'écran Jarvis, il
+  reçoit un **jeton dédié** qui n'ouvre que la relève des annonces (`GET /api/runner/jarvis/announcements`,
+  toutes les 20 s). Verrouillé ou écran éteint, il dit à voix haute la fin d'un tour lancé via Jarvis
+  et les alertes de veille, puis écoute 8 s : le premier mot ouvre Jarvis. D'où la permission
+  `INTERNET` (ajoutée par SF-232-03). Jeton révocable depuis l'écran Jarvis.
+- **Les écrans** restent ceux de la PWA, avec sa propre session : le jeton du compagnon n'y donne pas accès.
 - **Interrupteur** dans la notification (Pause / Reprendre / Quitter) ; pause automatique sous 15 %
   de batterie hors charge, reprise à 20 % ou en charge.
 

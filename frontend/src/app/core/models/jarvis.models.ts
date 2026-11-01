@@ -72,3 +72,17 @@ export interface JarvisCompanionVersion {
   signingCertSha256: string | null;
   sizeBytes: number | null;
 }
+
+/** F-232 / SF-232-03 — le code d'appairage du compagnon Android : 8 caractères, à usage unique, 5 minutes. */
+export interface JarvisCompanionPairingCode {
+  code: string;
+  expiresAt: string;
+}
+
+/** F-232 / SF-232-03 — un compagnon Android appairé (annonces téléphone verrouillé). */
+export interface JarvisCompanionDevice {
+  id: string;
+  label: string;
+  pairedAt: string;
+  lastSeenAt: string | null;
+}

@@ -44,6 +44,8 @@ public final class MainActivity extends Activity {
     private TextView state;
     private Button learn;
     private Button toggle;
+    private Button pair;
+    private TextView pairing;
     private volatile boolean enrolling;
 
     @Override
@@ -78,7 +80,7 @@ public final class MainActivity extends Activity {
         column.addView(text("Jarvis, téléphone verrouillé", 22));
         column.addView(text("Ce compagnon écoute le mot « Jarvis » sur le téléphone, et seulement lui : "
                 + "rien n'est enregistré, rien ne sort avant le mot. Au mot, il ouvre l'écran Jarvis de "
-                + "l'application, avec ta session habituelle. Il ne porte aucun jeton.", 15));
+                + "l'application, avec ta session habituelle. Appairé (étape 5), il dit aussi les annonces.", 15));
 
         column.addView(text("1. L'adresse de l'application", 17));
         EditText gateway = new EditText(this);
@@ -139,6 +141,28 @@ public final class MainActivity extends Activity {
         });
         column.addView(toggle);
 
+        // SF-232-03 — les annonces téléphone verrouillé : appairage par le code de l'écran Jarvis.
+        column.addView(text("5. Les annonces, téléphone verrouillé", 17));
+        column.addView(text("Dans l'écran Jarvis de l'application : « Annonces téléphone verrouillé » puis "
+                + "« Appairer le compagnon ». Saisis ici le code affiché. Le compagnon dira alors à voix haute "
+                + "la fin d'un tour lancé à la voix et les alertes de veille.", 14));
+        EditText code = new EditText(this);
+        code.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
+        code.setHint("Code d'appairage");
+        column.addView(code);
+        pair = new Button(this);
+        pair.setOnClickListener(v -> {
+            if (prefs.token() != null) {
+                prefs.setToken(null);
+                renderPairing();
+                return;
+            }
+            pairWith(code.getText().toString());
+        });
+        column.addView(pair);
+        pairing = text("", 14);
+        column.addView(pairing);
+
         state = text("", 15);
         column.addView(state);
 
@@ -163,6 +187,7 @@ public final class MainActivity extends Activity {
     private void render() {
         boolean mic = hasMic();
         boolean learned = prefs.profile() != null;
+        renderPairing();
         learn.setText(enrolling ? "Annuler l'apprentissage" : learned ? "Réapprendre « Jarvis »" : "Apprendre « Jarvis »");
         learn.setEnabled(mic);
         toggle.setText(prefs.listening() ? "Arrêter l'écoute" : "Démarrer l'écoute");
@@ -176,6 +201,46 @@ public final class MainActivity extends Activity {
                 say(prefs.listening() ? "Jarvis écoute." : "Écoute arrêtée.");
             }
         }
+    }
+
+    /** SF-232-03 — l'état de l'appairage des annonces. */
+    private void renderPairing() {
+        boolean paired = prefs.token() != null;
+        pair.setText(paired ? "Oublier l'appairage" : "Appairer");
+        pairing.setText(paired ? "Appairé : les annonces sont dites téléphone verrouillé."
+                : "Non appairé : aucune annonce.");
+    }
+
+    /** Échange le code contre le jeton des annonces, hors du fil principal. Le jeton n'est jamais affiché. */
+    private void pairWith(String raw) {
+        String code = raw == null ? "" : raw.trim();
+        if (code.isEmpty()) {
+            pairing.setText("Saisis le code affiché dans l'écran Jarvis.");
+            return;
+        }
+        pair.setEnabled(false);
+        pairing.setText("Appairage…");
+        String gateway = prefs.gateway();
+        String label = (Build.MANUFACTURER + " " + Build.MODEL).trim();
+        new Thread(() -> {
+            String message;
+            try {
+                prefs.setToken(AnnouncementClient.pair(gateway, code, label));
+                message = null;
+            } catch (AnnouncementClient.Unauthorized e) {
+                message = "Code refusé ou expiré : génère-en un nouveau.";
+            } catch (java.io.IOException | RuntimeException e) {
+                message = "L'application est injoignable. Vérifie l'adresse et réessaie.";
+            }
+            String result = message;
+            main.post(() -> {
+                pair.setEnabled(true);
+                renderPairing();
+                if (result != null) {
+                    pairing.setText(result);
+                }
+            });
+        }, "jarvis-pair").start();
     }
 
     private boolean hasMic() {

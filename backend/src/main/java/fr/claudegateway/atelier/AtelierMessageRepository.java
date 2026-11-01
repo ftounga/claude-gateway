@@ -30,6 +30,14 @@ public interface AtelierMessageRepository extends JpaRepository<AtelierMessage, 
     List<AtelierMessage> findTop12ByWorkspaceIdAndUserIdOrderByCreatedAtDesc(UUID workspaceId, UUID userId);
 
     /**
+     * Les messages d'une origine et d'un rôle, créés après {@code after}, du plus ancien au plus récent
+     * (F-232 / SF-232-03) : les fins de tour Jarvis que le compagnon Android annonce. Filtrée {@code user_id} ;
+     * servie par l'index {@code (user_id, via, created_at)} (migration 194).
+     */
+    List<AtelierMessage> findTop20ByUserIdAndViaAndRoleAndCreatedAtGreaterThanOrderByCreatedAtAsc(UUID userId,
+            String via, String role, java.time.OffsetDateTime after);
+
+    /**
      * Les vingt derniers messages d'un rôle, du plus récent au plus ancien (F-225 / SF-225-03) : le point de situation
      * y cherche le dernier message <b>écrit par l'utilisateur</b> (les demandes automatiques des courses et des
      * routines sont écartées par le service). Filtrée {@code workspace_id} + {@code user_id}.

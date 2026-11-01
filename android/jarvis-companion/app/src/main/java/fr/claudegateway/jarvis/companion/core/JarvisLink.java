@@ -65,8 +65,8 @@ public final class JarvisLink {
 
     /**
      * Le même lien, portant la version du compagnon (SF-232-02) : l'écran Jarvis la compare à celle que
-     * la gateway sert et propose la mise à jour. Le compagnon n'interroge rien lui-même — il n'a pas la
-     * permission {@code INTERNET}.
+     * la gateway sert et propose la mise à jour. Le compagnon n'interroge pas la version lui-même (son seul
+     * appel réseau est la relève des annonces, SF-232-03).
      */
     public static String jarvisUrl(String gateway, int versionCode) {
         return jarvisUrl(gateway) + "&compagnon=" + versionCode;

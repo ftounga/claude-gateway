@@ -2,7 +2,9 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
-import { JarvisAbsence, JarvisCompanionVersion, JarvisToSendList } from '../models/jarvis.models';
+import {
+  JarvisAbsence, JarvisCompanionDevice, JarvisCompanionPairingCode, JarvisCompanionVersion, JarvisToSendList,
+} from '../models/jarvis.models';
 
 /** F-232 / SF-232-02 — l'APK du compagnon Android, servi par le chemin des paquets du runner (F-44). */
 export const JARVIS_COMPANION_DOWNLOAD_PATH = '/api/runner/download/android';
@@ -40,5 +42,20 @@ export class JarvisService {
   /** F-232 / SF-232-02 — la version du compagnon Android que cette gateway sert (route publique). */
   companion(): Observable<JarvisCompanionVersion> {
     return this.http.get<JarvisCompanionVersion>(`${JARVIS_COMPANION_DOWNLOAD_PATH}/version`);
+  }
+
+  /** F-232 / SF-232-03 — un code d'appairage pour le compagnon (annonces téléphone verrouillé). */
+  companionPairingCode(): Observable<JarvisCompanionPairingCode> {
+    return this.http.post<JarvisCompanionPairingCode>('/api/jarvis/companions/pairing-code', {});
+  }
+
+  /** F-232 / SF-232-03 — les compagnons appairés au compte. */
+  companions(): Observable<JarvisCompanionDevice[]> {
+    return this.http.get<JarvisCompanionDevice[]>('/api/jarvis/companions');
+  }
+
+  /** F-232 / SF-232-03 — révoque un compagnon : son jeton est refusé dès sa relève suivante. */
+  revokeCompanion(id: string): Observable<void> {
+    return this.http.delete<void>(`/api/jarvis/companions/${id}`);
   }
 }
