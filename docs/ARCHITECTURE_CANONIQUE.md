@@ -1391,6 +1391,18 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   `usage_day` (unique avec `user_id`), `chars_spoken` + `speech_cost_usd` (la voix de Jarvis : sert le **plafond
   mensuel en euros** `app.jarvis.voice.monthly-budget-eur`), `sessions`, `spoken_seconds`, `wakes` (mesure d'adoption
   D9, SF-231-05, `GET /api/admin/jarvis/measure`), `updated_at`. **Aucun contenu** (ni texte ni audio).
+  F-233 / SF-233-04 (migration `197`) : `stt_stream_seconds` + `stt_stream_cost_usd` (l'écoute en flux, comptée à la
+  durée de session) ; le plafond mensuel somme lecture **et** écoute.
+- **jarvis_turn_timings** — **un tour vocal chronométré** (F-233 / SF-233-01, migration `196`) : `user_id`,
+  `workspace_id` (nul si sujet d'autrui), `created_at`, `listen_mode` (`BATCH|STREAM`), `stt_provider`, `tts_provider`,
+  `tool_turn`, marques en ms depuis la fin de parole (`speech_ms`, `transcript_ms`, `reaction_ms`, `sent_ms`,
+  `first_token_ms`, `first_oral_sentence_ms`, `first_audio_byte_ms`, `first_sound_ms`, `done_ms`), compteurs
+  d'interruption (`interruptions_detected|restored|confirmed`, `acknowledgements`, `false_triggers`). **Aucun
+  contenu.** Purge à 90 jours. Lu par `GET /api/admin/jarvis/latency` (ADMIN, ses propres tours).
+- **jarvis_voice_choices** — **la voix de Jarvis choisie à l'audition** (F-233 / SF-233-07, migration `198`) :
+  `user_id`, `provider` (`openai|elevenlabs`), `voice` (nom ou identifiant), `label` (lettre entendue), `chosen_at`.
+  Le plus récent du compte fait foi (`JarvisVoiceService.current(userId)`), sinon la configuration. Purgé à la
+  suppression du compte.
 - **jarvis_companions** — **un compagnon Android appairé** (F-232 / SF-232-03, migration `194`) : `user_id`, `label`, `pairing_code_hash` + `pairing_expires_at` (code à usage unique, effacé à l'échange), `token_hash` (unique ; jeton dédié qui n'ouvre QUE `GET /api/runner/jarvis/announcements`, en-tête `X-Jarvis-Token`), `paired_at`, `last_seen_at` (échéance glissante 60 j), `revoked_at`, `created_at`. Empreintes SHA-256 seulement. Index `(user_id, via, created_at)` ajouté sur `atelier_messages` pour la relève des annonces.
 - **atelier_messages.via** — **l'origine d'un message** (F-231 / SF-231-06, migration `191`) : `JARVIS` pour une
   demande dite à la voix dans l'écran Jarvis **et** la réponse de ce tour, `NULL` sinon. Donnée d'affichage : marque
