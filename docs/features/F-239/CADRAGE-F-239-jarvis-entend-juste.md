@@ -96,6 +96,7 @@ classent les options ; la capture audio réelle (SF-239-03) donnera les vrais ta
 | SF-239-09 | C | **La mémoire du jour** | 1 j | |
 | SF-239-12 | coûts | **Le compteur visible** : ce que Jarvis a coûté aujourd'hui et ce mois-ci, en € (cerveau rapide, Opus délégué, voix, écoute), dans les réglages / HUD et la mesure admin | 1,5 j | |
 | SF-239-10 | B | **Laisser finir la phrase** (D6) | 1,5 j | |
+| SF-239-13 | D | **La porte de conversation au vert** (ajout après le banc prod du 02/11 : 82,4 %) : pré-banc fidèle (code de la prod, N passages), consigne v6, gardes ciblées, passages du banc en base | 1 j | |
 
 Chaque SF de C et B passe le banc de conversation (SF-239-07) avant merge.
 

@@ -138,4 +138,27 @@ class JarvisFastGuardsTest {
         assertThat(JarvisFastGuards.isListeningInvitation(
                 JarvisFastGuards.courtesyReply("Bonjour"))).isFalse();
     }
+
+    // ---------------------------------------------------------------- F-239 / SF-239-13 (banc prod du 02/11)
+
+    @Test
+    void f239MetaTalkAndDetailOffersAreRecognised() {
+        assertThat(JarvisFastGuards.isMetaTalk("Le contexte ne m'en dit pas plus.")).isTrue();
+        assertThat(JarvisFastGuards.isMetaTalk("D'après mes notes, rien ne bloque.")).isTrue();
+        assertThat(JarvisFastGuards.isMetaTalk("Le chantier 1 est en recette.")).isFalse();
+        assertThat(JarvisFastGuards.isDetailOffer("Je peux détailler les autres chantiers si vous le souhaitez.")).isTrue();
+        assertThat(JarvisFastGuards.isDetailOffer("Souhaitez-vous le détail, Monsieur ?")).isTrue();
+        assertThat(JarvisFastGuards.isDetailOffer("Je peux vous en dire plus sur Helios.")).isTrue();
+        assertThat(JarvisFastGuards.isDetailOffer("Claire Dumas doit valider la recette.")).isFalse();
+    }
+
+    @Test
+    void f239AChantierNumberMustBeCopiedExactly() {
+        String context = "- client Orion : sujet Orion-Run\n  - chantier 1 — Refonte du portail, 3/6";
+        assertThat(JarvisFastGuards.ungroundedFact("Le chantier 3 du portail est en recette.", context, ""))
+                .isEqualTo("chantier 3");
+        assertThat(JarvisFastGuards.ungroundedFact("Le chantier 1 du portail est en recette.", context, "")).isNull();
+        assertThat(JarvisFastGuards.ungroundedFact("Le chantier 7 avance.", "Chantier courant : 7", "")).isNull();
+        assertThat(JarvisFastGuards.ungroundedFact("Le chantier 9 avance.", "", "Où en est le chantier 9 ?")).isNull();
+    }
 }

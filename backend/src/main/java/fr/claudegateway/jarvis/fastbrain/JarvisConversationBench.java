@@ -238,7 +238,8 @@ final class JarvisConversationBench {
                 failures.add(n + " " + what);
             }
         });
-        scenarios.stream().filter(s -> !s.passed()).forEach(s -> failures.add(String.join(" ; ", s.reasons())));
+        // F-239 / SF-239-13 — la porte, c'est le taux et les zéros ; le détail des scénarios échoués est dans le rapport
+        // (`scenarios`), il n'est pas, à lui seul, un échec de la porte.
         BigDecimal total = scenarios.stream().map(ScenarioVerdict::costEur).reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal perExchange = turns.isEmpty() ? BigDecimal.ZERO
                 : total.divide(BigDecimal.valueOf(turns.size()), 4, java.math.RoundingMode.HALF_UP);

@@ -1421,6 +1421,10 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   `corrected_text` (SF-239-06). **ADMIN seulement, sur interrupteur explicite** (`jarvis_preferences.capture_audio`,
   faux par défaut) ; ≤ 200 par compte, purge à 7 jours, effacement à l'extinction et à la suppression du compte. Lu par
   `GET /api/admin/jarvis/captures` (ses propres captures).
+- **jarvis_bench_runs** — **un passage du banc du cerveau rapide** (F-239 / SF-239-13, migration
+  `239-jarvis-bench-runs`) : `user_id`, `started_at`, `status`, `report_json` (rapport sans parole du compte). Avant,
+  l'état vivait dans la mémoire d'un pod (404 une fois sur deux avec deux replicas). ≤ 20 par compte. Lu par
+  `GET /api/admin/jarvis/fast-brain/bench/{id}` sous `user_id`.
 - **jarvis_voice_choices** — **la voix de Jarvis choisie à l'audition** (F-233 / SF-233-07, migration `198`) :
   `user_id`, `provider` (`openai|elevenlabs`), `voice` (nom ou identifiant), `label` (lettre entendue), `chosen_at`.
   Le plus récent du compte fait foi (`JarvisVoiceService.current(userId)`), sinon la configuration. Purgé à la

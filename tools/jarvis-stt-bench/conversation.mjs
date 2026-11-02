@@ -1,5 +1,11 @@
 #!/usr/bin/env node
 /**
+ * ⚠️ DÉCLASSÉ (F-239 / SF-239-13) : ce script a surestimé le banc prod (94,1 % contre 82,4 %) — il appelle le modèle
+ * sans les gardes ni la forme d'appel de la passerelle. Le pré-banc qui fait foi est désormais
+ * `backend/src/test/java/fr/claudegateway/jarvis/fastbrain/JarvisConversationBenchLiveTest.java` (le code même de la
+ * prod, N passages) : `ANTHROPIC_API_KEY=… JARVIS_LIVE_BENCH=2 ./mvnw -o test -Dtest=JarvisConversationBenchLiveTest`.
+ * Gardé pour régler une consigne vite, à titre indicatif seulement.
+ *
  * Pré-banc de conversation (F-239 / SF-239-08) — rejoue hors passerelle le jeu `conversation-scenarios.json` sur le
  * vrai modèle, avec la consigne du cerveau rapide lue dans `JarvisFastBrainPrompt.java` et le juge lu dans
  * `JarvisConversationBench.java`, pour régler la consigne AVANT de la livrer. Approximation : les garde-fous

@@ -395,6 +395,19 @@ class JarvisFastBrainServiceTest {
     }
 
     @Test
+    void f239AtMostThreeSentencesNoMetaTalkNoDetailOffer() {
+        StringBuilder heard = new StringBuilder();
+        JarvisFastBrainService.Outcome outcome = service(streaming("Kestrel avance. ", "Le contexte ne m'en dit pas plus. ",
+                "Kestrel est en recette. ", "Kestrel attend une validation. ", "Kestrel reste ouvert. ",
+                "Je peux détailler les étapes si vous le souhaitez."), null, null)
+                .converse(ask("Fais-moi le point sur Kestrel."), heard::append);
+
+        assertThat(outcome.spokenText())
+                .isEqualTo("Kestrel avance. Kestrel est en recette. Kestrel attend une validation.");
+        assertThat(heard.toString()).doesNotContain("contexte").doesNotContain("détailler").doesNotContain("ouvert");
+    }
+
+    @Test
     void warmsAtMostEveryFourMinutesWithZeroOutput() {
         JarvisFastBrainService service = service(answering(""), null, null);
 

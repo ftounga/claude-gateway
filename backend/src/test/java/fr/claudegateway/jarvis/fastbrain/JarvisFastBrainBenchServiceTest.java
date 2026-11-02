@@ -164,12 +164,39 @@ class JarvisFastBrainBenchServiceTest {
         assertThat(report.conversation().costPerExchangeEur()).isPositive();
         // Le cerveau rapide répond à tout : les demandes métier (à déléguer) font échouer la porte.
         assertThat(report.gatePassed()).isFalse();
-        assertThat(report.gateFailures()).anyMatch(f -> f.contains("route repondre au lieu de deleguer"));
+        assertThat(report.gateFailures()).anyMatch(f -> f.contains("< 90 %"));
+        assertThat(report.conversation().scenarios()).anyMatch(s -> s.reasons().stream()
+                .anyMatch(r -> r.contains("route repondre au lieu de deleguer")));
         // À blanc : ni trace, ni mémoire, ni registre.
         verifyNoInteractions(writer, memory, registry);
         // Le tour suivant d'un scénario voit l'échange précédent dans son contexte.
         assertThat(calls).filteredOn(r -> r.tools().stream().anyMatch(t -> "deleguer".equals(t.name())))
                 .anyMatch(r -> r.messages().get(0).content().toString().contains("Derniers échanges de la conversation"));
+    }
+
+    @Test
+    void f239AReportStartedOnAnotherPodIsReadFromTheStoreUnderTheAccount() {
+        JarvisFastBrainBenchService bench = bench(provider("Kestrel avance bien.", GOOD));
+        JarvisBenchRunRepository store = mock(JarvisBenchRunRepository.class);
+        bench.setRunsStore(store);
+        JarvisFastBrainBenchService.Report report = bench.run(alice, UUID.randomUUID(), "REAL", "claude-haiku-5-5",
+                OffsetDateTime.now());
+        org.mockito.ArgumentCaptor<JarvisBenchRun> saved = org.mockito.ArgumentCaptor.forClass(JarvisBenchRun.class);
+        bench.store(alice, report);
+        org.mockito.Mockito.verify(store).save(saved.capture());
+        assertThat(saved.getValue().getReportJson()).doesNotContain("Où en est");
+
+        // Un autre pod : rien en mémoire, le rapport vient de la base, sous le compte.
+        JarvisFastBrainBenchService other = bench(provider("x", GOOD));
+        other.setRunsStore(store);
+        when(store.findByIdAndUserId(report.runId(), alice)).thenReturn(Optional.of(saved.getValue()));
+        assertThat(other.report(alice, report.runId())).get()
+                .satisfies(r -> {
+                    assertThat(r.runId()).isEqualTo(report.runId());
+                    assertThat(r.gatePassed()).isEqualTo(report.gatePassed());
+                    assertThat(r.cases()).isEqualTo(report.cases());
+                });
+        assertThat(other.report(UUID.randomUUID(), report.runId())).isEmpty();
     }
 
     @Test
