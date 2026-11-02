@@ -111,8 +111,18 @@ public class JarvisFastBrainController {
 
     private void relay(SseEmitter emitter, JarvisFastBrainService.Request call, Long turnSeq) {
         try {
-            JarvisFastBrainService.Outcome outcome = service.converse(call, delta -> send(emitter, "text",
-                    new TextEvent(delta)));
+            JarvisFastBrainService.Outcome outcome = service.converse(call, new JarvisFastBrainService.Sink() {
+                @Override
+                public void text(String delta) {
+                    send(emitter, "text", new TextEvent(delta));
+                }
+
+                @Override
+                public void understood(String text) {
+                    // F-239 / SF-239-05 — la parole relue, affichée à l'écran avant la réponse ; jamais dite.
+                    send(emitter, "understood", new UnderstoodEvent(text));
+                }
+            });
             switch (outcome.kind()) {
                 case FALLBACK -> send(emitter, "fallback", new FallbackEvent(outcome.reason()));
                 case DELEGATE -> {
@@ -162,6 +172,10 @@ public class JarvisFastBrainController {
     }
 
     record FallbackEvent(String reason) {
+    }
+
+    /** F-239 / SF-239-05 — la parole relue par le cerveau rapide (garde anti-invention passée). */
+    record UnderstoodEvent(String text) {
     }
 
     record DoneEvent(String brain, String spokenText, long firstTokenMs, String model, Long turnSeq,

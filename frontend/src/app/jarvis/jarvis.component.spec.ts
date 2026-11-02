@@ -1447,6 +1447,21 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       jarvis.ngOnDestroy();
     }));
 
+  it('F-239 / SF-239-05 — ce que le cerveau rapide a compris s’affiche, et c’est ce qu’Opus reçoit', fakeAsync(() => {
+    const jarvis = fastOn();
+    void jarvis.handle('Regarde les tickets bloqués de Cagibi');
+    flushMicrotasks();
+    fast!.onUnderstood!('Regarde les tickets bloqués de CAGIP.');
+    expect(jarvis.said()).toBe('Regarde les tickets bloqués de CAGIP.');
+    fast!.onDelegated({ delegationId: 'd-1', subjectId: 'w-2', chantier: null, label: 'tickets bloqués de CAGIP',
+      announce: 'Je regarde les tickets bloqués de CAGIP.', demande: 'x', automatic: false, reason: null });
+    fastDone!('ok');
+    flushMicrotasks();
+    expect(atelier.streamChat).toHaveBeenCalledWith('w-2', 'Regarde les tickets bloqués de CAGIP.',
+      jasmine.any(Object), 'ACT', false, [], null, false, 'JARVIS', null);
+    jarvis.ngOnDestroy();
+  }));
+
   it('F-235 / SF-235-05 — délégation : annonce dite, tour Opus dans le fil cible, 🎙 intermédiaires muettes, fin annoncée avec son label',
     fakeAsync(() => {
       const jarvis = fastOn();

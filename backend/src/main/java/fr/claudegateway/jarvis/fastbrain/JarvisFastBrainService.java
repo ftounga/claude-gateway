@@ -90,11 +90,26 @@ public class JarvisFastBrainService {
 
     /** Le résultat d'un échange. */
     public record Outcome(Kind kind, String spokenText, Delegation delegation, String reason, String model,
-            long firstTokenMs, BigDecimal costUsd, Guards guards) {
+            long firstTokenMs, BigDecimal costUsd, Guards guards, String understood) {
+
+        public Outcome(Kind kind, String spokenText, Delegation delegation, String reason, String model,
+                long firstTokenMs, BigDecimal costUsd, Guards guards) {
+            this(kind, spokenText, delegation, reason, model, firstTokenMs, costUsd, guards, null);
+        }
 
         public Outcome(Kind kind, String spokenText, Delegation delegation, String reason, String model,
                 long firstTokenMs, BigDecimal costUsd) {
-            this(kind, spokenText, delegation, reason, model, firstTokenMs, costUsd, Guards.NONE);
+            this(kind, spokenText, delegation, reason, model, firstTokenMs, costUsd, Guards.NONE, null);
+        }
+
+        /** F-239 / SF-239-05 — la même issue, avec la parole relue (ou {@code null}). */
+        public Outcome withUnderstood(String text) {
+            return new Outcome(kind, spokenText, delegation, reason, model, firstTokenMs, costUsd, guards, text);
+        }
+
+        /** Ce que l'utilisateur a voulu dire : la relecture acceptée, sinon {@code said}. */
+        public String saidOr(String said) {
+            return understood != null && !understood.isBlank() ? understood : said;
         }
     }
 
@@ -111,6 +126,10 @@ public class JarvisFastBrainService {
     @FunctionalInterface
     public interface Sink {
         void text(String delta);
+
+        /** F-239 / SF-239-05 — la parole relue (ligne {@code compris:} acceptée par la garde), jamais dite. */
+        default void understood(String text) {
+        }
     }
 
     /** Raisons d'une délégation d'office ou d'un repli (comptées, jamais dites). */
@@ -229,12 +248,13 @@ public class JarvisFastBrainService {
         }
         // SF-235-04 (D12) : un échange rapide est tracé dans le fil du sujet courant (jamais rejoué comme un tour).
         if (exchanges != null && outcome.kind() == Kind.ANSWER && request.workspace() != null) {
-            exchanges.write(request.userId(), request.workspace().getId(), request.chantier(), request.text(),
+            exchanges.write(request.userId(), request.workspace().getId(), request.chantier(),
+                    outcome.saidOr(request.text()),
                     outcome.spokenText());
         }
         // SF-235-02 : la mémoire de session (mots seuls) et le registre des délégations en cours.
         if (memory != null && outcome.kind() != Kind.FALLBACK) {
-            memory.remember(request.userId(), request.text(), outcome.kind() == Kind.ANSWER ? outcome.spokenText()
+            memory.remember(request.userId(), outcome.saidOr(request.text()), outcome.kind() == Kind.ANSWER ? outcome.spokenText()
                     : outcome.delegation().annonce());
         }
         if (delegations != null && outcome.kind() == Kind.DELEGATE) {
@@ -339,7 +359,18 @@ public class JarvisFastBrainService {
 
     private Outcome decide(Request request, Sink sink, String benchModel, String fixedContext) {
         Sink out = sink == null ? delta -> { } : sink;
-        Outcome outcome = decideRaw(request, out, benchModel, fixedContext);
+        java.util.concurrent.atomic.AtomicReference<String> understood = new java.util.concurrent.atomic.AtomicReference<>();
+        Outcome outcome = decideRaw(request, out, benchModel, fixedContext, understood);
+        outcome = outcome.withUnderstood(understood.get());
+        if (outcome.kind() == Kind.DELEGATE && outcome.delegation() != null && outcome.delegation().automatic()
+                && outcome.understood() != null) {
+            // F-239 / SF-239-05 — une délégation d'office porte la parole relue, pas la transcription brute.
+            Delegation d = outcome.delegation();
+            outcome = new Outcome(outcome.kind(), outcome.spokenText(), new Delegation(d.delegationId(),
+                    outcome.understood(), d.label(), d.annonce(), d.subjectId(), d.chantier(), d.automatic(),
+                    d.reason()), outcome.reason(), outcome.model(), outcome.firstTokenMs(), outcome.costUsd(),
+                    outcome.guards(), outcome.understood());
+        }
         return JarvisFastGuards.isSmallTalk(request.text()) ? courteous(request, outcome, out) : outcome;
     }
 
@@ -359,10 +390,11 @@ public class JarvisFastBrainService {
             out.text(said + " ");
         }
         return new Outcome(Kind.ANSWER, said, null, null, outcome.model(), outcome.firstTokenMs(), outcome.costUsd(),
-                outcome.guards());
+                outcome.guards(), outcome.understood());
     }
 
-    private Outcome decideRaw(Request request, Sink out, String benchModel, String fixedContext) {
+    private Outcome decideRaw(Request request, Sink out, String benchModel, String fixedContext,
+            java.util.concurrent.atomic.AtomicReference<String> understood) {
         UUID userId = request.userId();
         boolean bench = benchModel != null;
         String model = bench ? benchModel : properties.model();
@@ -443,6 +475,7 @@ public class JarvisFastBrainService {
             }
             gate.finish();
         }
+        understood.set(gate.understood());
         if (gate.abortReason() != null) {
             return auto(request, gate.abortReason(), firstMs, gate.guards());
         }
@@ -562,8 +595,69 @@ public class JarvisFastBrainService {
             this.smallTalk = smallTalk;
         }
 
+        // ---- F-239 / SF-239-05 : la ligne « compris: » (jamais dite) ----
+        private static final java.util.regex.Pattern UNDERSTOOD = java.util.regex.Pattern
+                .compile("(?is)^\\s*compris\\s*:\\s*(.*)$");
+        private final StringBuilder header = new StringBuilder();
+        private boolean headerDone;
+        private String understood;
+        private int understandingRejected;
+
+        /** La relecture acceptée par la garde, ou {@code null}. */
+        String understood() {
+            return understood;
+        }
+
+        int understandingRejected() {
+            return understandingRejected;
+        }
+
+        /**
+         * Retient le début de la réponse tant qu'il peut être la ligne {@code compris:} ; rend ce qui reste à traiter
+         * comme réponse (vide tant que l'en-tête n'est pas tranché).
+         */
+        private String header(String delta, boolean last) {
+            if (headerDone) {
+                return delta;
+            }
+            header.append(delta);
+            String text = header.toString();
+            String start = text.stripLeading().toLowerCase(java.util.Locale.ROOT);
+            boolean maybe = "compris:".startsWith(start.length() >= 8 ? start.substring(0, 8) : start)
+                    || start.startsWith("compris");
+            if (!maybe) {
+                headerDone = true;
+                header.setLength(0);
+                return text;
+            }
+            int newline = text.indexOf('\n');
+            if (newline < 0 && !last && text.length() < 1_200) {
+                return "";
+            }
+            headerDone = true;
+            header.setLength(0);
+            String line = newline < 0 ? text : text.substring(0, newline);
+            java.util.regex.Matcher m = UNDERSTOOD.matcher(line);
+            if (m.matches()) {
+                String read = m.group(1).strip().replaceAll("^[«\"]+|[»\"]+$", "").strip();
+                understood = JarvisUnderstanding.accept(said, read);
+                if (understood == null) {
+                    understandingRejected++;
+                } else {
+                    out.understood(understood);
+                }
+                return newline < 0 ? "" : text.substring(newline + 1);
+            }
+            return text;
+        }
+
         void accept(String delta) {
             if (delta == null || delta.isEmpty() || abortReason != null) {
+                return;
+            }
+            streamed = true;
+            delta = header(delta, false);
+            if (delta.isEmpty()) {
                 return;
             }
             streamed = true;
@@ -581,6 +675,13 @@ public class JarvisFastBrainService {
         }
 
         void finish() {
+            if (!headerDone) {
+                String rest = header("", true);
+                if (!rest.isEmpty() && abortReason == null) {
+                    streamed = true;
+                    pending.append(rest);
+                }
+            }
             String rest = pending.toString().strip();
             pending.setLength(0);
             if (!rest.isEmpty()) {
