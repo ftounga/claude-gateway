@@ -1459,6 +1459,20 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   `updated_at`. Choisit la variante **figée** de la consigne système du cerveau rapide et de la personnalité
   jointe au message des tours Opus vocaux (D18). `GET/PUT /api/jarvis/preferences`. Purgé à la suppression du
   compte.
+- **jarvis_portraits** — **le portrait de Jarvis d'un compte** (F-241 / SF-241-01, migration `241-jarvis-portraits`) :
+  `user_id` (clé), `sections_enc` (JSON des sept sections datées, **scellé** par `ByokKeyCipher`), `portrait_enabled`
+  (D20), `version` (incrémentée à chaque écriture du portrait ou d'un souvenir : clé de rechargement du bloc injecté),
+  `updated_at`, `last_interview_at`, `last_checkin_at` (relance D15), `interview_offered_at`, `interview_offers`
+  (cadence D13). `/api/jarvis/portrait` sous le seul principal ; **aucun accès administrateur** ; « Tout effacer » et
+  la suppression du compte : suppression physique.
+- **jarvis_souvenirs** — **les souvenirs du portrait** (F-241 / SF-241-01, même migration) : `id`, `user_id` (index),
+  `text_enc` (scellé, 200 caractères au plus en clair), `sensitive`, `noted_on`, `source` (`VOIX|ECRAN|ENTRETIEN`),
+  `created_at`. 30 au plus par compte ; numérotés `S<n>` dans le bloc ; jamais enregistrés sans consentement (📌).
+- **jarvis_allusions** — **la trace des allusions de Jarvis** (F-241 / SF-241-04, migration `241-jarvis-allusions`) :
+  `id`, `user_id` (index avec `at`), `at`, `kind` (`ALLUSION|HUMOUR`), `spontaneous`, `topic_enc`, `phrase_enc`
+  (scellés). Les 10 dernières sur 30 j partent dans le **message** du cerveau rapide (jamais la consigne) ; purge à
+  60 j ; vidée avec le portrait. `jarvis_turn_timings` gagne `portrait_on`, `portrait_blocked`, `personal_allusion`
+  (jamais de texte).
 - **interlocuteurs** — **les interlocuteurs d'un poste** (F-180 / SF-180-03, migration `160`) : une
   personne dont on attend quelque chose, normalisée. `id`, `user_id`, `host_id` (NOT NULL — un terminal
   hébergé garde le texte libre), `display_name (120)`, `normalized_name (120)` (unique par `user_id` +
