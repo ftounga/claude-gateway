@@ -36,7 +36,10 @@ export const BANC_SCENES = ['coeur', 'ecoute', 'reflexion', 'parole', 'oui', 'co
   'scene-le-point',
   // SF-236-11 — À envoyer (S1 + T-P3) et « Montrer » (S20, 6 filtres).
   'scene-message', 'scene-envoi', 'montrer-clients', 'montrer-connectes', 'montrer-deconnectes',
-  'montrer-chantiers-bloques', 'montrer-etapes-en-cours', 'montrer-a-envoyer'] as const;
+  'montrer-chantiers-bloques', 'montrer-etapes-en-cours', 'montrer-a-envoyer',
+  // SF-236-12 — web, création, vidéo, passation, mémoire, essaim, veille.
+  'scene-web', 'scene-page', 'scene-montage', 'scene-video', 'scene-passation', 'scene-souvenir', 'scene-carte',
+  'scene-essaim', 'scene-veille'] as const;
 
 const SCENE_NAME = /^[a-z0-9-]{1,40}$/;
 

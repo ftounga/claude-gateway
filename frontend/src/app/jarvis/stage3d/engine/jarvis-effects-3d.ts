@@ -1,12 +1,15 @@
 import {
-  AdditiveBlending, BufferAttribute, BufferGeometry, Camera, EdgesGeometry, Group, Line, LineBasicMaterial,
+  AdditiveBlending, BufferAttribute, BufferGeometry, Camera, EdgesGeometry, Group, IcosahedronGeometry, Line,
+  LineBasicMaterial,
   LineDashedMaterial, LineLoop, LineSegments, Mesh, MeshBasicMaterial, PlaneGeometry, Points, Scene, ShaderMaterial,
   Vector3,
 } from 'three';
 
 import { HOLO_COLORS, MOTION_DURATIONS, ease, rgb } from '../jarvis-motion';
 import { CORE_KEY } from '../jarvis-link-graph';
-import { CloudPoint, Effect3d, SceneTone } from '../scenes3d/jarvis-scene3d.model';
+import {
+  ANCHOR_ABOVE, ANCHOR_BELOW, ANCHOR_GLOBE, ANCHOR_SIDE, CloudPoint, Effect3d, SceneTone,
+} from '../scenes3d/jarvis-scene3d.model';
 
 /**
  * F-236 / SF-236-08 → 09 — **les effets des scènes 3D** (cadrage §9.2) : chaque effet déclaratif du plan a sa
@@ -97,6 +100,14 @@ type CloudSpec = Extract<Effect3d, { kind: 'cloud' }>;
 type TetherSpec = Extract<Effect3d, { kind: 'tether' }>;
 type CountdownSpec = Extract<Effect3d, { kind: 'countdown' }>;
 type CrownSpec = Extract<Effect3d, { kind: 'crown' }>;
+type GlobeSpec = Extract<Effect3d, { kind: 'globe' }>;
+type SwarmSpec = Extract<Effect3d, { kind: 'swarm' }>;
+type DialSpec = Extract<Effect3d, { kind: 'dial' }>;
+
+/** S13 — satellites (petits cœurs) au plus. */
+const SWARM_POOL = 4;
+/** S17 — graduations du cadran. */
+const DIAL_TICKS = 12;
 
 export class Effects3d {
   readonly group = new Group();
@@ -135,6 +146,17 @@ export class Effects3d {
   private readonly arc: Line;
   private readonly arcMaterial: LineBasicMaterial;
   private readonly mid = new Vector3();
+  private readonly forward = new Vector3();
+  private readonly globe: Presence<GlobeSpec> = { spec: null, on: false, since: -Infinity };
+  private readonly swarm: Presence<SwarmSpec> = { spec: null, on: false, since: -Infinity };
+  private readonly dial: Presence<DialSpec> = { spec: null, on: false, since: -Infinity };
+  private readonly globeMesh: LineSegments;
+  private readonly globeMaterial: LineBasicMaterial;
+  private readonly swarmLines: LineSegments;
+  private readonly swarmMaterial: LineBasicMaterial;
+  private readonly swarmPos = new Float32Array(SWARM_POOL * 6);
+  private readonly dialMesh: LineSegments;
+  private readonly dialMaterial: LineBasicMaterial;
 
   constructor(scene: Scene, narrow = false, pixelRatio = 1) {
     scene.add(this.group);
@@ -219,6 +241,42 @@ export class Effects3d {
     this.arc.visible = false;
     this.arc.frustumCulled = false;
     this.group.add(this.arc);
+
+    // SF-236-12 — S6 : le globe filaire (fil de fer additif, opacité 0,35, rotation lente).
+    const ico = new IcosahedronGeometry(0.9, 1);
+    this.globeMaterial = this.lineMaterial();
+    this.globeMesh = new LineSegments(new EdgesGeometry(ico), this.globeMaterial);
+    ico.dispose();
+    this.globeMesh.visible = false;
+    this.globeMesh.frustumCulled = false;
+    this.group.add(this.globeMesh);
+    // SF-236-12 — S13 : L-essaim, un filament du cœur à chaque satellite.
+    const swarm = new BufferGeometry();
+    swarm.setAttribute('position', new BufferAttribute(this.swarmPos, 3));
+    this.swarmMaterial = this.lineMaterial();
+    this.swarmLines = new LineSegments(swarm, this.swarmMaterial);
+    this.swarmLines.visible = false;
+    this.swarmLines.frustumCulled = false;
+    this.group.add(this.swarmLines);
+    // SF-236-12 — S17 : le cadran (cercle + 12 graduations), face à la caméra.
+    const dial = new BufferGeometry();
+    const dialPoints: number[] = [];
+    for (let i = 0; i < 48; i++) {
+      const a0 = (i / 48) * Math.PI * 2;
+      const a1 = ((i + 1) / 48) * Math.PI * 2;
+      dialPoints.push(Math.cos(a0), Math.sin(a0), 0, Math.cos(a1), Math.sin(a1), 0);
+    }
+    for (let i = 0; i < DIAL_TICKS; i++) {
+      const a = (i / DIAL_TICKS) * Math.PI * 2;
+      dialPoints.push(Math.cos(a) * 0.8, Math.sin(a) * 0.8, 0, Math.cos(a), Math.sin(a), 0);
+    }
+    dialPoints.push(0, 0, 0, 0, 0.7, 0);
+    dial.setAttribute('position', new BufferAttribute(new Float32Array(dialPoints), 3));
+    this.dialMaterial = this.lineMaterial();
+    this.dialMesh = new LineSegments(dial, this.dialMaterial);
+    this.dialMesh.visible = false;
+    this.dialMesh.frustumCulled = false;
+    this.group.add(this.dialMesh);
   }
 
   /** Les effets du plan ; `opening` (banc) : tout part de t = 0. */
@@ -226,7 +284,8 @@ export class Effects3d {
     const at = opening ? 0 : now;
     const seen = { flow: null as FlowSpec | null, cards: null as CardsSpec | null, scan: null as ScanSpec | null,
       cloud: null as CloudSpec | null, tether: null as TetherSpec | null, countdown: null as CountdownSpec | null,
-      crown: null as CrownSpec | null };
+      crown: null as CrownSpec | null, globe: null as GlobeSpec | null, swarm: null as SwarmSpec | null,
+      dial: null as DialSpec | null };
     for (const effect of effects) {
       switch (effect.kind) {
         case 'pulse':
@@ -256,6 +315,15 @@ export class Effects3d {
         case 'crown':
           seen.crown = effect;
           break;
+        case 'globe':
+          seen.globe = effect;
+          break;
+        case 'swarm':
+          seen.swarm = effect;
+          break;
+        case 'dial':
+          seen.dial = effect;
+          break;
         case 'wave':
           if (opening || effect.seq > this.waveSeq) {
             effect.keys.forEach((key, i) => this.fireRing(key, effect.tone, at + i * WAVE_STAGGER, 0.5));
@@ -280,6 +348,9 @@ export class Effects3d {
     present(this.tether, seen.tether, at, (a, b) => a.from === b.from && a.to === b.to);
     present(this.countdown, seen.countdown, at, () => true);
     present(this.crown, seen.crown, at, (a, b) => a.done.length === b.done.length);
+    present(this.globe, seen.globe, at, () => true);
+    present(this.swarm, seen.swarm, at, () => true);
+    present(this.dial, seen.dial, at, (a, b) => a.anchor === b.anchor);
   }
 
   /** Une image. `camera` : anneaux, cartes et loupe lui font face. */
@@ -287,14 +358,18 @@ export class Effects3d {
     const m = camera.matrixWorld.elements;
     this.right.set(m[0], m[1], m[2]).normalize();
     this.up.set(m[4], m[5], m[6]).normalize();
+    this.forward.set(-m[8], -m[9], -m[10]).normalize();
     this.frameRings(now, camera, locate);
     this.frameCards(now, camera, locate);
     this.frameScan(now, camera, locate);
     this.frameTether(now, locate);
     this.frameCountdown(now, camera);
+    this.frameGlobe(now, locate);
+    this.frameDial(now, camera, locate);
     let used = this.frameFlow(now, locate, 0);
     used = this.frameCloud(now, locate, used);
     used = this.frameCrown(now, used);
+    used = this.frameSwarm(now, used);
     const geometry = this.particles.geometry;
     geometry.setDrawRange(0, used);
     if (used > 0) {
@@ -322,6 +397,12 @@ export class Effects3d {
     this.tetherMaterial.dispose();
     this.arc.geometry.dispose();
     this.arcMaterial.dispose();
+    this.globeMesh.geometry.dispose();
+    this.globeMaterial.dispose();
+    this.swarmLines.geometry.dispose();
+    this.swarmMaterial.dispose();
+    this.dialMesh.geometry.dispose();
+    this.dialMaterial.dispose();
     this.group.removeFromParent();
   }
 
@@ -330,6 +411,18 @@ export class Effects3d {
   }
 
   private anchor(key: string, locate: Locator, out: Vector3): Vector3 {
+    switch (key) {
+      case ANCHOR_GLOBE:
+        // Derrière le cœur (vu de la caméra), un peu au-dessus.
+        return out.set(0, 0, 0).addScaledVector(this.forward, 3).addScaledVector(this.up, 1.2)
+          .addScaledVector(this.right, 0.8);
+      case ANCHOR_BELOW:
+        return out.set(0, 0, 0).addScaledVector(this.up, -1.8);
+      case ANCHOR_ABOVE:
+        return out.set(0, 0, 0).addScaledVector(this.up, 1.7);
+      case ANCHOR_SIDE:
+        return out.set(0, 0, 0).addScaledVector(this.right, 0.6).addScaledVector(this.up, 0.3);
+    }
     if (key === CORE_KEY || !locate(key, out)) {
       out.set(0, 0, 0);
     }
@@ -381,6 +474,11 @@ export class Effects3d {
         const a = base + (count > 1 ? (-50 + (100 * i) / (count - 1)) * (Math.PI / 180) : 0);
         this.to.copy(this.at).addScaledVector(this.right, Math.sin(a) * 0.62 * grow)
           .addScaledVector(this.up, Math.cos(a) * 0.62 * grow);
+      } else if (spec.layout === 'film') {
+        // S5b — la pellicule en arc au-dessus du cœur (−60° → +60°), le plan extrait agrandi.
+        const a = count > 1 ? (-60 + (120 * i) / (count - 1)) * (Math.PI / 180) : 0;
+        this.to.copy(this.at).addScaledVector(this.right, Math.sin(a) * 1.5 * grow)
+          .addScaledVector(this.up, (0.9 + Math.cos(a) * 0.5) * grow);
       } else {
         // Pile à côté du sujet, du côté opposé au cœur : chaque feuillet un peu plus haut, le dernier devant.
         const side = this.at.dot(this.right) >= 0 ? 1 : -1;
@@ -434,7 +532,8 @@ export class Effects3d {
     const c = this.palette.get(spec.tone)!;
     for (let j = 0; j < n; j++) {
       const u = (now / FLOW_PERIOD + j / n) % 1;
-      const wobble = Math.sin(u * Math.PI * 4 + j) * 0.05;
+      // Un arc (passation) se lève au milieu de la course ; sinon une légère ondulation.
+      const wobble = Math.sin(u * Math.PI * 4 + j) * 0.05 + (spec.lift ?? 0) * Math.sin(u * Math.PI);
       const i = offset + j;
       this.pos[i * 3] = this.at.x + (this.to.x - this.at.x) * u + this.up.x * wobble;
       this.pos[i * 3 + 1] = this.at.y + (this.to.y - this.at.y) * u + this.up.y * wobble;
@@ -558,6 +657,83 @@ export class Effects3d {
       this.size[i] = 5;
     }
     return offset + n;
+  }
+
+  /** S6 — le globe filaire derrière le cœur, en rotation lente. */
+  private frameGlobe(now: number, locate: Locator): void {
+    const presence = level(this.globe, now);
+    if (!this.globe.spec || presence <= 0) {
+      this.globeMesh.visible = false;
+      return;
+    }
+    this.globeMesh.visible = true;
+    this.globeMesh.position.copy(this.anchor(ANCHOR_GLOBE, locate, this.at));
+    this.globeMesh.rotation.set(0.3, now / 6000, 0);
+    this.globeMesh.scale.setScalar(1.5);
+    const c = this.palette.get('normal')!;
+    this.globeMaterial.color.setRGB(c[0], c[1], c[2]);
+    this.globeMaterial.opacity = 0.5 * presence;
+  }
+
+  /** S17 — le cadran attaché au nœud, l'aiguille tourne (un tour en 6 s). */
+  private frameDial(now: number, camera: Camera, locate: Locator): void {
+    const spec = this.dial.spec;
+    const presence = level(this.dial, now);
+    if (!spec || presence <= 0) {
+      this.dialMesh.visible = false;
+      return;
+    }
+    this.anchor(spec.anchor, locate, this.at);
+    this.dialMesh.visible = true;
+    this.dialMesh.position.copy(this.at).addScaledVector(this.up, 0.45);
+    this.dialMesh.quaternion.copy(camera.quaternion);
+    this.dialMesh.scale.setScalar(0.22);
+    const c = this.palette.get(spec.tone)!;
+    this.dialMaterial.color.setRGB(c[0], c[1], c[2]);
+    this.dialMaterial.opacity = 0.8 * presence;
+  }
+
+  /** S13 + N8 — les satellites orbitent autour du cœur (rayon 1,6), chacun relié au cœur ; une traînée les suit. */
+  private frameSwarm(now: number, offset: number): number {
+    const spec = this.swarm.spec;
+    const presence = level(this.swarm, now);
+    if (!spec || presence <= 0) {
+      this.swarmLines.visible = false;
+      return offset;
+    }
+    const n = Math.min(SWARM_POOL, spec.count);
+    const c = this.palette.get(spec.tone)!;
+    let used = offset;
+    for (let j = 0; j < n; j++) {
+      const a = (j / n) * Math.PI * 2 + now / 2200;
+      this.mid.set(0, 0, 0).addScaledVector(this.right, Math.cos(a) * 1.6)
+        .addScaledVector(this.up, Math.sin(a) * 0.9).addScaledVector(this.forward, Math.sin(a) * 0.4);
+      write(this.swarmPos, j * 2, this.to.set(0, 0, 0));
+      write(this.swarmPos, j * 2 + 1, this.mid);
+      // Le satellite et sa traînée (4 perles qui pâlissent).
+      for (let k = 0; k < 5 && used < this.poolSize; k++) {
+        const b = a - k * 0.08;
+        this.at.set(0, 0, 0).addScaledVector(this.right, Math.cos(b) * 1.6)
+          .addScaledVector(this.up, Math.sin(b) * 0.9).addScaledVector(this.forward, Math.sin(b) * 0.4);
+        write(this.pos, used, this.at);
+        const glow = presence * (k === 0 ? 1 : 0.5 / k);
+        const core = k === 0 ? this.palette.get('core')! : c;
+        this.col[used * 3] = core[0] * glow;
+        this.col[used * 3 + 1] = core[1] * glow;
+        this.col[used * 3 + 2] = core[2] * glow;
+        this.size[used] = k === 0 ? 7 : 3;
+        used++;
+      }
+    }
+    for (let j = n; j < SWARM_POOL; j++) {
+      write(this.swarmPos, j * 2, this.to.set(0, 0, 0));
+      write(this.swarmPos, j * 2 + 1, this.to);
+    }
+    (this.swarmLines.geometry.getAttribute('position') as BufferAttribute).needsUpdate = true;
+    this.swarmLines.visible = true;
+    this.swarmMaterial.color.setRGB(c[0], c[1], c[2]);
+    this.swarmMaterial.opacity = 0.55 * presence;
+    return used;
   }
 
   private fireRing(anchor: string, tone: SceneTone, at: number, scale = 1): void {

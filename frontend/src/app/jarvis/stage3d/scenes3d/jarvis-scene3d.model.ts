@@ -47,6 +47,15 @@ export interface Panel3d {
   fly?: 'to-send';
 }
 
+/**
+ * SF-236-12 — des ancrages d'effets hors de l'univers, placés par rapport au cœur et à la caméra : le globe du web
+ * (derrière le cœur), les profondeurs (sous lui), le dessus (carte du savoir), le côté (ce qui se construit).
+ */
+export const ANCHOR_GLOBE = '@globe';
+export const ANCHOR_BELOW = '@profondeur';
+export const ANCHOR_ABOVE = '@dessus';
+export const ANCHOR_SIDE = '@cote';
+
 /** SF-236-09 — un point du nuage du dépôt (N9) : un amas par dossier, lecture ou écriture. */
 export interface CloudPoint {
   angle: number;
@@ -61,12 +70,13 @@ export type Effect3d =
   /** S-GEN — un anneau d'impulsion par appel (`seq` avance à chaque appel d'outil). */
   | { kind: 'pulse'; anchor: string; tone: SceneTone; seq: number }
   /** SF-236-09 (N6) — un flux de particules d'un nœud vers un autre ; `rate` 0-1 = débit (∝ sortie). */
-  | { kind: 'flow'; from: string; to: string; tone: SceneTone; rate: number }
+  | { kind: 'flow'; from: string; to: string; tone: SceneTone; rate: number; lift?: number }
   /**
    * SF-236-09 — des cartes holographiques : en <b>éventail</b> (S4 tickets, ≤ 6, sorties du client en arc, 90 ms
    * d'écart) ou en <b>pile</b> (S5 feuillets) ; `hot` = la carte nommée (ou le feuillet en cours d'écriture).
    */
-  | { kind: 'cards'; anchor: string; count: number; hot: number | null; layout: 'fan' | 'stack'; tone: SceneTone }
+  | { kind: 'cards'; anchor: string; count: number; hot: number | null; layout: 'fan' | 'stack' | 'film';
+    tone: SceneTone }
   /** SF-236-09 — la loupe qui balaie (S5 recherche). */
   | { kind: 'scan'; anchor: string; tone: SceneTone }
   /** SF-236-09 (N9) — le nuage du dépôt près du sujet : un amas par dossier, lecture / écriture. */
@@ -81,7 +91,13 @@ export type Effect3d =
   /** SF-236-10 — S14 : la couronne de perles sous le cœur, une par point de route (traité = vert). */
   | { kind: 'crown'; done: readonly boolean[] }
   /** SF-236-10 — S15 : une vague sur les nœuds donnés (80 ms d'écart). */
-  | { kind: 'wave'; keys: readonly string[]; tone: SceneTone; seq: number };
+  | { kind: 'wave'; keys: readonly string[]; tone: SceneTone; seq: number }
+  /** SF-236-12 — S6 : le globe filaire derrière le cœur. */
+  | { kind: 'globe' }
+  /** SF-236-12 — S13 + N8 : l'essaim des sous-agents, petits cœurs satellites reliés au cœur (L-essaim). */
+  | { kind: 'swarm'; count: number; tone: SceneTone }
+  /** SF-236-12 — S17 : le cadran d'une veille, attaché à son nœud. */
+  | { kind: 'dial'; anchor: string; tone: SceneTone };
 
 /** Le plan d'une scène 3D. */
 export interface ScenePlan3d {
@@ -90,7 +106,10 @@ export interface ScenePlan3d {
   rendered: 'dedicated' | 'generic';
   panels: Panel3d[];
   effects: Effect3d[];
-  /** Le nœud que la scène met en avant (allumé, cadré), s'il existe dans l'univers. */
+  /**
+   * Le nœud que la scène met en avant (allumé, cadré), s'il existe dans l'univers ; `@coeur` = la scène est centrée
+   * sur le cœur (la caméra prend la vue d'ensemble) ; `null` = la caméra suit les nœuds cités.
+   */
   focus: string | null;
   /** SF-236-10 — un travelling lent (S15 « le point » : 60°, S10 passation) ; joué une fois par `id`. */
   travel?: { id: string; degrees: number };

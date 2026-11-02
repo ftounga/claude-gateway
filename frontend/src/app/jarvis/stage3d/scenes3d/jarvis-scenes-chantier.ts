@@ -176,7 +176,8 @@ export const scenePointsDeRoute: Scene3d = (scene: SceneView, ctx: SceneContext)
         hot: q.state === 'EN_COURS' })),
     }],
     effects: questions.length ? [{ kind: 'crown', done }] : [],
-    focus: sceneFocus(scene, ctx),
+    // La couronne est sous le cœur : la caméra le cadre.
+    focus: CORE_KEY,
   };
 };
 
