@@ -2,6 +2,7 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 
 import { JarvisPieceClient, PieceQuery } from './jarvis-piece-client';
 import { GalleryMode, ShowCommand, ShowContext, ShowRefusal, showPlan } from './jarvis-piece-show';
+import { storyOrder } from './jarvis-piece-story';
 import { NavAction, NavOrigin, NavReason, NavScope, PieceNav, initialNav, reduceNav, selectedItem } from './jarvis-piece-nav';
 import { Piece } from './jarvis-piece.models';
 
@@ -118,6 +119,9 @@ export class JarvisPieceStore {
     }
     if (!pieces.length) {
       return { ok: false, reason: 'NOT_FOUND' };
+    }
+    if (plan.mode === 'story') {
+      pieces = storyOrder(pieces); // F-237 / SF-237-10 — besoin → entrées → preuves → productions → envois
     }
     if (plan.origin === 'PROACTIVE') {
       for (const p of pieces) {
