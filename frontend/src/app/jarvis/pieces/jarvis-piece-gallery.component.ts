@@ -1,7 +1,9 @@
 import { ChangeDetectionStrategy, Component, OnDestroy, computed, effect, inject, input, signal, untracked,
 } from '@angular/core';
 
+import { JarvisState } from '../jarvis-orb.component';
 import { JarvisPieceClient } from './jarvis-piece-client';
+import { JarvisPieceViewerComponent } from './jarvis-piece-viewer.component';
 import { fanLayout } from './jarvis-piece-fan';
 import { NavAction, NavItem } from './jarvis-piece-nav';
 import { JarvisPieceStore, PieceStoreResult } from './jarvis-piece-store';
@@ -43,6 +45,7 @@ const SWIPE_PX = 60;
 @Component({
   selector: 'app-jarvis-piece-gallery',
   standalone: true,
+  imports: [JarvisPieceViewerComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (store.open() && !store.presentation()) {
@@ -90,12 +93,9 @@ const SWIPE_PX = 60;
         @if (store.selected(); as piece) {
           <article class="pg__panel" (pointerdown)="swipeStart($event)" (pointerup)="swipeEnd($event)">
             <h2 class="pg__panel-title">{{ nav().selected }}. {{ piece.title }}</h2>
-            @if (piece.available === 'HOST_OFFLINE') {
-              <p class="pg__offline">Sur le poste — hors ligne</p>
-            } @else if (thumbs()[piece.id]) {
-              <img class="pg__panel-image" [src]="thumbs()[piece.id]" [alt]="piece.title">
-            }
-            @if (piece.caption) {
+            <!-- SF-237-06 — le contenu réel, par la visionneuse de son type. -->
+            <app-jarvis-piece-viewer [piece]="piece" [nav]="nav()" [jarvisState]="jarvisState()" />
+            @if (piece.caption && piece.kind !== 'TEXT') {
               <p class="pg__caption">{{ piece.caption }}</p>
             }
             @if (piece.chantierLink === 'WINDOW' && piece.chantier != null) {
@@ -147,10 +147,8 @@ const SWIPE_PX = 60;
       border: 1px solid color-mix(in srgb, var(--cg-holo, #E07B39) 55%, transparent); }
     .pg--fan .pg__panel { position: absolute; left: 50%; top: 64px; transform: translateX(-50%); }
     .pg__panel-title { margin: 0 0 8px; font: 600 16px 'Space Grotesk', Inter, sans-serif; }
-    .pg__panel-image { display: block; max-width: 100%; max-height: 44vh; margin: 0 auto; }
     .pg__caption { margin: 8px 0 0; font-size: 14px; line-height: 20px; color: var(--cg-holo-core, #FFF3E4); }
-    .pg__hint, .pg__offline { margin: 8px 0 0; font-size: 12px; opacity: .8; }
-    .pg__offline { color: var(--cg-holo-off, #2A4256); filter: brightness(2); }
+    .pg__hint { margin: 8px 0 0; font-size: 12px; opacity: .8; }
     .pg--phone .pg__cards { grid-template-columns: repeat(2, 1fr); }
     .pg--phone.pg--hero .pg__panel { flex: 1; max-height: none; margin: 0; width: 100%; border-radius: 0; }
     @media (prefers-reduced-motion: reduce) { .pg__cards--fan .pg__card { transition: opacity 400ms linear; } }
@@ -166,6 +164,8 @@ export class JarvisPieceGalleryComponent implements OnDestroy {
   readonly sober = input(false);
   /** Libellé du sujet pour le fil d'Ariane. */
   readonly subjectLabel = input<string | null>(null);
+  /** L'état de Jarvis, pour le son des pièces (SF-237-06, D10). */
+  readonly jarvisState = input<JarvisState>('repos');
 
   private readonly phone = signal(typeof matchMedia === 'function' && matchMedia('(max-width: 767px)').matches);
   private readonly reducedMotion = signal(typeof matchMedia === 'function'

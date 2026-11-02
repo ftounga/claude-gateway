@@ -89,7 +89,7 @@ describe('Jarvis — galerie des pièces (F-237 / SF-237-05)', () => {
     expect(fixture.nativeElement.querySelector('.pg__crumbs').textContent).toContain('Edenred › Entrées du chantier 3 › 3/4');
     store.dispatch({ type: 'next' });
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('.pg__offline').textContent).toContain('hors ligne');
+    expect(fixture.nativeElement.querySelector('.pg__panel').textContent).toContain('hors ligne');
   });
 
   it('mode présentation : aucune pièce, toute ouverture refusée ; la fermeture passe', async () => {
