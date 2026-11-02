@@ -19,6 +19,7 @@ const terminal = require("./terminal.js");
 const icons = require("./icons.js");
 const cadre = require("./cadre.js");
 const gardes = require("./gardes.js");
+const drawioCadre = require("./drawio-cadre.js");
 
 /** Bornes — les mêmes que celles annoncées côté gateway, pour que le refus soit cohérent des deux côtés. */
 const MAX_CODE_CHARS = 20000;
@@ -180,7 +181,8 @@ async function renderCadre(spec) {
 
 /** Un en-tête HTTP n'accepte que l'ASCII : les accents sont retirés, le reste remplacé. */
 function asciiHeader(text) {
-  return String(text).normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\x20-\x7E]/g, "?")
+  return String(text).replace(/[\u00AB\u00BB\u201C\u201D]/g, "\"").normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7E]/g, "?")
     .slice(0, 900);
 }
 
@@ -209,8 +211,54 @@ async function renderCadreRequest(payload, res) {
   if (notices.length) {
     headers["X-Cg-Diagram-Notice"] = asciiHeader(notices.join(" | "));
   }
+  if (payload.graph === true) {
+    // F-238 / SF-238-05 : le graphe d'architecture voyage avec le SVG (la gateway le rangera en SF-238-07).
+    const body = Buffer.from(JSON.stringify({ svg: image.toString("base64"), graph: built.graph }), "utf-8");
+    headers["Content-Type"] = "application/json; charset=utf-8";
+    headers["Content-Length"] = body.length;
+    res.writeHead(200, headers);
+    return res.end(body);
+  }
   res.writeHead(200, headers);
   return res.end(image);
+}
+
+/**
+ * Le `.drawio` cadré (F-238 / SF-238-05) : mêmes coordonnées que le SVG cadré ; l'aperçu PNG est le SVG cadré
+ * rastérisé. Même contrat de réponse que SF-142-13, plus le graphe d'architecture.
+ */
+async function renderDrawioCadreRequest(payload, res) {
+  let prepared;
+  let built;
+  try {
+    prepared = cadre.neutralizeUntyped(await prepareCloud(payload.spec));
+    built = await cadre.build(prepared);
+  } catch (e) {
+    return fail(res, 422, (e.message || "Le schéma n'a pas pu être construit.").slice(0, 500));
+  }
+  const xml = Buffer.from(drawioCadre.fromGraph(built.graph, built.model), "utf-8");
+  if (xml.length > MAX_IMAGE_BYTES) {
+    return fail(res, 413, "Fichier draw.io trop lourd : " + xml.length + " octets.");
+  }
+  const { w, h } = built.graph.bounds;
+  const dir = await mkdtemp(path.join(tmpdir(), "cg-drawio-"));
+  let png = "";
+  let previewError = "";
+  try {
+    const image = await rasterize(built.svg, w, h, dir);
+    if (image.length > MAX_IMAGE_BYTES) {
+      previewError = "Aperçu trop lourd (" + image.length + " octets) : le fichier draw.io est complet.";
+    } else {
+      png = image.toString("base64");
+    }
+  } catch (e) {
+    previewError = (e.message || "rendu d'aperçu en échec").slice(0, 300);
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+  }
+  const body = JSON.stringify({ drawio: xml.toString("base64"), png, previewError, width: w, height: h,
+    graph: built.graph });
+  send(res, 200, body, "application/json; charset=utf-8");
 }
 
 function renderWithMermaid(input, output, format, width, scale) {
@@ -480,6 +528,9 @@ async function rasterize(svg, width, height, dir) {
 }
 
 async function renderDrawioRequest(payload, res) {
+  if (payload.layout === "elk") {
+    return renderDrawioCadreRequest(payload, res);
+  }
   let built;
   try {
     built = drawio.build(payload.spec);
