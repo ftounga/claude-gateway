@@ -87,6 +87,7 @@ import { MatInputModule } from '@angular/material/input';
 import { JarvisOrbComponent, JarvisState } from './jarvis-orb.component';
 import { JarvisAppUpdate } from './jarvis-app-update';
 import { JarvisCompanionsComponent } from './jarvis-companions.component';
+import { JarvisPortraitComponent } from './jarvis-portrait.component';
 import { JarvisSceneBus } from './scenes/jarvis-scene-bus.service';
 import { JarvisSceneComponent } from './scenes/jarvis-scene.component';
 import { JarvisConstellationComponent } from './scenes/jarvis-constellation.component';
@@ -155,7 +156,7 @@ export function companionOffer(version: JarvisCompanionVersion, installed: numbe
  */
 @Component({
   selector: 'app-jarvis',
-  imports: [JarvisPieceGalleryComponent, JarvisCockpitComponent, JarvisCompanionsComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatMenuModule],
+  imports: [JarvisPieceGalleryComponent, JarvisCockpitComponent, JarvisCompanionsComponent, JarvisPortraitComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatMenuModule],
   templateUrl: './jarvis.component.html',
   styleUrl: './jarvis.component.scss',
   providers: [JarvisAppUpdate],
@@ -336,6 +337,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
   // ---- F-235 / SF-235-09 (D18) : la personnalité, réglage d'humour par compte ----
   /** Le réglage d'humour du compte (léger par défaut, tant que la passerelle n'a pas répondu). */
   readonly humour = signal<JarvisHumour>('LIGHT');
+
+  // ---- F-241 / SF-241-01 : le portrait (volet « Mon portrait »), jamais en présentation ----
+  /** Le volet « Mon portrait » est ouvert. */
+  readonly portraitOpen = signal(false);
 
   /** Bascule « Humour : aucun / léger » ; revient en arrière si l'enregistrement échoue. */
   toggleHumour(): void {

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-241 / SF-241-01 - LE PORTRAIT DE JARVIS (donnees personnelles sensibles, chiffrees au repos).
+
+      jarvis_portraits : une ligne par compte (cle user_id). sections_enc = JSON des sept sections (texte + date de
+      mise a jour), chiffre par ByokKeyCipher (dataKey.iv.ciphertext, base64) ; jamais de clair en base.
+      version : incrementee a chaque ecriture (portrait OU souvenir), cle de rechargement du bloc injecte.
+      jarvis_souvenirs : une phrase courte par souvenir (text_enc chiffre), date noted_on, sensible, origine.
+      Filtre user_id sur tout acces ; aucun point d'acces administrateur ; purge a la suppression du compte.
+
+      Numero 241 = numero de la feature. Rollback : tables retirees.
+    -->
+
+    <changeSet id="241-jarvis-portraits" author="claude-gateway">
+        <createTable tableName="jarvis_portraits">
+            <column name="user_id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="sections_enc" type="varchar(32000)"/>
+            <column name="portrait_enabled" type="boolean" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+            <column name="version" type="bigint" defaultValueNumeric="1"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="last_interview_at" type="timestamp with time zone"/>
+            <column name="last_checkin_at" type="timestamp with time zone"/>
+            <column name="interview_offered_at" type="timestamp with time zone"/>
+            <column name="interview_offers" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <createTable tableName="jarvis_souvenirs">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="text_enc" type="varchar(4000)"><constraints nullable="false"/></column>
+            <column name="sensitive" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="noted_on" type="date"><constraints nullable="false"/></column>
+            <column name="source" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="jarvis_souvenirs" indexName="idx_jarvis_souvenirs_user_created">
+            <column name="user_id"/>
+            <column name="created_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="jarvis_souvenirs"/>
+            <dropTable tableName="jarvis_portraits"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -933,7 +933,11 @@ ajoutent **aucune couleur** :
 | « Montrer » : poste déconnecté | halo pointillé éteint, note « déconnecté » | `--cg-cream` à 30 % | — |
 | « Montrer » : le reste | estompé | opacité 0,22 | — |
 | Essentiel de la réponse (F-240 / SF-240-03, étage 2) | bloc sous la phrase dite, texte **Inter** 15 px ; le détail (étage 3) reste replié sous « Voir le détail » | texte `--cg-cream` sur `--cg-navy-2` à 70 % | crème/`--cg-navy-2` 14,6:1 |
+| Volet « Mon portrait » (F-241 / SF-241-01) | panneau fixe des réglages : sept sections (zones `mat-form-field` outline), souvenirs, compteur de jetons en **JetBrains Mono**, « Tout effacer » `mat-stroked-button` warn derrière `MatDialog` ; mentions « sensible » liserées crème 35 % ; **« à revoir »** et compteur dépassé en `--cg-orange-2` ; masqué en présentation | fond `--cg-navy-2` à 70 %, liseré crème 18 %, texte `--cg-cream` | crème/`--cg-navy-2` 14,6:1 ; orange-2 7,3:1 |
 
+- **Portrait (F-241)** : **aucune couleur nouvelle**. Téléphone (360 × 740) : le volet occupe la largeur moins
+  2 × 8 px, défilement interne (hauteur bornée à `100dvh − 120px`), aucun débordement horizontal
+  (`overflow-wrap: anywhere`).
 - **Réponse en trois étages (F-240)** : la phrase dite (Space Grotesk, existante), puis l'**essentiel seul** (3 à 5
   lignes), puis le **détail replié** (sans l'essentiel). **Aucune couleur nouvelle.** Téléphone (360 × 740) :
   l'essentiel reste visible sans défilement de la page (hauteur bornée à 32 dvh, défilement interne), aucun

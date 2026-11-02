@@ -95,6 +95,13 @@
         <mat-icon aria-hidden="true">{{ humour() === 'LIGHT' ? 'sentiment_satisfied' : 'sentiment_neutral' }}</mat-icon>
         Humour : {{ humour() === 'LIGHT' ? 'léger' : 'aucun' }}
       </button>
+      @if (!presentation()) {
+        <!-- F-241 / SF-241-01 — le portrait : ce que Jarvis sait de vous (jamais en présentation). -->
+        <button mat-button type="button" class="jv__portrait-open" [attr.aria-expanded]="portraitOpen()"
+                (click)="portraitOpen.set(!portraitOpen()); settingsOpen.set(false)">
+          <mat-icon aria-hidden="true">badge</mat-icon> Mon portrait
+        </button>
+      }
       @if (costLine(); as line) {
         <!-- F-239 / SF-239-12 — le compteur visible : ce que Jarvis a coûté, en euros. -->
         <span class="jv__cost" [attr.title]="costDetail()">{{ line }}</span>
@@ -223,6 +230,13 @@
         <mat-icon aria-hidden="true">{{ humour() === 'LIGHT' ? 'sentiment_satisfied' : 'sentiment_neutral' }}</mat-icon>
         Humour : {{ humour() === 'LIGHT' ? 'léger' : 'aucun' }}
       </button>
+      @if (!presentation()) {
+        <!-- F-241 / SF-241-01 — le portrait : ce que Jarvis sait de vous (jamais en présentation). -->
+        <button mat-button type="button" class="jv__wake-button jv__portrait-open" [attr.aria-expanded]="portraitOpen()"
+                (click)="portraitOpen.set(!portraitOpen())">
+          <mat-icon aria-hidden="true">badge</mat-icon> Mon portrait
+        </button>
+      }
       @if (costLine(); as line) {
         <!-- F-239 / SF-239-12 — le compteur visible : ce que Jarvis a coûté, en euros. -->
         <span class="jv__cost" [attr.title]="costDetail()">{{ line }}</span>
@@ -285,6 +299,10 @@
                    [liveTurn]="liveTurn()" [requested]="replayRequested" />
 }
 <!-- F-236 / SF-236-24 (NF-13) — le veilleur de nuit : voile sombre, horloge, veilles, alertes ; réveil à l'alerte. -->
+<!-- F-241 / SF-241-01 — le volet « Mon portrait » : jamais en présentation (aucun élément personnel montré). -->
+@if (portraitOpen() && !presentation()) {
+  <app-jarvis-portrait (closed)="portraitOpen.set(false)" />
+}
 @if (night()) {
   <app-jarvis-night [ambient]="ambientNow()" (exit)="night.set(false)" />
 }

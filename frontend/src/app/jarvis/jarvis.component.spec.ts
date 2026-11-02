@@ -269,6 +269,29 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     discardPeriodicTasks();
   }));
 
+  it('F-241 / SF-241-01 — « Mon portrait » : bouton dans les réglages ; jamais en présentation, même ouvert', fakeAsync(() => {
+    configure({});
+    let fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    let el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.jv__portrait-open')?.textContent).toContain('Mon portrait');
+    fixture.componentInstance.ngOnDestroy();
+    fixture.destroy();
+
+    configure({ presentation: '1' });
+    fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.jv__portrait-open')).toBeNull();
+    fixture.componentInstance.portraitOpen.set(true);
+    fixture.detectChanges();
+    expect(el.querySelector('app-jarvis-portrait')).toBeNull();
+    fixture.componentInstance.ngOnDestroy();
+    fixture.destroy();
+  }));
+
   it('F-236 / SF-236-24 — ?cockpit=1 : ne parle ni n’écoute ; dessine ce que l’écran principal relaie ; meneur parti ⇒ ses signaux', async () => {
     configure({ cockpit: '1' });
     const fixture = TestBed.createComponent(JarvisComponent);
