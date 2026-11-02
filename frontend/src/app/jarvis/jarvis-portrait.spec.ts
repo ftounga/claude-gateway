@@ -6,7 +6,7 @@ import { of, throwError } from 'rxjs';
 
 import {
   JarvisPortraitClient, Portrait, PortraitSectionKey, counterLabel, draftChars, portraitBlocks, portraitErrorMessage,
-  isPortraitMark, portraitSafe, portraitTokens,
+  isPortraitMark, isUndoNote, portraitSafe, portraitTokens,
 } from './jarvis-portrait';
 import { JarvisPortraitComponent } from './jarvis-portrait.component';
 
@@ -51,6 +51,12 @@ describe('jarvis-portrait (fonctions)', () => {
     expect(portraitSafe('Rien à voir avec Sandra. Le déploiement est fini.', 'Le déploiement ?', terms))
       .toBe('Le déploiement est fini.');
     expect(portraitSafe('Tout va bien.', '', [])).toBe('Tout va bien.');
+  });
+
+  it('SF-241-05 — « non, oublie ça » (liste fermée) annule la dernière note', () => {
+    expect(isUndoNote('Non, oublie ça.')).toBeTrue();
+    expect(isUndoNote('Jarvis, annule')).toBeTrue();
+    expect(isUndoNote('Oublie que je cours')).toBeFalse();
   });
 
   it('SF-241-04 — une ligne-marque ✦ ou 📌 n’est jamais dite', () => {

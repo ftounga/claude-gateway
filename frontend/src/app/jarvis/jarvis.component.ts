@@ -92,7 +92,11 @@ import {
   INTERVIEW_END, INTERVIEW_INTRO, INTERVIEW_NOTHING, INTERVIEW_OFFER, INTERVIEW_QUESTIONS, INTERVIEW_UPDATE_INTRO,
   InterviewDraft, JarvisInterview, JarvisInterviewClient, isInterviewCommand, updateQuestions,
 } from './jarvis-interview';
-import { JarvisPortraitClient, isPortraitMark, portraitBlocks, portraitSafe } from './jarvis-portrait';
+import {
+  JarvisPortraitClient, MEMORY_FULL_PHRASE, PORTRAIT_ANSWER_WINDOW_MS, isPortraitMark, isUndoNote, portraitBlocks,
+  portraitSafe,
+} from './jarvis-portrait';
+import { PortraitPin } from './jarvis-fast-brain';
 import { JarvisSceneBus } from './scenes/jarvis-scene-bus.service';
 import { JarvisSceneComponent } from './scenes/jarvis-scene.component';
 import { JarvisConstellationComponent } from './scenes/jarvis-constellation.component';
@@ -442,6 +446,81 @@ export class JarvisComponent implements OnInit, OnDestroy {
       },
       error: () => this.notice.set('Le rangement de l’entretien a échoué ; rien n’a été enregistré.'),
     });
+  }
+
+  // ---- F-241 / SF-241-05 : le portrait vivant (📌 retenir, noter, oublier, entretien) ----
+  /** La proposition « Voulez-vous que je retienne… ? » en attente d'un « oui » (une seule question à la fois). */
+  private pendingRemember: { text: string; at: number } | null = null;
+  /** La dernière note (« C'est noté ») : « non, oublie ça » dans les 30 s l'annule. */
+  private lastNoted: { id: string; at: number } | null = null;
+
+  /** Les lignes 📌 relayées par la passerelle : l'écran enregistre (jamais en présentation, jamais dites). */
+  private applyPortraitPins(pins: readonly PortraitPin[]): void {
+    if (this.presentation()) {
+      return;
+    }
+    for (const pin of pins) {
+      if (pin.action === 'retenir' && pin.text) {
+        // Une seule question en attente : la proposition remplace l'invitation « ↪ » (un « oui » ne se trompe pas).
+        this.invitedAt = 0;
+        this.pendingRemember = { text: pin.text, at: Date.now() };
+      } else if (pin.action === 'noter' && pin.text) {
+        this.saveSouvenir(pin.text, false);
+      } else if (pin.action === 'oublier' && pin.number) {
+        const n = pin.number;
+        this.portraitClient.get().subscribe({
+          next: (p) => {
+            const target = p.souvenirs.find((m) => m.number === n);
+            if (target) {
+              this.portraitClient.deleteSouvenir(target.id).subscribe({ error: () => undefined });
+            }
+          },
+          error: () => undefined,
+        });
+      } else if (pin.action === 'entretien') {
+        void this.startInterview('UPDATE');
+      }
+    }
+  }
+
+  /** Enregistre un souvenir dit à la voix ; la mémoire pleine se dit. `confirm` : dire « C'est noté. ». */
+  private saveSouvenir(text: string, confirm: boolean): void {
+    this.portraitClient.addSouvenir(text, false, 'VOIX').subscribe({
+      next: (saved) => {
+        this.lastNoted = { id: saved.id, at: Date.now() };
+        if (confirm) {
+          void this.say('C’est noté.');
+        }
+      },
+      error: (err: { status?: number }) => {
+        void this.say(err?.status === 409 ? MEMORY_FULL_PHRASE : 'Je n’ai pas pu le retenir.');
+      },
+    });
+  }
+
+  /** « Oui » à la proposition, « non, oublie ça » après une note : traité avant tout autre chose. */
+  private async answerPortrait(text: string): Promise<boolean> {
+    const noted = this.lastNoted;
+    if (noted && Date.now() - noted.at <= PORTRAIT_ANSWER_WINDOW_MS && isUndoNote(text)) {
+      this.lastNoted = null;
+      this.portraitClient.deleteSouvenir(noted.id).subscribe({ error: () => undefined });
+      await this.say('Entendu, je l’oublie.');
+      return true;
+    }
+    const pending = this.pendingRemember;
+    this.pendingRemember = null;
+    if (pending && Date.now() - pending.at <= PORTRAIT_ANSWER_WINDOW_MS) {
+      const answer = classifyConfirmation(text);
+      if (answer === 'oui') {
+        this.saveSouvenir(pending.text, true);
+        return true;
+      }
+      if (answer === 'non') {
+        await this.say('Entendu, je ne retiens rien.');
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Le brouillon est validé ou abandonné : il disparaît (abandonné, il ne laisse aucune trace). */
@@ -1476,6 +1555,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
       await this.interviewHears(text);
       return;
     }
+    // F-241 / SF-241-05 (D8) — « oui » à « Voulez-vous que je retienne… ? », ou « non, oublie ça » après une note.
+    if (!this.presentation() && !this.pendingConfirm && await this.answerPortrait(text)) {
+      return;
+    }
     if (!this.presentation() && !this.pendingConfirm) {
       if (isInterviewCommand(text)) {
         await this.startInterview(this.interviewOffer() ? 'INITIAL' : 'UPDATE');
@@ -1816,6 +1899,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
         }
       }
       // F-239 / SF-239-11 — budget de la conversation dépassé : dit une fois par ouverture, jamais d'escalade.
+      // F-241 / SF-241-05 — les lignes 📌 (retenir, noter, oublier, entretien) : l'écran les applique, jamais dites.
+      if (done?.guards?.pins?.length && latest()) {
+        this.applyPortraitPins(done.guards.pins);
+      }
       if (done?.budget && !this.budgetNoticed) {
         this.budgetNoticed = true;
         this.notice.set(done.budget === 'hard' ? BUDGET_HARD_NOTICE : BUDGET_SOFT_NOTICE);

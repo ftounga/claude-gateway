@@ -290,10 +290,14 @@ public class JarvisFastBrainBenchService {
                         context, s.portrait(), s.personal() == null ? List.of() : s.personal().recentAllusions());
                 String[] routeAndSaid = JarvisConversationBench.routeAndSaid(outcome);
                 costs.add(JarvisConversationBench.fastCostEur(outcome, USD_TO_EUR));
-                turns.add(JarvisConversationBench.ROUTE_MORE.equals(routeAndSaid[0])
+                JarvisConversationBench.TurnVerdict verdict = JarvisConversationBench.ROUTE_MORE.equals(routeAndSaid[0])
                         ? JarvisConversationBench.descent(s, i)
                         : JarvisConversationBench.judge(provider, judgeModel, apiKey, s, i, context, routeAndSaid[1],
-                                routeAndSaid[0]));
+                                routeAndSaid[0]);
+                // F-241 / SF-241-05 — la marque 📌 attendue (noter, retenir, oublier, aucune), contrôlée sans modèle.
+                String markDefect = JarvisConversationBench.markDefect(s.turns().get(i),
+                        outcome.guards() == null ? List.of() : outcome.guards().pins(), routeAndSaid[1]);
+                turns.add(markDefect == null ? verdict : verdict.withGrave(markDefect));
                 previous.add(new String[] { s.turns().get(i).said(), routeAndSaid[1] });
             }
             allTurns.addAll(turns);

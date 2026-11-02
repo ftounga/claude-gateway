@@ -244,7 +244,131 @@ public final class JarvisPortraitNote {
             six mots au plus> » ; pour un trait d'humour : « ✦ humour: <résumé en six mots au plus> ». Ces lignes ne \
             sont jamais dites. Le message peut porter « [Jarvis — déjà dit récemment, ne pas répéter : …] » : ne \
             répète jamais ces allusions ni ces traits ; « allusion spontanée déjà faite aujourd'hui : oui » interdit \
-            toute nouvelle allusion que Monsieur n'a pas amenée.""";
+            toute nouvelle allusion que Monsieur n'a pas amenée.
+
+            # Retenir, oublier (lignes-marques, jamais dites ; jamais de délégation)
+            - Monsieur dit « retiens que… », « souviens-toi que… » : dis « C'est noté : <le fait, court>. » et ajoute \
+            la ligne seule « 📌 noter: <le fait, une phrase de 200 caractères au plus> ».
+            - Il te confie une information personnelle, durable et utile (une naissance, un nouveau poste, un goût, \
+            un congé) : tu peux proposer « Voulez-vous que je retienne que <fait> ? » avec la ligne « 📌 retenir: \
+            <fait> ». Au plus UNE proposition par conversation ; jamais pour une tâche (« rappelle-moi de… », « n'oublie \
+            pas de relancer… » ne sont pas des souvenirs) ; jamais ce qu'il dit d'un tiers sans lien avec sa vie ; \
+            jamais dans la même réponse qu'une question « Vous confirmez ? » ou une invitation ↪.
+            - « Oublie que… » : dis « C'est oublié. » et ajoute « 📌 oublier: S<n> » (le numéro du souvenir visé).
+            - « Mettons à jour mon portrait » : ajoute la ligne « 📌 entretien ».
+            - Le message peut porter « [Jarvis — relance du portrait possible …] » : tu peux alors, si le moment \
+            s'y prête, poser une seule question « Du nouveau depuis notre dernier entretien ? » ; rien ne t'y oblige.""";
+
+    // ---- SF-241-05 (D8, D15, D16) : le portrait vivant ----
+
+    /** D15 — la question de relance, et la note volatile qui l'autorise. */
+    public static final String CHECKIN_QUESTION = "Du nouveau depuis notre dernier entretien ?";
+    public static final String CHECKIN_NOTE = "[Jarvis — relance du portrait possible : si le moment s'y prête, une "
+            + "seule question, « " + CHECKIN_QUESTION + " » ; rien ne t'y oblige]";
+    public static final int CHECKIN_DAYS = 90;
+
+    /** D2 — la réponse au 31ᵉ souvenir, dite par l'écran. */
+    public static final String NOTED = "C'est noté : ";
+    public static final String FORGOTTEN = "C'est oublié.";
+    public static final String NOTHING_TO_FORGET = "Je n'ai rien retenu de tel, Monsieur.";
+    public static final String PRIVATE = "Nous en parlerons en privé, Monsieur.";
+
+    private static final Pattern REMEMBER = Pattern.compile("(?iu)^\\s*(?:jarvis\\W+)?(?:retiens|retenez|"
+            + "souviens[- ]toi|souvenez[- ]vous|garde en m[ée]moire)\\s+(?:bien\\s+)?(?:que|qu['’])\\s*(.+?)\\s*[.!]?$");
+    private static final Pattern FORGET = Pattern.compile("(?iu)^\\s*(?:jarvis\\W+)?(?:oublie|oubliez)\\s+"
+            + "(?:que|qu['’]|ce que je t['’]ai dit sur|ce que je vous ai dit sur)\\s*(.+?)\\s*[.!]?$");
+
+    /** Une ligne-marque 📌 lue : {@code noter}, {@code retenir}, {@code oublier} ({@code number}) ou {@code entretien}. */
+    public record Pin(String action, String text, Integer number) {
+    }
+
+    private static final Pattern PIN = Pattern.compile("(?iu)^\\s*\\x{1F4CC}\\s*(retenir|noter|oublier|entretien)"
+            + "\\s*:?\\s*(.*)$");
+
+    /** Lit une ligne 📌 ; illisible ⇒ {@code null}. */
+    public static Pin pin(String line) {
+        Matcher m = PIN.matcher(line == null ? "" : line.strip());
+        if (!m.matches()) {
+            return null;
+        }
+        String action = m.group(1).toLowerCase(Locale.ROOT);
+        String rest = m.group(2).strip();
+        if ("entretien".equals(action)) {
+            return new Pin(action, null, null);
+        }
+        if ("oublier".equals(action)) {
+            Matcher n = Pattern.compile("(?i)^S?\\s*(\\d{1,2})\\b").matcher(rest);
+            return n.find() ? new Pin(action, null, Integer.parseInt(n.group(1))) : null;
+        }
+        String fact = JarvisPortraitRules.normalizeSouvenir(rest);
+        if (fact.isEmpty()) {
+            return null;
+        }
+        return new Pin(action, fact.length() > JarvisPortraitRules.MAX_SOUVENIR_CHARS
+                ? fact.substring(0, JarvisPortraitRules.MAX_SOUVENIR_CHARS) : fact, null);
+    }
+
+    /** « Retiens que X » ⇒ X (le fait, sans ponctuation finale) ; sinon {@code null}. */
+    public static String rememberedFact(String said) {
+        Matcher m = REMEMBER.matcher(said == null ? "" : said);
+        return m.matches() && !m.group(1).isBlank() ? m.group(1).strip() : null;
+    }
+
+    /** « Oublie que X » ⇒ X ; sinon {@code null}. */
+    public static String forgetTarget(String said) {
+        Matcher m = FORGET.matcher(said == null ? "" : said);
+        return m.matches() && !m.group(1).isBlank() ? m.group(1).strip() : null;
+    }
+
+    /** Le souvenir que « oublie que X » vise : le plus de mots communs (≥ 4 lettres), au moins un ; sinon {@code null}. */
+    public static JarvisPortraitService.Souvenir souvenirFor(String target, JarvisPortraitService.Snapshot s) {
+        if (target == null || s == null) {
+            return null;
+        }
+        Set<String> wanted = new LinkedHashSet<>();
+        for (String w : words(target)) {
+            if (w.length() >= 4 && !STOP.contains(w)) {
+                wanted.add(w);
+            }
+        }
+        JarvisPortraitService.Souvenir best = null;
+        long bestScore = 0;
+        for (JarvisPortraitService.Souvenir m : s.souvenirs()) {
+            Set<String> have = words(m.text());
+            long score = wanted.stream().filter(w -> have.contains(w)
+                    || have.stream().anyMatch(h -> h.length() >= 5 && w.length() >= 5
+                            && (h.startsWith(w) || w.startsWith(h)))).count();
+            if (score > bestScore) {
+                bestScore = score;
+                best = m;
+            }
+        }
+        return best;
+    }
+
+    /** D15 — vrai si la relance est due : ni relance ni entretien depuis {@value #CHECKIN_DAYS} jours. */
+    public static boolean checkinDue(JarvisPortraitService.Snapshot s, OffsetDateTime now) {
+        if (!usable(s)) {
+            return false;
+        }
+        // La dernière fois que le portrait a été revu : relance, entretien ou écriture d'une section.
+        OffsetDateTime last = null;
+        List<OffsetDateTime> marks = new ArrayList<>();
+        marks.add(s.lastCheckinAt());
+        marks.add(s.lastInterviewAt());
+        s.sections().values().forEach(t -> marks.add(t.updatedAt()));
+        for (OffsetDateTime at : marks) {
+            if (at != null && (last == null || at.isAfter(last))) {
+                last = at;
+            }
+        }
+        return last == null || !last.plusDays(CHECKIN_DAYS).isAfter(now);
+    }
+
+    /** Vrai si la phrase dite est la relance D15. */
+    public static boolean isCheckin(String spoken) {
+        return normalize(spoken).contains("du nouveau depuis notre dernier entretien");
+    }
 
     /** Mots qui disent que le PO parle de sa propre vie : une allusion qui y répond n'est pas spontanée. */
     private static final Set<String> PERSONAL_WORDS = Set.of("fils", "fille", "enfant", "enfants", "petit", "petite",

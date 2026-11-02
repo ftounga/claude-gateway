@@ -58,7 +58,33 @@ final class JarvisConversationBench {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     /** Un tour attendu d'un scénario. */
-    record Turn(String said, String expect) {
+    record Turn(String said, String expect, String expectMark) {
+
+        Turn(String said, String expect) {
+            this(said, expect, null);
+        }
+    }
+
+    /**
+     * F-241 / SF-241-05 — la marque 📌 attendue d'un tour, contrôlée sans modèle : {@code noter}, {@code retenir},
+     * {@code oublier}, ou {@code aucune} (aucune ligne 📌 relayée) ; {@code null} = non contrôlée. Rend le défaut, ou
+     * {@code null}.
+     */
+    static String markDefect(Turn turn, List<fr.claudegateway.jarvis.portrait.JarvisPortraitNote.Pin> pins,
+            String said) {
+        if (turn.expectMark() == null) {
+            return null;
+        }
+        if ("sans_relance".equals(turn.expectMark())) {
+            return fr.claudegateway.jarvis.portrait.JarvisPortraitNote.isCheckin(said) ? "relance pendant une tâche"
+                    : null;
+        }
+        List<fr.claudegateway.jarvis.portrait.JarvisPortraitNote.Pin> got = pins == null ? List.of() : pins;
+        if ("aucune".equals(turn.expectMark())) {
+            return got.isEmpty() ? null : "marque 📌 inattendue";
+        }
+        return got.stream().anyMatch(p -> turn.expectMark().equals(p.action())) ? null
+                : "marque 📌 " + turn.expectMark() + " absente";
     }
 
     /**
@@ -108,6 +134,15 @@ final class JarvisConversationBench {
             int natural, boolean concise, boolean robotic, boolean uselessDelegation, boolean meaningRight,
             boolean returnQuestion, boolean ungrounded, boolean actionNotDelegated, String said, String comment,
             int words, List<String> graves) {
+
+        /** F-241 / SF-241-05 — le même verdict, avec un défaut grave de plus (contrôle sans modèle). */
+        TurnVerdict withGrave(String grave) {
+            List<String> all = new ArrayList<>(graves);
+            all.add(grave);
+            return new TurnVerdict(scenarioId, turn, category, route, expect, judged, natural, concise, robotic,
+                    uselessDelegation, meaningRight, returnQuestion, ungrounded, actionNotDelegated, said, comment,
+                    words, List.copyOf(all));
+        }
 
         /** Forme d'avant F-241 : aucun défaut grave personnel relevé. */
         TurnVerdict(String scenarioId, int turn, String category, String route, String expect, boolean judged,
@@ -159,7 +194,8 @@ final class JarvisConversationBench {
             for (JsonNode s : root.get("scenarios")) {
                 List<Turn> turns = new ArrayList<>();
                 for (JsonNode t : s.get("turns")) {
-                    turns.add(new Turn(t.get("said").asText(), t.path("expect").asText("any")));
+                    turns.add(new Turn(t.get("said").asText(), t.path("expect").asText("any"),
+                            t.hasNonNull("expectMark") ? t.get("expectMark").asText() : null));
                 }
                 scenarios.add(new Scenario(s.get("id").asText(), s.get("category").asText(),
                         s.hasNonNull("heardBeforeCut") ? s.get("heardBeforeCut").asText() : null, turns,
