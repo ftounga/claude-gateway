@@ -12,6 +12,22 @@ import { directAmbient } from './scenes3d/jarvis-ambiance-3d';
 import { baseName } from '../scenes/jarvis-scene-reader';
 import { ScenePlan3d } from './scenes3d/jarvis-scene3d.model';
 import { presentSignals } from './hud/jarvis-presentation';
+import { JarvisActivity, activityRings } from './hud/jarvis-activity';
+
+/** SF-236-26 — l'activité du banc : une semaine de tours sur Migration Forge, Doc archi et Runner. */
+export const BANC_ACTIVITY: JarvisActivity = {
+  days: (() => {
+    const out: string[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+    }
+    return out;
+  })(),
+  subjects: [{ subjectId: 's-forge', turns: [2, 5, 0, 8, 3, 0, 6] }, { subjectId: 's-doc', turns: [1, 0, 2, 0, 0, 0, 1] },
+    { subjectId: 's-runner', turns: [0, 0, 4, 1, 0, 0, 0] }],
+};
 
 /**
  * F-236 — **les scènes du banc** (développement seulement : importé par la seule page du banc, chargée
@@ -49,6 +65,15 @@ export function bancPlan(scene: string, narrow: boolean): { plan: StagePlan; voi
   if (scene === 'cockpit-journee') {
     return { plan: bancShow('chantiers-bloques', narrow), voice: 0 };
   }
+  if (scene === 'cockpit-activite') {
+    // SF-236-26 — la carte d'activité 7 jours : anneaux autour des clients (activité simulée).
+    const s: ScreenSignals = { ...IDLE_SCREEN, universe: testUniverse(), subjectId: 's-forge' };
+    const view = universeView(s, false, narrow);
+    const rings = activityRings(BANC_ACTIVITY, testUniverse());
+    return { plan: { mood: 'repos', wakes: 0, brains: FOLDED, universe: view, scene: null,
+      activity: { kind: 'activity', rings: rings.map((r) => ({ anchor: r.clientKey, levels: r.levels })) } },
+    voice: 0 };
+  }
   if (scene === 'presentation') {
     // SF-236-23 — le mode présentation : un message pour Zahi en préparation, filtré avant le dessin.
     const s = presentSignals({ ...IDLE_SCREEN, universe: testUniverse(), subjectId: 's-forge', state: 'reflexion',
@@ -82,6 +107,9 @@ export function bancScreen(scene: string): ScreenSignals {
   const universe = scene === 'cockpit-meteo' ? bancWeatherUniverse() : testUniverse();
   const base: ScreenSignals = { ...IDLE_SCREEN, universe, subjectId: 's-forge', state: 'reflexion', turnActive: true,
     pulses: 3, delegations: 1, scene: BANC_SCENE_VIEWS['commande'] ?? null };
+  if (scene === 'cockpit-activite') {
+    return { ...base, state: 'repos', turnActive: false, pulses: 0, delegations: 0, scene: null };
+  }
   if (scene === 'cockpit-replay') {
     // SF-236-22 — un tour rejoué : la scène S3 du lecteur privé, au repos côté bus.
     return { ...base, state: 'reflexion', turnActive: true, pulses: 4 };
