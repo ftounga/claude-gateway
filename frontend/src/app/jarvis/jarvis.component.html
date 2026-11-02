@@ -1,11 +1,11 @@
 <!-- F-236 / SF-236-01 — la scène 3D, en calque plein écran DERRIÈRE l'écran F-234 (qui reste la référence et le repli).
      SF-236-02 — elle dessine le cœur : l'orbe 2D s'efface quand la 3D est affichée (son bouton reste pour parler). -->
-<app-jarvis-stage-3d #stage3d [sober]="sober()" [withCore]="true" [signals]="stageSignals()" [voiceLevel]="orbLevel"
+<app-jarvis-stage-3d #stage3d [sober]="sober()" [presentation]="presentation()" [withCore]="true" [signals]="stageSignals()" [voiceLevel]="orbLevel"
                      [labelLayer]="labels3d" [insets]="cockpit.insets()" (touched)="touched3d($event)"
                      (talk)="talk()" />
 <main class="jv" [attr.data-state]="state()" [class.jv--3d]="stage3d.rendering() === '3d'"
       [class.jv--entry]="stage3d.entry() === 'full' && stage3d.shown()" [class.jv--exiting]="leaving()"
-      [class.jv--cockpit]="cockpit.mode() === 'cockpit'">
+      [class.jv--cockpit]="cockpit.mode() === 'cockpit'" [class.jv--presentation]="presentation()">
   <header class="jv__top">
     <!-- F-236 / SF-236-05 — T-S : en 3D, la sortie se joue (0,5 s) avant de quitter. -->
     <a mat-icon-button class="jv__back" href="/atelier" (click)="leave($event)" aria-label="Quitter Jarvis">
@@ -27,7 +27,11 @@
       <mat-icon>terminal</mat-icon>
     </button>
     <!-- F-236 / SF-236-06 — HUD 3D : compteur « À envoyer », plein écran (PC), volet « Réglages ». -->
-    @if (stage3d.rendering() === '3d') {
+    @if (presentation()) {
+      <!-- F-236 / SF-236-23 (NF-11) — mode présentation : rien de nominatif, Échap pour quitter. -->
+      <span class="jv__presenting" role="status">Présentation · Échap pour quitter</span>
+    }
+    @if (stage3d.rendering() === '3d' && !presentation()) {
       @if (toSendCount() > 0) {
         <span class="jv__count" [class.jv__count--bump]="toSendBump()" role="status">À envoyer ({{ toSendShown() }})</span>
       }
@@ -79,12 +83,18 @@
 
   <section class="jv__stage">
     <!-- F-234 / SF-234-03 — la constellation de l'univers autour de l'orbe ; toucher un sujet = le choisir. -->
+    @if (!presentation()) {
     <app-jarvis-constellation class="jv__constellation" [subjectId]="subjectId()" [speaking]="state() === 'parole'"
                               (choose)="touchSubject($event)">
       <button type="button" class="jv__orb-button" (click)="talk()" [attr.aria-label]="statusLabel()">
         <app-jarvis-orb class="jv__orb" [state]="state()" [level]="orbLevel" />
       </button>
     </app-jarvis-constellation>
+    } @else {
+      <button type="button" class="jv__orb-button" (click)="talk()" [attr.aria-label]="statusLabel()">
+        <app-jarvis-orb class="jv__orb" [state]="state()" [level]="orbLevel" />
+      </button>
+    }
     <p class="jv__status" role="status" aria-live="polite">{{ statusLabel() }}</p>
     <!-- F-234 / SF-234-11 (D9) — mode sobre, par appareil : l'orbe et le fil d'Ariane seuls. -->
     <button mat-button type="button" class="jv__sober" [attr.aria-pressed]="sober()" (click)="toggleSober()">
@@ -100,7 +110,7 @@
       </button>
     }
     <!-- F-235 / SF-235-05 — les délégations vivantes à Opus, sous l'orbe : le PO continue de converser. -->
-    @if (delegations().length > 0) {
+    @if (delegations().length > 0 && !presentation()) {
       <ul class="jv__delegations" aria-label="Recherches en cours">
         @for (d of delegations(); track d.id) {
           <li class="jv__delegation"><mat-icon aria-hidden="true">sync</mat-icon> {{ d.label }}</li>
@@ -108,9 +118,12 @@
       </ul>
     }
     <!-- F-234 — la scène en cours (une à la fois), déduite à l'écran des événements du tour. -->
-    <app-jarvis-scene class="jv__scene" />
+    @if (!presentation()) {
+      <app-jarvis-scene class="jv__scene" />
+    }
   </section>
 
+  @if (!presentation()) {
   <section class="jv__exchange" aria-label="Dernier échange">
     @if (state() === 'ecoute' && partial(); as text) {
       <!-- F-233 / SF-233-05 : ce qui est entendu, pendant la parole. -->
@@ -136,6 +149,7 @@
       }
     }
   </section>
+  }
 
   <footer class="jv__controls">
     <!-- SF-231-05 — « Jarvis… » : le mot d'éveil, reconnu SUR L'APPAREIL. Rien ne sort avant le mot. -->
@@ -196,10 +210,12 @@
 <!-- F-236 / SF-236-04 — les étiquettes de l'univers 3D (DOM) : au-dessus de l'écran, un sujet se touche comme dans la constellation. -->
 <div #labels3d class="jv3d-labels" [style.opacity]="stage3d.shown() ? 1 : 0" [attr.aria-hidden]="!stage3d.shown()"></div>
 <!-- F-236 / SF-236-15 — le cockpit PC (panneaux latéraux en verre, filaments liste ↔ nœud) : rien hors PC large en 3D. -->
-<app-jarvis-cockpit #cockpit [stage]="stage3d" [signals]="stageSignals()" [sober]="sober()"
+<app-jarvis-cockpit #cockpit [stage]="stage3d" [signals]="stageSignals()" [sober]="sober() || presentation()"
                     [toSendAdded]="toSendAdded()" [shownFilter]="localShowFilter()"
                     (choose)="touchSubject($event)" (show)="showLocal($event)"
-                    (showSearch)="showLocal($event.filter, $event.client)" (replay)="replay.play([$event])" />
+                    (showSearch)="showLocal($event.filter, $event.client)" (replay)="replayView()?.play([$event])" />
 <!-- F-236 / SF-236-22 — replay d'un tour (NF-9) et « Pendant votre absence » (NF-10) : lecteur privé, 3D et 2D. -->
+@if (!presentation()) {
 <app-jarvis-replay #replay [universe]="replayUniverse()" [subjectId]="subjectId()"
                    [liveTurn]="liveTurn()" [requested]="replayRequested" />
+}

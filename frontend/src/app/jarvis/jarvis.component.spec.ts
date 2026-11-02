@@ -1,4 +1,4 @@
-import { TestBed, fakeAsync, flushMicrotasks, tick } from '@angular/core/testing';
+import { TestBed, discardPeriodicTasks, fakeAsync, flushMicrotasks, tick } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -221,6 +221,42 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(jarvis.stageSignals().scene).toBeNull();
     jarvis.ngOnDestroy();
     fixture.destroy();
+  }));
+
+  it('F-236 / SF-236-23 — ?presentation=1 : ni nom de personne, ni sortie, ni détail dans le DOM ni le plan ; Échap quitte', fakeAsync(() => {
+    configure({ presentation: '1' });
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    const jarvis = fixture.componentInstance;
+    const bus = TestBed.inject(JarvisSceneBus);
+    bus.setUniverse(testUniverse());
+    bus.turnStarted();
+    bus.action({ type: 'bash', path: 'kubectl get pods -n forge --token secret' });
+    bus.output('forge-api Running\nZahi Ben a validé');
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(jarvis.presentation()).toBeTrue();
+    expect(el.querySelector('main')?.classList).toContain('jv--presentation');
+    expect(el.querySelector('.jv__presenting')?.textContent).toContain('Échap');
+    expect(el.querySelector('app-jarvis-scene')).toBeNull();
+    expect(el.querySelector('.jv__exchange')).toBeNull();
+    expect(el.querySelector('app-jarvis-replay')).toBeNull();
+    for (const word of ['kubectl', 'Zahi', 'forge-api']) {
+      expect(el.textContent).withContext(word).not.toContain(word);
+    }
+    const signals = jarvis.stageSignals();
+    expect(signals.scene?.detail).toBeNull();
+    expect(signals.scene?.data?.lines).toBeUndefined();
+    expect(signals.admin).toBeFalse();
+    expect(JSON.stringify(signals.universe)).not.toContain('Zahi');
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    fixture.detectChanges();
+    expect(jarvis.presentation()).toBeFalse();
+    expect(jarvis.stageSignals().scene?.detail).toContain('kubectl');
+    jarvis.ngOnDestroy();
+    fixture.destroy();
+    discardPeriodicTasks();
   }));
 
   it('F-236 / SF-236-01 — 3D possible : bouton « Vue 2D » proposé, masqué en mode sobre', fakeAsync(() => {

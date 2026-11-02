@@ -83,6 +83,8 @@ export const JARVIS_CONTEXT_LOSS = new InjectionToken<ContextLossPolicy>('JARVIS
 export class JarvisStage3dComponent implements OnDestroy {
   /** Mode sobre F-234 (D9) : 2D. */
   readonly sober = input(false);
+  /** SF-236-23 (NF-11) — mode présentation : la mémoire de session (tickets, fichiers vus) n'est pas dessinée. */
+  readonly presentation = input(false);
   /** Dessiner le cœur 3D (SF-236-02) ; l'écran efface alors l'orbe 2D. */
   readonly withCore = input(false);
   /** SF-236-02 — ce que l'écran sait (état, coupure, autorisation, conversation, réveils). */
@@ -142,7 +144,8 @@ export class JarvisStage3dComponent implements OnDestroy {
     }
     const s = this.signals();
     const universe = this.universe();
-    const scene = this.sober() ? null : stageScene(s, universe, this.narrow, this.session());
+    const scene = this.sober() ? null : stageScene(s, universe, this.narrow,
+      this.presentation() ? EMPTY_SESSION : this.session());
     const plan = directStage({ state: s.state, frozen: s.frozen, waiting: s.waiting, asleep: this.asleep(),
       wakes: this.wakes(), delegations: s.delegations, fastBrainOn: s.fastBrainOn, turnActive: s.turnActive,
       brainEnd: s.brainEnd }, universe, scene);

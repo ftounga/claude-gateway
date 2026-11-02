@@ -11,6 +11,7 @@ import { directShow } from './scenes3d/jarvis-show-3d';
 import { directAmbient } from './scenes3d/jarvis-ambiance-3d';
 import { baseName } from '../scenes/jarvis-scene-reader';
 import { ScenePlan3d } from './scenes3d/jarvis-scene3d.model';
+import { presentSignals } from './hud/jarvis-presentation';
 
 /**
  * F-236 — **les scènes du banc** (développement seulement : importé par la seule page du banc, chargée
@@ -47,6 +48,14 @@ export function bancPlan(scene: string, narrow: boolean): { plan: StagePlan; voi
   }
   if (scene === 'cockpit-journee') {
     return { plan: bancShow('chantiers-bloques', narrow), voice: 0 };
+  }
+  if (scene === 'presentation') {
+    // SF-236-23 — le mode présentation : un message pour Zahi en préparation, filtré avant le dessin.
+    const s = presentSignals({ ...IDLE_SCREEN, universe: testUniverse(), subjectId: 's-forge', state: 'reflexion',
+      turnActive: true, pulses: 2, lit: ['h-cagip:zahi'], scene: BANC_SCENE_VIEWS['message'] ?? null });
+    const view = universeView(s, false, narrow);
+    return { plan: { mood: 'reflexion', wakes: 0, brains: FOLDED, universe: view,
+      scene: stageScene(s, view, narrow) }, voice: 0 };
   }
   if (scene.startsWith('montrer-')) {
     return { plan: bancShow(scene.slice('montrer-'.length) as ShowFilter, narrow), voice: 0 };

@@ -62,6 +62,7 @@ import { JarvisSceneComponent } from './scenes/jarvis-scene.component';
 import { JarvisConstellationComponent } from './scenes/jarvis-constellation.component';
 import { JarvisCockpitComponent } from './stage3d/hud/jarvis-cockpit.component';
 import { JarvisReplayComponent } from './stage3d/hud/jarvis-replay.component';
+import { PresentationFilter, TOUR_STEP_MS, tourKeys } from './stage3d/hud/jarvis-presentation';
 import { JarvisStage3dComponent } from './stage3d/jarvis-stage-3d.component';
 import { holoCssVars } from './stage3d/jarvis-motion';
 import { BrainEnd } from './stage3d/jarvis-brains';
@@ -125,7 +126,7 @@ export function companionOffer(version: JarvisCompanionVersion, installed: numbe
   styleUrl: './jarvis.component.scss',
   providers: [JarvisAppUpdate],
   // F-236 / SF-236-01 — la palette holographique et les courbes (DESIGN_SYSTEM §23), une seule source : jarvis-motion.ts.
-  host: { '[style]': 'holoVars', '(pointerdown)': 'firstTouch()' },
+  host: { '[style]': 'holoVars', '(pointerdown)': 'firstTouch()', '(window:keydown)': 'onPresentationKey($event)' },
 })
 export class JarvisComponent implements OnInit, OnDestroy {
   /** F-236 / SF-236-01 — jetons `--cg-holo-*`, `--jv-ease-*`, `--jv-dur-*` posés sur l'hôte. */
@@ -336,6 +337,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.stopTour();
     if (this.toSendTimer !== null) {
       clearTimeout(this.toSendTimer);
     }
@@ -1525,6 +1527,12 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   /** F-236 / SF-236-02 — ce que la scène 3D lit de l'écran (H2, H6, H9, H10) ; rien n'est modifié. */
   readonly stageSignals = computed<ScreenSignals>(() => {
+    const raw = this.liveSignals();
+    // SF-236-23 (NF-11) — mode présentation : filtré avant le dessin (initiales, ni coût, ni sortie, ni détail).
+    return this.presentation() ? this.presenter.signals(raw) : raw;
+  }, { equal: sameScreen });
+
+  private readonly liveSignals = computed<ScreenSignals>(() => {
     const reader = this.scenes.state();
     // SF-236-22 (NF-9) — pendant un replay, l'image du lecteur privé remplace celle du bus (jamais alimenté).
     const replay = this.replayView()?.frame() ?? null;
@@ -1668,10 +1676,67 @@ export class JarvisComponent implements OnInit, OnDestroy {
   readonly replayUniverse = computed(() => this.scenes.universe());
   readonly liveTurn = computed(() => this.scenes.turnActive());
 
+  /** F-236 / SF-236-23 (NF-11) — le mode présentation (`?presentation=1`), quitté par Échap. */
+  readonly presentation = signal(this.route.snapshot.queryParamMap.get('presentation') === '1');
+  private readonly presenter = new PresentationFilter();
+  private tourTimer: ReturnType<typeof setInterval> | null = null;
+  private tourIndex = 0;
+  private readonly presentationTour = effect(() => {
+    const on = this.presentation();
+    untracked(() => {
+      if (on && this.tourTimer === null) {
+        // Le tour automatique lent de l'univers : un nœud regardé toutes les 9 s (postes puis sujets).
+        this.zone.runOutsideAngular(() => {
+          this.tourTimer = setInterval(() => this.tourStep(), TOUR_STEP_MS);
+        });
+      } else if (!on) {
+        this.stopTour();
+      }
+    });
+  });
+
+  /** Un pas du tour automatique (public pour les tests). */
+  tourStep(): string | null {
+    const keys = tourKeys(this.scenes.universe());
+    if (keys.length === 0 || !this.stage3dRef || this.stage3dRef.rendering() !== '3d') {
+      return null;
+    }
+    const key = keys[this.tourIndex % keys.length];
+    this.tourIndex++;
+    this.stage3dRef.look(key);
+    return key;
+  }
+
+  private stopTour(): void {
+    if (this.tourTimer !== null) {
+      clearInterval(this.tourTimer);
+      this.tourTimer = null;
+    }
+  }
+
+  /** Échap quitte le mode présentation (et le plein écran qu'il avait pris). */
+  onPresentationKey(event: KeyboardEvent): void {
+    if (event.key !== 'Escape' || !this.presentation()) {
+      return;
+    }
+    this.presentation.set(false);
+    try {
+      if (document.fullscreenElement) {
+        void document.exitFullscreen().then(() => this.fullscreen.set(false), () => undefined);
+      }
+    } catch {
+      // rien
+    }
+  }
+
   /** F-236 / SF-236-05 — le premier toucher, n'importe où, saute l'entrée cinématique. */
   firstTouch(): void {
     if (this.stage3dRef && this.stage3dRef.entry() !== 'none') {
       this.stage3dRef.skipEntry();
+    }
+    // SF-236-23 — le plein écran demande un geste : le premier toucher en mode présentation le prend.
+    if (this.presentation() && this.canFullscreen && !this.fullscreen()) {
+      this.toggleFullscreen();
     }
   }
 

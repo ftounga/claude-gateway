@@ -450,3 +450,22 @@
     }
   }
 }
+
+/* F-236 / SF-236-23 (NF-11) — mode présentation : un repère discret, et le bas de l'écran (réglages de la voix,
+   compagnon) effacé — l'univers occupe la scène ; l'orbe reste touchable pour parler. */
+.jv__presenting {
+  flex: none;
+  margin-left: auto;
+  color: var(--cg-holo-text, #F0954F);
+  font-family: var(--cg-font-heading);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.jv--presentation .jv__controls,
+.jv--presentation .jv__version {
+  display: none;
+}
