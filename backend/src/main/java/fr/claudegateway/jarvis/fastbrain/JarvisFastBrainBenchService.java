@@ -64,6 +64,8 @@ public class JarvisFastBrainBenchService {
     public static final String SET_PERSONALITY = "PERSONALITY";
     /** F-239 / SF-239-07 — le banc de conversation, porte de déploiement de Jarvis. */
     public static final String SET_CONVERSATION = "CONVERSATION";
+    /** F-237 / SF-237-13 — le banc « Jarvis montre les pièces » (SHOW, NAVIGATE, PROOF, NEUTRAL), sans juge. */
+    public static final String SET_PIECES = "PIECES";
     static final int MAX_CASES = 60;
     static final int MAX_CONTEXT_FOR_JUDGE = 6_000;
     static final int MAX_RUNS_PER_USER = 5;
@@ -168,7 +170,8 @@ public class JarvisFastBrainBenchService {
             throw new IllegalArgumentException("Modèle candidat inconnu.");
         }
         String which = set == null || set.isBlank() ? SET_REAL : set.strip().toUpperCase();
-        if (!SET_REAL.equals(which) && !SET_PERSONALITY.equals(which) && !SET_CONVERSATION.equals(which)) {
+        if (!SET_REAL.equals(which) && !SET_PERSONALITY.equals(which) && !SET_CONVERSATION.equals(which)
+                && !SET_PIECES.equals(which)) {
             throw new IllegalArgumentException("Jeu inconnu.");
         }
         prune(userId);
@@ -218,6 +221,9 @@ public class JarvisFastBrainBenchService {
         if (SET_CONVERSATION.equals(set)) {
             return conversation(userId, runId, model, startedAt);
         }
+        if (SET_PIECES.equals(set)) {
+            return pieces(userId, runId, model, startedAt);
+        }
         List<Case> cases = SET_PERSONALITY.equals(set) ? personalityCases(userId) : realCases(userId);
         List<Verdict> verdicts = new ArrayList<>();
         for (Case c : cases) {
@@ -225,6 +231,28 @@ public class JarvisFastBrainBenchService {
             verdicts.add(judge(userId, c, outcome));
         }
         return summarize(runId, set, model, startedAt, verdicts);
+    }
+
+    /**
+     * F-237 / SF-237-13 — le banc des pièces : chaque cas rejoué à blanc (contexte et lecture des pièces fixes), jugé
+     * sans modèle sur les ordres d'écran relayés. Porte : {@link JarvisPiecesBench#gate}.
+     */
+    Report pieces(UUID userId, UUID runId, String model, OffsetDateTime startedAt) {
+        JarvisPiecesBench.Set set = JarvisPiecesBench.load();
+        List<Verdict> verdicts = new ArrayList<>();
+        for (JarvisPiecesBench.Case c : set.cases()) {
+            JarvisFastBrainService.Outcome outcome = fastBrain.benchWithPieces(new JarvisFastBrainService.Request(
+                    userId, null, null, c.text(), null), model, JarvisPiecesBench.contextFor(set, c), set.pieces());
+            verdicts.add(JarvisPiecesBench.evaluate(c, outcome));
+        }
+        List<String> failures = JarvisPiecesBench.gate(verdicts);
+        Double agreement = verdicts.isEmpty() ? null
+                : Math.round(verdicts.stream().filter(Verdict::routeAgreed).count() * 1000.0 / verdicts.size())
+                        / 1000.0;
+        int withoutConsent = (int) verdicts.stream().filter(Verdict::actionNotDelegated).count();
+        return new Report(runId, "DONE", SET_PIECES, model, "déterministe", verdicts.size(), verdicts.size(),
+                agreement, withoutConsent, 0, 0.0, failures.isEmpty(), failures, verdicts, startedAt,
+                OffsetDateTime.now(clock));
     }
 
     /** Le taux de conversion du coût d'un tour du cerveau rapide (dollars ⇒ euros). */
