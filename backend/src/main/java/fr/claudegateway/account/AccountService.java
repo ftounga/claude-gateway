@@ -151,6 +151,14 @@ public class AccountService {
         this.jarvisVoiceChoiceRepository = repository;
     }
 
+    /** Les captures d'énoncés de Jarvis (F-239 / SF-239-03) ; purge nommée à la suppression du compte. */
+    private fr.claudegateway.jarvis.capture.JarvisCaptureService jarvisCaptureService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJarvisCaptureService(fr.claudegateway.jarvis.capture.JarvisCaptureService service) {
+        this.jarvisCaptureService = service;
+    }
+
     /** Les préférences de Jarvis (F-235 / SF-235-09) ; purge nommée à la suppression du compte. */
     private fr.claudegateway.jarvis.preferences.JarvisPreferenceRepository jarvisPreferenceRepository;
 
@@ -498,6 +506,10 @@ public class AccountService {
         // Les préférences de Jarvis (F-235 / SF-235-09).
         if (jarvisPreferenceRepository != null) {
             jarvisPreferenceRepository.deleteByUser(userId);
+        }
+        // Les captures d'énoncés de Jarvis (F-239 / SF-239-03) : objets puis lignes.
+        if (jarvisCaptureService != null) {
+            jarvisCaptureService.purgeUser(userId);
         }
         // Le parcours des sujets (F-176) : mode, phase, plan, journal. Les lignes suivent aussi le
         // terminal (cascade) ; la purge nommée couvre le compte.

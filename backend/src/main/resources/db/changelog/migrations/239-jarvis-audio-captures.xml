@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-239 / SF-239-03 - LA CAPTURE REELLE DES ENONCES DE JARVIS (ADMIN, interrupteur explicite).
+
+      jarvis_audio_captures : un enonce garde pour le banc d'ecoute (audio dans le stockage objet, cle storage_key),
+      avec le texte du flux, la retranscription retenue et, plus tard, la correction du PO (SF-239-06). Filtre
+      user_id sur tout acces. Purge a 7 jours, au plus 200 par compte, effacement a l'extinction et a la suppression
+      du compte. jarvis_preferences.capture_audio : l'interrupteur (faux par defaut).
+
+      Numero 239 = numero de la feature. Rollback : table et colonne retirees.
+    -->
+
+    <changeSet id="239-jarvis-audio-captures" author="claude-gateway">
+        <createTable tableName="jarvis_audio_captures">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="storage_key" type="varchar(300)"><constraints nullable="false"/></column>
+            <column name="seconds" type="int"/>
+            <column name="listen_mode" type="varchar(16)"/>
+            <column name="provider" type="varchar(32)"/>
+            <column name="stream_text" type="varchar(2000)"/>
+            <column name="final_text" type="varchar(2000)"/>
+            <column name="corrected_text" type="varchar(2000)"/>
+        </createTable>
+        <createIndex tableName="jarvis_audio_captures" indexName="idx_jarvis_audio_captures_user_created">
+            <column name="user_id"/>
+            <column name="created_at"/>
+        </createIndex>
+        <addColumn tableName="jarvis_preferences">
+            <column name="capture_audio" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="jarvis_preferences" columnName="capture_audio"/>
+            <dropTable tableName="jarvis_audio_captures"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
