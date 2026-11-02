@@ -181,14 +181,20 @@
     @if (notice(); as message) {
       <p class="jv__notice" role="alert">{{ message }}</p>
     }
-    @if (detail(); as reply) {
-      <button mat-button type="button" class="jv__detail-toggle" [attr.aria-expanded]="showDetail()"
-              (click)="showDetail.set(!showDetail())">
-        <mat-icon aria-hidden="true">{{ showDetail() ? 'expand_less' : 'notes' }}</mat-icon>
-        {{ showDetail() ? 'Masquer le détail' : 'Voir le détail' }}
-      </button>
-      @if (showDetail()) {
-        <div class="jv__detail" [innerHTML]="reply | markdown"></div>
+    <!-- F-240 / SF-240-03 — trois étages : la phrase dite (ci-dessus), l'essentiel seul, le détail replié. -->
+    @if (tiers(); as t) {
+      @if (t.essential) {
+        <div class="jv__essential" [innerHTML]="t.essential | markdown"></div>
+      }
+      @if (t.detail) {
+        <button mat-button type="button" class="jv__detail-toggle" [attr.aria-expanded]="showDetail()"
+                (click)="toggleDetail()">
+          <mat-icon aria-hidden="true">{{ showDetail() ? 'expand_less' : 'notes' }}</mat-icon>
+          {{ showDetail() ? 'Masquer le détail' : 'Voir le détail' }}
+        </button>
+        @if (showDetail()) {
+          <div class="jv__detail" [innerHTML]="t.detail | markdown"></div>
+        }
       }
     }
   </section>
