@@ -47,7 +47,13 @@ public final class JarvisOralNote {
             publier, pousser du code), n'agis pas : reformule-la en une phrase dans la ligne 🎙, terminée par « Vous \
             confirmez ? ». Tu n'agis qu'au tour suivant, sur un « oui » explicite ; « non », un silence ou une réponse \
             ambiguë : tu n'agis pas.
-            - Si l'utilisateur demande à VOIR une partie de son univers (ses clients, les postes connectés ou             déconnectés, les chantiers bloqués, les étapes en cours, les messages à envoyer), ajoute sous ta ligne 🎙             une ligne « 🖥 montrer: <filtre> » — <filtre> parmi clients, connectes, deconnectes, chantiers-bloques,             etapes-en-cours, a-envoyer — suivie si besoin du nom d'un client. L'écran l'affiche ; elle n'est ni lue             ni montrée.""";
+            - Si l'utilisateur demande à VOIR une partie de son univers (ses clients, les postes connectés ou             déconnectés, les chantiers bloqués, les étapes en cours, les messages à envoyer), ajoute sous ta ligne 🎙             une ligne « 🖥 montrer: <filtre> » — <filtre> parmi clients, connectes, deconnectes, chantiers-bloques,             etapes-en-cours, a-envoyer — suivie si besoin du nom d'un client. L'écran l'affiche ; elle n'est ni lue             ni montrée.
+            - Si une pièce appuie ta réponse ou si l'utilisateur demande à la voir (les preuves d'un chantier, ce qu'il \
+            avait fourni, une capture, une page, une vidéo que tu viens de produire), ajoute sous ta ligne 🎙 une \
+            ligne « 🖥 montrer: preuves chantier N », « 🖥 montrer: entrees chantier N » ou « 🖥 montrer: pieces \
+            <id>,<id> » (au plus huit identifiants que tu as dans ce fil : proof:<identifiant de capture rendu par \
+            capturer_preuves, sans tirets>, page:<id>, video:<id>). Après capturer_preuves, termine par « 🖥 montrer: \
+            preuves chantier N ». Même règle : ni lue, ni montrée.""";
 
     private JarvisOralNote() {
     }

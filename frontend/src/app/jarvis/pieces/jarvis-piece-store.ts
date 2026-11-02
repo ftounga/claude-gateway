@@ -132,6 +132,32 @@ export class JarvisPieceStore {
     return shown;
   }
 
+  /**
+   * F-237 / SF-237-09 — **une pièce produite en direct** (capture de preuve publiée pendant le tour, T-G7) : elle
+   * rejoint la galerie ouverte du même sujet, sinon ouvre la galerie des preuves.
+   */
+  addLive(scope: NavScope, pieces: readonly Piece[]): PieceStoreResult {
+    if (this.presentation()) {
+      return { ok: false, reason: 'PRESENTATION' };
+    }
+    if (!pieces.length) {
+      return { ok: false, reason: 'NOT_FOUND' };
+    }
+    const nav = this.nav();
+    const open = nav.scope != null && nav.level !== 'UNIVERS' && nav.level !== 'CHANTIER'
+      && nav.scope.subjectId === scope.subjectId && (nav.scope.category == null || nav.scope.category === 'PREUVE');
+    if (open) {
+      const map = new Map(this.pieces());
+      for (const piece of pieces) {
+        map.set(piece.id, piece);
+      }
+      this.pieces.set(map);
+      return this.dispatch({ type: 'append', pieces });
+    }
+    this.mode.set('fan');
+    return this.show(scope, pieces, 'ASKED');
+  }
+
   /** Tout ferme (sortie de l'écran, bascule en présentation). */
   reset(): void {
     this.loading?.abort();

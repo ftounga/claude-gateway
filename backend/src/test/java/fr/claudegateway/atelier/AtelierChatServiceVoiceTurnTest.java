@@ -162,7 +162,9 @@ class AtelierChatServiceVoiceTurnTest {
         service.chat(userId, workspaceId, "montre-moi mes clients");
 
         assertThat(sentToModel()).contains("🖥 montrer: <filtre>").contains("chantiers-bloques")
-                .contains("etapes-en-cours").contains("a-envoyer");
+                .contains("etapes-en-cours").contains("a-envoyer")
+                // F-237 / SF-237-09 — les formes « pièces » de la ligne, dans le message (préfixe intact).
+                .contains("🖥 montrer: preuves chantier N").contains("🖥 montrer: pieces");
         // D18 : aucun outil réservé à Jarvis, consigne système inchangée ⇒ préfixe identique au tour tapé.
         assertThat(agentProvider.lastRequest.system()).isEqualTo(typedSystem).doesNotContain("montrer");
         assertThat(agentProvider.lastRequest.tools().stream().map(t -> t.name()).toList()).isEqualTo(typedTools);
