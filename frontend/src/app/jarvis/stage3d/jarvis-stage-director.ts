@@ -1,3 +1,4 @@
+import { BrainEnd, BrainsState, brainsFor } from './jarvis-brains';
 import { HeartMood, JarvisVoiceState, heartMood } from './jarvis-heart';
 
 /**
@@ -18,6 +19,11 @@ export interface StageSignals {
   asleep: boolean;
   /** N2 — réveils joués (onde de choc à chaque incrément). */
   wakes: number;
+  /** H8 — SF-236-03 : délégations vivantes, cerveau rapide, tour en cours, fin du dernier travail. */
+  delegations: number;
+  fastBrainOn: boolean;
+  turnActive: boolean;
+  brainEnd: BrainEnd;
 }
 
 /** Ce que l'écran `/jarvis` passe à la scène 3D (la veille et les réveils sont tenus par la scène). */
@@ -29,27 +35,40 @@ export interface ScreenSignals {
   conversing: boolean;
   /** H10 — appels du mot « Jarvis » (ou toucher de réveil) depuis l'ouverture. */
   wakeCalls: number;
+  /** H8 / H5 — SF-236-03. */
+  delegations: number;
+  fastBrainOn: boolean;
+  turnActive: boolean;
+  brainEnd: BrainEnd;
 }
 
 export const IDLE_SCREEN: ScreenSignals = { state: 'repos', frozen: false, waiting: false, conversing: false,
-  wakeCalls: 0 };
+  wakeCalls: 0, delegations: 0, fastBrainOn: false, turnActive: false, brainEnd: 'normal' };
 
 /** Le plan que le moteur dessine. */
 export interface StagePlan {
   mood: HeartMood;
   wakes: number;
+  /** SF-236-03 — les deux cerveaux. */
+  brains: BrainsState;
+  /** Banc seulement : les cerveaux partent déployés (séquence du retour). */
+  brainsFromDeployed?: boolean;
 }
 
-export const IDLE_SIGNALS: StageSignals = { state: 'repos', frozen: false, waiting: false, asleep: false, wakes: 0 };
+export const IDLE_SIGNALS: StageSignals = { state: 'repos', frozen: false, waiting: false, asleep: false, wakes: 0,
+  delegations: 0, fastBrainOn: false, turnActive: false, brainEnd: 'normal' };
 
 export function directStage(signals: StageSignals): StagePlan {
   return {
     mood: heartMood(signals),
     wakes: signals.wakes,
+    brains: brainsFor({ delegations: signals.delegations, fastBrainOn: signals.fastBrainOn,
+      turnActive: signals.turnActive, end: signals.brainEnd }),
   };
 }
 
 /** Deux plans identiques ⇒ le moteur n'a rien à faire. */
 export function samePlan(a: StagePlan, b: StagePlan): boolean {
-  return a.mood === b.mood && a.wakes === b.wakes;
+  return a.mood === b.mood && a.wakes === b.wakes && a.brains.target === b.brains.target
+    && a.brains.variant === b.brains.variant && a.brains.pearls === b.brains.pearls;
 }

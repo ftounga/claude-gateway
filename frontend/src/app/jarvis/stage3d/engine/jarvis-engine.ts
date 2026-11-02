@@ -11,6 +11,8 @@ import { QualityGovernor } from '../jarvis-quality';
 import { QualityLevel } from '../jarvis-render-capability';
 import { StagePlan } from '../jarvis-stage-director';
 import { Tween } from '../jarvis-tween';
+import { BrainsClock } from '../jarvis-brains';
+import { Brain3d } from './jarvis-brain-3d';
 import { Heart3d } from './jarvis-heart-3d';
 import { JarvisPost } from './jarvis-post';
 
@@ -51,6 +53,7 @@ uniform vec3 uAbyss;
 uniform vec3 uTint;
 uniform vec3 uDeep;
 uniform float uGlow;
+uniform float uDeepMix;
 varying vec2 vUv;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -67,13 +70,14 @@ float fbm(vec2 p) {
 void main() {
   vec2 p = (vUv - vec2(0.5, 0.56)) * vec2(uAspect, 1.0);
   float r = length(p);
-  vec3 color = mix(mix(uFog, uAbyss, uGlow), uFog, smoothstep(0.0, 0.85, r));
+  vec3 abyss = mix(uAbyss, uDeep * 0.28, uDeepMix);
+  vec3 color = mix(mix(uFog, abyss, uGlow), uFog, smoothstep(0.0, 0.85, r));
   if (uNebula > 0.5) {
     float t = uTime * 0.000012;
     float n = fbm(p * 2.2 + vec2(t, -t * 0.7));
     float m = fbm(p * 4.0 - vec2(t * 0.5, t));
     float veil = smoothstep(0.35, 0.8, n) * (1.0 - smoothstep(0.15, 1.25, r));
-    color += uTint * veil * 0.30 + uDeep * smoothstep(0.5, 0.9, m) * veil * 0.14;
+    color += uTint * veil * 0.16 + uDeep * smoothstep(0.5, 0.9, m) * veil * 0.08;
   }
   gl_FragColor = vec4(color, 1.0);
 }`;
@@ -124,6 +128,12 @@ class ThreeJarvisEngine implements JarvisEngine {
   private readonly backdrop: ShaderMaterial;
   private readonly post: JarvisPost;
   private readonly heart: Heart3d | null;
+  /** SF-236-03 — le grand cerveau et son horloge. */
+  private readonly brain: Brain3d | null;
+  private brains: BrainsClock = new BrainsClock();
+  private floorMaterial: LineBasicMaterial | null = null;
+  private readonly floorNormal = rgb(HOLO_COLORS.normalDim);
+  private readonly floorDeep = rgb(HOLO_COLORS.deep);
   private readonly governor: QualityGovernor | null;
   private readonly dustOpacity = new Tween(HOLO_ALPHA.panel);
   private dustMaterial: ShaderMaterial | null = null;
@@ -170,9 +180,11 @@ class ThreeJarvisEngine implements JarvisEngine {
     const start = options.clock();
     if (options.withCore) {
       this.heart = new Heart3d(this.scene, options.random, options.level, this.renderer.getPixelRatio());
+      this.brain = new Brain3d(this.scene, options.random, options.level, this.renderer.getPixelRatio());
       this.applyPlan(options.plan, start, true);
     } else {
       this.heart = null;
+      this.brain = null;
     }
     this.post = new JarvisPost(this.renderer, this.scene, this.camera, options.width, options.height, options.level);
     // Le banc (horloge figée) n'adapte pas la qualité : ses captures restent reproductibles.
@@ -219,7 +231,15 @@ class ThreeJarvisEngine implements JarvisEngine {
       this.heart.setMood('repos', 0, true);
       this.heart.setMood(plan.mood, 0, false);
       this.heart.setWakes(plan.wakes, 0);
+      this.brains = new BrainsClock(plan.brainsFromDeployed ? 'deployed' : 'folded');
+      this.brains.set(plan.brains.target, plan.brains.variant, 0);
       return;
+    }
+    if (opening) {
+      // À l'ouverture, les cerveaux sont posés tels quels (l'écran apparaît en fondu).
+      this.brains = new BrainsClock(plan.brains.target);
+    } else {
+      this.brains.set(plan.brains.target, plan.brains.variant, now);
     }
     this.heart.setMood(plan.mood, now, opening);
     if (opening) {
@@ -284,15 +304,34 @@ class ThreeJarvisEngine implements JarvisEngine {
     }
     let bloom = 1.1;
     let light = 0.8;
-    if (this.heart) {
-      this.heart.frame(t, Math.min(Math.max(frameMs, 0), MAX_DT_MS), this.options.voiceLevel());
-      bloom = this.heart.bloom.value(t);
+    let spread = 0;
+    if (this.heart && this.brain) {
+      const dt = Math.min(Math.max(frameMs, 0), MAX_DT_MS);
+      const f = this.brains.at(t);
+      this.heart.group.scale.setScalar(f.coreScale);
+      this.heart.lightGain = f.coreLight;
+      this.heart.flash = f.flash;
+      this.heart.frame(t, dt, this.options.voiceLevel());
+      this.brain.frame(dt, f, this.plan.brains.pearls, this.brains.current === 'deployed' ? 'normal'
+        : this.plan.brains.variant);
+      bloom = this.heart.bloom.value(t) + f.bloom;
       light = this.heart.light;
+      spread = f.spread;
+      // Le fond et le sol virent au violet quand le grand cerveau travaille.
+      this.backdrop.uniforms['uDeepMix'].value = f.hue;
+      if (this.floorMaterial) {
+        this.floorMaterial.color.setRGB(
+          this.floorNormal[0] + (this.floorDeep[0] - this.floorNormal[0]) * f.hue,
+          this.floorNormal[1] + (this.floorDeep[1] - this.floorNormal[1]) * f.hue,
+          this.floorNormal[2] + (this.floorDeep[2] - this.floorNormal[2]) * f.hue);
+      }
     }
     this.backdrop.uniforms['uGlow'].value = 0.35 + 0.65 * light;
-    // Dérive lente de la caméra (parallaxe des calques) : aucun roulis, focale fixe (§7.3, règle 8).
+    // Dérive lente de la caméra (parallaxe des calques) : aucun roulis, focale fixe (§7.3, règle 8) ; recul de
+    // 15 % quand le grand cerveau est déployé (§9.3).
     this.camera.position.x = Math.sin(t * 0.00005) * 0.35;
     this.camera.position.y = 0.6 + Math.sin(t * 0.000037) * 0.12;
+    this.camera.position.z = 9 * (1 + 0.15 * spread);
     this.camera.lookAt(0, 0, 0);
     this.post.render(bloom);
     if (!this.firstFrameSeen) {
@@ -317,6 +356,7 @@ class ThreeJarvisEngine implements JarvisEngine {
         uTint: { value: rgb(HOLO_COLORS.normal) },
         uDeep: { value: rgb(HOLO_COLORS.deep) },
         uGlow: { value: 0.8 },
+        uDeepMix: { value: 0 },
       },
     });
     const quad = new Mesh(new PlaneGeometry(2, 2), material);
@@ -398,6 +438,7 @@ class ThreeJarvisEngine implements JarvisEngine {
       blending: AdditiveBlending, depthWrite: false,
     });
     const floor = new LineSegments(geometry, material);
+    this.floorMaterial = material;
     floor.position.y = -2.4;
     this.scene.add(floor);
   }
