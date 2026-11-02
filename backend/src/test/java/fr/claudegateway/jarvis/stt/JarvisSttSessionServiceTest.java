@@ -67,7 +67,7 @@ class JarvisSttSessionServiceTest {
         provider = mock(StreamingTranscriptionProvider.class);
         when(provider.name()).thenReturn("elevenlabs");
         when(provider.isConfigured()).thenReturn(true);
-        when(provider.openStreamingSession(any(), anyDouble())).thenReturn(new StreamingTranscriptionProvider
+        when(provider.openStreamingSession(any(), anyDouble(), any())).thenReturn(new StreamingTranscriptionProvider
                 .StreamingSession("elevenlabs", "wss://x/realtime?model_id=m", "tok", clock.now.plusSeconds(900), 16000));
         voice = mock(JarvisVoiceService.class);
         when(voice.status(any())).thenReturn(new JarvisVoiceService.VoiceStatus(true, "onyx", BigDecimal.TEN,
@@ -87,7 +87,7 @@ class JarvisSttSessionServiceTest {
         assertThat(ticket.url()).doesNotContain("tok");
         assertThat(ticket.token()).isEqualTo("tok");
         assertThat(ticket.maxSeconds()).isEqualTo(120);
-        verify(provider).openStreamingSession("fr", 0.7);
+        verify(provider).openStreamingSession(eq("fr"), eq(0.7), any());
 
         clock.now = clock.now.plusSeconds(20);
         service.close(alice, ticket.sessionId(), 999L);
@@ -117,7 +117,7 @@ class JarvisSttSessionServiceTest {
                 .open(bob)).isInstanceOf(TranscriptionProviderUnavailableException.class);
         when(provider.isConfigured()).thenReturn(false);
         assertThatThrownBy(() -> service.open(bob)).isInstanceOf(TranscriptionProviderUnavailableException.class);
-        verify(provider, never()).openStreamingSession(any(), anyDouble());
+        verify(provider, never()).openStreamingSession(any(), anyDouble(), any());
     }
 
     @Test

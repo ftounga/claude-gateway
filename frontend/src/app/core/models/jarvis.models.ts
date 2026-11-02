@@ -138,6 +138,15 @@ export interface TurnTimingReport {
   rejectedChars?: number | null;
 }
 
+/** F-239 / SF-239-04 — un énoncé retranscrit par la passerelle (Scribe v2 batch + vocabulaire). */
+export interface JarvisUtterance {
+  text: string;
+  /** Le fournisseur (ex. `elevenlabs-batch`), pour la mesure. */
+  provider: string;
+  /** La durée de l'appel au fournisseur, en ms. */
+  ms: number;
+}
+
 /** F-233 / SF-233-04 — une session d'écoute en flux : de quoi parler directement au fournisseur (jamais la clé). */
 export interface JarvisSttTicket {
   sessionId: string;

@@ -46,6 +46,8 @@ public class JarvisSttSessionService {
     private final JarvisUsageService usage;
     private final Clock clock;
     private final Map<UUID, OpenSession> open = new ConcurrentHashMap<>();
+    /** F-239 / SF-239-04 — le vocabulaire du compte, aussi donné à l'écoute en flux (facultatif). */
+    private JarvisVocabulary vocabulary;
 
     public JarvisSttSessionService(List<StreamingTranscriptionProvider> providers, JarvisSttStreamProperties properties,
             JarvisVoiceService voice, JarvisUsageService usage, Clock clock) {
@@ -54,6 +56,11 @@ public class JarvisSttSessionService {
         this.voice = voice;
         this.usage = usage;
         this.clock = clock;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setVocabulary(JarvisVocabulary vocabulary) {
+        this.vocabulary = vocabulary;
     }
 
     /**
@@ -69,7 +76,8 @@ public class JarvisSttSessionService {
             throw new JarvisVoiceBudgetException();
         }
         StreamingTranscriptionProvider.StreamingSession session =
-                provider.openStreamingSession(properties.language(), properties.vadSilenceSeconds());
+                provider.openStreamingSession(properties.language(), properties.vadSilenceSeconds(),
+                        vocabulary == null ? List.of() : vocabulary.of(userId));
         UUID id = UUID.randomUUID();
         open.put(id, new OpenSession(userId, clock.instant()));
         return new Ticket(id, session.provider(), session.url(), session.token(), session.expiresAt(),

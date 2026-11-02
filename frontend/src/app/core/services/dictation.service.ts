@@ -87,9 +87,21 @@ export class DictationService {
    * @returns le texte, ou une chaîne vide si l'extrait était trop court
    */
   async stop(): Promise<string> {
+    const blob = await this.stopRecording();
+    if (!blob) {
+      return '';
+    }
+    return this.transcribe(blob, 'dictee.webm');
+  }
+
+  /**
+   * F-239 / SF-239-04 — arrête l'enregistrement et rend l'extrait **sans le transcrire** (Jarvis le confie à sa propre
+   * retranscription), ou `null` s'il était trop court.
+   */
+  async stopRecording(): Promise<Blob | null> {
     const recorder = this.recorder;
     if (!recorder) {
-      return '';
+      return null;
     }
     this.recorder = null;
     if (this.stopTimer) {
@@ -106,19 +118,9 @@ export class DictationService {
     recorder.stream.getTracks().forEach((track) => track.stop());
 
     if (duration < MIN_CLIP_MS || blob.size === 0) {
-      return '';
+      return null;
     }
-    const form = new FormData();
-    form.append('audio', blob, 'dictee.webm');
-    try {
-      const answer = await firstValueFrom(
-        this.http.post<{ text?: string }>('/api/atelier/transcription', form),
-      );
-      return answer?.text ?? '';
-    } catch (error) {
-      const status = (error as { status?: number })?.status;
-      throw (status === 503 ? 'non-configure' : status === 413 ? 'trop-long' : 'echec') as DictationError;
-    }
+    return blob;
   }
 
   /**

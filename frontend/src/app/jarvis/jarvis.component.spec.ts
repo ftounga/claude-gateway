@@ -2,7 +2,7 @@ import { TestBed, discardPeriodicTasks, fakeAsync, flushMicrotasks, tick } from 
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
-import { of, throwError } from 'rxjs';
+import { Subject, of, throwError } from 'rxjs';
 
 import { JARVIS_USER_AGENT, JarvisComponent, companionOffer } from './jarvis.component';
 import { JarvisSceneBus } from './scenes/jarvis-scene-bus.service';
@@ -92,9 +92,14 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       handlers = h;
       return Promise.resolve();
     });
-    dictation = jasmine.createSpyObj<DictationService>('DictationService', ['start', 'stop', 'cancel', 'transcribe'],
-      { supported: true, stream: null });
+    dictation = jasmine.createSpyObj<DictationService>('DictationService',
+      ['start', 'stop', 'stopRecording', 'cancel', 'transcribe'], { supported: true, stream: null });
     dictation.start.and.resolveTo();
+    // F-239 / SF-239-04 — Jarvis arrête l'enregistrement sans le transcrire, puis le retranscrit lui-même ; sans
+    // retranscription (503 par défaut ici), il retombe sur la dictée, dont `stop` porte le texte des tests.
+    dictation.stop.and.resolveTo('');
+    dictation.stopRecording.and.callFake(() => Promise.resolve(new Blob(['enregistrement'], { type: 'audio/webm' })));
+    dictation.transcribe.and.callFake(() => dictation.stop());
     voice = jasmine.createSpyObj<JarvisVoiceService>('JarvisVoiceService',
       ['speak', 'stop', 'unlock', 'level', 'preloadClips', 'playClip', 'hasClip', 'enqueue', 'idle', 'status',
         'duck', 'interrupt', 'resetHeard', 'audioAllowed']);
@@ -110,8 +115,9 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     voice.playClip.and.resolveTo(false);
     voice.hasClip.and.returnValue(false);
     voice.level.and.returnValue(0);
-    jarvisApi = jasmine.createSpyObj<JarvisService>('JarvisService', ['usage', 'companion', 'companions', 'timings', 'sttSession', 'closeSttSession', 'preferences', 'setHumour', 'scenes', 'render']);
+    jarvisApi = jasmine.createSpyObj<JarvisService>('JarvisService', ['usage', 'companion', 'companions', 'timings', 'sttSession', 'closeSttSession', 'preferences', 'setHumour', 'scenes', 'render', 'utterance']);
     jarvisApi.sttSession.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
+    jarvisApi.utterance.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
     jarvisApi.preferences.and.returnValue(of({ humour: 'LIGHT' as const }));
     jarvisApi.setHumour.and.callFake((humour) => of({ humour }));
     opener = jasmine.createSpyObj<JarvisStreamOpener>('JarvisStreamOpener', ['open']);
@@ -1027,6 +1033,80 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       expect(jarvisApi.timings.calls.mostRecent().args[0].ttsProvider).toBe('openai');
     }));
 
+  /** Une écoute en flux dont l'énoncé est gardé (WAV de 2 s). */
+  function streamWithAudio(): { stt: () => StreamHandlers } {
+    jarvisApi.sttSession.and.returnValue(of({
+      sessionId: 's-1', provider: 'elevenlabs', url: 'wss://x/realtime?model_id=m', token: 't',
+      expiresAt: '2030-01-01T00:00:00Z', sampleRate: 16000, maxSeconds: 120,
+    }));
+    let stt: StreamHandlers | null = null;
+    const listening = jasmine.createSpyObj('LiveListening', ['commit', 'close', 'audio', 'audioSeconds'],
+      { stream: undefined });
+    listening.close.and.returnValue(2);
+    listening.audio.and.returnValue(new Blob(['pcm'], { type: 'audio/wav' }));
+    listening.audioSeconds.and.returnValue(2);
+    opener.open.and.callFake((_t, h) => {
+      stt = h;
+      return Promise.resolve(listening);
+    });
+    return { stt: () => stt! };
+  }
+
+  it('F-239 / SF-239-04 — flux : l’énoncé complet retranscrit (vocabulaire) remplace le texte provisoire',
+    fakeAsync(() => {
+      const ready = streamWithAudio();
+      jarvisApi.utterance.and.returnValue(of({ text: 'Où en est CAGIP ?', provider: 'elevenlabs-batch', ms: 600 }));
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      const jarvis = fixture.componentInstance;
+      void jarvis.talk();
+      flushMicrotasks();
+      ready.stt().onCommitted('Où en est Cagibi ?');
+      flushMicrotasks();
+      expect(jarvisApi.utterance).toHaveBeenCalledWith(jasmine.any(Blob), 2);
+      expect(atelier.streamChat).toHaveBeenCalledWith('w-2', 'Où en est CAGIP ?', jasmine.any(Object), 'ACT', false,
+        [], null, false, 'JARVIS', null);
+      expect(dictation.transcribe).not.toHaveBeenCalled();
+      handlers!.onDone({ reply: '🎙 Étape 4.', actions: [], messageId: 'm-1' });
+      flushMicrotasks();
+      expect(jarvisApi.timings.calls.mostRecent().args[0].sttProvider).toBe('elevenlabs-batch');
+    }));
+
+  it('F-239 / SF-239-04 — flux : retranscription trop lente (> 2,5 s) ⇒ le texte du flux part', fakeAsync(() => {
+    const ready = streamWithAudio();
+    jarvisApi.utterance.and.returnValue(new Subject<never>());
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    void jarvis.talk();
+    flushMicrotasks();
+    ready.stt().onCommitted('Où en est la migration ?');
+    flushMicrotasks();
+    expect(atelier.streamChat).not.toHaveBeenCalled();
+    tick(2_500);
+    flushMicrotasks();
+    expect(atelier.streamChat).toHaveBeenCalledWith('w-2', 'Où en est la migration ?', jasmine.any(Object), 'ACT',
+      false, [], null, false, 'JARVIS', null);
+  }));
+
+  it('F-239 / SF-239-04 — dictée et interruption passent par la retranscription, jamais par la dictée (whisper)',
+    fakeAsync(() => {
+      jarvisApi.utterance.and.returnValue(of({ text: 'Regarde LDIC-223.', provider: 'elevenlabs-batch', ms: 500 }));
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      const jarvis = fixture.componentInstance;
+      void jarvis.talk();
+      flushMicrotasks();
+      void jarvis.talk();
+      flushMicrotasks();
+      expect(dictation.stopRecording).toHaveBeenCalled();
+      expect(dictation.transcribe).not.toHaveBeenCalled();
+      expect(dictation.stop).not.toHaveBeenCalled();
+      expect(atelier.streamChat).toHaveBeenCalledWith('w-2', 'Regarde LDIC-223.', jasmine.any(Object), 'ACT', false,
+        [], null, false, 'JARVIS', null);
+      jarvis.ngOnDestroy();
+    }));
+
   it('F-233 / SF-233-05 — flux non configuré (503) : dictée batch, et on n’essaie plus pendant l’ouverture',
     fakeAsync(() => {
       const fixture = TestBed.createComponent(JarvisComponent);
@@ -1040,6 +1120,26 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       flushMicrotasks();
       expect(jarvisApi.sttSession).toHaveBeenCalledTimes(1);
     }));
+
+  it('F-239 / SF-239-04 — la parole qui coupe Jarvis est retranscrite par Jarvis, pas par la dictée', fakeAsync(() => {
+    voice.interrupt.and.returnValue({ heard: 'La migration est', resume: [] });
+    jarvisApi.utterance.and.returnValue(of({ text: 'Et les tests de CAGIP ?', provider: 'elevenlabs-batch', ms: 400 }));
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    jarvis.state.set('parole');
+    fixture.detectChanges();
+    flushMicrotasks();
+    vad!.onSpeechStart();
+    vad!.onSpeechConfirmed();
+    vad!.onSpeechEnd(new Float32Array(16_000));
+    flushMicrotasks();
+    expect(jarvisApi.utterance).toHaveBeenCalledWith(jasmine.any(Blob), 1);
+    expect(dictation.transcribe).not.toHaveBeenCalled();
+    expect(atelier.streamChat).toHaveBeenCalledWith('w-2', 'Et les tests de CAGIP ?', jasmine.any(Object), 'ACT',
+      false, [], null, false, 'JARVIS', 'La migration est');
+    jarvis.ngOnDestroy();
+  }));
 
   it('F-233 / SF-233-08 — Jarvis parle : voix détectée → volume baissé ; confirmée → coupé, et ce qui est dit est traité',
     fakeAsync(() => {

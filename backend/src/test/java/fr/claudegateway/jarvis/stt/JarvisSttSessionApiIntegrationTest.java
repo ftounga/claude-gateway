@@ -60,7 +60,7 @@ class JarvisSttSessionApiIntegrationTest {
         reset(provider);
         when(provider.name()).thenReturn("elevenlabs");
         when(provider.isConfigured()).thenReturn(true);
-        when(provider.openStreamingSession(any(), anyDouble())).thenReturn(new StreamingTranscriptionProvider
+        when(provider.openStreamingSession(any(), anyDouble(), any())).thenReturn(new StreamingTranscriptionProvider
                 .StreamingSession("elevenlabs", "wss://api.elevenlabs.io/v1/speech-to-text/realtime?model_id=m",
                         "single-use", Instant.parse("2030-01-01T00:00:00Z"), 16000));
         alice = userRepository.save(user("jarvis-stt-a-" + UUID.randomUUID() + "@ex.com"));
@@ -106,7 +106,7 @@ class JarvisSttSessionApiIntegrationTest {
     @Test
     @DisplayName("503 non configuré ; 502 fournisseur en échec ; 401 sans jeton")
     void errors() throws Exception {
-        when(provider.openStreamingSession(any(), anyDouble()))
+        when(provider.openStreamingSession(any(), anyDouble(), any()))
                 .thenThrow(new TranscriptionProviderException("détail interne du fournisseur"));
         open(aliceToken).andExpect(status().isBadGateway())
                 .andExpect(jsonPath("$.error").value("stt_stream_failed"))

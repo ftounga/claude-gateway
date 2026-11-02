@@ -662,6 +662,15 @@ app:
       max-session-seconds: ${APP_JARVIS_STT_STREAM_MAX_SESSION_SECONDS:120}
       # 0,39 $/h (Scribe v2 Realtime) ; compte a la duree de session (D13).
       cost-usd-per-minute: ${APP_JARVIS_STT_STREAM_COST_USD_PER_MIN:0.0065}
+    # F-239 / SF-239-04 : la retranscription de l'enonce complet (Scribe v2 batch + vocabulaire de l'univers).
+    # `none` eteint (l'ecran garde le texte du flux). 0,27 $/h = 0,22 $ + 0,05 $ de mots-cles.
+    utterance:
+      provider: ${APP_JARVIS_UTTERANCE_PROVIDER:elevenlabs}
+      model: ${APP_JARVIS_UTTERANCE_MODEL:scribe_v2}
+      language: ${APP_JARVIS_UTTERANCE_LANGUAGE:fr}
+      provider-timeout: ${APP_JARVIS_UTTERANCE_PROVIDER_TIMEOUT:PT6S}
+      max-vocabulary: ${APP_JARVIS_UTTERANCE_MAX_VOCABULARY:100}
+      cost-usd-per-hour: ${APP_JARVIS_UTTERANCE_COST_USD_PER_HOUR:0.27}
     # LE COMPAGNON ANDROID (F-232 / SF-232-02), servi par GET /runner/download/android SEULEMENT si sa
     # signature v1 est faite par le certificat dont l'empreinte SHA-256 est donnee ici (format keytool
     # accepte). L'empreinte d'un certificat est PUBLIQUE : ce n'est pas un secret. Vide => rien n'est servi.
