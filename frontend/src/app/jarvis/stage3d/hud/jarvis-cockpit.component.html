@@ -1,263 +1,30 @@
 @if (mode() === 'cockpit') {
-  <!-- F-236 / SF-236-15 — panneau gauche : l'univers en liste (postes, sujets), filament vers le nœud au survol. -->
+  <!-- F-236 / SF-236-15 — panneau gauche : recherche, journée, météo, personnes, univers. -->
   <aside class="ck ck--left" [class.ck--folded]="folds().left" aria-label="Cockpit — univers">
     <button type="button" class="ck__fold" (click)="toggle('left')" [attr.aria-expanded]="!folds().left"
             [attr.aria-label]="folds().left ? 'Déplier le panneau gauche' : 'Replier le panneau gauche'">
       <span aria-hidden="true">{{ folds().left ? '›' : '‹' }}</span>
     </button>
     <div class="ck__body" [attr.inert]="folds().left ? '' : null">
-      <!-- SF-236-19 (NF-8) — « montre-moi » au clavier : filtres de « Montrer » + noms, sans tour ( / ou Ctrl+K ). -->
-      <div class="ck__search" role="search">
-        <input #searchBox type="search" class="ck__search-input" placeholder="Montre-moi…  ( / )" autocomplete="off"
-               role="combobox" aria-label="Recherche : montre-moi" aria-controls="ck-results" aria-autocomplete="list"
-               [attr.aria-expanded]="results().length > 0" [value]="query()"
-               [attr.aria-activedescendant]="results().length > 0 ? 'ck-result-' + active() : null"
-               (input)="setQuery($any($event.target).value)" (keydown)="onSearchKey($event)" />
-        @if (results().length > 0) {
-          <ul id="ck-results" class="ck__list ck__results" role="listbox" aria-label="Résultats">
-            @for (r of results(); track $index) {
-              <li [id]="'ck-result-' + $index" role="option" [attr.aria-selected]="$index === active()"
-                  class="ck__item" [class.ck__item--current]="$index === active()" (mousedown)="$event.preventDefault()"
-                  (click)="apply(r)">
-                <span class="ck__label">{{ r.label }}</span>
-                <span class="ck__note">{{ r.type === 'show' ? 'montrer · ' + r.count : r.where }}</span>
-              </li>
-            }
-          </ul>
-        } @else if (query().length >= 2) {
-          <p class="ck__empty">Rien ne correspond.</p>
-        }
-      </div>
-      <!-- SF-236-16 (NF-1) — « Aujourd'hui » : toucher un chiffre = « Montrer » local, sans tour. -->
-      @if (board().length > 0) {
-        <section class="ck__section" aria-labelledby="ck-jour">
-          <h2 id="ck-jour" class="ck__title">Aujourd'hui</h2>
-          <div class="ck__board">
-            @for (f of board(); track f.id) {
-              <button type="button" class="ck__figure" [attr.data-tone]="f.tone" [attr.data-figure]="f.id"
-                      [disabled]="!f.filter" [attr.aria-pressed]="f.filter !== null && shownFilter() === f.filter"
-                      (click)="touchFigure(f)">
-                <span class="ck__figure-value">{{ f.value }}</span>
-                <span class="ck__figure-label">{{ f.label }}</span>
-              </button>
-            }
-          </div>
-        </section>
-      }
-      <!-- SF-236-16 (NF-2) — la météo des chantiers ; filament vers le losange au survol. -->
-      @if (weather().length > 0) {
-        <section class="ck__section" aria-labelledby="ck-meteo">
-          <h2 id="ck-meteo" class="ck__title">Météo des chantiers</h2>
-          <ul class="ck__list">
-            @for (row of weather(); track row.node.key) {
-              <li>
-                <button type="button" class="ck__item ck__weather" [attr.data-weather]="row.weather"
-                        [attr.data-key]="row.node.key" (mouseenter)="link(row.node.key, $event, 'left')"
-                        (click)="inspectNode(row.node.key, 'chantier')"
-                        (focus)="link(row.node.key, $event, 'left')" (mouseleave)="unlink()" (blur)="unlink()">
-                  <span class="ck__sky" [attr.aria-label]="weatherWord[row.weather]" role="img">
-                    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-                      @switch (row.weather) {
-                        @case ('soleil') {
-                          <circle cx="8" cy="8" r="3.2" fill="currentColor" />
-                          <path d="M8 1v2.2M8 12.8V15M1 8h2.2M12.8 8H15M3 3l1.5 1.5M11.5 11.5L13 13M3 13l1.5-1.5M11.5 4.5L13 3"
-                                stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
-                        }
-                        @case ('brume') {
-                          <path d="M2 5.5h12M3.5 8.5h9M2 11.5h12" stroke="currentColor" stroke-width="1.3"
-                                stroke-linecap="round" />
-                        }
-                        @default {
-                          <path d="M4.5 9.5h7.2a2.6 2.6 0 0 0 .3-5.2A3.6 3.6 0 0 0 5.1 3.4 3 3 0 0 0 4.5 9.5z" fill="none"
-                                stroke="currentColor" stroke-width="1.3" />
-                          @if (row.weather === 'orage') {
-                            <path d="M8.6 9.5L7 12.2h2L7.6 15" fill="none" stroke="currentColor" stroke-width="1.3" />
-                          }
-                        }
-                      }
-                    </svg>
-                  </span>
-                  <span class="ck__label">{{ row.node.label }}<small class="ck__where">{{ row.where }}</small></span>
-                  <span class="ck__note">{{ row.note }}</span>
-                </button>
-              </li>
-            }
-          </ul>
-        </section>
-      }
-      <!-- SF-236-18 (NF-5) — personnes et attentes, détachables dans l'univers (L4). -->
-      @if (people().length > 0) {
-        <section class="ck__section" aria-labelledby="ck-personnes">
-          <h2 id="ck-personnes" class="ck__title">Personnes et attentes
-            <button type="button" class="ck__detach" [disabled]="isDetached('personnes')" (click)="detach('personnes')"
-                    aria-label="Détacher « Personnes et attentes » dans l'univers">Détacher</button>
-          </h2>
-          @if (isDetached('personnes')) {
-            <p class="ck__empty">Posé dans l'univers.</p>
-          } @else {
-            <ng-container *ngTemplateOutlet="peopleTpl" />
-          }
-        </section>
-      }
-      <section class="ck__section" aria-labelledby="ck-univers">
-        <h2 id="ck-univers" class="ck__title">Univers</h2>
-        <ul class="ck__list">
-          @for (item of universeList(); track item.key) {
-            <li>
-              <button type="button" class="ck__item" [class.ck__item--sub]="item.depth === 1"
-                      [class.ck__item--current]="item.current" [attr.data-tone]="item.tone"
-                      [attr.data-key]="item.key" [attr.aria-current]="item.current ? 'true' : null"
-                      (mouseenter)="link(item.key, $event, 'left')" (focus)="link(item.key, $event, 'left')"
-                      (mouseleave)="unlink()" (blur)="unlink()" (click)="pick(item)">
-                <span class="ck__dot" aria-hidden="true"></span>
-                <span class="ck__label">{{ item.label }}</span>
-                @if (item.note) {
-                  <span class="ck__note">{{ item.note }}</span>
-                }
-              </button>
-            </li>
-          } @empty {
-            <li class="ck__empty">Aucun poste lu pour l'instant.</li>
-          }
-        </ul>
-      </section>
+      <ng-container *ngTemplateOutlet="searchTpl" />
+      <ng-container *ngTemplateOutlet="boardTpl" />
+      <ng-container *ngTemplateOutlet="weatherTpl" />
+      <ng-container *ngTemplateOutlet="peopleSectionTpl" />
+      <ng-container *ngTemplateOutlet="universeTpl" />
     </div>
   </aside>
 
-  <!-- Panneau droit : le tour en cours. -->
+  <!-- Panneau droit : inspecteur, tour en cours, étagère, tickets, journée. -->
   <aside class="ck ck--right" [class.ck--folded]="folds().right" aria-label="Cockpit — tour en cours">
     <button type="button" class="ck__fold" (click)="toggle('right')" [attr.aria-expanded]="!folds().right"
             [attr.aria-label]="folds().right ? 'Déplier le panneau droit' : 'Replier le panneau droit'">
       <span aria-hidden="true">{{ folds().right ? '‹' : '›' }}</span>
     </button>
     <div class="ck__body" [attr.inert]="folds().right ? '' : null">
-      <!-- SF-236-19 (NF-7) — l'inspecteur : la fiche du nœud touché, fidèle à l'univers. -->
-      @if (card(); as c) {
-        <section class="ck__section ck__inspector" aria-labelledby="ck-fiche" aria-live="polite">
-          <h2 id="ck-fiche" class="ck__title">{{ c.type }}
-            <button type="button" class="ck__detach" (click)="closeInspector()" aria-label="Fermer la fiche">Fermer</button>
-          </h2>
-          <p class="ck__card-title">{{ c.title }}</p>
-          <dl class="ck__facts">
-            @for (f of c.facts; track f.label) {
-              <div><dt>{{ f.label }}</dt><dd>{{ f.value }}</dd></div>
-            }
-          </dl>
-          @if (c.links.length > 0) {
-            <ul class="ck__list">
-              @for (l of c.links; track l.key) {
-                <li>
-                  <button type="button" class="ck__item" [attr.data-key]="l.key" (click)="inspectNode(l.key, l.kind, true)"
-                          (mouseenter)="link(l.key, $event, 'right')" (focus)="link(l.key, $event, 'right')"
-                          (mouseleave)="unlink()" (blur)="unlink()">
-                    <span class="ck__dot" aria-hidden="true"></span>
-                    <span class="ck__label">{{ l.label }}</span>
-                    @if (l.note) {
-                      <span class="ck__note">{{ l.note }}</span>
-                    }
-                  </button>
-                </li>
-              }
-            </ul>
-          }
-          @if (c.subjectId && c.subjectId !== signals().subjectId) {
-            <button type="button" class="ck__load" (click)="choose.emit(c.subjectId)">Passer sur ce sujet</button>
-          }
-        </section>
-      }
-      <section class="ck__section" aria-labelledby="ck-tour">
-        <h2 id="ck-tour" class="ck__title">Tour en cours</h2>
-        <dl class="ck__facts">
-          <div><dt>État</dt><dd>{{ turn().state }}</dd></div>
-          <div><dt>Action</dt><dd>{{ turn().scene ?? (turn().active ? '—' : 'aucune') }}</dd></div>
-          <div><dt>Appels d'outil</dt><dd class="ck__num">{{ turn().actions }}</dd></div>
-          <div><dt>Délégations</dt><dd class="ck__num">{{ turn().delegations }}</dd></div>
-        </dl>
-        <!-- SF-236-17 (NF-4 / N14) — l'arc de perles du tour : une par appel, couleur de la famille. -->
-        @if (turnPearls().dots.length > 0) {
-          <svg class="ck__arc" viewBox="0 0 280 120" role="img"
-               [attr.aria-label]="turnPearls().dots.length + turnPearls().more + ' actions dans ce tour'">
-            <path d="M 31.7 107.5 A 110 96 0 0 1 248.3 107.5" class="ck__arc-path" />
-            @for (p of turnPearls().dots; track $index) {
-              <circle class="ck__pearl" [attr.cx]="p.x" [attr.cy]="p.y" r="4.5" [attr.data-tone]="p.tone">
-                <title>{{ p.word }}</title>
-              </circle>
-            }
-          </svg>
-          @if (turnPearls().more > 0) {
-            <p class="ck__more">+{{ turnPearls().more }} actions plus tôt</p>
-          }
-        }
-      </section>
-      <!-- SF-236-18 — l'étagère « À envoyer » et le mur de tickets, détachables dans l'univers (L4). -->
-      @for (id of rightBoards; track id) {
-        @if (id === 'envoyer' ? shelf().length > 0 : tickets().length > 0) {
-          <section class="ck__section" [attr.aria-label]="floatTitle[id]">
-            <h2 class="ck__title">{{ floatTitle[id] }}
-              <button type="button" class="ck__detach" [disabled]="isDetached(id)" (click)="detach(id)"
-                      [attr.aria-label]="'Détacher « ' + floatTitle[id] + ' » dans l’univers'">Détacher</button>
-            </h2>
-            @if (isDetached(id)) {
-              <p class="ck__empty">Posé dans l'univers.</p>
-            } @else {
-              <ng-container *ngTemplateOutlet="id === 'envoyer' ? shelfTpl : ticketsTpl" />
-            }
-          </section>
-        }
-      }
-      <!-- SF-236-17 (NF-3) — la journée du sujet, lue hors tour et à la demande. -->
-      <section class="ck__section" aria-labelledby="ck-journee">
-        <h2 id="ck-journee" class="ck__title">Chronologie de la journée</h2>
-        @if (day(); as d) {
-          @if (d.turns.length === 0) {
-            <p class="ck__empty">Aucun tour aujourd'hui sur ce sujet.</p>
-          } @else {
-            <div class="ck__axis" aria-hidden="true">
-              <span>{{ hourLabel(d.axis.from) }}</span>
-              <span>{{ hourLabel(d.axis.to) }}</span>
-              @for (t of d.turns; track t.id) {
-                <i class="ck__tick" [style.left.%]="dayX(t)" [class.ck__tick--on]="dayPick()?.id === t.id"></i>
-              }
-            </div>
-            <ul class="ck__list">
-              @for (t of d.turns; track t.id) {
-                <li>
-                  <button type="button" class="ck__item ck__turn" [attr.aria-pressed]="dayPick()?.id === t.id"
-                          (click)="dayPick.set(dayPick()?.id === t.id ? null : t)">
-                    <span class="ck__num">{{ t.time }}</span>
-                    <span class="ck__label">{{ t.ask }}</span>
-                    <span class="ck__note">{{ t.actions }}</span>
-                  </button>
-                </li>
-              }
-            </ul>
-            @if (dayPick(); as t) {
-              <div class="ck__summary" role="status">
-                <p><strong>{{ t.time }}</strong> — {{ t.ask }}</p>
-                @if (t.answer) {
-                  <p>{{ t.answer }}</p>
-                }
-                <p class="ck__pearls">
-                  @for (p of t.pearls; track $index) {
-                    <i class="ck__pearl-dot" [attr.data-tone]="familyTone[p.family]"></i>
-                  }
-                  <span>{{ t.actions }} action{{ t.actions > 1 ? 's' : '' }}{{ t.voice ? ' · dit à Jarvis' : '' }}</span>
-                </p>
-              </div>
-            }
-          }
-        }
-        @if (dayState() === 'error') {
-          <p class="ck__empty" role="alert">La journée n'a pas pu être lue.</p>
-        }
-        <button type="button" class="ck__load"
-                [disabled]="turn().active || !signals().subjectId || dayState() === 'loading'" (click)="loadDay()">
-          {{ dayState() === 'loading' ? 'Lecture…' : day() ? 'Relire la journée' : 'Charger la journée' }}
-        </button>
-        @if (turn().active) {
-          <p class="ck__empty">Disponible à la fin du tour.</p>
-        }
-      </section>
+      <ng-container *ngTemplateOutlet="inspectorTpl" />
+      <ng-container *ngTemplateOutlet="turnTpl" />
+      <ng-container *ngTemplateOutlet="boardsTpl" />
+      <ng-container *ngTemplateOutlet="dayTpl" />
     </div>
   </aside>
 
@@ -274,55 +41,377 @@
     }
   </div>
 
-  <ng-template #peopleTpl>
-    <ul class="ck__list">
-      @for (p of people(); track p.key) {
-        <li>
-          <button type="button" class="ck__item" [attr.data-key]="p.key"
-                  [attr.data-tone]="p.awaitedBy.length > 0 || p.message ? 'wait' : 'normal'"
-                  [attr.title]="p.awaitedBy.join(' · ') || null" (mouseenter)="link(p.key, $event, 'left')"
-                  (click)="inspectNode(p.key, 'person')"
-                  (focus)="link(p.key, $event, 'left')" (mouseleave)="unlink()" (blur)="unlink()">
-            <span class="ck__dot" aria-hidden="true"></span>
-            <span class="ck__label">{{ p.name }}<small class="ck__where">{{ p.clientName }}{{ p.role ? ' · ' + p.role : '' }}</small></span>
-            <span class="ck__note">{{ personNote(p) }}</span>
-          </button>
-        </li>
-      }
-    </ul>
-  </ng-template>
-
-  <ng-template #shelfTpl>
-    <ul class="ck__list">
-      @for (row of shelf(); track row.clientKey) {
-        <li>
-          <button type="button" class="ck__item" data-tone="wait" [attr.data-key]="row.clientKey"
-                  (mouseenter)="link(row.clientKey, $event, 'right')" (focus)="link(row.clientKey, $event, 'right')"
-                  (mouseleave)="unlink()" (blur)="unlink()" (click)="inspectNode(row.clientKey, 'client')">
-            <span class="ck__dot" aria-hidden="true"></span>
-            <span class="ck__label">{{ row.clientName }}<small class="ck__where">pour {{ row.recipients.join(', ') }}</small></span>
-            <span class="ck__note">{{ row.recipients.length }} prêt{{ row.recipients.length > 1 ? 's' : '' }}</span>
-          </button>
-        </li>
-      }
-    </ul>
-  </ng-template>
-
-  <ng-template #ticketsTpl>
-    @for (col of tickets(); track col.clientKey) {
-      <p class="ck__where">{{ col.clientName }}</p>
-      <ul class="ck__tickets">
-        @for (t of col.tickets; track t.key) {
-          <li class="ck__ticket" [attr.title]="t.source"
-              (mouseenter)="col.clientKey && link(col.clientKey, $event, 'right')" (mouseleave)="unlink()">{{ t.key }}</li>
-        }
-      </ul>
-    }
-  </ng-template>
-
   <!-- Le filament liste ↔ nœud (calque L5 → L2), posé image par image hors zone. -->
   <svg class="ck__filaments" aria-hidden="true">
     <line #filament class="ck__filament" data-on="0" x1="0" y1="0" x2="0" y2="0" />
     <circle #filamentEnd class="ck__filament-end" data-on="0" r="5" cx="0" cy="0" />
   </svg>
 }
+
+@if (mode() === 'phone') {
+  <!-- F-236 / SF-236-20 (§12.2) — téléphone : aucun panneau dans la scène ; « ☰ Vues » ouvre un volet plein écran,
+       une vue à la fois. -->
+  <button type="button" class="ck__views" [attr.aria-expanded]="phoneView() !== null" aria-controls="ck-volet"
+          (click)="openView(phoneView() ? null : 'journee')">
+    <span aria-hidden="true">☰</span> Vues
+  </button>
+  @if (phoneView(); as view) {
+    <div id="ck-volet" class="ck__volet" role="dialog" aria-modal="true" aria-label="Vues de Jarvis">
+      <div class="ck__volet-bar">
+        <nav class="ck__tabs" aria-label="Vues">
+          @for (v of phoneViews; track v.id) {
+            <button type="button" class="ck__tab" [attr.aria-current]="v.id === view ? 'page' : null"
+                    (click)="openView(v.id)">{{ v.label }}</button>
+          }
+        </nav>
+        <button type="button" class="ck__detach" (click)="openView(null)" aria-label="Fermer les vues">Fermer</button>
+      </div>
+      <div class="ck__volet-body">
+        @switch (view) {
+          @case ('journee') {
+            <ng-container *ngTemplateOutlet="boardTpl" />
+            <ng-container *ngTemplateOutlet="boardsTpl" />
+          }
+          @case ('meteo') {
+            <ng-container *ngTemplateOutlet="weatherTpl" />
+          }
+          @case ('personnes') {
+            <ng-container *ngTemplateOutlet="peopleSectionTpl" />
+          }
+          @case ('chronologies') {
+            <ng-container *ngTemplateOutlet="turnTpl" />
+            <ng-container *ngTemplateOutlet="dayTpl" />
+          }
+          @case ('inspecteur') {
+            @if (card()) {
+              <ng-container *ngTemplateOutlet="inspectorTpl" />
+            } @else {
+              <p class="ck__empty">Touchez un nœud de l'univers pour voir sa fiche.</p>
+            }
+            <ng-container *ngTemplateOutlet="universeTpl" />
+          }
+        }
+      </div>
+    </div>
+  }
+}
+
+<!-- Les vues, écrites une fois : panneaux du cockpit (PC) et volets du téléphone. -->
+<ng-template #searchTpl>
+  <!-- SF-236-19 (NF-8) — « montre-moi » au clavier : filtres de « Montrer » + noms, sans tour ( / ou Ctrl+K ). -->
+  <div class="ck__search" role="search">
+    <input #searchBox type="search" class="ck__search-input" placeholder="Montre-moi…  ( / )" autocomplete="off"
+           role="combobox" aria-label="Recherche : montre-moi" aria-controls="ck-results" aria-autocomplete="list"
+           [attr.aria-expanded]="results().length > 0" [value]="query()"
+           [attr.aria-activedescendant]="results().length > 0 ? 'ck-result-' + active() : null"
+           (input)="setQuery($any($event.target).value)" (keydown)="onSearchKey($event)" />
+    @if (results().length > 0) {
+      <ul id="ck-results" class="ck__list ck__results" role="listbox" aria-label="Résultats">
+        @for (r of results(); track $index) {
+          <li [id]="'ck-result-' + $index" role="option" [attr.aria-selected]="$index === active()"
+              class="ck__item" [class.ck__item--current]="$index === active()" (mousedown)="$event.preventDefault()"
+              (click)="apply(r)">
+            <span class="ck__label">{{ r.label }}</span>
+            <span class="ck__note">{{ r.type === 'show' ? 'montrer · ' + r.count : r.where }}</span>
+          </li>
+        }
+      </ul>
+    } @else if (query().length >= 2) {
+      <p class="ck__empty">Rien ne correspond.</p>
+    }
+  </div>
+</ng-template>
+
+<ng-template #boardTpl>
+  <!-- SF-236-16 (NF-1) — « Aujourd'hui » : toucher un chiffre = « Montrer » local, sans tour. -->
+  @if (board().length > 0) {
+    <section class="ck__section" aria-labelledby="ck-jour">
+      <h2 id="ck-jour" class="ck__title">Aujourd'hui</h2>
+      <div class="ck__board">
+        @for (f of board(); track f.id) {
+          <button type="button" class="ck__figure" [attr.data-tone]="f.tone" [attr.data-figure]="f.id"
+                  [disabled]="!f.filter" [attr.aria-pressed]="f.filter !== null && shownFilter() === f.filter"
+                  (click)="touchFigure(f)">
+            <span class="ck__figure-value">{{ f.value }}</span>
+            <span class="ck__figure-label">{{ f.label }}</span>
+          </button>
+        }
+      </div>
+    </section>
+  }
+</ng-template>
+
+<ng-template #weatherTpl>
+  <!-- SF-236-16 (NF-2) — la météo des chantiers ; filament vers le losange au survol. -->
+  @if (weather().length > 0) {
+    <section class="ck__section" aria-labelledby="ck-meteo">
+      <h2 id="ck-meteo" class="ck__title">Météo des chantiers</h2>
+      <ul class="ck__list">
+        @for (row of weather(); track row.node.key) {
+          <li>
+            <button type="button" class="ck__item ck__weather" [attr.data-weather]="row.weather"
+                    [attr.data-key]="row.node.key" (mouseenter)="link(row.node.key, $event, 'left')"
+                    (click)="inspectNode(row.node.key, 'chantier')"
+                    (focus)="link(row.node.key, $event, 'left')" (mouseleave)="unlink()" (blur)="unlink()">
+              <span class="ck__sky" [attr.aria-label]="weatherWord[row.weather]" role="img">
+                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                  @switch (row.weather) {
+                    @case ('soleil') {
+                      <circle cx="8" cy="8" r="3.2" fill="currentColor" />
+                      <path d="M8 1v2.2M8 12.8V15M1 8h2.2M12.8 8H15M3 3l1.5 1.5M11.5 11.5L13 13M3 13l1.5-1.5M11.5 4.5L13 3"
+                            stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+                    }
+                    @case ('brume') {
+                      <path d="M2 5.5h12M3.5 8.5h9M2 11.5h12" stroke="currentColor" stroke-width="1.3"
+                            stroke-linecap="round" />
+                    }
+                    @default {
+                      <path d="M4.5 9.5h7.2a2.6 2.6 0 0 0 .3-5.2A3.6 3.6 0 0 0 5.1 3.4 3 3 0 0 0 4.5 9.5z" fill="none"
+                            stroke="currentColor" stroke-width="1.3" />
+                      @if (row.weather === 'orage') {
+                        <path d="M8.6 9.5L7 12.2h2L7.6 15" fill="none" stroke="currentColor" stroke-width="1.3" />
+                      }
+                    }
+                  }
+                </svg>
+              </span>
+              <span class="ck__label">{{ row.node.label }}<small class="ck__where">{{ row.where }}</small></span>
+              <span class="ck__note">{{ row.note }}</span>
+            </button>
+          </li>
+        }
+      </ul>
+    </section>
+  }
+</ng-template>
+
+<ng-template #peopleSectionTpl>
+  <!-- SF-236-18 (NF-5) — personnes et attentes, détachables dans l'univers (L4). -->
+  @if (people().length > 0) {
+    <section class="ck__section" aria-labelledby="ck-personnes">
+      <h2 id="ck-personnes" class="ck__title">Personnes et attentes
+        @if (mode() === 'cockpit') {
+        <button type="button" class="ck__detach" [disabled]="isDetached('personnes')" (click)="detach('personnes')"
+                aria-label="Détacher « Personnes et attentes » dans l'univers">Détacher</button>
+      }
+      </h2>
+      @if (isDetached('personnes')) {
+        <p class="ck__empty">Posé dans l'univers.</p>
+      } @else {
+        <ng-container *ngTemplateOutlet="peopleTpl" />
+      }
+    </section>
+  }
+</ng-template>
+
+<ng-template #universeTpl>
+  <section class="ck__section" aria-labelledby="ck-univers">
+    <h2 id="ck-univers" class="ck__title">Univers</h2>
+    <ul class="ck__list">
+      @for (item of universeList(); track item.key) {
+        <li>
+          <button type="button" class="ck__item" [class.ck__item--sub]="item.depth === 1"
+                  [class.ck__item--current]="item.current" [attr.data-tone]="item.tone"
+                  [attr.data-key]="item.key" [attr.aria-current]="item.current ? 'true' : null"
+                  (mouseenter)="link(item.key, $event, 'left')" (focus)="link(item.key, $event, 'left')"
+                  (mouseleave)="unlink()" (blur)="unlink()" (click)="pick(item)">
+            <span class="ck__dot" aria-hidden="true"></span>
+            <span class="ck__label">{{ item.label }}</span>
+            @if (item.note) {
+              <span class="ck__note">{{ item.note }}</span>
+            }
+          </button>
+        </li>
+      } @empty {
+        <li class="ck__empty">Aucun poste lu pour l'instant.</li>
+      }
+    </ul>
+  </section>
+</ng-template>
+
+<ng-template #inspectorTpl>
+  <!-- SF-236-19 (NF-7) — l'inspecteur : la fiche du nœud touché, fidèle à l'univers. -->
+  @if (card(); as c) {
+    <section class="ck__section ck__inspector" aria-labelledby="ck-fiche" aria-live="polite">
+      <h2 id="ck-fiche" class="ck__title">{{ c.type }}
+        <button type="button" class="ck__detach" (click)="closeInspector()" aria-label="Fermer la fiche">Fermer</button>
+      </h2>
+      <p class="ck__card-title">{{ c.title }}</p>
+      <dl class="ck__facts">
+        @for (f of c.facts; track f.label) {
+          <div><dt>{{ f.label }}</dt><dd>{{ f.value }}</dd></div>
+        }
+      </dl>
+      @if (c.links.length > 0) {
+        <ul class="ck__list">
+          @for (l of c.links; track l.key) {
+            <li>
+              <button type="button" class="ck__item" [attr.data-key]="l.key" (click)="inspectNode(l.key, l.kind, true)"
+                      (mouseenter)="link(l.key, $event, 'right')" (focus)="link(l.key, $event, 'right')"
+                      (mouseleave)="unlink()" (blur)="unlink()">
+                <span class="ck__dot" aria-hidden="true"></span>
+                <span class="ck__label">{{ l.label }}</span>
+                @if (l.note) {
+                  <span class="ck__note">{{ l.note }}</span>
+                }
+              </button>
+            </li>
+          }
+        </ul>
+      }
+      @if (c.subjectId && c.subjectId !== signals().subjectId) {
+        <button type="button" class="ck__load" (click)="choose.emit(c.subjectId)">Passer sur ce sujet</button>
+      }
+    </section>
+  }
+</ng-template>
+
+<ng-template #turnTpl>
+  <section class="ck__section" aria-labelledby="ck-tour">
+    <h2 id="ck-tour" class="ck__title">Tour en cours</h2>
+    <dl class="ck__facts">
+      <div><dt>État</dt><dd>{{ turn().state }}</dd></div>
+      <div><dt>Action</dt><dd>{{ turn().scene ?? (turn().active ? '—' : 'aucune') }}</dd></div>
+      <div><dt>Appels d'outil</dt><dd class="ck__num">{{ turn().actions }}</dd></div>
+      <div><dt>Délégations</dt><dd class="ck__num">{{ turn().delegations }}</dd></div>
+    </dl>
+    <!-- SF-236-17 (NF-4 / N14) — l'arc de perles du tour : une par appel, couleur de la famille. -->
+    @if (turnPearls().dots.length > 0) {
+      <svg class="ck__arc" viewBox="0 0 280 120" role="img"
+           [attr.aria-label]="turnPearls().dots.length + turnPearls().more + ' actions dans ce tour'">
+        <path d="M 31.7 107.5 A 110 96 0 0 1 248.3 107.5" class="ck__arc-path" />
+        @for (p of turnPearls().dots; track $index) {
+          <circle class="ck__pearl" [attr.cx]="p.x" [attr.cy]="p.y" r="4.5" [attr.data-tone]="p.tone">
+            <title>{{ p.word }}</title>
+          </circle>
+        }
+      </svg>
+      @if (turnPearls().more > 0) {
+        <p class="ck__more">+{{ turnPearls().more }} actions plus tôt</p>
+      }
+    }
+  </section>
+</ng-template>
+
+<ng-template #boardsTpl>
+  <!-- SF-236-18 — l'étagère « À envoyer » et le mur de tickets, détachables dans l'univers (L4). -->
+  @for (id of rightBoards; track id) {
+    @if (id === 'envoyer' ? shelf().length > 0 : tickets().length > 0) {
+      <section class="ck__section" [attr.aria-label]="floatTitle[id]">
+        <h2 class="ck__title">{{ floatTitle[id] }}
+          @if (mode() === 'cockpit') {
+          <button type="button" class="ck__detach" [disabled]="isDetached(id)" (click)="detach(id)"
+                  [attr.aria-label]="'Détacher « ' + floatTitle[id] + ' » dans l’univers'">Détacher</button>
+          }
+        </h2>
+        @if (isDetached(id)) {
+          <p class="ck__empty">Posé dans l'univers.</p>
+        } @else {
+          <ng-container *ngTemplateOutlet="id === 'envoyer' ? shelfTpl : ticketsTpl" />
+        }
+      </section>
+    }
+  }
+</ng-template>
+
+<ng-template #dayTpl>
+  <!-- SF-236-17 (NF-3) — la journée du sujet, lue hors tour et à la demande. -->
+  <section class="ck__section" aria-labelledby="ck-journee">
+    <h2 id="ck-journee" class="ck__title">Chronologie de la journée</h2>
+    @if (day(); as d) {
+      @if (d.turns.length === 0) {
+        <p class="ck__empty">Aucun tour aujourd'hui sur ce sujet.</p>
+      } @else {
+        <div class="ck__axis" aria-hidden="true">
+          <span>{{ hourLabel(d.axis.from) }}</span>
+          <span>{{ hourLabel(d.axis.to) }}</span>
+          @for (t of d.turns; track t.id) {
+            <i class="ck__tick" [style.left.%]="dayX(t)" [class.ck__tick--on]="dayPick()?.id === t.id"></i>
+          }
+        </div>
+        <ul class="ck__list">
+          @for (t of d.turns; track t.id) {
+            <li>
+              <button type="button" class="ck__item ck__turn" [attr.aria-pressed]="dayPick()?.id === t.id"
+                      (click)="dayPick.set(dayPick()?.id === t.id ? null : t)">
+                <span class="ck__num">{{ t.time }}</span>
+                <span class="ck__label">{{ t.ask }}</span>
+                <span class="ck__note">{{ t.actions }}</span>
+              </button>
+            </li>
+          }
+        </ul>
+        @if (dayPick(); as t) {
+          <div class="ck__summary" role="status">
+            <p><strong>{{ t.time }}</strong> — {{ t.ask }}</p>
+            @if (t.answer) {
+              <p>{{ t.answer }}</p>
+            }
+            <p class="ck__pearls">
+              @for (p of t.pearls; track $index) {
+                <i class="ck__pearl-dot" [attr.data-tone]="familyTone[p.family]"></i>
+              }
+              <span>{{ t.actions }} action{{ t.actions > 1 ? 's' : '' }}{{ t.voice ? ' · dit à Jarvis' : '' }}</span>
+            </p>
+          </div>
+        }
+      }
+    }
+    @if (dayState() === 'error') {
+      <p class="ck__empty" role="alert">La journée n'a pas pu être lue.</p>
+    }
+    <button type="button" class="ck__load"
+            [disabled]="turn().active || !signals().subjectId || dayState() === 'loading'" (click)="loadDay()">
+      {{ dayState() === 'loading' ? 'Lecture…' : day() ? 'Relire la journée' : 'Charger la journée' }}
+    </button>
+    @if (turn().active) {
+      <p class="ck__empty">Disponible à la fin du tour.</p>
+    }
+  </section>
+</ng-template>
+
+<ng-template #peopleTpl>
+  <ul class="ck__list">
+    @for (p of people(); track p.key) {
+      <li>
+        <button type="button" class="ck__item" [attr.data-key]="p.key"
+                [attr.data-tone]="p.awaitedBy.length > 0 || p.message ? 'wait' : 'normal'"
+                [attr.title]="p.awaitedBy.join(' · ') || null" (mouseenter)="link(p.key, $event, 'left')"
+                (click)="inspectNode(p.key, 'person')"
+                (focus)="link(p.key, $event, 'left')" (mouseleave)="unlink()" (blur)="unlink()">
+          <span class="ck__dot" aria-hidden="true"></span>
+          <span class="ck__label">{{ p.name }}<small class="ck__where">{{ p.clientName }}{{ p.role ? ' · ' + p.role : '' }}</small></span>
+          <span class="ck__note">{{ personNote(p) }}</span>
+        </button>
+      </li>
+    }
+  </ul>
+</ng-template>
+
+<ng-template #shelfTpl>
+  <ul class="ck__list">
+    @for (row of shelf(); track row.clientKey) {
+      <li>
+        <button type="button" class="ck__item" data-tone="wait" [attr.data-key]="row.clientKey"
+                (mouseenter)="link(row.clientKey, $event, 'right')" (focus)="link(row.clientKey, $event, 'right')"
+                (mouseleave)="unlink()" (blur)="unlink()" (click)="inspectNode(row.clientKey, 'client')">
+          <span class="ck__dot" aria-hidden="true"></span>
+          <span class="ck__label">{{ row.clientName }}<small class="ck__where">pour {{ row.recipients.join(', ') }}</small></span>
+          <span class="ck__note">{{ row.recipients.length }} prêt{{ row.recipients.length > 1 ? 's' : '' }}</span>
+        </button>
+      </li>
+    }
+  </ul>
+</ng-template>
+
+<ng-template #ticketsTpl>
+  @for (col of tickets(); track col.clientKey) {
+    <p class="ck__where">{{ col.clientName }}</p>
+    <ul class="ck__tickets">
+      @for (t of col.tickets; track t.key) {
+        <li class="ck__ticket" [attr.title]="t.source"
+            (mouseenter)="col.clientKey && link(col.clientKey, $event, 'right')" (mouseleave)="unlink()">{{ t.key }}</li>
+      }
+    </ul>
+  }
+</ng-template>

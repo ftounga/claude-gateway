@@ -478,3 +478,67 @@
   color: var(--cg-holo-core, #FFF3E4);
   font: 600 15px var(--cg-font-heading);
 }
+
+// SF-236-20 — téléphone : « ☰ Vues » et volet plein écran (une vue à la fois), sans flou (verre opaque).
+.ck__views {
+  position: fixed;
+  top: 64px;
+  left: 16px;
+  z-index: 3;
+  min-height: 44px;
+  padding: 0 var(--cg-space-2);
+  border: 1px solid color-mix(in srgb, var(--cg-holo, #E07B39) 55%, transparent);
+  background: color-mix(in srgb, var(--cg-navy, #0B1020) 84%, transparent);
+  color: var(--cg-holo-text, #F0954F);
+  font: 600 13px var(--cg-font-heading);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ck__volet {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--cg-navy, #0B1020) 94%, transparent);
+  color: var(--cg-cream, #F5EFE3);
+}
+
+.ck__volet-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  padding: var(--cg-space-2) 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--cg-holo, #E07B39) 45%, transparent);
+}
+
+.ck__tabs {
+  display: flex;
+  flex: 1;
+  gap: 4px;
+  overflow-x: auto;
+}
+
+.ck__tab {
+  flex: none;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  background: none;
+  color: inherit;
+  font: 600 12px var(--cg-font-heading);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+
+  &[aria-current='page'] {
+    border-color: var(--cg-holo, #E07B39);
+    color: var(--cg-holo-text, #F0954F);
+  }
+}
+
+.ck__volet-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--cg-space-3) 16px;
+}

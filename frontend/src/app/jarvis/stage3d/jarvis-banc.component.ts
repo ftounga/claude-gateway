@@ -75,6 +75,10 @@ export class JarvisBancComponent {
         }
       }, 1500));
     }
+    if (this.scene === 'cockpit-vues') {
+      // SF-236-20 — au téléphone, le volet « Aujourd'hui » ouvert depuis « ☰ Vues ».
+      afterNextRender(() => setTimeout(() => this.cockpitRef()?.openView('journee'), 1500));
+    }
     if (this.scene === 'cockpit-chronologies') {
       // SF-236-17 — la journée chargée (historique simulé, aucun appel) et un tour touché.
       afterNextRender(() => setTimeout(() => {

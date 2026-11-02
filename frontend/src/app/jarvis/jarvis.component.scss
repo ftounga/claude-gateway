@@ -436,3 +436,17 @@
 .jv--cockpit .jv__controls {
   margin-inline: 344px;
 }
+
+/* F-236 / SF-236-20 (§12.2) — au téléphone, l'entrée dure 1,2 s : le HUD glisse à la même place relative (≈ 0,9 s). */
+@media (max-width: 767px) {
+  .jv--entry {
+    .jv__top,
+    .jv__status,
+    .jv__sober,
+    .jv__view,
+    .jv__controls {
+      animation-duration: 320ms;
+      animation-delay: 880ms;
+    }
+  }
+}

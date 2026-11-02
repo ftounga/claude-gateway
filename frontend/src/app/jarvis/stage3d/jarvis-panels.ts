@@ -1,5 +1,6 @@
 import { MOTION_DURATIONS, ease } from './jarvis-motion';
 
+import { PHONE_PROFILE } from './hud/jarvis-device-profile';
 /**
  * F-236 / SF-236-08 — **le placement des panneaux holographiques** (cadrage T6, §7.2). Fichier <b>pur</b>.
  *
@@ -77,9 +78,13 @@ export interface PanelSpot {
   quadrant: Quadrant;
 }
 
-/** Borne le pool : « devant tout » d'abord, puis l'ordre du plan ; le reste n'est pas dessiné. */
-export function boundPanels<T extends { front?: boolean }>(panels: readonly T[], narrow: boolean): T[] {
-  const limit = narrow ? PANEL_POOL.narrow : PANEL_POOL.wide;
+/**
+ * Borne le pool : « devant tout » d'abord, puis l'ordre du plan ; le reste n'est pas dessiné.
+ * SF-236-20 — au téléphone (§12.2) : un seul panneau ancré, deux pour S4 (tickets) — jamais plus que le pool.
+ */
+export function boundPanels<T extends { front?: boolean }>(panels: readonly T[], narrow: boolean,
+    sceneId?: string | null): T[] {
+  const limit = narrow ? Math.min(PANEL_POOL.narrow, PHONE_PROFILE.panelLimit(sceneId)) : PANEL_POOL.wide;
   return [...panels.filter((p) => p.front), ...panels.filter((p) => !p.front)].slice(0, limit);
 }
 

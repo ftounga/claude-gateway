@@ -17,6 +17,7 @@ import { FloatId, floatSpot, peopleMap, sendShelf, ticketWall } from './jarvis-p
 import { SessionSnapshot } from '../scenes3d/jarvis-session-memory';
 import { InspectorCard, SearchResult, inspect, search } from './jarvis-inspector';
 import { Node3dKind } from '../jarvis-layout-3d';
+import { PHONE_VIEWS, PhoneView } from './jarvis-device-profile';
 import { IDLE_SCREEN, ScreenSignals } from '../jarvis-stage-director';
 import {
   CockpitFolds, CockpitInsets, CockpitMode, cockpitInsets, cockpitMode, readFolds, writeFolds,
@@ -327,6 +328,14 @@ export class JarvisCockpitComponent implements OnDestroy {
       }
       this.searchBox()?.nativeElement.focus();
     }
+  }
+
+  /** SF-236-20 (§12.2) — téléphone : les vues en volets plein écran, une à la fois, depuis « ☰ Vues ». */
+  readonly phoneViews = PHONE_VIEWS;
+  readonly phoneView = signal<PhoneView | null>(null);
+
+  openView(view: PhoneView | null): void {
+    this.phoneView.set(view);
   }
 
   readonly rightBoards: readonly FloatId[] = ['envoyer', 'tickets'];

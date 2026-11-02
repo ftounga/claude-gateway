@@ -12,10 +12,11 @@ describe('F-236 / SF-236-08 — panneaux holographiques : pool, placement, T-P1 
     return spots.map((s, i) => ({ x: s.x, y: s.y, w: requests[i].w, h: requests[i].h }));
   }
 
-  it('pool : 8 panneaux au plus sur PC, 2 sur téléphone ; « devant tout » d’abord, jamais écarté', () => {
+  it('pool : 8 panneaux au plus sur PC ; téléphone 1 (2 pour S4, SF-236-20 §12.2) ; « devant tout » d’abord, jamais écarté', () => {
     const panels = Array.from({ length: 12 }, (_, i) => ({ id: `p${i}`, front: i === 11 }));
     expect(boundPanels(panels, false).length).toBe(PANEL_POOL.wide);
-    expect(boundPanels(panels, true).map((p) => p.id)).toEqual(['p11', 'p0']);
+    expect(boundPanels(panels, true).map((p) => p.id)).toEqual(['p11']);
+    expect(boundPanels(panels, true, 'S4').map((p) => p.id)).toEqual(['p11', 'p0']);
   });
 
   it('jamais sur le cœur, jamais sur les sous-titres ni la barre du haut, toujours dans l’écran', () => {
