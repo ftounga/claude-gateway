@@ -10,6 +10,7 @@ describe('Le cerveau rapide, côté écran (F-235 / SF-235-05)', () => {
       log,
       handlers: {
         onText: (s) => log.push(`text:${s}`),
+        onUnderstood: (s) => log.push(`understood:${s}`),
         onDelegated: (d) => log.push(`delegated:${d.label}:${d.announce}`),
         onFallback: (r) => log.push(`fallback:${r}`),
         onDone: (d) => log.push(`done:${d.brain}`),
@@ -62,5 +63,12 @@ describe('Le cerveau rapide, côté écran (F-235 / SF-235-05)', () => {
     expect(isRepeatCommand('Jarvis, répète')).toBeTrue();
     expect(isRepeatCommand('Tu peux répéter ?')).toBeTrue();
     expect(isRepeatCommand('Redis-moi ce que fait le chantier 3')).toBeFalse();
+  });
+
+  it('F-239 / SF-239-05 — l’événement « understood » porte la parole relue', () => {
+    const { handlers, log } = recorder();
+    expect(dispatch('event:understood\ndata:{"text":"Où en est CAGIP ?"}', handlers)).toBeNull();
+    expect(dispatch('event:understood\ndata:{"text":"  "}', handlers)).toBeNull();
+    expect(log).toEqual(['understood:Où en est CAGIP ?']);
   });
 });

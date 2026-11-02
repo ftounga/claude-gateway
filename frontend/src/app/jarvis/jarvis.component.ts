@@ -1254,8 +1254,16 @@ export class JarvisComponent implements OnInit, OnDestroy {
       }
       this.voice.enqueue(sentence, subjectId ?? '', first ? this.clockHooks() : undefined);
     };
+    // F-239 / SF-239-05 — ce que le cerveau rapide a compris (relu, garde passée) : affiché, et c'est lui qu'Opus reçoit.
+    let understood: string | null = null;
     const outcome = await this.fastBrain.converse({ subjectId, text, heardBeforeCut }, {
       onText: (sentence) => this.zone.run(() => sayNow(sentence)),
+      onUnderstood: (read) => this.zone.run(() => {
+        if (latest()) {
+          understood = read;
+          this.said.set(read);
+        }
+      }),
       onDelegated: (delegation) => this.zone.run(() => {
         delegationReason = delegation.automatic ? delegation.reason : null;
         if (!delegation.subjectId) {
@@ -1267,7 +1275,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
         if ((delegation.announce ?? '').trim()) {
           sayNow(delegation.announce);
         }
-        this.startDelegation(delegation, text, heardBeforeCut);
+        this.startDelegation(delegation, understood ?? text, heardBeforeCut);
       }),
       onFallback: () => {
         fellBack = true;
@@ -1291,7 +1299,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
           await this.say(ASK_SUBJECT);
           return;
         }
-        this.send(target, text);
+        this.send(target, understood ?? text);
         return;
       }
       this.clearAck();

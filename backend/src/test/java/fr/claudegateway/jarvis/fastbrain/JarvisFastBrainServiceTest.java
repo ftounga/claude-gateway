@@ -387,6 +387,67 @@ class JarvisFastBrainServiceTest {
         };
     }
 
+    // ---------------------------------------------------------------- F-239 / SF-239-05 : « compris: »
+
+    /** Un écouteur qui retient le dit et le compris. */
+    private static final class Heard implements JarvisFastBrainService.Sink {
+        final StringBuilder said = new StringBuilder();
+        String understood;
+
+        @Override
+        public void text(String delta) {
+            said.append(delta);
+        }
+
+        @Override
+        public void understood(String text) {
+            understood = text;
+        }
+    }
+
+    @Test
+    void theUnderstoodLineIsShownNeverSaidAndBecomesWhatWasSaid() {
+        Heard heard = new Heard();
+        JarvisFastBrainService service = service(streaming("compris: Où en est ", "Kestrel ?\n",
+                "Kestrel avance bien."), null, null);
+        JarvisFastMemory memory = new JarvisFastMemory(Clock.systemUTC());
+        service.setContext(null, memory, null);
+
+        JarvisFastBrainService.Outcome outcome = service.converse(ask("Où en est Kestrelle ?"), heard);
+
+        assertThat(heard.understood).isEqualTo("Où en est Kestrel ?");
+        assertThat(heard.said.toString().strip()).isEqualTo("Kestrel avance bien.");
+        assertThat(outcome.spokenText()).isEqualTo("Kestrel avance bien.");
+        assertThat(outcome.understood()).isEqualTo("Où en est Kestrel ?");
+        assertThat(memory.recall(alice).get(0).said()).isEqualTo("Où en est Kestrel ?");
+    }
+
+    @Test
+    void anUnderstoodLineThatInventsAnActionIsDropped() {
+        Heard heard = new Heard();
+        JarvisFastBrainService.Outcome outcome = service(streaming("compris: Envoie le ticket à Kestrel.\n",
+                "Kestrel avance bien."), null, null).converse(ask("Regarde le ticket de Kestrel."), heard);
+
+        assertThat(heard.understood).isNull();
+        assertThat(outcome.understood()).isNull();
+        assertThat(heard.said.toString()).doesNotContain("compris").doesNotContain("Envoie");
+        assertThat(outcome.spokenText()).isEqualTo("Kestrel avance bien.");
+    }
+
+    @Test
+    void anAnswerWithoutTheLineIsUnchangedAndALineAloneIsAnEmptyAnswer() {
+        Heard heard = new Heard();
+        assertThat(service(streaming("Comment va Kestrel. Kestrel avance bien."), null, null).converse(ask("Kestrel ?"), heard)
+                .spokenText()).isEqualTo("Comment va Kestrel. Kestrel avance bien.");
+
+        JarvisFastBrainService.Outcome alone = service(streaming("compris: Où en est Kestrel ?"), null, null)
+                .converse(ask("Où en est Kestrelle ?"), new Heard());
+        assertThat(alone.kind()).isEqualTo(JarvisFastBrainService.Kind.DELEGATE);
+        assertThat(alone.delegation().reason()).isEqualTo("empty");
+        assertThat(alone.understood()).isEqualTo("Où en est Kestrel ?");
+        assertThat(alone.delegation().demande()).isEqualTo("Où en est Kestrel ?");
+    }
+
     @Test
     void anUngroundedNumberIsNeverSaidAndTheExchangeIsDelegated() {
         StringBuilder heard = new StringBuilder();

@@ -55,6 +55,8 @@ export function isCorrection(text: string): boolean {
 
 export interface FastBrainHandlers {
   onText(sentence: string): void;
+  /** F-239 / SF-239-05 — la parole relue par le cerveau rapide (jamais dite), avant la réponse. */
+  onUnderstood?(text: string): void;
   onDelegated(delegation: FastDelegation): void;
   onFallback(reason: string): void;
   onDone(done: FastDone): void;
@@ -165,6 +167,11 @@ export function dispatch(raw: string, handlers: FastBrainHandlers): 'done' | 'er
     case 'text':
       if (typeof payload['delta'] === 'string' && payload['delta'].trim()) {
         handlers.onText((payload['delta'] as string).trim());
+      }
+      return null;
+    case 'understood':
+      if (typeof payload['text'] === 'string' && payload['text'].trim()) {
+        handlers.onUnderstood?.((payload['text'] as string).trim());
       }
       return null;
     case 'delegated':
