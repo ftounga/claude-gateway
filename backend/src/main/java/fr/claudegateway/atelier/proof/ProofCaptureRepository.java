@@ -15,4 +15,7 @@ public interface ProofCaptureRepository extends JpaRepository<ProofCapture, UUID
     java.util.List<ProofCapture> findTop200ByUserIdAndWorkspaceIdOrderByCapturedAtAscPositionAsc(UUID userId,
             UUID workspaceId);
 
+
+    /** F-237 / SF-237-02 — une capture du compte, quel que soit son sujet (vignette de l'index). */
+    Optional<ProofCapture> findByIdAndUserId(UUID id, UUID userId);
 }
