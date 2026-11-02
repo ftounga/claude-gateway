@@ -68,7 +68,8 @@ export const PARKED_CLOCK_MS = 10 * 60_000;
 /** SF-231-04 — ce que Jarvis dit quand personne ne répond. */
 export const NO_ANSWER_PHRASE = 'Sans réponse, je ne fais rien.';
 import {
-  LONG_TURN_MS, OralStream, classifyInterruption, isStopCommand, oralPhrase, subjectSwitch, withEndAnnouncement,
+  LONG_TURN_MS, OralStream, classifyInterruption, invitationOf, isStopCommand, oralLine, oralPhrase,
+  stripInvitationLines, subjectSwitch, withEndAnnouncement,
 } from './jarvis-oral';
 import {
   Conversation, IDLE_PHRASE, IDLE_WAKE_HINT, PAUSE_PHRASE, RELISTEN_DELAY_MS, isPauseCommand,
@@ -1621,12 +1622,14 @@ export class JarvisComponent implements OnInit, OnDestroy {
       this.brainEnd.set(failed ? 'fail' : 'normal');
       this.delegations.update((list) => list.filter((d) => d.id !== entry.id));
       if (reply) {
-        this.detail.set(stripShowLines(reply));
+        this.detail.set(stripInvitationLines(stripShowLines(reply)));
       }
+      // F-240 / SF-240-02 — la phrase dite (garde des 35 mots) et l'invitation ciblée éventuelle.
+      const line = failed ? { phrase: '', cut: false } : oralLine(reply);
       const phrase = failed ? 'La recherche n’a pas abouti ; le détail est au terminal.'
-        : oralPhrase(reply) || 'C’est fait. Le détail est à l’écran.';
+        : line.phrase || 'C’est fait. Le détail est à l’écran.';
       this.announcements.push({ label, phrase, subjectId, confirm: !failed && asksConfirmation(phrase),
-        delegationId: delegation.delegationId });
+        delegationId: delegation.delegationId, cut: line.cut, invitation: failed ? null : invitationOf(reply) });
       this.flushAnnouncements();
     });
     void this.atelier.streamChat(subjectId, text, {
@@ -1692,8 +1695,18 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
     // F-240 / SF-240-01 — la fin d'une délégation dite : sa longueur et sa durée entrent dans la mesure de l'échange.
     const timed = this.timedHooks();
-    void this.say(announcementText(item), timed.hooks).then(() => this.zone.run(() => {
-      this.delegationSaid(item.delegationId, item.phrase, timed.elapsed());
+    void this.say(announcementText(item), timed.hooks).then(async () => {
+      const elapsed = timed.elapsed();
+      // F-240 / SF-240-02 (D6) — l'invitation ciblée suit la fin dite (jamais sur une confirmation : écartée avant).
+      let invited = false;
+      if (item.invitation && !item.confirm && this.state() !== 'ecoute') {
+        await this.say(item.invitation);
+        invited = true;
+        this.invitedAt = Date.now();
+      }
+      return { elapsed, invited };
+    }).then(({ elapsed, invited }) => this.zone.run(() => {
+      this.delegationSaid(item.delegationId, item.phrase, elapsed, { oralCut: !!item.cut, invitation: invited });
       if (item.confirm) {
         // La délégation finit sur « Vous confirmez ? » : la réponse ira directement à son tour Opus (D8).
         this.awaitingVerbal = true;
@@ -1917,6 +1930,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
    * {@link PARKED_CLOCK_MS}.
    */
   private parkedClock: TurnClock | null = null;
+  /** F-240 / SF-240-02 — l'instant où une invitation ciblée a été dite (un « oui » ensuite descend d'un étage). */
+  private invitedAt = 0;
   private parkTimer: ReturnType<typeof setTimeout> | null = null;
   /** F-240 / SF-240-01 — les mesures des échanges délégués, jusqu'à ce que la fin de leur délégation soit dite. */
   private readonly delegationClocks = new Map<string, { clock: TurnClock; timer: ReturnType<typeof setTimeout> }>();
@@ -1965,14 +1980,15 @@ export class JarvisComponent implements OnInit, OnDestroy {
   }
 
   /** F-240 / SF-240-01 — la fin d'une délégation a été dite : ce qui a été dit entre dans la mesure de l'échange. */
-  private delegationSaid(delegationId: string | undefined, phrase: string, ms: number | null): void {
+  private delegationSaid(delegationId: string | undefined, phrase: string, ms: number | null,
+                         extra: { oralCut: boolean; invitation: boolean } = { oralCut: false, invitation: false }): void {
     const held = delegationId ? this.delegationClocks.get(delegationId) : undefined;
     if (!held || !delegationId) {
       return;
     }
     clearTimeout(held.timer);
     this.delegationClocks.delete(delegationId);
-    held.clock.said(phrase, ms);
+    held.clock.said(phrase, ms, extra);
     this.park(held.clock);
   }
 
@@ -2674,8 +2690,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const elapsed = Date.now() - this.turnStartedAt;
     this.filler.answered();
     this.endTurn();
-    this.detail.set(done.reply ? stripShowLines(done.reply) : done.reply);
-    const phrase = oralPhrase(done.reply) || 'C’est fait. Le détail est à l’écran.';
+    this.detail.set(done.reply ? stripInvitationLines(stripShowLines(done.reply)) : done.reply);
+    // F-240 / SF-240-02 (D5) — la phrase dite, coupée à sa première phrase au-delà de 35 mots.
+    const line = oralLine(done.reply);
+    const phrase = line.phrase || 'C’est fait. Le détail est à l’écran.';
     this.pendingConfirm = null;
     const oral = this.oral;
     const streamed = this.streamedText;
@@ -2684,6 +2702,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
     // F-240 / SF-240-01 — la réponse dite est la dernière ligne 🎙 ; les lignes d'avant (annonce) comptent à part.
     const finalLine = oral?.lastLine ?? -1;
     const announceWords = oral ? spokenWordCount(oral.spokenOutside(finalLine).join(' ')) : 0;
+    // F-240 / SF-240-02 (D6) — l'invitation ciblée : déjà dite au fil de l'écriture, sinon après la phrase.
+    const invitation = oral?.invitation ?? invitationOf(done.reply);
+    let invitationSaid = !!oral?.invitation;
     let spokenMs: number | null = null;
     if (streamed) {
       // SF-233-03 — déjà dit au fil de l'écriture : la file va au bout, puis le reste de la phrase finale.
@@ -2713,8 +2734,17 @@ export class JarvisComponent implements OnInit, OnDestroy {
       await this.say(withEndAnnouncement(phrase, elapsed), timed.hooks);
       spokenMs = timed.elapsed();
     }
+    if (invitation && !invitationSaid && this.state() !== 'ecoute') {
+      await this.say(invitation);
+      invitationSaid = true;
+    }
+    if (invitationSaid) {
+      this.invitedAt = Date.now();
+    }
     this.clock?.mark('done');
-    this.clock?.said(phrase, spokenMs, { announceWords });
+    this.clock?.said(phrase, spokenMs, {
+      announceWords, oralCut: line.cut || (oral?.wasCut(finalLine) ?? false), invitation: invitationSaid,
+    });
     this.parkClock();
     // SF-231-04 — l'agent a reformulé une action qui engage et attend « oui » : Jarvis écoute la réponse.
     if (asksConfirmation(phrase)) {

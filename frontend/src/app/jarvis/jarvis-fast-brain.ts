@@ -214,6 +214,10 @@ export interface Announcement {
   confirm: boolean;
   /** F-240 / SF-240-01 — la délégation d'origine (sa mesure attend que cette fin soit dite). */
   delegationId?: string;
+  /** F-240 / SF-240-02 (D5) — la phrase a été coupée par la garde des 35 mots. */
+  cut?: boolean;
+  /** F-240 / SF-240-02 (D6) — l'invitation ciblée à dire après la phrase (déjà filtrée), ou `null`. */
+  invitation?: string | null;
 }
 
 /**

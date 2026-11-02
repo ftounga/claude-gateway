@@ -6,6 +6,8 @@
  * - `subjectSwitch` : « passe sur CAGIP » change de sujet **sur l'appareil**, sans tour ni coût (D6).
  */
 
+import { spokenWordCount } from './jarvis-turn-clock';
+
 /** La marque de la phrase orale en tête de réponse (D3). */
 export const ORAL_MARK = '🎙';
 
@@ -17,8 +19,16 @@ export const MAX_ORAL_CHARS = 400;
 
 /** La phrase à dire d'une réponse, ou une chaîne vide si la réponse n'a rien de lisible à voix haute. */
 export function oralPhrase(reply: string | null | undefined): string {
+  return oralLine(reply).phrase;
+}
+
+/**
+ * F-240 / SF-240-02 — la phrase à dire d'une réponse et si l'écran l'a coupée (D5 : au-delà de
+ * {@link MAX_SPOKEN_WORDS} mots, seule sa première phrase est dite ; le reste est à l'étage 2).
+ */
+export function oralLine(reply: string | null | undefined): { phrase: string; cut: boolean } {
   if (!reply) {
-    return '';
+    return { phrase: '', cut: false };
   }
   const prose: string[] = [];
   let inFence = false;
@@ -28,11 +38,14 @@ export function oralPhrase(reply: string | null | undefined): string {
       inFence = !inFence;
       continue;
     }
-    if (inFence || !line || line.startsWith(SHOW_LINE_MARK)) {
-      continue; // F-234 / SF-234-13 : la ligne « 🖥 montrer: » est pour l'écran, jamais dite
+    if (inFence || !line || line.startsWith(SHOW_LINE_MARK) || line.startsWith(INVITE_MARK)) {
+      // F-234 / SF-234-13 : la ligne « 🖥 montrer: » est pour l'écran, jamais dite ; F-240 / SF-240-02 : l'invitation
+      // « ↪ » se dit à part (invitationOf), après la phrase.
+      continue;
     }
     if (line.startsWith(ORAL_MARK)) {
-      return cutOral(clean(line.slice(ORAL_MARK.length)));
+      const guarded = guardOral(cutOral(clean(line.slice(ORAL_MARK.length))));
+      return { phrase: guarded.text, cut: guarded.cut };
     }
     // Les tableaux et les lignes de code ne se lisent pas à voix haute.
     if (line.startsWith('|') || line.startsWith('    ')) {
@@ -41,7 +54,86 @@ export function oralPhrase(reply: string | null | undefined): string {
     prose.push(clean(line));
   }
   const text = prose.filter((l) => l.length > 0).join(' ');
-  return cutOral(firstSentences(text, 2));
+  const guarded = guardOral(cutOral(firstSentences(text, 2)));
+  return { phrase: guarded.text, cut: guarded.cut };
+}
+
+/** F-240 / SF-240-02 (D6) — la marque de l'invitation ciblée : dite après la ligne 🎙, jamais montrée. */
+export const INVITE_MARK = '↪';
+
+/** F-240 / SF-240-02 (D5) — au-delà, la ligne dite est coupée à sa première phrase (filet ; la consigne dit 30). */
+export const MAX_SPOKEN_WORDS = 35;
+
+/** F-240 / SF-240-02 (D6) — au-delà, une invitation n'en est plus une (la consigne en demande 15 au plus). */
+export const MAX_INVITE_WORDS = 20;
+
+/**
+ * F-240 / SF-240-02 (D5) — **la garde de longueur** : une ligne de plus de {@link MAX_SPOKEN_WORDS} mots n'est dite
+ * que par sa première phrase (`cut` vrai) ; une phrase unique trop longue est dite telle quelle (rien à couper).
+ */
+export function guardOral(text: string): { text: string; cut: boolean } {
+  if (spokenWordCount(text) <= MAX_SPOKEN_WORDS) {
+    return { text, cut: false };
+  }
+  const first = firstSentences(text, 1);
+  return first && first.length < text.trim().length ? { text: first, cut: true } : { text, cut: false };
+}
+
+/**
+ * F-240 / SF-240-02 (D6) — **une invitation générique** (« voulez-vous plus de détails ? », « je peux développer si
+ * vous le souhaitez ») : écartée sur l'appareil, quelle que soit sa formulation exacte (même règle que la garde
+ * `isDetailOffer` du cerveau rapide, élargie). Une invitation ciblée NOMME un point : elle passe.
+ */
+export function isGenericInvitation(text: string | null | undefined): boolean {
+  const n = normalize(text ?? '').replace(/\bmonsieur\b/g, '').replace(/\s+/g, ' ').trim();
+  if (!n) {
+    return true;
+  }
+  return /^(je peux|je puis|puis je) (vous )?(en )?(detailler|donner le detail|preciser|developper|vous en dire plus|en dire plus|entrer dans le detail|continuer)/.test(n)
+    || /^(souhaitez vous|voulez vous|desirez vous|vous voulez) (le|les|plus de|davantage de|d autres|des) (detail|precision|information|explication)/.test(n)
+    || /^(souhaitez vous|voulez vous|desirez vous|vous voulez) (en savoir plus|que je (detaille|developpe|precise|continue|vous en dise plus|poursuive)|la suite|le reste)/.test(n)
+    || /^(autre chose|d autres questions|une autre question|des questions)\b/.test(n)
+    || (n.includes('detail') && n.includes('si vous le souhaitez'))
+    || /\b(plus de details|en savoir plus|le detail complet|davantage de details)\b/.test(n);
+}
+
+/**
+ * F-240 / SF-240-02 (D6) — **l'invitation ciblée** d'une réponse : sa ligne « ↪ » (nettoyée), ou `null` quand il n'y
+ * en a pas, qu'elle est générique, trop longue, sans question, ou que la phrase dite demande une confirmation
+ * (« Vous confirmez ? » : jamais d'invitation par-dessus).
+ */
+export function invitationOf(reply: string | null | undefined): string | null {
+  if (!reply) {
+    return null;
+  }
+  let inFence = false;
+  let invite: string | null = null;
+  for (const raw of reply.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.startsWith('```')) {
+      inFence = !inFence;
+      continue;
+    }
+    if (!inFence && line.startsWith(INVITE_MARK)) {
+      invite = clean(line.slice(INVITE_MARK.length));
+      break;
+    }
+  }
+  return acceptInvitation(invite, oralPhrase(reply));
+}
+
+/** F-240 / SF-240-02 (D6) — l'invitation `invite` si elle peut suivre la phrase `phrase`, sinon `null`. */
+export function acceptInvitation(invite: string | null, phrase: string): string | null {
+  if (!invite || !invite.trim().endsWith('?') || spokenWordCount(invite) > MAX_INVITE_WORDS
+      || isGenericInvitation(invite) || /(?:vous confirmez|tu confirmes)\s*\?\s*$/i.test(phrase.trim())) {
+    return null;
+  }
+  return invite.trim();
+}
+
+/** F-240 / SF-240-02 — le texte sans ses lignes d'invitation « ↪ » (jamais montrées, comme « 🖥 »). */
+export function stripInvitationLines(text: string | null | undefined): string {
+  return (text ?? '').split('\n').filter((l) => !l.trim().startsWith(INVITE_MARK)).join('\n');
 }
 
 /** Le texte sans balisage Markdown ni marqueurs de l'essentiel. */
@@ -208,9 +300,9 @@ export class OralStream {
   private readonly tagged: { sentence: string; line: number }[] = [];
 
   /** F-240 / SF-240-01 — comme {@link push}, chaque phrase avec la position de sa ligne 🎙. */
-  pushLines(delta: string): { sentence: string; line: number }[] {
+  pushLines(delta: string): { sentence: string; line: number; invitation?: boolean }[] {
     this.buffer += delta;
-    const out: { sentence: string; line: number }[] = [];
+    const out: { sentence: string; line: number; invitation?: boolean }[] = [];
     const lines = this.buffer.split('\n');
     let offset = 0;
     let inFence = false;
@@ -219,10 +311,25 @@ export class OralStream {
       const line = raw.trim();
       if (line.startsWith('```')) {
         inFence = !inFence;
+      } else if (!inFence && line.startsWith(INVITE_MARK) && complete && !this.emitted.has(offset)) {
+        // F-240 / SF-240-02 (D6) — l'invitation ciblée, dite une fois sa ligne close, après la phrase 🎙 ; écartée si
+        // elle est générique ou si la phrase demande une confirmation.
+        this.emitted.set(offset, 1);
+        const phrase = this.tagged.filter((s) => s.line === this.lastOralLine).map((s) => s.sentence).join(' ');
+        const invite = acceptInvitation(clean(line.slice(INVITE_MARK.length)), phrase);
+        if (invite && !this.invited) {
+          this.invited = invite;
+          out.push({ sentence: invite, line: offset, invitation: true });
+        }
       } else if (!inFence && line.startsWith(ORAL_MARK)) {
         this.lastOralLine = Math.max(this.lastOralLine, offset);
         const body = raw.slice(raw.indexOf(ORAL_MARK) + ORAL_MARK.length);
-        const sentences = oralSentences(body, complete).slice(0, MAX_LINE_SENTENCES);
+        let sentences = oralSentences(body, complete).slice(0, MAX_LINE_SENTENCES);
+        // F-240 / SF-240-02 (D5) — la garde de longueur : au-delà de 35 mots, seule la première phrase est dite.
+        if (sentences.length > 1 && spokenWordCount(sentences.join(' ')) > MAX_SPOKEN_WORDS) {
+          sentences = sentences.slice(0, 1);
+          this.cutLines.add(offset);
+        }
         const done = this.emitted.get(offset) ?? 0;
         for (let k = done; k < sentences.length; k++) {
           out.push({ sentence: sentences[k], line: offset });
@@ -239,6 +346,19 @@ export class OralStream {
   /** Les phrases déjà rendues. */
   get spoken(): readonly string[] {
     return this.said;
+  }
+
+  private invited: string | null = null;
+  private readonly cutLines = new Set<number>();
+
+  /** F-240 / SF-240-02 (D6) — l'invitation ciblée déjà dite au fil de l'écriture, ou `null`. */
+  get invitation(): string | null {
+    return this.invited;
+  }
+
+  /** F-240 / SF-240-02 (D5) — la ligne `line` a été coupée par la garde de longueur. */
+  wasCut(line: number): boolean {
+    return this.cutLines.has(line);
   }
 
   /** Ce qui reste à dire de `phrase` (la phrase orale finale) : ses phrases pas encore rendues. */

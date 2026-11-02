@@ -1,5 +1,6 @@
 import {
-  OralStream, classifyInterruption, firstSentences, isStopCommand, oralPhrase, oralSentences, subjectSwitch, withEndAnnouncement,
+  OralStream, classifyInterruption, firstSentences, guardOral, invitationOf, isGenericInvitation, isStopCommand,
+  oralLine, oralPhrase, oralSentences, stripInvitationLines, subjectSwitch, withEndAnnouncement,
 } from './jarvis-oral';
 import { EndOfSpeech, END_OF_SPEECH_MS, NO_SPEECH_MS } from './jarvis-mic-meter';
 import { sphere, withAlpha } from './jarvis-orb.component';
@@ -164,3 +165,70 @@ describe('Jarvis — la ligne de chaque phrase dite (F-240 / SF-240-01)', () => 
     expect(oral.spoken).toEqual(['Je regarde le chantier 3.', 'Le chantier 3 est terminé.']);
   });
 });
+
+describe('Jarvis — une idée, 25 mots (F-240 / SF-240-02)', () => {
+  const LONG = 'Monsieur, tout le réseau tourne autour d’une transit gateway unique dans AWS, reliée à l’on-premise '
+    + 'par un Direct Connect. Et l’on-premise ne répond toujours pas à la plage ca-savings, ce qui bloque encore tout le reste du chantier.';
+
+  it('D5 — au-delà de 35 mots, seule la première phrase est dite (coupe comptée) ; sinon rien ne change', () => {
+    expect(guardOral('Le build passe. Les tests aussi.')).toEqual({ text: 'Le build passe. Les tests aussi.', cut: false });
+    const cut = guardOral(LONG);
+    expect(cut.cut).toBeTrue();
+    expect(cut.text).toBe('Monsieur, tout le réseau tourne autour d’une transit gateway unique dans AWS, reliée à '
+      + 'l’on-premise par un Direct Connect.');
+    // Une phrase unique trop longue : rien à couper, elle est dite telle quelle.
+    const single = 'mot '.repeat(40).trim();
+    expect(guardOral(single)).toEqual({ text: single, cut: false });
+    expect(oralLine(`🎙 ${LONG}\n\nDétail`).cut).toBeTrue();
+    expect(oralLine('🎙 Le build passe.').cut).toBeFalse();
+  });
+
+  it('D6 — l’invitation ciblée est lue à part, jamais comme phrase ni dans le détail', () => {
+    const reply = '🎙 Le déploiement est terminé, Monsieur.\n↪ Il y a aussi un point sur Helios, je vous le dis ?\n'
+      + '<<essentiel>>\n- Déployé\n<</essentiel>>\nDétail';
+    expect(oralPhrase(reply)).toBe('Le déploiement est terminé, Monsieur.');
+    expect(invitationOf(reply)).toBe('Il y a aussi un point sur Helios, je vous le dis ?');
+    expect(stripInvitationLines(reply)).not.toContain('Helios');
+    expect(oralPhrase('↪ Il y a aussi un point sur Helios, je vous le dis ?\nLe build passe.')).toBe('Le build passe.');
+  });
+
+  it('D6 — une invitation générique, sans question, trop longue ou après « Vous confirmez ? » est écartée', () => {
+    expect(isGenericInvitation('Voulez-vous plus de détails, Monsieur ?')).toBeTrue();
+    expect(isGenericInvitation('Je peux développer si vous le souhaitez ?')).toBeTrue();
+    expect(isGenericInvitation('Souhaitez-vous que je détaille ?')).toBeTrue();
+    expect(isGenericInvitation('Il y a aussi un point sur Helios, je vous le dis ?')).toBeFalse();
+    expect(invitationOf('🎙 C’est fait.\n↪ Voulez-vous plus de détails ?')).toBeNull();
+    expect(invitationOf('🎙 C’est fait.\n↪ Il y a aussi un point sur Helios.')).toBeNull();
+    expect(invitationOf('🎙 C’est fait.\n↪ ' + 'mot '.repeat(25) + '?')).toBeNull();
+    expect(invitationOf('🎙 Je lance le chantier 3 en autonome, vous confirmez ?\n↪ Il y a aussi un point sur Helios, '
+      + 'je vous le dis ?')).toBeNull();
+    expect(invitationOf('🎙 C’est fait.')).toBeNull();
+  });
+
+  it('au fil de l’écriture : la garde coupe la 2e phrase, l’invitation est dite une fois sa ligne close', () => {
+    const oral = new OralStream();
+    const said = oral.pushLines(`🎙 ${LONG}\n`);
+    expect(said.map((s) => s.sentence)).toEqual([
+      'Monsieur, tout le réseau tourne autour d’une transit gateway unique dans AWS, reliée à l’on-premise par un '
+      + 'Direct Connect.']);
+    expect(oral.wasCut(said[0].line)).toBeTrue();
+    expect(oral.pushLines('↪ Il y a aussi un point sur Helios,')).toEqual([]);
+    const invite = oral.pushLines(' je vous le dis ?\nDétail…');
+    expect(invite).toEqual([jasmine.objectContaining({ sentence: 'Il y a aussi un point sur Helios, je vous le dis ?',
+      invitation: true })]);
+    expect(oral.invitation).toBe('Il y a aussi un point sur Helios, je vous le dis ?');
+    // L'invitation n'est pas une phrase de la réponse (ni de l'annonce).
+    expect(oral.spokenOutside(oral.lastLine)).toEqual([]);
+  });
+
+  it('au fil de l’écriture : une invitation générique ou après une confirmation n’est jamais dite', () => {
+    const generic = new OralStream();
+    expect(generic.pushLines('🎙 C’est fait.\n↪ Voulez-vous plus de détails ?\n')
+      .map((s) => s.sentence)).toEqual(['C’est fait.']);
+    const confirm = new OralStream();
+    expect(confirm.pushLines('🎙 J’envoie le courriel à Paul, vous confirmez ?\n↪ Il y a aussi Helios, je vous le dis ?\n')
+      .map((s) => s.sentence)).toEqual(['J’envoie le courriel à Paul, vous confirmez ?']);
+    expect(confirm.invitation).toBeNull();
+  });
+});
+
