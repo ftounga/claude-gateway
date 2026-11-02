@@ -1,0 +1,385 @@
+{
+  "context": "Maintenant : lundi 2 novembre 2026, 09:15\nUnivers (etat a 09:00) :\n- client Orion Assurances (connecte) : sujets Orion-Run (chantier 1 « Refonte du portail », 3/6, etape : recette), Orion-Secu (chantier 4 « Rotation des secrets », 1/3, etape : inventaire)\n- client Helios Energie (deconnecte) : sujet Helios-Data (chantier 2 « Migration des flux », 5/8, etape : bascule) ; personnes : Claire Dumas (cheffe de projet)\nAttentes ouvertes du sujet courant : Claire Dumas doit valider la recette du portail\nA envoyer (1) : compte rendu de recette a Claire Dumas\nAlertes de veille des dernieres 24 h : aucune.",
+  "budgetEurPerTurn": 0.02,
+  "scenarios": [
+    {
+      "id": "C01",
+      "category": "SALUTATION",
+      "turns": [
+        {
+          "said": "Bonjour Jarvis.",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "C02",
+      "category": "SALUTATION",
+      "turns": [
+        {
+          "said": "Bonjour Travis.",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "C03",
+      "category": "SALUTATION",
+      "turns": [
+        {
+          "said": "Bonjour Jarvis.",
+          "expect": "repondre"
+        },
+        {
+          "said": "Très bien, merci. Et vous ?",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "C04",
+      "category": "SALUTATION",
+      "turns": [
+        {
+          "said": "Salut Jarvis, ça va ?",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "C05",
+      "category": "SALUTATION",
+      "turns": [
+        {
+          "said": "Bonsoir.",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "C06",
+      "category": "PETITE_CONVERSATION",
+      "turns": [
+        {
+          "said": "Bonjour Jarvis.",
+          "expect": "repondre"
+        },
+        {
+          "said": "Grosse journée qui s'annonce.",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "C07",
+      "category": "PETITE_CONVERSATION",
+      "turns": [
+        {
+          "said": "Il fait un temps de chien ce matin.",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "C08",
+      "category": "PETITE_CONVERSATION",
+      "turns": [
+        {
+          "said": "Je suis un peu fatigué aujourd'hui.",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "C09",
+      "category": "COMMENCONS",
+      "turns": [
+        {
+          "said": "Bonjour Jarvis.",
+          "expect": "repondre"
+        },
+        {
+          "said": "Commençons.",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "C10",
+      "category": "COMMENCONS",
+      "turns": [
+        {
+          "said": "On s'y met ?",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "C11",
+      "category": "COMMENCONS",
+      "turns": [
+        {
+          "said": "Allez, au travail.",
+          "expect": "repondre"
+        },
+        {
+          "said": "Par Orion.",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "C12",
+      "category": "POINT",
+      "turns": [
+        {
+          "said": "Où en est le portail d'Orion ?",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "C13",
+      "category": "POINT",
+      "turns": [
+        {
+          "said": "Qu'est-ce que j'ai à envoyer ?",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "C14",
+      "category": "POINT",
+      "turns": [
+        {
+          "said": "Fais-moi le point de la matinée.",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "C15",
+      "category": "POINT",
+      "turns": [
+        {
+          "said": "Qui doit encore valider la recette ?",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "C16",
+      "category": "METIER",
+      "turns": [
+        {
+          "said": "Regarde les tickets bloqués d'Helios.",
+          "expect": "deleguer"
+        }
+      ]
+    },
+    {
+      "id": "C17",
+      "category": "METIER",
+      "turns": [
+        {
+          "said": "Envoie le compte rendu de recette à Claire.",
+          "expect": "deleguer"
+        }
+      ]
+    },
+    {
+      "id": "C18",
+      "category": "METIER",
+      "turns": [
+        {
+          "said": "Combien de tickets sont ouverts sur Orion ?",
+          "expect": "deleguer"
+        }
+      ]
+    },
+    {
+      "id": "C19",
+      "category": "METIER",
+      "turns": [
+        {
+          "said": "Lance les tests du portail.",
+          "expect": "deleguer"
+        }
+      ]
+    },
+    {
+      "id": "C20",
+      "category": "MAL_ENTENDU",
+      "turns": [
+        {
+          "said": "Allons chez le client et donnez-",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "C21",
+      "category": "MAL_ENTENDU",
+      "turns": [
+        {
+          "said": "Vente chez le via Helios.",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "C22",
+      "category": "MAL_ENTENDU",
+      "turns": [
+        {
+          "said": "Sur le cluster, c'est assez ving, est-ce qu'il",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "C23",
+      "category": "INTERRUPTION",
+      "heardBeforeCut": "Le portail d'Orion en est à la recette ; il",
+      "turns": [
+        {
+          "said": "Oui, et ensuite ?",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "C24",
+      "category": "INTERRUPTION",
+      "heardBeforeCut": "Je regarde les tickets",
+      "turns": [
+        {
+          "said": "Non, laisse, parle-moi plutôt d'Helios.",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "C25",
+      "category": "SILENCE",
+      "turns": [
+        {
+          "said": "Tu es toujours là ?",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "C26",
+      "category": "REMERCIEMENT",
+      "turns": [
+        {
+          "said": "Merci Jarvis.",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "C27",
+      "category": "REMERCIEMENT",
+      "turns": [
+        {
+          "said": "Où en est le portail d'Orion ?",
+          "expect": "repondre"
+        },
+        {
+          "said": "Parfait, merci.",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "C28",
+      "category": "AU_REVOIR",
+      "turns": [
+        {
+          "said": "C'est tout pour ce matin, à tout à l'heure.",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "C29",
+      "category": "AU_REVOIR",
+      "turns": [
+        {
+          "said": "Bonne soirée Jarvis.",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "C30",
+      "category": "ENCHAINEMENT",
+      "turns": [
+        {
+          "said": "Bonjour Jarvis.",
+          "expect": "repondre"
+        },
+        {
+          "said": "Commençons par Orion.",
+          "expect": "repondre"
+        },
+        {
+          "said": "Et la rotation des secrets ?",
+          "expect": "repondre"
+        },
+        {
+          "said": "Regarde ce qui bloque l'inventaire.",
+          "expect": "deleguer"
+        },
+        {
+          "said": "Merci, à plus tard.",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "R01",
+      "category": "REEL_02_11",
+      "turns": [
+        {
+          "said": "Bonjour, service.",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "R02",
+      "category": "REEL_02_11",
+      "turns": [
+        {
+          "said": "Combien de clients sont connectés ?",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "R03",
+      "category": "REEL_02_11",
+      "turns": [
+        {
+          "said": "Me montre les sujets en cours.",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "R04",
+      "category": "REEL_02_11",
+      "turns": [
+        {
+          "said": "Non, la rotation des secrets, je pense qu'il n'y a pas de souci. On peut la passer.",
+          "expect": "deleguer"
+        }
+      ]
+    }
+  ],
+  "opusTurnEur": 0.98
+}

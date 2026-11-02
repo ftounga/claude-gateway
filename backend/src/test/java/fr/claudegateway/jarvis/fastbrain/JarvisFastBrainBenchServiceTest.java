@@ -126,6 +126,53 @@ class JarvisFastBrainBenchServiceTest {
     }
 
     @Test
+    void f239TheConversationBenchReplaysEveryTurnDryJudgesItAndReportsCostAndDelegationRate() {
+        String turnVerdict = """
+                {"naturel":4,"concis":true,"formule_robotique":false,"delegation_inutile":false,"sens_juste":true,
+                 "question_en_retour":false,"fait_non_ancre":false,"action_non_deleguee":false,"commentaire":"ok"}""";
+        AiAgentProvider provider = new AiAgentProvider() {
+            @Override
+            public AgentTurn nextTurn(AgentTurnRequest request) {
+                return nextTurn(request, d -> { });
+            }
+
+            @Override
+            public AgentTurn nextTurn(AgentTurnRequest request, AgentTextListener listener) {
+                calls.add(request);
+                try {
+                    if (request.tools().stream().anyMatch(t -> "noter_tour".equals(t.name()))) {
+                        return new AgentTurn("", List.of(new AgentToolCall("j", "noter_tour",
+                                JSON.readTree(turnVerdict))), false, 100, 20);
+                    }
+                    listener.onTextDelta("Bien, Monsieur.");
+                    return new AgentTurn("Bien, Monsieur.", List.of(), true, 100, 10);
+                } catch (Exception e) {
+                    throw new IllegalStateException(e);
+                }
+            }
+        };
+        JarvisFastBrainBenchService bench = bench(provider);
+
+        JarvisFastBrainBenchService.Report report = bench.run(alice, UUID.randomUUID(), "CONVERSATION",
+                "claude-haiku-5-5", OffsetDateTime.now());
+
+        JarvisConversationBench.Set set = JarvisConversationBench.load();
+        int turns = set.scenarios().stream().mapToInt(s -> s.turns().size()).sum();
+        assertThat(report.cases()).isEqualTo(turns);
+        assertThat(report.conversation().scenarios()).hasSize(set.scenarios().size());
+        assertThat(report.conversation().delegationRate()).isZero();
+        assertThat(report.conversation().costPerExchangeEur()).isPositive();
+        // Le cerveau rapide répond à tout : les demandes métier (à déléguer) font échouer la porte.
+        assertThat(report.gatePassed()).isFalse();
+        assertThat(report.gateFailures()).anyMatch(f -> f.contains("route repondre au lieu de deleguer"));
+        // À blanc : ni trace, ni mémoire, ni registre.
+        verifyNoInteractions(writer, memory, registry);
+        // Le tour suivant d'un scénario voit l'échange précédent dans son contexte.
+        assertThat(calls).filteredOn(r -> r.tools().stream().anyMatch(t -> "deleguer".equals(t.name())))
+                .anyMatch(r -> r.messages().get(0).content().toString().contains("Derniers échanges de la conversation"));
+    }
+
+    @Test
     void anActionAnsweredWithoutDelegatingFailsTheGate() {
         JarvisFastBrainBenchService bench = bench(provider("Kestrel avance bien.", """
                 {"route_attendue":"deleguer","fait_non_ancre":false,"action_non_deleguee":true,"creuse":false,
