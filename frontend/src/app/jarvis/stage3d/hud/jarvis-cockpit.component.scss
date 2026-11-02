@@ -48,6 +48,7 @@
   color: var(--cg-cream, #F5EFE3);
   transition: opacity var(--jv-dur-sidePanel, 320ms) var(--jv-ease-glisse, ease-in-out);
   scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--cg-holo, #E07B39) 45%, transparent) transparent;
 }
 
 .ck--folded .ck__body {
@@ -72,7 +73,10 @@
 }
 
 .ck__section + .ck__section {
+  // SF-236-21 — hiérarchie : un filet entre les vues, le titre de section porte la lecture.
   margin-top: var(--cg-space-3);
+  padding-top: var(--cg-space-2);
+  border-top: 1px solid color-mix(in srgb, var(--cg-holo, #E07B39) 18%, transparent);
 }
 
 .ck__title {

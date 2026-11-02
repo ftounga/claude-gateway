@@ -1,0 +1,46 @@
+{
+  "title": "Jarvis 3D — planche itération 3",
+  "heading": "Jarvis en 3D — planche de référence, itération 3 « Le cockpit PC »",
+  "intro": [
+    "F-236 / SF-236-15 → SF-236-21. Sur PC large (≥ 1280 px), <code>/jarvis</code> en 3D devient un <b>cockpit</b> : deux panneaux latéraux en verre holographique, repliables (T-P4), dont chaque ligne tend un filament vers son nœud ; calques complets (profondeur de champ des particules du fond, SMAA, finition). Les vues : « Aujourd'hui » (chiffres touchables = « Montrer » local, sans tour), météo des chantiers (et petit ciel au-dessus des losanges), personnes et attentes, étagère « À envoyer », mur de tickets, chronologies (arc de perles du tour, journée lue hors tour), inspecteur de nœud, recherche « montre-moi » au clavier. Tableaux détachables posés dans l'univers (L4).",
+    "Au téléphone (matrice §12.2) : aucun panneau dans la scène, « ☰ Vues » ouvre les mêmes vues en volets plein écran ; liaisons du focus seulement, un panneau ancré, entrée 1,2 s, décor simple. Aucun appel IA, aucune consigne touchée, aucun endpoint nouveau (la journée lit l'historique existant, isolé par <code>user_id</code>).",
+    "Captures du banc headless en rendu logiciel (swiftshader) : téléphone 390 × 844 (niveau Moyen), PC 1920 × 1080 (niveau Haut), univers de test (CAGIP, Edenred ; sujet « Migration Forge », chantier 3, Zahi attendu). La capture « téléphone » des scènes <code>cockpit-*</code> montre l'écran du téléphone tel qu'il reste (sans panneaux).",
+    "<span class=\"note\">Visa du PO délégué pour cette vague : la planche est fournie, les remarques de goût seront traitées dans la SF de polissage suivante.</span>"
+  ],
+  "sections": [
+    { "title": "Le cockpit PC (SF-236-15)", "items": [
+      { "label": "Panneaux ouverts — univers derrière, pleine largeur", "base": "../cockpit/cockpit-t1200" },
+      { "label": "Panneaux repliés (T-P4) — poignées seules", "base": "../cockpit/cockpit-replie-t1200" },
+      { "label": "Filament liste ↔ nœud (CAGIP survolé)", "base": "../cockpit/cockpit-filament-t1200" }
+    ] },
+    { "title": "Journée et météo (SF-236-16)", "items": [
+      { "label": "« Attentes » touché — « Montrer » local, sans tour", "base": "../cockpit/cockpit-journee-t1200" },
+      { "label": "Météo : orage, nuage, brume, soleil ; ciel au-dessus du losange", "base": "../cockpit/cockpit-meteo-t1200" }
+    ] },
+    { "title": "Chronologies (SF-236-17)", "items": [
+      { "label": "Arc de perles du tour ; journée chargée hors tour, un tour touché", "base": "../cockpit/cockpit-chronologies-t1200" }
+    ] },
+    { "title": "Personnes, À envoyer, tickets (SF-236-18)", "items": [
+      { "label": "Deux tableaux détachés, posés à côté de CAGIP (L4)", "base": "../cockpit/cockpit-personnes-t1200" }
+    ] },
+    { "title": "Inspecteur et recherche (SF-236-19)", "items": [
+      { "label": "Fiche du chantier 3 (fidèle à l'univers)", "base": "../cockpit/cockpit-inspecteur-t1200" },
+      { "label": "Recherche « forge » — résultats, fiche", "base": "../cockpit/cockpit-recherche-t1200" }
+    ] },
+    { "title": "Téléphone allégé (SF-236-20)", "items": [
+      { "label": "« ☰ Vues » — volet « Aujourd'hui »", "base": "../telephone/cockpit-vues-t1200" },
+      { "label": "Univers : liaisons du focus seulement, décor simple", "base": "../telephone/univers-telephone-t1200" },
+      { "label": "S4 tickets : deux panneaux", "base": "../telephone/scene-tickets-t1200" },
+      { "label": "S3 commande : un panneau", "base": "../telephone/scene-commande-t1200" },
+      { "label": "Entrée (1,2 s au téléphone)", "base": "../telephone/entree-t1200" }
+    ] }
+  ],
+  "sequences": [
+    { "title": "T-P4 — repli d'un panneau latéral (0,32 s, glisse)", "base": "../transitions/cockpit-repli-anim", "times": [0, 64, 128, 192, 256, 320] }
+  ],
+  "notes": [
+    "<b>Polissage 3 (SF-236-21)</b> : filet entre les vues des panneaux (hiérarchie), barre de défilement aux couleurs du verre, aberration chromatique ramenée à 0,004 (les franges sur les étoiles floues du bord se voyaient), « 0 » éteint lisible (crème), ciel des chantiers à 20 px.",
+    "<b>Règles §7.3</b> : jamais de saut (le centre de l'univers glisse avec les panneaux, T-P4 en `glisse`) · couleurs d'état d'une seule source (`jarvis-motion.ts`) — rouge réservé aux alertes et à l'orage d'un chantier bloqué · texte DOM net (panneaux, fiches, tableaux) · rien ne navigue sauf un sujet choisi · aucun appel pendant un tour (journée à la demande, hors tour).",
+    "<b>Mesures i/s</b> : à relever sur le PC du PO (1920 × 1080, rapport 2560 × 1440) et sur son téléphone (le banc headless est en rendu logiciel) ; l'événement `RENDER` (SF-236-06) les remonte en production."
+  ]
+}

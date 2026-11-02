@@ -40,7 +40,7 @@ export const FINISH = {
   /** Amplitude du grain (0-1). */
   grain: 0.018,
   /** Décalage des canaux rouge / bleu sur les bords (part de l'écran, au carré de la distance au centre). */
-  aberration: 0.006,
+  aberration: 0.004,
 } as const;
 
 /** Profondeur de champ du calque L0 : élargissement maximal d'un point flou (× sa taille). */
