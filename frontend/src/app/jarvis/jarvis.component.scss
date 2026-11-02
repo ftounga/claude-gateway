@@ -328,6 +328,30 @@
   font-size: 14px;
 }
 
+// F-240 / SF-240-03 — l'étage 2 : l'essentiel seul, crème sur --cg-navy-2 à 70 %, Inter ; aucune couleur nouvelle.
+.jv__essential {
+  max-height: 32dvh;
+  overflow: auto;
+  padding: var(--cg-space-2) var(--cg-space-3);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--cg-navy-2) 70%, transparent);
+  color: var(--cg-cream);
+  font-family: var(--cg-font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+
+  ::ng-deep p,
+  ::ng-deep ul,
+  ::ng-deep ol {
+    margin: 0 0 var(--cg-space-1);
+  }
+
+  ::ng-deep :last-child {
+    margin-bottom: 0;
+  }
+}
+
 .jv__detail-toggle {
   align-self: flex-start;
   color: var(--cg-cream);

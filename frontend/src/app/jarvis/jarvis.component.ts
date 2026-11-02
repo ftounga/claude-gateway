@@ -31,6 +31,7 @@ import { NotificationCenterService } from '../core/services/notification-center.
 import { DictationError, DictationService } from '../core/services/dictation.service';
 import { JarvisVoiceError, JarvisVoiceService, SpeakHooks } from '../core/services/jarvis-voice.service';
 import { TurnClock, TurnCounter, spokenWordCount } from './jarvis-turn-clock';
+import { jarvisTiers } from './jarvis-tiers';
 import { BargeInController, JarvisVadService, RunningVad, bargeInEnabled, encodeWav } from './jarvis-barge-in';
 import { CutSnapshot } from '../core/services/jarvis-voice.service';
 import { JarvisStreamOpener, LISTEN_AUDIO, LiveListening } from './jarvis-stream-listener';
@@ -197,6 +198,32 @@ export class JarvisComponent implements OnInit, OnDestroy {
   readonly detail = signal<string | null>(null);
   readonly notice = signal<string | null>(null);
   readonly showDetail = signal(false);
+  /**
+   * F-240 / SF-240-03 — **la réponse en trois étages** : sous la phrase dite, l'essentiel seul ; le détail (sans
+   * l'essentiel) reste replié.
+   */
+  readonly tiers = computed(() => {
+    const reply = this.detail();
+    return reply ? jarvisTiers(reply) : null;
+  });
+  /** F-240 / SF-240-03 — la mesure du tour dont la réponse est montrée (l'étage atteint y entre). */
+  private answerClock: TurnClock | null = null;
+
+  /** F-240 / SF-240-03 — montre une réponse : l'essentiel seul, le détail replié ; sa mesure recevra l'étage atteint. */
+  private showAnswer(reply: string | null | undefined, clock: TurnClock | null): void {
+    this.detail.set(reply ? stripInvitationLines(stripShowLines(reply)) : null);
+    this.showDetail.set(false);
+    this.answerClock = clock;
+  }
+
+  /** F-240 / SF-240-03 (D10) — un toucher sur « Voir le détail » ouvre l'étage 3 sans rien dire, et le mesure. */
+  toggleDetail(): void {
+    const open = !this.showDetail();
+    this.showDetail.set(open);
+    if (open) {
+      this.answerClock?.reach(3, 'toucher');
+    }
+  }
 
   private meter: MicMeter | null = null;
   private listenFrame = 0;
@@ -1622,7 +1649,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       this.brainEnd.set(failed ? 'fail' : 'normal');
       this.delegations.update((list) => list.filter((d) => d.id !== entry.id));
       if (reply) {
-        this.detail.set(stripInvitationLines(stripShowLines(reply)));
+        this.showAnswer(reply, this.delegationClocks.get(delegation.delegationId)?.clock ?? null);
       }
       // F-240 / SF-240-02 — la phrase dite (garde des 35 mots) et l'invitation ciblée éventuelle.
       const line = failed ? { phrase: '', cut: false } : oralLine(reply);
@@ -2690,7 +2717,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const elapsed = Date.now() - this.turnStartedAt;
     this.filler.answered();
     this.endTurn();
-    this.detail.set(done.reply ? stripInvitationLines(stripShowLines(done.reply)) : done.reply);
+    this.showAnswer(done.reply, this.clock);
     // F-240 / SF-240-02 (D5) — la phrase dite, coupée à sa première phrase au-delà de 35 mots.
     const line = oralLine(done.reply);
     const phrase = line.phrase || 'C’est fait. Le détail est à l’écran.';

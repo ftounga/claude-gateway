@@ -932,6 +932,12 @@ ajoutent **aucune couleur** :
 | « Montrer » (SF-234-13) : poste connecté | halo (anneau) autour du client montré, et note écrite « connecté » | `--cg-terminal-success` (§21) | — (forme + note) |
 | « Montrer » : poste déconnecté | halo pointillé éteint, note « déconnecté » | `--cg-cream` à 30 % | — |
 | « Montrer » : le reste | estompé | opacité 0,22 | — |
+| Essentiel de la réponse (F-240 / SF-240-03, étage 2) | bloc sous la phrase dite, texte **Inter** 15 px ; le détail (étage 3) reste replié sous « Voir le détail » | texte `--cg-cream` sur `--cg-navy-2` à 70 % | crème/`--cg-navy-2` 14,6:1 |
+
+- **Réponse en trois étages (F-240)** : la phrase dite (Space Grotesk, existante), puis l'**essentiel seul** (3 à 5
+  lignes), puis le **détail replié** (sans l'essentiel). **Aucune couleur nouvelle.** Téléphone (360 × 740) :
+  l'essentiel reste visible sans défilement de la page (hauteur bornée à 32 dvh, défilement interne), aucun
+  débordement horizontal (`overflow-wrap: anywhere`).
 
 - **Polices** : noms en **Inter** ; titres de scène en **Space Grotesk** (`--cg-font-heading`) ; commandes, chemins et
   clés en **JetBrains Mono**.

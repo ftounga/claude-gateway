@@ -1831,5 +1831,82 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       expect(report.spokenWords).toBe(5);
       jarvis.ngOnDestroy();
     }));
+
+  it('F-240 / SF-240-03 — trois étages : l’essentiel seul affiché, le détail replié sans l’essentiel, toucher mesuré',
+    fakeAsync(() => {
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      const jarvis = fixture.componentInstance;
+      dictation.stop.and.resolveTo('Le déploiement est fini ?');
+      void jarvis.talk();
+      flushMicrotasks();
+      void jarvis.talk();
+      flushMicrotasks();
+      handlers!.onDone({ reply: '🎙 Oui, Monsieur, le déploiement est terminé.\n<<essentiel>>\n- Terminé à 10:42\n'
+        + '- Santé au vert\n<</essentiel>>\n\nTrois services mis à jour.', actions: [], messageId: 'm-1' });
+      flushMicrotasks();
+      fixture.detectChanges();
+      const el = fixture.nativeElement as HTMLElement;
+      const essential = el.querySelector('.jv__essential');
+      expect(essential?.textContent).toContain('Terminé à 10:42');
+      expect(essential?.textContent).not.toContain('Trois services');
+      expect(el.querySelector('.jv__detail')).toBeNull();
+      (el.querySelector('.jv__detail-toggle') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      const detail = el.querySelector('.jv__detail');
+      expect(detail?.textContent).toContain('Trois services mis à jour.');
+      expect(detail?.textContent).not.toContain('Terminé à 10:42');
+      expect(detail?.textContent).not.toContain('Monsieur');
+      jarvis['flushParked']();
+      const report = jarvisApi.timings.calls.mostRecent().args[0];
+      expect(report.depthReached).toBe(3);
+      expect(report.depthVia).toBe('toucher');
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-240 / SF-240-03 — une nouvelle réponse replie le détail ; sans détail, pas de bouton', fakeAsync(() => {
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    dictation.stop.and.resolveTo('Ça va ?');
+    void jarvis.talk();
+    flushMicrotasks();
+    void jarvis.talk();
+    flushMicrotasks();
+    jarvis.showDetail.set(true);
+    handlers!.onDone({ reply: '🎙 Oui.\n<<essentiel>>\nTout va bien.\n<</essentiel>>', actions: [], messageId: 'm-1' });
+    flushMicrotasks();
+    fixture.detectChanges();
+    expect(jarvis.showDetail()).toBeFalse();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.jv__essential')?.textContent).toContain('Tout va bien.');
+    expect(el.querySelector('.jv__detail-toggle')).toBeNull();
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-240 / SF-240-03 — à 360 px, l’essentiel ne déborde pas en largeur (mot ou lien très long)', fakeAsync(() => {
+    const fixture = TestBed.createComponent(JarvisComponent);
+    const host = fixture.nativeElement as HTMLElement;
+    host.style.display = 'block';
+    host.style.width = '360px';
+    document.body.appendChild(host);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    dictation.stop.and.resolveTo('Le lien ?');
+    void jarvis.talk();
+    flushMicrotasks();
+    void jarvis.talk();
+    flushMicrotasks();
+    handlers!.onDone({ reply: '🎙 Le voici.\n<<essentiel>>\nhttps://exemple.fr/' + 'tres-long-chemin-'.repeat(12)
+      + '\n<</essentiel>>', actions: [], messageId: 'm-1' });
+    flushMicrotasks();
+    fixture.detectChanges();
+    const essential = host.querySelector('.jv__essential') as HTMLElement;
+    expect(essential).not.toBeNull();
+    expect(essential.scrollWidth).toBeLessThanOrEqual(essential.clientWidth + 1);
+    expect(essential.getBoundingClientRect().width).toBeLessThanOrEqual(360);
+    host.remove();
+    jarvis.ngOnDestroy();
+  }));
 });
 
