@@ -1,3 +1,6 @@
+import { JarvisPieceGalleryComponent } from './pieces/jarvis-piece-gallery.component';
+import { JarvisPieceStore, refusalPhrase } from './pieces/jarvis-piece-store';
+import { pieceVoiceCommand } from './pieces/jarvis-piece-voice';
 import {
   Component, DestroyRef, InjectionToken, NgZone, OnDestroy, OnInit, ViewChild, computed, effect, inject, signal, viewChild,
   untracked,
@@ -131,7 +134,7 @@ export function companionOffer(version: JarvisCompanionVersion, installed: numbe
  */
 @Component({
   selector: 'app-jarvis',
-  imports: [JarvisCockpitComponent, JarvisCompanionsComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatMenuModule],
+  imports: [JarvisPieceGalleryComponent, JarvisCockpitComponent, JarvisCompanionsComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatMenuModule],
   templateUrl: './jarvis.component.html',
   styleUrl: './jarvis.component.scss',
   providers: [JarvisAppUpdate],
@@ -1281,6 +1284,15 @@ export class JarvisComponent implements OnInit, OnDestroy {
       await this.pauseConversation(true);
       return;
     }
+    // F-237 / SF-237-05 (§5.3) — navigation parmi les pièces sur l'appareil, sans IA : liste fermée, phrase entière.
+    const pieceAction = pieceVoiceCommand(text, this.pieces.nav());
+    if (pieceAction) {
+      const done = this.pieces.dispatch(pieceAction);
+      if (!done.ok) {
+        await this.say(refusalPhrase(done.reason));
+      }
+      return;
+    }
     if (!this.turnRunning && isShowDismiss(text) && this.scenes.dismissShow()) {
       // SF-234-13 — « c'est bon » : ce qui était montré s'efface, sur l'appareil, sans tour.
       this.state.set('repos');
@@ -2017,6 +2029,33 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   /** F-236 / SF-236-23 (NF-11) — le mode présentation (`?presentation=1`), quitté par Échap. */
   readonly presentation = signal(this.route.snapshot.queryParamMap.get('presentation') === '1');
+
+  /** F-237 / SF-237-05 — les pièces à l'écran (état de navigation + pièces chargées). */
+  readonly pieces = inject(JarvisPieceStore);
+
+  /** F-237 / SF-237-05 (D11) — en présentation, aucune pièce : la galerie se ferme et toute ouverture est refusée. */
+  private readonly piecesPresentation = effect(() => {
+    const on = this.presentation();
+    untracked(() => {
+      this.pieces.presentation.set(on);
+      if (on) {
+        this.pieces.reset();
+      }
+    });
+  });
+
+  /** F-237 / SF-237-05 — le bouton « pièces » : toutes les pièces du sujet engagé. */
+  async showSubjectPieces(): Promise<void> {
+    const id = this.subjectId();
+    if (!id) {
+      return;
+    }
+    const name = this.subject()?.name ?? 'le sujet';
+    const done = await this.pieces.openGallery({ subjectId: id, label: `Pièces — ${name}` }, { subjectId: id });
+    if (!done.ok) {
+      this.notice.set(refusalPhrase(done.reason));
+    }
+  }
   private readonly presenter = new PresentationFilter();
   private tourTimer: ReturnType<typeof setInterval> | null = null;
   private tourIndex = 0;

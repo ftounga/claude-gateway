@@ -27,6 +27,13 @@
             [disabled]="!subjectId()" (click)="openTerminal()">
       <mat-icon>terminal</mat-icon>
     </button>
+    <!-- F-237 / SF-237-05 — les pièces du sujet (entrées, preuves, productions), au toucher. -->
+    @if (!presentation()) {
+      <button mat-icon-button type="button" class="jv__pieces" aria-label="Montrer les pièces du sujet"
+              [disabled]="!subjectId()" (click)="showSubjectPieces()">
+        <mat-icon>photo_library</mat-icon>
+      </button>
+    }
     <!-- F-236 / SF-236-06 — HUD 3D : compteur « À envoyer », plein écran (PC), volet « Réglages ». -->
     @if (cockpitFollower) {
       <!-- F-236 / SF-236-24 — la vue cockpit : ce que l'écran principal relaie. -->
@@ -254,6 +261,9 @@
   @if (appUpdate.version(); as v) {
     <span class="jv__version" aria-label="Version de l’application">{{ v }}{{ appUpdate.pending() ? ' → nouvelle' : '' }}</span>
   }
+  <!-- F-237 / SF-237-05 — la galerie des pièces : éventail en 3D, grille en 2D, plein écran au téléphone. -->
+  <app-jarvis-piece-gallery [threeD]="stage3d.rendering() === '3d'" [sober]="sober()"
+                            [subjectLabel]="subject()?.name ?? null" />
 </main>
 <!-- F-236 / SF-236-04 — les étiquettes de l'univers 3D (DOM) : au-dessus de l'écran, un sujet se touche comme dans la constellation. -->
 <div #labels3d class="jv3d-labels" [style.opacity]="stage3d.shown() ? 1 : 0" [attr.aria-hidden]="!stage3d.shown()"></div>
