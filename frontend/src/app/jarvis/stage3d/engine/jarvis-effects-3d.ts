@@ -107,15 +107,21 @@ type DialSpec = Extract<Effect3d, { kind: 'dial' }>;
 type RadarSpec = Extract<Effect3d, { kind: 'radar' }>;
 type ActivitySpec = Extract<Effect3d, { kind: 'activity' }>;
 
-/** SF-236-26 — la carte d'activité : 12 clients au plus, 7 segments, 6 traits par segment, un anneau de 0,62. */
+/**
+ * SF-236-26 — la carte d'activité : 12 clients au plus, 7 segments, 6 traits par segment ; anneau de 0,42 et
+ * plancher 0,12 (polissage SF-236-27 : l'anneau de 0,62 débordait du halo du client).
+ */
 const ACTIVITY_RINGS = 12;
 const ACTIVITY_DAYS = 7;
 const ACTIVITY_STEPS = 6;
-const ACTIVITY_RADIUS = 0.62;
+const ACTIVITY_RADIUS = 0.42;
 /** Un segment éteint (aucun tour) reste à peine visible : l'anneau se lit en entier. */
-const ACTIVITY_FLOOR = 0.08;
+const ACTIVITY_FLOOR = 0.12;
 
-/** SF-236-25 — le radar : son rayon (au-delà de l'orbite des postes), un balayage en 4 s, un écho pulse en 1,2 s. */
+/**
+ * SF-236-25 — le radar : son rayon (au-delà de l'orbite des postes), un balayage en 4 s, un écho pulse en 1,2 s.
+ * Polissage SF-236-27 : échos de 16 à 40 px (ils se perdaient sur l'anneau).
+ */
 const RADAR_MARGIN = 1.4;
 const RADAR_SWEEP_MS = 4000;
 const RADAR_ECHO_MS = 1200;
@@ -844,7 +850,7 @@ export class Effects3d {
       this.col[used * 3] = tone[0] * glow;
       this.col[used * 3 + 1] = tone[1] * glow;
       this.col[used * 3 + 2] = tone[2] * glow;
-      this.size[used] = 8 + 14 * ease('sortie', k);
+      this.size[used] = 16 + 24 * ease('sortie', k);
       used++;
     }
     return used;

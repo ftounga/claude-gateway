@@ -18,6 +18,12 @@ describe('F-236 / SF-236-01 — banc de captures (T12)', () => {
     expect(readBanc(q('?banc=coeur&t=abc&niveau=zzz'), true)).toEqual({ scene: 'coeur', t: 0, level: null });
   });
 
+  it('SF-236-27 — les scènes de l’itération 4 sont lues (elles ne retombent pas sur le cœur)', () => {
+    for (const scene of ['cockpit-replay', 'presentation', 'veilleur', 'ambiance-radar', 'cockpit-activite']) {
+      expect(readBanc(q(`?banc=${scene}&t=1200`), true)?.scene).withContext(scene).toBe(scene);
+    }
+  });
+
   it('niveau de qualité imposé : haut, moyen, bas', () => {
     expect(readBanc(q('?banc=coeur&niveau=haut'), true)?.level).toBe('high');
     expect(readBanc(q('?banc=coeur&niveau=moyen'), true)?.level).toBe('medium');

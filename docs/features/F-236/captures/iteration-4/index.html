@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jarvis 3D — planche itération 4</title>
+<style>
+  :root { --navy: #0B1020; --orange: #E07B39; --orange-2: #F0954F; --cream: #F5EFE3; --cyan: #5FD4FF; }
+  body { margin: 0; padding: 24px 16px 48px; background: var(--navy); color: var(--cream);
+    font-family: 'Inter', system-ui, sans-serif; }
+  h1, h2, h3 { font-family: 'Space Grotesk', 'Inter', sans-serif; letter-spacing: .06em; text-transform: uppercase; }
+  h1 { color: var(--orange-2); font-size: 22px; }
+  h2 { color: var(--orange-2); font-size: 16px; margin-top: 40px; border-bottom: 1px solid #F0954F55; padding-bottom: 8px; }
+  h3 { font-size: 13px; color: var(--cream); margin: 24px 0 8px; }
+  p, li { max-width: 920px; line-height: 1.5; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; }
+  .strip figure.pc { flex: 0 0 300px; }
+  .strip figure.telephone { flex: 0 0 120px; }
+  figure { margin: 0; }
+  img { width: 100%; display: block; border: 1px solid #E07B3940; }
+  figcaption { font-size: 12px; opacity: .8; margin-top: 4px; }
+  .note { border-left: 3px solid var(--cyan); padding: 8px 12px; background: #5FD4FF14; }
+</style>
+</head>
+<body>
+<h1>Jarvis en 3D — planche de référence, itération 4 « Au-delà »</h1>
+<p>F-236 / SF-236-22 → SF-236-27. Les nouvelles vues de Jarvis : <b>replay visuel d'un tour</b> (lecteur privé, ×1 / ×4, pause, image par image) et « Pendant votre absence » ; <b>mode présentation</b> sans fuite (<code>?presentation=1</code> : personnes en initiales, ni coût, ni sortie, ni détail) ; <b>vue cockpit</b> sur un second écran (<code>?cockpit=1</code>, canal local, &lt; 100 ms) et <b>veilleur de nuit</b> ; <b>horloge des veilles</b> et <b>radar des alertes</b> ; <b>carte d'activité 7 jours</b> (seul agrégat nouveau, en lecture seule, filtré <code>user_id</code>, sans contenu).</p>
+<p>Aucun appel IA, aucune consigne touchée. Le bus vivant n'est jamais alimenté par le replay ; aucune lecture pendant un tour (journée, veilles, activité : à la demande, hors tour).</p>
+<p>Captures du banc headless en rendu logiciel (swiftshader) : téléphone 390 × 844 (niveau Moyen), PC 1920 × 1080 (niveau Haut), univers de test (CAGIP, Edenred ; sujet « Migration Forge », chantier 3, Zahi attendu).</p>
+<p><span class="note">Visa du PO délégué pour cette vague : la planche est fournie, les remarques de goût seront traitées à la reprise.</span></p>
+<section><h2>Replay d'un tour (SF-236-22)</h2><div class="grid"><figure class="telephone"><img loading="lazy" src="../au-dela/cockpit-replay-t1200-telephone.png" alt="Le tour de 9 h 15 rejoué — barre T-R (×1 / ×4, pause, image par image) · téléphone"><figcaption>Le tour de 9 h 15 rejoué — barre T-R (×1 / ×4, pause, image par image) · téléphone</figcaption></figure><figure class="pc"><img loading="lazy" src="../au-dela/cockpit-replay-t1200-pc.png" alt="Le tour de 9 h 15 rejoué — barre T-R (×1 / ×4, pause, image par image) · PC"><figcaption>Le tour de 9 h 15 rejoué — barre T-R (×1 / ×4, pause, image par image) · PC</figcaption></figure></div></section>
+<section><h2>Mode présentation (SF-236-23)</h2><div class="grid"><figure class="telephone"><img loading="lazy" src="../au-dela/presentation-t1200-telephone.png" alt="Message pour « Z. » — personnes en initiales, ni détail ni sortie · téléphone"><figcaption>Message pour « Z. » — personnes en initiales, ni détail ni sortie · téléphone</figcaption></figure><figure class="pc"><img loading="lazy" src="../au-dela/presentation-t1200-pc.png" alt="Message pour « Z. » — personnes en initiales, ni détail ni sortie · PC"><figcaption>Message pour « Z. » — personnes en initiales, ni détail ni sortie · PC</figcaption></figure></div></section>
+<section><h2>Veilleur de nuit (SF-236-24)</h2><div class="grid"><figure class="telephone"><img loading="lazy" src="../au-dela/veilleur-t1200-telephone.png" alt="Horloge, prochaines veilles, poste muet qui réveille l'écran · téléphone"><figcaption>Horloge, prochaines veilles, poste muet qui réveille l'écran · téléphone</figcaption></figure><figure class="pc"><img loading="lazy" src="../au-dela/veilleur-t1200-pc.png" alt="Horloge, prochaines veilles, poste muet qui réveille l'écran · PC"><figcaption>Horloge, prochaines veilles, poste muet qui réveille l'écran · PC</figcaption></figure></div></section>
+<section><h2>Radar des alertes et horloge des veilles (SF-236-25)</h2><div class="grid"><figure class="telephone"><img loading="lazy" src="../au-dela/ambiance-radar-t1200-telephone.png" alt="Trois alertes réelles, trois échos à l'azimut de leur client · téléphone"><figcaption>Trois alertes réelles, trois échos à l'azimut de leur client · téléphone</figcaption></figure><figure class="pc"><img loading="lazy" src="../au-dela/ambiance-radar-t1200-pc.png" alt="Trois alertes réelles, trois échos à l'azimut de leur client · PC"><figcaption>Trois alertes réelles, trois échos à l'azimut de leur client · PC</figcaption></figure><figure class="telephone"><img loading="lazy" src="../au-dela/cockpit-t1200-telephone.png" alt="Cockpit : horloge des veilles (lun → ven, la prochaine en surbrillance) · téléphone"><figcaption>Cockpit : horloge des veilles (lun → ven, la prochaine en surbrillance) · téléphone</figcaption></figure><figure class="pc"><img loading="lazy" src="../au-dela/cockpit-t1200-pc.png" alt="Cockpit : horloge des veilles (lun → ven, la prochaine en surbrillance) · PC"><figcaption>Cockpit : horloge des veilles (lun → ven, la prochaine en surbrillance) · PC</figcaption></figure></div></section>
+<section><h2>Carte d'activité 7 jours (SF-236-26)</h2><div class="grid"><figure class="telephone"><img loading="lazy" src="../au-dela/cockpit-activite-t1200-telephone.png" alt="Anneaux à 7 segments autour des clients ; section « Activité · 7 jours » · téléphone"><figcaption>Anneaux à 7 segments autour des clients ; section « Activité · 7 jours » · téléphone</figcaption></figure><figure class="pc"><img loading="lazy" src="../au-dela/cockpit-activite-t1200-pc.png" alt="Anneaux à 7 segments autour des clients ; section « Activité · 7 jours » · PC"><figcaption>Anneaux à 7 segments autour des clients ; section « Activité · 7 jours » · PC</figcaption></figure></div></section>
+<p><b>Polissage final (SF-236-27)</b> : anneau d'activité ramené de 0,62 à 0,42 (il débordait du halo du client) et plancher d'éclat à 0,12 (l'anneau se lit en entier) ; échos du radar de 16 à 40 px (ils se perdaient sur l'anneau) ; les scènes de banc de l'itération 4 enregistrées (elles retombaient sur le cœur seul).</p>
+<p><b>Règles §7.3</b> : rouge réservé aux alertes (radar : veille et poste muet ; cloche en teinte d'attente) · texte DOM net (barre de replay, veilleur, horloge, activité) · rien ne navigue · aucun appel pendant un tour.</p>
+<p><b>Mesures</b> : i/s PC et téléphone à relever sur les appareils du PO (le banc est en rendu logiciel) ; l'événement <code>RENDER</code> remonte désormais aussi les vues ouvertes (<code>replays</code>, <code>presentations</code>, <code>cockpits</code>, <code>nights</code>, <code>activity</code>). Lecture J+7 / J+14 après le déploiement de fin de vague (<code>GET /api/admin/jarvis/measure</code>).</p>
+</body>
+</html>

@@ -1,0 +1,34 @@
+{
+  "title": "Jarvis 3D — planche itération 4",
+  "heading": "Jarvis en 3D — planche de référence, itération 4 « Au-delà »",
+  "intro": [
+    "F-236 / SF-236-22 → SF-236-27. Les nouvelles vues de Jarvis : <b>replay visuel d'un tour</b> (lecteur privé, ×1 / ×4, pause, image par image) et « Pendant votre absence » ; <b>mode présentation</b> sans fuite (<code>?presentation=1</code> : personnes en initiales, ni coût, ni sortie, ni détail) ; <b>vue cockpit</b> sur un second écran (<code>?cockpit=1</code>, canal local, &lt; 100 ms) et <b>veilleur de nuit</b> ; <b>horloge des veilles</b> et <b>radar des alertes</b> ; <b>carte d'activité 7 jours</b> (seul agrégat nouveau, en lecture seule, filtré <code>user_id</code>, sans contenu).",
+    "Aucun appel IA, aucune consigne touchée. Le bus vivant n'est jamais alimenté par le replay ; aucune lecture pendant un tour (journée, veilles, activité : à la demande, hors tour).",
+    "Captures du banc headless en rendu logiciel (swiftshader) : téléphone 390 × 844 (niveau Moyen), PC 1920 × 1080 (niveau Haut), univers de test (CAGIP, Edenred ; sujet « Migration Forge », chantier 3, Zahi attendu).",
+    "<span class=\"note\">Visa du PO délégué pour cette vague : la planche est fournie, les remarques de goût seront traitées à la reprise.</span>"
+  ],
+  "sections": [
+    { "title": "Replay d'un tour (SF-236-22)", "items": [
+      { "label": "Le tour de 9 h 15 rejoué — barre T-R (×1 / ×4, pause, image par image)", "base": "../au-dela/cockpit-replay-t1200" }
+    ] },
+    { "title": "Mode présentation (SF-236-23)", "items": [
+      { "label": "Message pour « Z. » — personnes en initiales, ni détail ni sortie", "base": "../au-dela/presentation-t1200" }
+    ] },
+    { "title": "Veilleur de nuit (SF-236-24)", "items": [
+      { "label": "Horloge, prochaines veilles, poste muet qui réveille l'écran", "base": "../au-dela/veilleur-t1200" }
+    ] },
+    { "title": "Radar des alertes et horloge des veilles (SF-236-25)", "items": [
+      { "label": "Trois alertes réelles, trois échos à l'azimut de leur client", "base": "../au-dela/ambiance-radar-t1200" },
+      { "label": "Cockpit : horloge des veilles (lun → ven, la prochaine en surbrillance)", "base": "../au-dela/cockpit-t1200" }
+    ] },
+    { "title": "Carte d'activité 7 jours (SF-236-26)", "items": [
+      { "label": "Anneaux à 7 segments autour des clients ; section « Activité · 7 jours »", "base": "../au-dela/cockpit-activite-t1200" }
+    ] }
+  ],
+  "sequences": [],
+  "notes": [
+    "<b>Polissage final (SF-236-27)</b> : anneau d'activité ramené de 0,62 à 0,42 (il débordait du halo du client) et plancher d'éclat à 0,12 (l'anneau se lit en entier) ; échos du radar de 16 à 40 px (ils se perdaient sur l'anneau) ; les scènes de banc de l'itération 4 enregistrées (elles retombaient sur le cœur seul).",
+    "<b>Règles §7.3</b> : rouge réservé aux alertes (radar : veille et poste muet ; cloche en teinte d'attente) · texte DOM net (barre de replay, veilleur, horloge, activité) · rien ne navigue · aucun appel pendant un tour.",
+    "<b>Mesures</b> : i/s PC et téléphone à relever sur les appareils du PO (le banc est en rendu logiciel) ; l'événement <code>RENDER</code> remonte désormais aussi les vues ouvertes (<code>replays</code>, <code>presentations</code>, <code>cockpits</code>, <code>nights</code>, <code>activity</code>). Lecture J+7 / J+14 après le déploiement de fin de vague (<code>GET /api/admin/jarvis/measure</code>)."
+  ]
+}

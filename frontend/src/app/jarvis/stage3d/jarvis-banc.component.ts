@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, afterNextRender, inject, viewChild } from '@angular/core';
 
-import { bancPlan, bancScreen } from './jarvis-banc-scenes';
+import { BANC_ACTIVITY, bancPlan, bancScreen } from './jarvis-banc-scenes';
 import { JARVIS_BANC, JarvisStage3dComponent } from './jarvis-stage-3d.component';
 import { MOTION_DURATIONS, ease, holoCssVars } from './jarvis-motion';
 import { JarvisCockpitComponent } from './hud/jarvis-cockpit.component';
@@ -14,7 +14,7 @@ import { OPEN_FOLDS, writeFolds } from './hud/jarvis-cockpit-layout';
 import { ShowFilter } from '../scenes/jarvis-show';
 import { Observable, of } from 'rxjs';
 import { AtelierMessage } from '../../core/models/atelier.models';
-import { JARVIS_DAY_HISTORY, JARVIS_WATCHES } from './hud/jarvis-cockpit.component';
+import { JARVIS_ACTIVITY, JARVIS_DAY_HISTORY, JARVIS_WATCHES } from './hud/jarvis-cockpit.component';
 
 /**
  * F-236 / SF-236-01 — **la page du banc de captures** (`/jarvis-banc?banc=<scène>&t=<ms>`), <b>développement
@@ -46,7 +46,9 @@ import { JARVIS_DAY_HISTORY, JARVIS_WATCHES } from './hud/jarvis-cockpit.compone
     // SF-236-24 — le veilleur du banc : trois veilles simulées, aucun appel.
     { provide: VeilleService, useValue: { listForAccount: () => bancWatches() } },
     // SF-236-25 — l'horloge des veilles du cockpit : les mêmes veilles simulées.
-    { provide: JARVIS_WATCHES, useValue: () => bancWatches() }],
+    { provide: JARVIS_WATCHES, useValue: () => bancWatches() },
+    // SF-236-26 — la carte d'activité du banc (aucun appel).
+    { provide: JARVIS_ACTIVITY, useValue: () => of(BANC_ACTIVITY) }],
   host: { '[style]': 'vars' },
   styleUrls: ['./jarvis-labels.scss'],
   styles: [':host { display: block; min-height: 100dvh; background: #0B1020; }'],
@@ -121,6 +123,10 @@ export class JarvisBancComponent {
           replay.togglePause();
         }
       }), 1500));
+    }
+    if (this.scene === 'cockpit-activite') {
+      // SF-236-26 — la section « Activité · 7 jours » ouverte (les anneaux 3D viennent du plan du banc).
+      afterNextRender(() => setTimeout(() => this.cockpitRef()?.toggleActivity(), 1500));
     }
     if (this.scene === 'cockpit-vues') {
       // SF-236-20 — au téléphone, le volet « Aujourd'hui » ouvert depuis « ☰ Vues ».

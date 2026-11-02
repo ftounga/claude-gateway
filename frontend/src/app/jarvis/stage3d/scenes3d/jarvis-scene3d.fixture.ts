@@ -80,6 +80,9 @@ export const BANC_AMBIENTS: Readonly<Record<string, Ambient>> = {
   cloche: { ...QUIET, calling: { subjectId: 's-doc', label: 'Doc archi' } },
   cout: { ...QUIET, cost: '0,42 €' },
   veille: { ...QUIET, alert: { clientKey: 'h-cagip', label: 'Veille Jira · CAGIP — 2 changements' } },
+  // SF-236-25 — le radar : trois alertes réelles, trois échos (veille et poste muet en rouge, cloche en attente).
+  radar: { ...QUIET, hostDown: { clientKey: 'h-eden', name: 'Edenred' }, calling: { subjectId: 's-doc', label: 'Doc archi' },
+    alert: { clientKey: 'h-cagip', label: 'Veille Jira · CAGIP — 2 changements' } },
 };
 
 /** SF-236-09 — une session de test : des fichiers lus et écrits dans trois dossiers (nuage du dépôt). */
