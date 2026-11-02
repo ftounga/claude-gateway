@@ -4,6 +4,9 @@ import { pieceVoiceCommand } from './pieces/jarvis-piece-voice';
 import { screenBlock } from './pieces/jarvis-piece-screen';
 import { ShowCommand } from './pieces/jarvis-piece-show';
 import { StoryRunner } from './pieces/jarvis-piece-story';
+import {
+  VoiceComment, commentQuestion, isPinCommand, isUnpinCommand, parseVoiceComment,
+} from './pieces/jarvis-piece-comment';
 import { Piece } from './pieces/jarvis-piece.models';
 import {
   ClosedChantier, PROOF_OFFER_MS, closedChantiers, pieceShowCommand, proofDemand, proofOfferPhrase, proofPieces,
@@ -1258,6 +1261,22 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
     // F-237 / SF-237-09 (§6.4, §14 idée 6) — « Voulez-vous que je génère la preuve ? » : un « oui » net délègue
     // capturer_preuves à Opus ; « non » clôt ; une phrase ambiguë repart au cerveau comme toute parole.
+    // F-237 / SF-237-12 — « Je note à 0:42 : … Vous confirmez ? » : seul un « oui » net écrit le retour.
+    const comment = this.pendingComment;
+    this.pendingComment = null;
+    if (comment) {
+      const answer = classifyConfirmation(text);
+      if (answer === 'oui') {
+        const saved = await this.pieceClient.addVideoComment(comment.videoId, comment.version, comment.tStartMs,
+          comment.text);
+        await this.say(saved ? 'C’est noté.' : 'Je n’ai pas pu noter ce retour.');
+        return;
+      }
+      if (answer === 'non') {
+        await this.say('Entendu, je ne note rien.');
+        return;
+      }
+    }
     const offer = this.proofOffer;
     this.proofOffer = null;
     if (offer && Date.now() - offer.at <= PROOF_OFFER_MS) {
@@ -1311,6 +1330,25 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
     // F-237 / SF-237-05 (§5.3) — navigation parmi les pièces sur l'appareil, sans IA : liste fermée, phrase entière.
     const pieceAction = pieceVoiceCommand(text, this.pieces.nav());
+    // F-237 / SF-237-12 — « note ici : … » sur une vidéo ouverte : reformulé, puis confirmé.
+    const dictated = parseVoiceComment(text, this.pieces.nav(), this.pieces.mediaTime());
+    if (dictated) {
+      this.pieces.dispatch({ type: 'pause' });
+      this.pendingComment = dictated;
+      await this.say(commentQuestion(dictated));
+      return;
+    }
+    // F-237 / SF-237-12 — « épingle au cockpit » / « désépingle ».
+    if (this.pieces.selected() && isPinCommand(text)) {
+      await this.pinToCockpit();
+      return;
+    }
+    if (isUnpinCommand(text) && this.pinnedPiece) {
+      this.pinnedPiece = null;
+      this.leader?.pin(null);
+      await this.say('Le cockpit est libéré.');
+      return;
+    }
     // F-237 / SF-237-10 — pendant un récit, « suivante », « pause », « reprends », « ferme » pilotent le récit.
     if (pieceAction && this.story && this.storyDrives(pieceAction.type)) {
       return;
@@ -2107,6 +2145,37 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** F-237 / SF-237-12 — le retour dicté en attente de « oui ». */
+  private pendingComment: VoiceComment | null = null;
+  /** F-237 / SF-237-12 — la pièce épinglée au cockpit (meneur). */
+  private pinnedPiece: Piece | null = null;
+  /** Un cockpit écoute-t-il ? (le bouton « Cockpit » de la galerie n'apparaît qu'alors). */
+  readonly cockpitListening = signal(false);
+
+  /** F-237 / SF-237-12 — la pièce héros passe sur le cockpit (2ᵉ écran, canal local, aucun réseau). */
+  async pinToCockpit(): Promise<void> {
+    const piece = this.pieces.selected();
+    if (!piece || !this.leader) {
+      await this.say('Aucun cockpit n’est ouvert.');
+      return;
+    }
+    this.pinnedPiece = piece;
+    const heard = this.leader.pin(piece);
+    await this.say(heard ? 'Épinglée au cockpit.' : 'Aucun cockpit n’est ouvert.');
+  }
+
+  /** Côté cockpit : la pièce épinglée s'affiche seule, en héros ; `null` la retire. */
+  private showPinned(piece: Piece | null): void {
+    if (!piece) {
+      this.pieces.reset();
+      return;
+    }
+    const shown = this.pieces.show({ subjectId: piece.subjectId ?? null, label: 'Épinglée' }, [piece]);
+    if (shown.ok) {
+      this.pieces.dispatch({ type: 'select', ref: 1 });
+    }
+  }
+
   /** F-237 / SF-237-10 — le récit en cours (« raconte-moi le chantier 3 »), ou `null`. */
   private story: StoryRunner | null = null;
 
@@ -2323,7 +2392,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
         this.remoteSignals.set(signals);
         this.linkLatency.set(latency);
         this.leaderGone.set(signals === null);
-      }));
+      }), () => Date.now(), (piece) => this.zone.run(() => this.showPinned(piece)));
     } else {
       this.leader = new CockpitLeader(channel);
     }
@@ -2331,7 +2400,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
   })();
   private readonly linkPublish = effect(() => {
     const s = this.stageSignals();
-    untracked(() => this.leader?.publish(s));
+    untracked(() => {
+      this.leader?.publish(s);
+      this.cockpitListening.set(this.leader?.listening ?? false);
+    });
   });
 
   /** Le navigateur sait-il ouvrir une seconde fenêtre reliée (canal local) ? */

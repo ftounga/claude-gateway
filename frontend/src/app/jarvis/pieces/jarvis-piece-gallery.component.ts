@@ -1,5 +1,5 @@
-import { ChangeDetectionStrategy, Component, OnDestroy, computed, effect, inject, input, signal, untracked,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnDestroy, computed, effect, inject, input, output, signal,
+  untracked } from '@angular/core';
 
 import { JarvisState } from '../jarvis-orb.component';
 import { JarvisPieceClient } from './jarvis-piece-client';
@@ -68,6 +68,9 @@ const SWIPE_PX = 60;
               <button type="button" class="pg__btn" (click)="act({ type: 'prev' })" aria-label="Pièce précédente">‹</button>
               <button type="button" class="pg__btn" (click)="act({ type: 'next' })" aria-label="Pièce suivante">›</button>
               <button type="button" class="pg__btn" (click)="act({ type: 'back' })">Galerie</button>
+              @if (canPin()) {
+                <button type="button" class="pg__btn" (click)="pin.emit()" aria-label="Épingler au cockpit">Cockpit</button>
+              }
             }
             <button type="button" class="pg__btn" (click)="act({ type: 'close' })" aria-label="Fermer les pièces">✕</button>
           </div>
@@ -185,6 +188,10 @@ export class JarvisPieceGalleryComponent implements OnDestroy {
   readonly sober = input(false);
   /** Libellé du sujet pour le fil d'Ariane. */
   readonly subjectLabel = input<string | null>(null);
+  /** F-237 / SF-237-12 — un cockpit est ouvert : la pièce peut y être épinglée. */
+  readonly canPin = input(false);
+  /** F-237 / SF-237-12 — « Épingler au cockpit ». */
+  readonly pin = output<void>();
   /** L'état de Jarvis, pour le son des pièces (SF-237-06, D10). */
   readonly jarvisState = input<JarvisState>('repos');
 

@@ -1,5 +1,6 @@
 import type { Ambient } from '../../scenes/jarvis-scene-bus.service';
 import { ScreenSignals } from '../jarvis-stage-director';
+import type { Piece } from '../../pieces/jarvis-piece.models';
 
 /**
  * F-236 / SF-236-24 — **la vue cockpit sur un écran externe** (NF-12, `?cockpit=1`). Fichier <b>pur</b> (le canal est
@@ -28,7 +29,9 @@ export type LinkMessage =
   | { type: 'hello' }
   | { type: 'leader' }
   | { type: 'bye'; from: 'leader' | 'follower' }
-  | { type: 'signals'; leader: string; seq: number; sentAt: number; signals: WireSignals };
+  | { type: 'signals'; leader: string; seq: number; sentAt: number; signals: WireSignals }
+  /** F-237 / SF-237-12 — la pièce épinglée au cockpit (`null` : désépinglée). Objet clonable, aucun binaire. */
+  | { type: 'piece'; leader: string; piece: Piece | null };
 
 export function encodeSignals(s: ScreenSignals): WireSignals {
   return { ...s, ambient: s.ambient ? { ...s.ambient, liveSubjects: [...s.ambient.liveSubjects] } : null };
@@ -40,7 +43,7 @@ export function decodeSignals(w: WireSignals): ScreenSignals {
 
 function isMessage(data: unknown): data is LinkMessage {
   const type = (data as { type?: unknown } | null)?.type;
-  return type === 'hello' || type === 'leader' || type === 'bye' || type === 'signals';
+  return type === 'hello' || type === 'leader' || type === 'bye' || type === 'signals' || type === 'piece';
 }
 
 /** Le meneur : publie l'état de sa scène tant qu'un suiveur écoute. */
@@ -48,6 +51,7 @@ export class CockpitLeader {
   private followers = false;
   private seq = 0;
   private last: ScreenSignals | null = null;
+  private pinned: Piece | null = null;
   /** Deux écrans principaux ouverts : le suiveur suit celui qui a parlé en dernier. */
   private readonly id = Math.random().toString(36).slice(2);
 
@@ -61,6 +65,9 @@ export class CockpitLeader {
         this.followers = true;
         if (this.last) {
           this.send(this.last);
+        }
+        if (this.pinned) {
+          this.sendPiece();
         }
       } else if (m.type === 'bye' && m.from === 'follower') {
         this.followers = false;
@@ -83,6 +90,23 @@ export class CockpitLeader {
     this.last = s;
     if (this.followers) {
       this.send(s);
+    }
+  }
+
+  /** F-237 / SF-237-12 — épingle une pièce au cockpit (ou la retire) ; rend vrai si un cockpit écoute. */
+  pin(piece: Piece | null): boolean {
+    this.pinned = piece;
+    if (this.followers) {
+      this.sendPiece();
+    }
+    return this.followers;
+  }
+
+  private sendPiece(): void {
+    try {
+      this.channel.postMessage({ type: 'piece', leader: this.id, piece: this.pinned });
+    } catch {
+      // canal fermé
     }
   }
 
@@ -112,7 +136,8 @@ export class CockpitFollower {
 
   constructor(private readonly channel: LinkChannel,
       private readonly onSignals: (signals: ScreenSignals | null, latencyMs: number | null) => void,
-      private readonly now: () => number = () => Date.now()) {
+      private readonly now: () => number = () => Date.now(),
+      private readonly onPiece: (piece: Piece | null) => void = () => undefined) {
     channel.onmessage = (event) => {
       const m = event.data;
       if (!isMessage(m)) {
@@ -128,6 +153,8 @@ export class CockpitFollower {
         this.onSignals(null, null);
       } else if (m.type === 'leader') {
         this.channel.postMessage({ type: 'hello' });
+      } else if (m.type === 'piece') {
+        this.onPiece(m.piece);
       }
     };
     channel.postMessage({ type: 'hello' });

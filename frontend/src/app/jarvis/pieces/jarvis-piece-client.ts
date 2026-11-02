@@ -91,6 +91,23 @@ export class JarvisPieceClient {
     }
   }
 
+  /**
+   * F-237 / SF-237-12 — pose un retour horodaté sur une vidéo (route existante F-215, `video_comments`). Rend vrai si
+   * la passerelle l'a créé. Ne lève jamais.
+   */
+  async addVideoComment(videoId: string, version: number | null, tStartMs: number, text: string): Promise<boolean> {
+    try {
+      const response = await fetch(`/api/videos/${encodeURIComponent(videoId)}/comments`, {
+        method: 'POST',
+        headers: { ...this.headers(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...(version != null ? { version } : {}), tStartMs, text }),
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
   /** Un JSON passerelle (ticket de lecture d'une page, d'une vidéo). */
   async json<T>(path: string | null | undefined, signal?: AbortSignal): Promise<T | null> {
     if (!path || !path.startsWith('/')) {
