@@ -24,6 +24,9 @@ import { HEART_RADIUS } from './jarvis-heart-3d';
 import { Heart3d } from './jarvis-heart-3d';
 import { Universe3d } from './jarvis-universe-3d';
 import { JarvisPost } from './jarvis-post';
+import { Effects3d } from './jarvis-effects-3d';
+import { Panels3d } from './jarvis-panels-3d';
+import { panelViewport } from '../jarvis-panels';
 
 /**
  * F-236 / SF-236-01 — **le moteur 3D, socle** : seul fichier (avec ses voisins de `engine/`) qui importe `three`,
@@ -143,6 +146,10 @@ class ThreeJarvisEngine implements JarvisEngine {
   private readonly brain: Brain3d | null;
   /** SF-236-04 — l'univers et ses liaisons. */
   private readonly universe: Universe3d | null;
+  /** SF-236-08 — les panneaux holographiques (DOM) et les effets des scènes. */
+  private readonly panels: Panels3d | null;
+  private readonly effects: Effects3d | null;
+  private readonly projected = new Vector3();
   private width: number;
   private height: number;
   /** SF-236-05 — la caméra : directeur pur + ressorts amortis critiques (lacet, tangage, distance, point visé). */
@@ -219,6 +226,8 @@ class ThreeJarvisEngine implements JarvisEngine {
       this.universe = new Universe3d(this.scene, options.labelHost, options.level, this.renderer.getPixelRatio(),
         options.onTouch);
       this.universe.setSize(options.width, options.height);
+      this.panels = new Panels3d(options.labelHost);
+      this.effects = new Effects3d(this.scene);
       this.applyPlan(options.plan, start, true);
       this.placeCamera(overviewShot(overviewDistance(options.plan.universe.layout.extent,
         options.width / Math.max(options.height, 1)), options.width < options.height * 0.8), true);
@@ -241,6 +250,8 @@ class ThreeJarvisEngine implements JarvisEngine {
       this.heart = null;
       this.brain = null;
       this.universe = null;
+      this.panels = null;
+      this.effects = null;
     }
     this.post = new JarvisPost(this.renderer, this.scene, this.camera, options.width, options.height, options.level);
     // Le banc (horloge figée) n'adapte pas la qualité : ses captures restent reproductibles.
@@ -322,14 +333,30 @@ class ThreeJarvisEngine implements JarvisEngine {
       return;
     }
     // Le cœur : distance au centre projeté, rayon apparent du cœur.
-    this.world.set(0, 0, 0).project(this.camera);
-    const cx = (this.world.x + 1) * 0.5 * this.width;
-    const cy = (1 - this.world.y) * 0.5 * this.height;
-    const halfV = Math.tan((CAMERA_FOV * Math.PI) / 360);
-    const radiusPx = Math.max(28, (HEART_RADIUS / (this.camera.position.length() * halfV)) * (this.height / 2));
-    if ((x - cx) ** 2 + (y - cy) ** 2 <= radiusPx * radiusPx) {
+    const core = this.coreScreen();
+    if ((x - core.x) ** 2 + (y - core.y) ** 2 <= core.r * core.r) {
       this.options.onTalk();
     }
+  }
+
+  /** Le cœur à l'écran : centre projeté et rayon apparent (≥ 28 px). */
+  private coreScreen(): { x: number; y: number; r: number } {
+    this.projected.set(0, 0, 0).project(this.camera);
+    const halfV = Math.tan((CAMERA_FOV * Math.PI) / 360);
+    const r = Math.max(28, (HEART_RADIUS / (this.camera.position.length() * halfV)) * (this.height / 2));
+    return { x: (this.projected.x + 1) * 0.5 * this.width, y: (1 - this.projected.y) * 0.5 * this.height, r };
+  }
+
+  /** SF-236-08 — un nœud à l'écran (ancre d'un panneau) ; `null` s'il n'est pas posé ou derrière la caméra. */
+  private project(key: string): { x: number; y: number } | null {
+    if (!this.universe || !this.universe.locate(key, this.projected)) {
+      return null;
+    }
+    this.projected.project(this.camera);
+    if (this.projected.z > 1) {
+      return null;
+    }
+    return { x: (this.projected.x + 1) * 0.5 * this.width, y: (1 - this.projected.y) * 0.5 * this.height };
   }
 
   private overview(): number {
@@ -367,6 +394,10 @@ class ThreeJarvisEngine implements JarvisEngine {
       return;
     }
     this.universe?.setView(plan.universe.layout, plan.universe.graph, opening);
+    // SF-236-08 — la scène 3D : panneaux (T-P1 / T-P2) et effets ; au banc, tout part de t = 0.
+    const replay = opening && this.options.replayFromZero;
+    this.panels?.set(plan.scene?.panels ?? [], replay ? 0 : now, replay && plan.bancPanelsOut === true);
+    this.effects?.set(plan.scene?.effects ?? [], replay ? 0 : now, replay);
     if (opening && this.options.replayFromZero) {
       this.heart.setMood('repos', 0, true);
       this.heart.setMood(plan.mood, 0, false);
@@ -419,6 +450,8 @@ class ThreeJarvisEngine implements JarvisEngine {
     });
     this.scene.clear();
     this.gestures?.dispose();
+    this.panels?.dispose();
+    this.effects?.dispose();
     this.universe?.dispose();
     this.post.dispose();
     this.renderer.dispose();
@@ -497,6 +530,16 @@ class ThreeJarvisEngine implements JarvisEngine {
       }
     }
     this.moveCamera(frameNow, dt, entry.distance);
+    if (this.effects && this.universe) {
+      const universe = this.universe;
+      this.camera.updateMatrixWorld();
+      this.effects.frame(t, this.camera, (key, out) => universe.locate(key, out));
+    }
+    if (this.panels && this.panels.count > 0) {
+      // Seulement quand un panneau est affiché : le placement (DOM) n'existe pas au repos.
+      this.panels.frame(t, (key) => this.project(key), panelViewport(this.width, this.height, this.width < 768,
+        this.coreScreen()));
+    }
     this.post.render(bloom);
     this.universe?.renderLabels(this.scene, this.camera);
     if (!this.firstFrameSeen) {

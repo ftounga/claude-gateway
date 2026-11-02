@@ -436,6 +436,17 @@ export class Universe3d {
     });
   }
 
+  /** SF-236-08 — où est un nœud, en coordonnées du monde (ancrage des panneaux et des effets) ; sans allocation. */
+  locate(key: string, out: Vector3): boolean {
+    const live = this.byKey.get(key);
+    if (!live) {
+      return false;
+    }
+    out.set(live.x, live.y, live.z);
+    this.group.localToWorld(out);
+    return true;
+  }
+
   /** Les étiquettes visibles (tests au banc). */
   get visibleLabels(): number {
     return this.live.filter((l) => l.label?.visible).length;

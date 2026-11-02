@@ -2,7 +2,11 @@ import { BrainEnd, BrainsState, brainsFor } from './jarvis-brains';
 import { JarvisUniverse } from '../scenes/jarvis-universe.models';
 import { HeartMood, JarvisVoiceState, heartMood } from './jarvis-heart';
 import { EMPTY_LAYOUT, Layout3d, Node3d, layoutUniverse3d } from './jarvis-layout-3d';
-import { Graph3d, linkGraph } from './jarvis-link-graph';
+import { Graph3d, MAX_LIT_NODES, linkGraph } from './jarvis-link-graph';
+import { SceneView } from '../scenes/jarvis-scene-reader';
+import { directScene } from './scenes3d';
+import { boundPanels } from './jarvis-panels';
+import { ScenePlan3d } from './scenes3d/jarvis-scene3d.model';
 
 /**
  * F-236 — **le directeur de scène** (cadrage §3). Fichier <b>pur</b> : il lit les signaux existants de l'écran et
@@ -51,11 +55,14 @@ export interface ScreenSignals {
   said: readonly string[];
   /** H3 — « Montrer » : clés des éléments montrés, `null` sinon. */
   shown: readonly string[] | null;
+  /** H2 — SF-236-08 : la scène F-234 en cours (une à la fois) et le compteur d'appels d'outil du tour. */
+  scene: SceneView | null;
+  pulses: number;
 }
 
 export const IDLE_SCREEN: ScreenSignals = { state: 'repos', frozen: false, waiting: false, conversing: false,
   wakeCalls: 0, delegations: 0, fastBrainOn: false, turnActive: false, brainEnd: 'normal', universe: null,
-  subjectId: null, lit: [], said: [], shown: null };
+  subjectId: null, lit: [], said: [], shown: null, scene: null, pulses: 0 };
 
 /** Deux relevés de l'écran identiques (évite de recalculer le plan pour rien). */
 export function sameScreen(a: ScreenSignals, b: ScreenSignals): boolean {
@@ -63,7 +70,8 @@ export function sameScreen(a: ScreenSignals, b: ScreenSignals): boolean {
     && a.wakeCalls === b.wakeCalls && a.delegations === b.delegations && a.fastBrainOn === b.fastBrainOn
     && a.turnActive === b.turnActive && a.brainEnd === b.brainEnd && a.universe === b.universe
     && a.subjectId === b.subjectId && sameKeys(a.lit, b.lit) && sameKeys(a.said, b.said)
-    && (a.shown === b.shown || (!!a.shown && !!b.shown && sameKeys(a.shown, b.shown)));
+    && (a.shown === b.shown || (!!a.shown && !!b.shown && sameKeys(a.shown, b.shown)))
+    && a.scene === b.scene && a.pulses === b.pulses;
 }
 
 function sameKeys(a: readonly string[], b: readonly string[]): boolean {
@@ -90,7 +98,10 @@ export function universeView(s: ScreenSignals, asleep: boolean, narrow: boolean)
   if (!s.universe) {
     return EMPTY_VIEW;
   }
-  const lit = [...s.said, ...s.lit.filter((k) => !s.said.includes(k))];
+  // SF-236-08 — l'entité de la scène en cours est allumée elle aussi (S-GEN : la cible reconnue, D2 : ≤ 3).
+  const cited = [...s.said, ...s.lit.filter((k) => !s.said.includes(k))];
+  const entity = s.scene?.entity?.key;
+  const lit = entity && !cited.includes(entity) && cited.length < MAX_LIT_NODES ? [...cited, entity] : cited;
   const layout = layoutUniverse3d(s.universe, { subjectId: s.subjectId, narrow,
     shown: new Set([...lit, ...(s.shown ?? [])]) });
   const graph = linkGraph(layout, { subjectId: s.subjectId, lit, shown: s.shown, asleep });
@@ -112,14 +123,28 @@ export interface StagePlan {
   bancCamera?: 'zoom' | 'dezoom';
   /** SF-236-04 — l'univers et ses liaisons. */
   universe: UniverseView;
+  /** SF-236-08 — la scène 3D en cours (panneaux holographiques et effets), `null` sans scène. */
+  scene: ScenePlan3d | null;
+  /** Banc seulement : les panneaux de la scène sortent depuis t = 0 (séquence T-P2). */
+  bancPanelsOut?: boolean;
+}
+
+/** SF-236-08 — la scène F-234 en cours ⇒ son plan 3D, ancré sur l'univers posé. */
+export function stageScene(s: ScreenSignals, view: UniverseView, narrow: boolean): ScenePlan3d | null {
+  const plan = directScene(s.scene, { universe: s.universe, subjectId: s.subjectId, pulses: s.pulses, narrow,
+    nodes: new Set(view.layout.nodes.map((n) => n.key)) });
+  // T6 — pool borné (PC 8, téléphone 2) ; « devant tout » (S2) d'abord, jamais écarté.
+  return plan ? { ...plan, panels: boundPanels(plan.panels, narrow) } : null;
 }
 
 export const IDLE_SIGNALS: StageSignals = { state: 'repos', frozen: false, waiting: false, asleep: false, wakes: 0,
   delegations: 0, fastBrainOn: false, turnActive: false, brainEnd: 'normal' };
 
-export function directStage(signals: StageSignals, universe: UniverseView = EMPTY_VIEW): StagePlan {
+export function directStage(signals: StageSignals, universe: UniverseView = EMPTY_VIEW,
+    scene: ScenePlan3d | null = null): StagePlan {
   return {
     universe,
+    scene,
     mood: heartMood(signals),
     wakes: signals.wakes,
     brains: brainsFor({ delegations: signals.delegations, fastBrainOn: signals.fastBrainOn,
@@ -130,5 +155,11 @@ export function directStage(signals: StageSignals, universe: UniverseView = EMPT
 /** Deux plans identiques ⇒ le moteur n'a rien à faire. */
 export function samePlan(a: StagePlan, b: StagePlan): boolean {
   return a.mood === b.mood && a.wakes === b.wakes && a.brains.target === b.brains.target
-    && a.brains.variant === b.brains.variant && a.brains.pearls === b.brains.pearls && a.universe === b.universe;
+    && a.brains.variant === b.brains.variant && a.brains.pearls === b.brains.pearls && a.universe === b.universe
+    && sameScenePlan(a.scene, b.scene);
+}
+
+/** Deux plans de scène identiques (petits objets déclaratifs : comparaison de leur forme écrite). */
+export function sameScenePlan(a: ScenePlan3d | null, b: ScenePlan3d | null): boolean {
+  return a === b || (!!a && !!b && JSON.stringify(a) === JSON.stringify(b));
 }

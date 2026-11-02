@@ -26,7 +26,9 @@ function levelOf(raw: string | null): QualityLevel | null {
 /** Les scènes que le banc sait poser ; une scène inconnue retombe sur `coeur`. */
 export const BANC_SCENES = ['coeur', 'ecoute', 'reflexion', 'parole', 'oui', 'coupure', 'veille', 'reveil',
   'cerveau-aller', 'cerveau', 'cerveau-retour', 'cerveau-annule', 'univers', 'univers-cite', 'univers-montrer',
-  'univers-telephone', 'entree', 'entree-courte', 'focus-chantier', 'zoom', 'dezoom'] as const;
+  'univers-telephone', 'entree', 'entree-courte', 'focus-chantier', 'zoom', 'dezoom',
+  // SF-236-08 — panneaux holographiques et S-GEN 3D.
+  'scene-sgen', 'panneau-entree', 'panneau-sortie'] as const;
 
 const SCENE_NAME = /^[a-z0-9-]{1,40}$/;
 

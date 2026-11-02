@@ -1531,6 +1531,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
       lit: reader.lit.map((l) => l.node.key),
       said: reader.said,
       shown: this.scenes.focus()?.items.map((i) => i.node.key) ?? null,
+      // SF-236-08 — la scène en cours et les appels d'outil : panneaux holographiques et impulsions en 3D.
+      scene: reader.scene,
+      pulses: reader.pulses,
     };
   }, { equal: sameScreen });
 

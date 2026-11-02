@@ -47,6 +47,7 @@ Les items marqués **BLOQUANT** empêchent le merge.
 - [ ] Aucun traitement IA synchrone (**BLOQUANT**)
 - [ ] Le build et la CI sont verts (**BLOQUANT**)
 - [ ] Si la PR ajoute un outil à l'agent (ou un nouveau `type` d'étape) : sa scène Jarvis est déclarée dans `frontend/src/app/jarvis/scenes/jarvis-scene-registry.json` — scène dédiée, ou `"scene": "GENERIQUE"` acceptée explicitement avec un `libelle` lisible (F-234, D17) (**BLOQUANT** si absente)
+- [ ] Si la PR ajoute une scène Jarvis (nouvel `id` au registre ou posé par le lecteur) : son rendu 3D est déclaré — fonction dans `SCENES_3D` (`frontend/src/app/jarvis/stage3d/scenes3d/index.ts`) ou repli explicite sur S-GEN 3D (`SGEN_3D_IDS`) ; la garde `jarvis-scenes3d.spec.ts` échoue sinon (F-236, SF-236-08) (**BLOQUANT** si absente)
 
 ---
 
