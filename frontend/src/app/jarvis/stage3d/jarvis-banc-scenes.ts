@@ -36,19 +36,24 @@ export function bancPlan(scene: string, narrow: boolean): { plan: StagePlan; voi
   const mood = Object.hasOwn(BANC_MOODS, scene) ? BANC_MOODS[scene] : 'repos';
   return {
     plan: { mood, wakes: scene === 'reveil' ? 1 : 0, brains: bancBrains(scene).brains,
-      brainsFromDeployed: bancBrains(scene).fromDeployed, universe: bancUniverse(scene, narrow) },
+      brainsFromDeployed: bancBrains(scene).fromDeployed, universe: bancUniverse(scene, narrow),
+      bancCamera: scene === 'zoom' ? 'zoom' : scene === 'dezoom' ? 'dezoom' : undefined },
     voice: mood === 'ecoute' || mood === 'parole' ? 0.7 : 0,
   };
 }
 
 /** SF-236-04 — l'univers posé par chaque scène du banc (univers de test : CAGIP, Edenred ; sujet « Migration Forge »). */
 function bancUniverse(scene: string, narrow: boolean): UniverseView {
-  if (!scene.startsWith('univers') && !scene.startsWith('cerveau')) {
+  if (!scene.startsWith('univers') && !scene.startsWith('cerveau') && !scene.startsWith('entree')
+      && scene !== 'focus-chantier' && scene !== 'zoom' && scene !== 'dezoom') {
     return EMPTY_VIEW;
   }
   const base = { ...IDLE_SCREEN, universe: testUniverse(), subjectId: 's-forge' };
   switch (scene) {
     case 'univers-cite':
+    case 'focus-chantier':
+    case 'zoom':
+    case 'dezoom':
       return universeView({ ...base, lit: ['s-forge#3'], said: ['s-forge#3'] }, false, narrow);
     case 'univers-montrer':
       return universeView({ ...base, shown: ['h-cagip', 'h-eden'] }, false, narrow);

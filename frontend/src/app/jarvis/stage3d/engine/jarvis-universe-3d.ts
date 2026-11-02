@@ -1,6 +1,7 @@
 import {
-  AdditiveBlending, BoxGeometry, BufferAttribute, BufferGeometry, Color, Group, InstancedMesh, InterleavedBufferAttribute,
-  Matrix4, MeshBasicMaterial, OctahedronGeometry, Points, Scene, ShaderMaterial, SphereGeometry,
+  AdditiveBlending, BoxGeometry, BufferAttribute, BufferGeometry, Camera, Color, Group, InstancedMesh,
+  InterleavedBufferAttribute, Matrix4, MeshBasicMaterial, OctahedronGeometry, Points, Scene, ShaderMaterial,
+  SphereGeometry, Vector3,
 } from 'three';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
@@ -59,8 +60,25 @@ interface Live {
   /** Opacité affichée et visée. */
   alpha: number;
   target: number;
+  /** Opacité dessinée (état × entrée). */
+  shown: number;
   role: HoloRole;
   label: CSS2DObject | null;
+  /** Rang du client du nœud (cascade de l'entrée T-E1). */
+  clientIndex: number;
+}
+
+/** Un nœud projeté à l'écran (sélection en espace écran). */
+export interface Pickable {
+  key: string;
+  kind: Node3dKind;
+  subjectId?: string;
+  sx: number;
+  sy: number;
+  visible: boolean;
+  x: number;
+  y: number;
+  z: number;
 }
 
 export class Universe3d {
@@ -79,6 +97,9 @@ export class Universe3d {
   private readonly color = new Color();
   private readonly palette = new Map<HoloRole, number[]>();
   private signature = '';
+  /** SF-236-05 — l'entrée en cascade : avancement d'un client selon son rang (1 = posé). */
+  reveal: (clientIndex: number) => number = () => 1;
+  private readonly projected = new Vector3();
 
   constructor(scene: Scene, private readonly labelHost: HTMLElement | null, private readonly level: QualityLevel,
       pixelRatio: number, private readonly onTouch: (touch: UniverseTouch) => void) {
@@ -154,6 +175,7 @@ export class Universe3d {
       l.y += (l.node.y - l.y) * kMove;
       l.z += (l.node.z - l.z) * kMove;
       l.alpha += (l.target - l.alpha) * (l.target > l.alpha ? kUp : kDown);
+      l.shown = l.alpha * this.reveal(l.clientIndex);
     }
     for (const e of this.linkEnds) {
       e.alpha += (e.target - e.alpha) * (e.target > e.alpha ? kUp : kDown);
@@ -198,12 +220,16 @@ export class Universe3d {
       const live: Live = {
         node: n, x: instant || !parent ? n.x : parent.x, y: instant || !parent ? n.y : parent.y,
         z: instant || !parent ? n.z : parent.z, alpha: instant ? nodeAlpha(n, graph.nodes.get(n.key)) : 0, target: 0,
-        role: nodeRole(n), label: null,
+        shown: 0, role: nodeRole(n), label: null, clientIndex: 0,
       };
       live.label = this.makeLabel(live);
       return live;
     });
     this.byKey = new Map(this.live.map((l) => [l.node.key, l]));
+    const clientOrder = layout.nodes.filter((n) => n.kind === 'client').map((n) => n.key);
+    for (const l of this.live) {
+      l.clientIndex = Math.max(0, clientOrder.indexOf(l.node.clientKey));
+    }
 
     for (const mesh of this.meshes.values()) {
       mesh.removeFromParent();
@@ -275,12 +301,12 @@ export class Universe3d {
         continue;
       }
       const i = index[l.node.kind]++;
-      const s = SIZE[l.node.kind] * (0.75 + 0.25 * l.alpha);
+      const s = SIZE[l.node.kind] * (0.75 + 0.25 * l.alpha) * Math.min(1, this.reveal(l.clientIndex) * 1.5);
       this.matrix.makeScale(s, s, s);
       this.matrix.setPosition(l.x, l.y, l.z);
       mesh.setMatrixAt(i, this.matrix);
       const c = this.palette.get(l.role) as number[];
-      const k = (0.2 + 0.6 * l.alpha) * 0.55;
+      const k = (0.2 + 0.6 * l.alpha) * 0.55 * this.reveal(l.clientIndex);
       const filled = l.node.kind !== 'step' || l.node.done ? 1 : 0.35;
       this.color.setRGB(c[0] * k * filled, c[1] * k * filled, c[2] * k * filled);
       mesh.setColorAt(i, this.color);
@@ -314,9 +340,10 @@ export class Universe3d {
       // Dégradé : la source garde la teinte de la liaison, la cible celle de son nœud ; additif ⇒ couleur × opacité.
       const src = this.palette.get(e.role) as number[];
       const dst = this.palette.get(e.to.role) as number[];
+      const a = e.alpha * this.reveal(e.to.clientIndex);
       for (let k = 0; k < 3; k++) {
-        c[i * 6 + k] = src[k] * e.alpha;
-        c[i * 6 + 3 + k] = dst[k] * e.alpha;
+        c[i * 6 + k] = src[k] * a;
+        c[i * 6 + 3 + k] = dst[k] * a;
       }
     }
     pos.needsUpdate = true;
@@ -338,7 +365,7 @@ export class Universe3d {
       p[i * 3 + 2] = l.z;
       const rgbRole = this.palette.get(l.role) as number[];
       // Halo indexé sur l'état (§7.1) : latent 0,2 · contexte 0,45 · allumé 1.
-      const k = 0.2 + 0.8 * l.alpha;
+      const k = (0.2 + 0.8 * l.alpha) * this.reveal(l.clientIndex);
       for (let j = 0; j < 3; j++) {
         c[i * 3 + j] = rgbRole[j] * k * 0.3;
       }
@@ -389,6 +416,22 @@ export class Universe3d {
     ordered.forEach((l, i) => {
       const visible = i < bound && rank(l) < 40;
       (l.label as CSS2DObject).visible = visible;
+    });
+  }
+
+  /** SF-236-05 — les nœuds projetés à l'écran (au toucher seulement : allocation hors de la boucle d'images). */
+  pickables(camera: Camera, width: number, height: number): Pickable[] {
+    this.group.updateMatrixWorld();
+    return this.live.map((l) => {
+      this.projected.set(l.x, l.y, l.z);
+      this.group.localToWorld(this.projected);
+      const world = this.projected.clone();
+      this.projected.project(camera);
+      return {
+        key: l.node.key, kind: l.node.kind, subjectId: l.node.subjectId,
+        sx: (this.projected.x + 1) * 0.5 * width, sy: (1 - this.projected.y) * 0.5 * height,
+        visible: this.projected.z < 1 && l.shown > 0.1, x: world.x, y: world.y, z: world.z,
+      };
     });
   }
 

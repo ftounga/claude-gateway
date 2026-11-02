@@ -1,10 +1,11 @@
 import {
-  Component, DestroyRef, InjectionToken, NgZone, OnDestroy, OnInit, computed, effect, inject, signal, untracked,
+  Component, DestroyRef, InjectionToken, NgZone, OnDestroy, OnInit, ViewChild, computed, effect, inject, signal,
+  untracked,
 } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 
 import { AtelierConfirmRequest, AtelierStreamDone, WorkspaceSummary } from '../core/models/atelier.models';
 import { AtelierService } from '../core/services/atelier.service';
@@ -114,12 +115,12 @@ export function companionOffer(version: JarvisCompanionVersion, installed: numbe
  */
 @Component({
   selector: 'app-jarvis',
-  imports: [JarvisCompanionsComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatIconModule, MatMenuModule, RouterLink],
+  imports: [JarvisCompanionsComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatIconModule, MatMenuModule],
   templateUrl: './jarvis.component.html',
   styleUrl: './jarvis.component.scss',
   providers: [JarvisAppUpdate],
   // F-236 / SF-236-01 — la palette holographique et les courbes (DESIGN_SYSTEM §23), une seule source : jarvis-motion.ts.
-  host: { '[style]': 'holoVars' },
+  host: { '[style]': 'holoVars', '(pointerdown)': 'firstTouch()' },
 })
 export class JarvisComponent implements OnInit, OnDestroy {
   /** F-236 / SF-236-01 — jetons `--cg-holo-*`, `--jv-ease-*`, `--jv-dur-*` posés sur l'hôte. */
@@ -1527,6 +1528,32 @@ export class JarvisComponent implements OnInit, OnDestroy {
       shown: this.scenes.focus()?.items.map((i) => i.node.key) ?? null,
     };
   }, { equal: sameScreen });
+
+  /** F-236 / SF-236-05 — la sortie T-S est en cours. */
+  readonly leaving = signal(false);
+  @ViewChild('stage3d') private stage3dRef?: JarvisStage3dComponent;
+
+  /** F-236 / SF-236-05 — le premier toucher, n'importe où, saute l'entrée cinématique. */
+  firstTouch(): void {
+    if (this.stage3dRef && this.stage3dRef.entry() !== 'none') {
+      this.stage3dRef.skipEntry();
+    }
+  }
+
+  /** F-236 / SF-236-05 — quitter Jarvis : en 3D, la sortie se joue d'abord (T-S, 0,5 s). */
+  leave(event: Event): void {
+    event.preventDefault();
+    if (this.leaving()) {
+      return;
+    }
+    const go = (): void => void this.router.navigateByUrl('/atelier');
+    if (!this.stage3dRef) {
+      go();
+      return;
+    }
+    this.leaving.set(true);
+    this.stage3dRef.leave(go);
+  }
 
   /** F-236 / SF-236-04 — un nœud de l'univers 3D touché : un sujet se choisit (D12) ; les autres se regardent (D9). */
   touched3d(touch: UniverseTouch): void {

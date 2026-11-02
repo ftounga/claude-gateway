@@ -6,6 +6,7 @@ import {
 import { BancParams, frozenClock, readBanc, realClock, seededRandom } from './jarvis-banc';
 import { JARVIS_3D_LOADER, JarvisEngine, JarvisEngineFactory } from './jarvis-engine.contract';
 import { FrameHost, browserFrameHost } from './jarvis-frame-loop';
+import { EXIT_MS, EntryKind, entryKindToday } from './jarvis-camera-rules';
 import { MOTION_DURATIONS } from './jarvis-motion';
 import { UniverseTouch } from './jarvis-layout-3d';
 import { SLEEP_AFTER_MS, SleepWatch } from './jarvis-heart';
@@ -62,6 +63,8 @@ export const JARVIS_CONTEXT_LOSS = new InjectionToken<ContextLossPolicy>('JARVIS
     }
     :host(.jv3d--shown) {
       opacity: 1;
+      /* SF-236-05 — les gestes (tourner, pincer, toucher) arrivent au canevas. */
+      pointer-events: auto;
     }
     :host ::ng-deep canvas {
       display: block;
@@ -83,6 +86,10 @@ export class JarvisStage3dComponent implements OnDestroy {
   readonly labelLayer = input<HTMLElement | null>(null);
   /** SF-236-04 — un nœud touché : sujet ⇒ « passe sur X » (l'écran décide), les autres ⇒ regarder. */
   readonly touched = output<UniverseTouch>();
+  /** SF-236-05 — le cœur touché sur le canevas : « parler ». */
+  readonly talk = output<void>();
+  /** SF-236-05 — l'entrée a été jouée en entier (T-E1) : l'écran fait glisser le HUD. */
+  readonly entry = signal<EntryKind>('none');
   /** Téléphone (portrait étroit), relevé à l'ouverture. */
   private readonly narrow = typeof matchMedia === 'function' && matchMedia('(max-width: 767px)').matches;
   /** SF-236-02 — le niveau du micro ou de la voix (0-1), lu à chaque image hors zone. */
@@ -188,6 +195,24 @@ export class JarvisStage3dComponent implements OnDestroy {
   });
 
   /** Bascule « Vue 3D / 2D », retenue par appareil. */
+  /** SF-236-05 — saute l'entrée (premier toucher, n'importe où sur l'écran). */
+  skipEntry(): void {
+    this.entry.set('none');
+    this.engine?.skipEntry();
+  }
+
+  /**
+   * SF-236-05 — T-S : joue la sortie (0,5 s) si la 3D est affichée, puis appelle `then` ; sinon `then` tout de suite.
+   */
+  leave(then: () => void): void {
+    if (!this.engine || !this.shown()) {
+      then();
+      return;
+    }
+    this.zone.runOutsideAngular(() => this.engine?.exit());
+    setTimeout(() => this.zone.run(then), EXIT_MS);
+  }
+
   toggleView(): void {
     const next = !this.manual2d();
     writeManual2d(next);
@@ -255,6 +280,8 @@ export class JarvisStage3dComponent implements OnDestroy {
         voiceLevel: untracked(() => this.voiceLevel()),
         adaptive: this.banc === null,
         replayFromZero: this.banc !== null,
+        entry: this.entryFor(),
+        onTalk: () => this.zone.run(() => this.talk.emit()),
         onQualityChange: (next) => this.zone.run(() => this.level.set(next)),
         onLowPerf: () => this.zone.run(() => this.lowPerf.set(true)),
         labelHost: untracked(() => this.labelLayer()),
@@ -338,6 +365,15 @@ export class JarvisStage3dComponent implements OnDestroy {
       clearTimeout(this.sleepTimer);
       this.sleepTimer = null;
     }
+  }
+
+  /** T-E1 la première ouverture du jour, T-E2 ensuite ; au banc, seulement les scènes d'entrée. */
+  private entryFor(): EntryKind {
+    const kind: EntryKind = this.banc
+      ? (this.banc.scene === 'entree' ? 'full' : this.banc.scene === 'entree-courte' ? 'short' : 'none')
+      : entryKindToday(new Date().toISOString().slice(0, 10));
+    this.entry.set(kind);
+    return kind;
   }
 
   private release(): void {

@@ -1,10 +1,12 @@
 <!-- F-236 / SF-236-01 — la scène 3D, en calque plein écran DERRIÈRE l'écran F-234 (qui reste la référence et le repli).
      SF-236-02 — elle dessine le cœur : l'orbe 2D s'efface quand la 3D est affichée (son bouton reste pour parler). -->
 <app-jarvis-stage-3d #stage3d [sober]="sober()" [withCore]="true" [signals]="stageSignals()" [voiceLevel]="orbLevel"
-                     [labelLayer]="labels3d" (touched)="touched3d($event)" />
-<main class="jv" [attr.data-state]="state()" [class.jv--3d]="stage3d.rendering() === '3d'">
+                     [labelLayer]="labels3d" (touched)="touched3d($event)" (talk)="talk()" />
+<main class="jv" [attr.data-state]="state()" [class.jv--3d]="stage3d.rendering() === '3d'"
+      [class.jv--entry]="stage3d.entry() === 'full' && stage3d.shown()" [class.jv--exiting]="leaving()">
   <header class="jv__top">
-    <a mat-icon-button class="jv__back" routerLink="/atelier" aria-label="Quitter Jarvis">
+    <!-- F-236 / SF-236-05 — T-S : en 3D, la sortie se joue (0,5 s) avant de quitter. -->
+    <a mat-icon-button class="jv__back" href="/atelier" (click)="leave($event)" aria-label="Quitter Jarvis">
       <mat-icon>arrow_back</mat-icon>
     </a>
     <button mat-button type="button" class="jv__subject" [matMenuTriggerFor]="subjectMenu"

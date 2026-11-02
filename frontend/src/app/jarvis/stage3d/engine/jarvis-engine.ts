@@ -1,7 +1,7 @@
 import {
   AdditiveBlending, BufferAttribute, BufferGeometry, ColorManagement, LineBasicMaterial, LineSegments,
   LinearSRGBColorSpace, Material, Mesh, Object3D, PerspectiveCamera, PlaneGeometry, Points, Scene, ShaderMaterial,
-  WebGLRenderer,
+  Vector3, WebGLRenderer,
 } from 'three';
 
 import { FrameLoop } from '../jarvis-frame-loop';
@@ -13,7 +13,13 @@ import { StagePlan } from '../jarvis-stage-director';
 import { Tween } from '../jarvis-tween';
 import { BrainsClock } from '../jarvis-brains';
 import { Brain3d } from './jarvis-brain-3d';
-import { CAMERA_FOV, OVERVIEW_ELEVATION_DEG, overviewDistance } from '../jarvis-camera-rules';
+import {
+  CAMERA_FOV, CameraDirector, CameraShot, ENTRY_FULL_MS, ENTRY_SHORT_MS, EXIT_MS, MANUAL_HOLD_MS, PITCH_LIMIT_DEG,
+  SKIP_FADE_MS, Spring, ZOOM_MAX, ZOOM_MIN, entryFrame, exitFrame, nearestAngle, nodeShot, overviewDistance,
+  overviewShot, pickNearest,
+} from '../jarvis-camera-rules';
+import { Gestures } from './jarvis-gestures';
+import { HEART_RADIUS } from './jarvis-heart-3d';
 import { Heart3d } from './jarvis-heart-3d';
 import { Universe3d } from './jarvis-universe-3d';
 import { JarvisPost } from './jarvis-post';
@@ -134,9 +140,24 @@ class ThreeJarvisEngine implements JarvisEngine {
   private readonly brain: Brain3d | null;
   /** SF-236-04 — l'univers et ses liaisons. */
   private readonly universe: Universe3d | null;
-  private distance = 9;
   private width: number;
   private height: number;
+  /** SF-236-05 — la caméra : directeur pur + ressorts amortis critiques (lacet, tangage, distance, point visé). */
+  private readonly director = new CameraDirector();
+  private readonly rig = {
+    tx: new Spring(0), ty: new Spring(0), tz: new Spring(0), yaw: new Spring(0), pitch: new Spring(0.3),
+    dist: new Spring(9),
+  };
+  private shot: CameraShot | null = null;
+  private manualUntil = -Infinity;
+  private lastDecide = -Infinity;
+  private planDirty = true;
+  private readonly world = new Vector3();
+  private gestures: Gestures | null = null;
+  private entryStart = 0;
+  private entryTotal = 0;
+  private exitStart: number | null = null;
+  private wallNow = 0;
   private brains: BrainsClock = new BrainsClock();
   private floorMaterial: LineBasicMaterial | null = null;
   private readonly floorNormal = rgb(HOLO_COLORS.normalDim);
@@ -194,7 +215,23 @@ class ThreeJarvisEngine implements JarvisEngine {
         options.onTouch);
       this.universe.setSize(options.width, options.height);
       this.applyPlan(options.plan, start, true);
-      this.distance = overviewDistance(options.plan.universe.layout.extent, options.width / Math.max(options.height, 1));
+      this.placeCamera(overviewShot(overviewDistance(options.plan.universe.layout.extent,
+        options.width / Math.max(options.height, 1)), options.width < options.height * 0.8), true);
+      this.entryTotal = options.entry === 'full' ? ENTRY_FULL_MS : options.entry === 'short' ? ENTRY_SHORT_MS : 0;
+      this.gestures = new Gestures(canvas, {
+        orbit: (dYaw, dPitch) => this.manual(() => {
+          this.rig.yaw.target += dYaw;
+          const limit = (PITCH_LIMIT_DEG * Math.PI) / 180;
+          this.rig.pitch.target = Math.max(-limit, Math.min(limit, this.rig.pitch.target + dPitch));
+        }),
+        zoom: (factor) => this.manual(() => {
+          this.rig.dist.target = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, this.rig.dist.target * factor));
+        }),
+        overview: () => this.manual(() => this.placeCamera(overviewShot(this.overview(),
+          this.width < this.height * 0.8), false)),
+        tap: (x, y) => this.tap(x, y),
+        firstTouch: () => this.skipEntry(),
+      });
     } else {
       this.heart = null;
       this.brain = null;
@@ -237,6 +274,82 @@ class ThreeJarvisEngine implements JarvisEngine {
     }
     this.applyPlan(plan, this.options.clock(), false);
     this.plan = plan;
+    this.planDirty = true;
+  }
+
+  /** T-E1 sautée au premier toucher : fondu de 300 ms vers l'état final. */
+  skipEntry(): void {
+    if (this.entryTotal > 0 && this.wallNow - this.entryStart < this.entryTotal - SKIP_FADE_MS) {
+      this.entryStart = this.wallNow - (this.entryTotal - SKIP_FADE_MS);
+    }
+  }
+
+  /** T-S — la sortie (0,5 s). */
+  exit(): void {
+    if (this.exitStart === null) {
+      this.exitStart = this.wallNow;
+    }
+  }
+
+  /** Un geste : la caméra obéit au PO 8 s, puis revient d'elle-même (T-Z4). */
+  private manual(apply: () => void): void {
+    apply();
+    this.manualUntil = this.wallNow + MANUAL_HOLD_MS;
+  }
+
+  /** Toucher bref : le cœur ⇒ parler ; un nœud ⇒ regarder (et un sujet se choisit) ; le vide ⇒ rien. */
+  private tap(x: number, y: number): void {
+    if (!this.universe) {
+      return;
+    }
+    const node = pickNearest(this.universe.pickables(this.camera, this.width, this.height), x, y);
+    if (node) {
+      this.options.onTouch({ key: node.key, kind: node.kind, subjectId: node.subjectId });
+      if (node.kind !== 'subject') {
+        const portrait = this.width < this.height * 0.8;
+        const shot = nodeShot({ key: node.key, kind: node.kind, x: node.x, y: node.y, z: node.z }, portrait);
+        this.manual(() => this.placeCamera(shot, false, true));
+      }
+      return;
+    }
+    // Le cœur : distance au centre projeté, rayon apparent du cœur.
+    this.world.set(0, 0, 0).project(this.camera);
+    const cx = (this.world.x + 1) * 0.5 * this.width;
+    const cy = (1 - this.world.y) * 0.5 * this.height;
+    const halfV = Math.tan((CAMERA_FOV * Math.PI) / 360);
+    const radiusPx = Math.max(28, (HEART_RADIUS / (this.camera.position.length() * halfV)) * (this.height / 2));
+    if ((x - cx) ** 2 + (y - cy) ** 2 <= radiusPx * radiusPx) {
+      this.options.onTalk();
+    }
+  }
+
+  private overview(): number {
+    return overviewDistance(this.plan.universe.layout.extent, this.width / Math.max(this.height, 1))
+      * (1 + 0.15 * this.brains.frame.spread);
+  }
+
+  /** Vise un plan : ressorts vers ses valeurs (`instant` = posé). `world` = coordonnées déjà mondiales. */
+  private placeCamera(shot: CameraShot, instant: boolean, world = false): void {
+    this.shot = shot;
+    this.world.set(shot.x, shot.y, shot.z);
+    let yaw = shot.yaw;
+    if (!world && this.universe && shot.kind === 'node') {
+      this.universe.group.updateMatrixWorld();
+      this.universe.group.localToWorld(this.world);
+      yaw += this.universe.group.rotation.y;
+    }
+    const r = this.rig;
+    r.tx.target = this.world.x;
+    r.ty.target = this.world.y;
+    r.tz.target = this.world.z;
+    r.yaw.target = nearestAngle(r.yaw.value, yaw);
+    r.pitch.target = shot.pitch;
+    r.dist.target = shot.distance;
+    if (instant) {
+      for (const spring of [r.tx, r.ty, r.tz, r.yaw, r.pitch, r.dist]) {
+        spring.jump(spring.target);
+      }
+    }
   }
 
   /** Les cibles du plan ; `opening` = le plan de départ (le banc rejoue ses transitions depuis t = 0). */
@@ -296,6 +409,7 @@ class ThreeJarvisEngine implements JarvisEngine {
       }
     });
     this.scene.clear();
+    this.gestures?.dispose();
     this.universe?.dispose();
     this.post.dispose();
     this.renderer.dispose();
@@ -345,33 +459,111 @@ class ThreeJarvisEngine implements JarvisEngine {
           this.floorNormal[2] + (this.floorDeep[2] - this.floorNormal[2]) * f.hue);
       }
     }
-    this.backdrop.uniforms['uGlow'].value = 0.35 + 0.65 * light;
-    // Dérive lente de la caméra (parallaxe des calques) : aucun roulis, focale fixe (§7.3, règle 8) ; recul de
-    // 15 % quand le grand cerveau est déployé (§9.3).
-    // SF-236-04 — vue d'ensemble : l'univers tient dans le champ (portrait compris) ; dérive lente de l'univers
-    // (un tour en 10 min), arrêtée pendant l'écoute et sur un focus.
+    // SF-236-05 — l'entrée (T-E1 / T-E2) et la sortie (T-S), sur l'horloge murale de l'écran.
+    this.wallNow = frameNow;
+    if (!this.firstFrameSeen) {
+      this.entryStart = frameNow;
+    }
+    const entry = entryFrame(this.entryTotal === ENTRY_FULL_MS ? 'full' : this.entryTotal > 0 ? 'short' : 'none',
+      this.options.replayFromZero ? t : frameNow - this.entryStart);
+    const exit = this.exitStart === null ? null : exitFrame(Math.min(EXIT_MS, frameNow - this.exitStart));
+    this.backdrop.uniforms['uGlow'].value = (0.35 + 0.65 * light) * entry.light;
+    if (this.heart) {
+      this.heart.group.scale.multiplyScalar(Math.max(0.001, entry.core * (exit ? exit.core : 1)));
+    }
+    if (this.floorMaterial) {
+      this.floorMaterial.opacity = HOLO_DIM_OPACITY * entry.orbits;
+    }
     const dt = Math.min(Math.max(frameMs, 0), MAX_DT_MS);
-    const aspect = this.width / Math.max(this.height, 1);
-    const target = overviewDistance(this.plan.universe.layout.extent, aspect) * (1 + 0.15 * spread);
-    this.distance += (target - this.distance) * (1 - Math.exp(-dt / 600));
     if (this.universe) {
+      this.universe.reveal = entry.clientAt;
       this.universe.frame(dt);
-      this.universe.group.scale.setScalar(1 + 0.15 * spread);
+      this.universe.group.scale.setScalar((1 + 0.15 * spread) * (exit ? Math.max(0.001, exit.universe) : 1));
+      // Dérive lente (un tour en 10 min), arrêtée pendant l'écoute et sur un focus (§8.1).
       if (!this.plan.universe.freeze && this.options.adaptive) {
         this.universe.group.rotation.y += (dt / 600_000) * Math.PI * 2;
       }
     }
-    const elevation = ((aspect < 0.8 ? 6 : OVERVIEW_ELEVATION_DEG) * Math.PI) / 180;
-    this.camera.position.x = Math.sin(t * 0.00005) * 0.35;
-    this.camera.position.y = Math.sin(elevation) * this.distance + Math.sin(t * 0.000037) * 0.12;
-    this.camera.position.z = Math.cos(elevation) * this.distance;
-    this.camera.lookAt(0, 0, 0);
+    this.moveCamera(frameNow, dt, entry.distance);
     this.post.render(bloom);
     this.universe?.renderLabels(this.scene, this.camera);
     if (!this.firstFrameSeen) {
       this.firstFrameSeen = true;
       this.options.onFirstFrame();
     }
+  }
+
+  /** SF-236-05 — le directeur décide (à chaque plan, et toutes les 250 ms) ; les ressorts rejoignent son plan. */
+  private moveCamera(now: number, dt: number, entryDistance: number): void {
+    if (this.options.replayFromZero) {
+      this.bancCamera(entryDistance);
+      return;
+    }
+    const manual = now < this.manualUntil;
+    const waiting = this.plan.mood === 'oui';
+    if (this.planDirty || now - this.lastDecide >= 250) {
+      this.planDirty = false;
+      this.lastDecide = now;
+      const view = this.plan.universe;
+      const portrait = this.width < this.height * 0.8;
+      const shot = this.director.decide({
+        focus: view.focus, subjectId: view.subjectId, listening: this.plan.mood === 'ecoute', waiting,
+        overview: this.overview(), portrait,
+      }, now);
+      // Pendant un geste, les ordres attendent — sauf l'autorisation S2, toujours devant.
+      if (!manual || waiting) {
+        this.placeCamera(shot, false);
+      }
+    }
+    const r = this.rig;
+    r.tx.step(dt);
+    r.ty.step(dt);
+    r.tz.step(dt);
+    r.yaw.step(dt);
+    r.pitch.step(dt);
+    r.dist.step(dt);
+    const d = r.dist.value * entryDistance;
+    const cp = Math.cos(r.pitch.value);
+    // Aucun roulis : la caméra garde l'axe vertical (lookAt, « up » fixe) ; focale fixe.
+    this.camera.position.set(
+      r.tx.value + Math.sin(r.yaw.value) * cp * d,
+      r.ty.value + Math.sin(r.pitch.value) * d,
+      r.tz.value + Math.cos(r.yaw.value) * cp * d);
+    this.camera.lookAt(r.tx.value, r.ty.value, r.tz.value);
+  }
+
+  /**
+   * Banc : la caméra est posée une fois pour toutes à l'instant figé `t` — un zoom (T-Z1) ou un dézoom (T-Z2) est
+   * rejoué par pas de 16 ms depuis t = 0, d'où des séquences de captures reproductibles.
+   */
+  private bancPrimed = false;
+
+  private bancCamera(entryDistance: number): void {
+    if (!this.bancPrimed) {
+      this.bancPrimed = true;
+      const view = this.plan.universe;
+      const portrait = this.width < this.height * 0.8;
+      const wide = overviewShot(this.overview(), portrait);
+      const close = view.focus ? nodeShot(view.focus, portrait) : wide;
+      const [from, to] = this.plan.bancCamera === 'dezoom' ? [close, wide] : this.plan.bancCamera === 'zoom'
+        ? [wide, close] : [close, close];
+      this.placeCamera(from, true);
+      this.placeCamera(to, false);
+      const r = this.rig;
+      for (let elapsed = 0; elapsed < this.options.clock(); elapsed += 16) {
+        for (const spring of [r.tx, r.ty, r.tz, r.yaw, r.pitch, r.dist]) {
+          spring.step(16);
+        }
+      }
+    }
+    const r = this.rig;
+    const d = r.dist.value * entryDistance;
+    const cp = Math.cos(r.pitch.value);
+    this.camera.position.set(
+      r.tx.value + Math.sin(r.yaw.value) * cp * d,
+      r.ty.value + Math.sin(r.pitch.value) * d,
+      r.tz.value + Math.cos(r.yaw.value) * cp * d);
+    this.camera.lookAt(r.tx.value, r.ty.value, r.tz.value);
   }
 
   /** L0 — lueur d'abysse sous le cœur et nébuleuse procédurale très lente. */

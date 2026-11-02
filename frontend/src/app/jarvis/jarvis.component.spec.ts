@@ -1,6 +1,6 @@
 import { TestBed, fakeAsync, flushMicrotasks, tick } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
-import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
+import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { of, throwError } from 'rxjs';
 
@@ -198,6 +198,21 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(el.querySelector('main.jv')?.classList).toContain('jv--3d');
     expect(el.querySelector('.jv__orb-button')).not.toBeNull();
     expect(engines[0].options.voiceLevel()).toBe(0);
+    fixture.componentInstance.ngOnDestroy();
+    fixture.destroy();
+  }));
+
+  it('F-236 / SF-236-05 — quitter : en 2D, navigation immédiate vers l’atelier (aucune sortie 3D à jouer)', fakeAsync(() => {
+    configure({});
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    const router = TestBed.inject(Router);
+    const nav = spyOn(router, 'navigateByUrl').and.resolveTo(true);
+    const event = new MouseEvent('click', { cancelable: true });
+    fixture.componentInstance.leave(event);
+    expect(event.defaultPrevented).toBeTrue();
+    expect(nav).toHaveBeenCalledOnceWith('/atelier');
     fixture.componentInstance.ngOnDestroy();
     fixture.destroy();
   }));
