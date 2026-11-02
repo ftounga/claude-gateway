@@ -140,6 +140,72 @@
   }
 }
 
+/* F-236 / SF-236-06 — le HUD 3D : plein écran (la scène occupe tout), commandes secondaires dans « Réglages ». */
+.jv--3d {
+  max-width: none;
+
+  .jv__sober,
+  .jv__view,
+  .jv__wake,
+  .jv__companion,
+  app-jarvis-companions {
+    display: none;
+  }
+
+  .jv__controls {
+    align-self: center;
+  }
+}
+
+.jv__count {
+  flex: none;
+  padding: var(--cg-space-1) var(--cg-space-2);
+  border: 1px solid var(--cg-holo-wait, #5FD4FF);
+  border-radius: 999px;
+  color: var(--cg-holo-wait, #5FD4FF);
+  font-family: var(--cg-font-heading);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.jv__fullscreen,
+.jv__settings-toggle {
+  flex: none;
+  color: var(--cg-cream);
+}
+
+/* Verre holographique (§7.2) : navy à 72 %, liseré lumineux, coins chanfreinés ; flou d'arrière-plan sur PC. */
+.jv__settings {
+  position: fixed;
+  top: calc(var(--cg-space-2) + 52px);
+  right: var(--cg-space-4);
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--cg-space-1);
+  max-width: min(360px, calc(100vw - 2 * var(--cg-space-4)));
+  padding: var(--cg-space-3);
+  border: 1px solid color-mix(in srgb, var(--cg-holo, #E07B39) 55%, transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--cg-holo, #E07B39) 13%, transparent), transparent 60%),
+    color-mix(in srgb, var(--cg-navy) 72%, transparent);
+  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+  pointer-events: auto;
+
+  button,
+  a {
+    justify-content: flex-start;
+    min-height: 44px;
+    color: var(--cg-cream);
+  }
+
+  @media (pointer: fine) {
+    backdrop-filter: blur(10px);
+  }
+}
+
 /* T-S — le HUD s'efface (200 ms, `entree`) pendant que l'univers se replie vers le cœur. */
 .jv--exiting {
   opacity: 0;

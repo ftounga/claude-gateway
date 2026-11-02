@@ -393,4 +393,22 @@ describe('F-236 / SF-236-01 — JarvisStage3dComponent (socle, repli 2D, fondu)'
     expect(created[0].options.entry).toBe('none');
     banc.destroy();
   }));
+
+  it('SF-236-06 — compte-rendu du rendu : 3D (niveau, i/s du moteur, touchers) ; une seule fois', fakeAsync(() => {
+    configure(PC_PROBE);
+    const fixture = TestBed.createComponent(HostComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    const engine = created[0];
+    engine.firstFrame();
+    engine.gestures = 2;
+    engine.options.onTouch({ key: 's-doc', kind: 'subject', subjectId: 's-doc' });
+    engine.options.onTalk();
+    const stage = stageOf(fixture);
+    const report = stage.report();
+    expect(report?.mode).toBe('3d');
+    expect(report?.render).toEqual(jasmine.objectContaining({ t_subject: 1, t_core: 1, fps_50_60: 1, gestures: 2 }));
+    expect(stage.report()).toBeNull();
+    fixture.destroy();
+  }));
 });

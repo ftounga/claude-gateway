@@ -119,6 +119,19 @@ public class JarvisUsageDay {
     @Column(name = "show_requests", nullable = false)
     private int showRequests = 0;
 
+    /** F-236 / SF-236-06 — sessions dessinées en 3D / restées en 2D, et le détail du rendu (vocabulaire fermé). */
+    @Builder.Default
+    @Column(name = "render_3d", nullable = false)
+    private int render3d = 0;
+
+    @Builder.Default
+    @Column(name = "render_2d", nullable = false)
+    private int render2d = 0;
+
+    @Builder.Default
+    @Column(name = "render_counts", nullable = false, length = 1000)
+    private String renderCounts = "";
+
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 

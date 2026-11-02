@@ -331,6 +331,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    // F-236 / SF-236-06 — la mesure du rendu de cette ouverture (3D ou 2D, compteurs sans contenu).
+    const render = this.stage3dRef?.report();
+    if (render) {
+      this.jarvis.render(render);
+    }
     if (this.announceTimer) {
       clearInterval(this.announceTimer);
       this.announceTimer = null;
@@ -1528,6 +1533,27 @@ export class JarvisComponent implements OnInit, OnDestroy {
       shown: this.scenes.focus()?.items.map((i) => i.node.key) ?? null,
     };
   }, { equal: sameScreen });
+
+  /** F-236 / SF-236-06 — le volet « Réglages » du HUD 3D (les commandes secondaires y sont regroupées). */
+  readonly settingsOpen = signal(false);
+  /** F-236 / SF-236-06 — le compteur « À envoyer » du HUD (univers + messages finis pendant le tour). */
+  readonly toSendCount = computed(() => (this.scenes.universe()?.toSendCount ?? 0) + this.scenes.state().toSendAdded);
+  /** F-236 / SF-236-06 — plein écran proposé sur PC (pointeur fin, API disponible). */
+  readonly canFullscreen = typeof document !== 'undefined' && document.fullscreenEnabled === true
+    && typeof matchMedia === 'function' && matchMedia('(pointer: fine)').matches;
+  readonly fullscreen = signal(false);
+
+  toggleFullscreen(): void {
+    try {
+      if (document.fullscreenElement) {
+        void document.exitFullscreen().then(() => this.fullscreen.set(false), () => undefined);
+      } else {
+        void document.documentElement.requestFullscreen().then(() => this.fullscreen.set(true), () => undefined);
+      }
+    } catch {
+      // Plein écran refusé par le navigateur : rien ne change.
+    }
+  }
 
   /** F-236 / SF-236-05 — la sortie T-S est en cours. */
   readonly leaving = signal(false);

@@ -48,6 +48,15 @@ export class JarvisService {
   }
 
   /**
+   * F-236 / SF-236-06 — la mesure du rendu d'une ouverture de l'écran : 3D ou 2D, et des compteurs au vocabulaire
+   * fermé (raisons du repli, secondes par niveau, classe d'i/s, gestes, touchers…). Aucun contenu ; best-effort.
+   */
+  render(report: { mode: '3d' | '2d'; render: Record<string, number> }): void {
+    this.http.post<void>('/api/jarvis/usage', { event: 'RENDER', mode: report.mode, render: report.render })
+      .subscribe({ error: () => undefined });
+  }
+
+  /**
    * F-233 / SF-233-01 — la mesure d'un tour vocal (marques en ms depuis la fin de parole, aucun contenu).
    * Best-effort : un envoi raté ne gêne jamais Jarvis.
    */

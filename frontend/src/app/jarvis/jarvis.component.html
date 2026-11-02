@@ -24,7 +24,56 @@
             [disabled]="!subjectId()" (click)="openTerminal()">
       <mat-icon>terminal</mat-icon>
     </button>
+    <!-- F-236 / SF-236-06 — HUD 3D : compteur « À envoyer », plein écran (PC), volet « Réglages ». -->
+    @if (stage3d.rendering() === '3d') {
+      @if (toSendCount() > 0) {
+        <span class="jv__count" role="status">À envoyer ({{ toSendCount() }})</span>
+      }
+      @if (canFullscreen) {
+        <button mat-icon-button type="button" class="jv__fullscreen" (click)="toggleFullscreen()"
+                [attr.aria-label]="fullscreen() ? 'Quitter le plein écran' : 'Plein écran'">
+          <mat-icon>{{ fullscreen() ? 'fullscreen_exit' : 'fullscreen' }}</mat-icon>
+        </button>
+      }
+      <button mat-icon-button type="button" class="jv__settings-toggle" [attr.aria-expanded]="settingsOpen()"
+              aria-controls="jv-settings" aria-label="Réglages" (click)="settingsOpen.set(!settingsOpen())">
+        <mat-icon>tune</mat-icon>
+      </button>
+    }
   </header>
+  @if (stage3d.rendering() === '3d' && settingsOpen()) {
+    <!-- F-236 / SF-236-06 — le volet « Réglages » : les mêmes commandes que l'écran 2D, regroupées (verre holographique). -->
+    <aside id="jv-settings" class="jv__settings" aria-label="Réglages">
+      <button mat-button type="button" [attr.aria-pressed]="sober()" (click)="toggleSober()">
+        <mat-icon aria-hidden="true">blur_off</mat-icon> Mode sobre
+      </button>
+      @if (stage3d.offer3d()) {
+        <button mat-button type="button" [attr.aria-pressed]="false" (click)="stage3d.toggleView()">
+          <mat-icon aria-hidden="true">layers</mat-icon> Vue 2D
+        </button>
+      }
+      @if (enrolling() === null) {
+        @if (wakeLearned()) {
+          <button mat-button type="button" [attr.aria-pressed]="wakeOn()" (click)="toggleWake()">
+            <mat-icon aria-hidden="true">{{ wakeOn() ? 'hearing' : 'hearing_disabled' }}</mat-icon>
+            {{ wakeOn() ? '« Jarvis » écouté sur cet appareil' : 'Mot d’éveil éteint' }}
+          </button>
+        }
+        <button mat-button type="button" (click)="learnWake()">
+          <mat-icon aria-hidden="true">record_voice_over</mat-icon> {{ wakeLearned() ? 'Réapprendre' : 'Apprendre' }} « Jarvis »
+        </button>
+      }
+      <button mat-button type="button" [attr.aria-pressed]="humour() === 'LIGHT'" (click)="toggleHumour()">
+        <mat-icon aria-hidden="true">{{ humour() === 'LIGHT' ? 'sentiment_satisfied' : 'sentiment_neutral' }}</mat-icon>
+        Humour : {{ humour() === 'LIGHT' ? 'léger' : 'aucun' }}
+      </button>
+      @if (companion(); as offer) {
+        <a mat-button [href]="companionHref" download="jarvis-compagnon.apk">
+          <mat-icon aria-hidden="true">install_mobile</mat-icon> Compagnon Android (v{{ offer.versionName }})
+        </a>
+      }
+    </aside>
+  }
 
   <section class="jv__stage">
     <!-- F-234 / SF-234-03 — la constellation de l'univers autour de l'orbe ; toucher un sujet = le choisir. -->

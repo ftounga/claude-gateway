@@ -58,6 +58,8 @@ export interface JarvisEngine {
   resize(width: number, height: number): void;
   /** SF-236-02 — un nouveau plan : le moteur interpole vers ses cibles, jamais de saut. */
   update(plan: StagePlan): void;
+  /** SF-236-06 — la mesure du rendu : histogramme d'i/s (6 classes) et gestes commencés. */
+  stats(): { fps: ArrayLike<number>; gestures: number };
   /** SF-236-05 — saute l'entrée (fondu de 300 ms vers l'état final). */
   skipEntry(): void;
   /** SF-236-05 — joue la sortie T-S (0,5 s) ; l'écran navigue ensuite. */

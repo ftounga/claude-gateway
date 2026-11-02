@@ -18,6 +18,7 @@ import {
   SKIP_FADE_MS, Spring, ZOOM_MAX, ZOOM_MIN, entryFrame, exitFrame, nearestAngle, nodeShot, overviewDistance,
   overviewShot, pickNearest,
 } from '../jarvis-camera-rules';
+import { fpsClass } from '../jarvis-render-stats';
 import { Gestures } from './jarvis-gestures';
 import { HEART_RADIUS } from './jarvis-heart-3d';
 import { Heart3d } from './jarvis-heart-3d';
@@ -158,6 +159,8 @@ class ThreeJarvisEngine implements JarvisEngine {
   private entryTotal = 0;
   private exitStart: number | null = null;
   private wallNow = 0;
+  /** SF-236-06 — histogramme des i/s instantanés (6 classes), sans allocation. */
+  private readonly fpsHistogram = new Uint32Array(6);
   private brains: BrainsClock = new BrainsClock();
   private floorMaterial: LineBasicMaterial | null = null;
   private readonly floorNormal = rgb(HOLO_COLORS.normalDim);
@@ -275,6 +278,10 @@ class ThreeJarvisEngine implements JarvisEngine {
     this.applyPlan(plan, this.options.clock(), false);
     this.plan = plan;
     this.planDirty = true;
+  }
+
+  stats(): { fps: ArrayLike<number>; gestures: number } {
+    return { fps: this.fpsHistogram, gestures: this.gestures?.count ?? 0 };
   }
 
   /** T-E1 sautée au premier toucher : fondu de 300 ms vers l'état final. */
@@ -420,6 +427,9 @@ class ThreeJarvisEngine implements JarvisEngine {
     const t = this.options.clock();
     const frameMs = this.lastNow === null ? 0 : frameNow - this.lastNow;
     this.lastNow = frameNow;
+    if (frameMs > 0 && frameMs < 250) {
+      this.fpsHistogram[fpsClass(1000 / frameMs)]++;
+    }
     if (this.governor && frameMs > 0) {
       const verdict = this.governor.sample(frameMs, frameNow);
       if (verdict.kind === 'change') {

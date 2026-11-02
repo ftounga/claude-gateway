@@ -77,6 +77,13 @@ export class FakeEngine implements JarvisEngine {
     this.plans.push(plan);
   }
 
+  fps = [0, 0, 0, 0, 9, 1];
+  gestures = 0;
+
+  stats(): { fps: number[]; gestures: number } {
+    return { fps: this.fps, gestures: this.gestures };
+  }
+
   skipped = 0;
   exited = 0;
 

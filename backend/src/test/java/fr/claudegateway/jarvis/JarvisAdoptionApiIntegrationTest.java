@@ -110,6 +110,34 @@ class JarvisAdoptionApiIntegrationTest {
     }
 
     @Test
+    @DisplayName("F-236 / SF-236-06 — rendu : sessions 3D / 2D, part de la 3D, détail par clé ; vocabulaire fermé ; isolé")
+    void renderMeasure() throws Exception {
+        event(adminToken, "{\"event\":\"RENDER\",\"mode\":\"3d\",\"render\":{\"sec_high\":120,\"fps_50_60\":1,"
+                + "\"gestures\":4,\"t_subject\":2,\"brains\":1,\"entries\":1}}").andExpect(status().isNoContent());
+        event(adminToken, "{\"event\":\"RENDER\",\"mode\":\"3D\",\"render\":{\"sec_high\":30,\"entries_skipped\":1}}")
+                .andExpect(status().isNoContent());
+        event(adminToken, "{\"event\":\"render\",\"mode\":\"2d\",\"render\":{\"r_no_webgl\":1}}")
+                .andExpect(status().isNoContent());
+        // Aucun contenu ne passe : clé hors vocabulaire, nombre hors bornes, mode inconnu ⇒ 400.
+        event(adminToken, "{\"event\":\"RENDER\",\"mode\":\"3d\",\"render\":{\"Zahi\":1}}")
+                .andExpect(status().isBadRequest());
+        event(adminToken, "{\"event\":\"RENDER\",\"mode\":\"3d\",\"render\":{\"sec_high\":100000}}")
+                .andExpect(status().isBadRequest());
+        event(adminToken, "{\"event\":\"RENDER\",\"mode\":\"vr\"}").andExpect(status().isBadRequest());
+
+        measure(adminToken).andExpect(status().isOk())
+                .andExpect(jsonPath("$.render.sessions3d").value(2))
+                .andExpect(jsonPath("$.render.sessions2d").value(1))
+                .andExpect(jsonPath("$.render.share3dPct").value(66.7))
+                .andExpect(jsonPath("$.render.counts.sec_high").value(150))
+                .andExpect(jsonPath("$.render.counts.r_no_webgl").value(1))
+                .andExpect(jsonPath("$.render.counts.t_subject").value(2))
+                .andExpect(jsonPath("$.render.counts.entries_skipped").value(1));
+        measure(otherAdminToken).andExpect(status().isOk()).andExpect(jsonPath("$.render.sessions3d").value(0))
+                .andExpect(jsonPath("$.render.sessions2d").value(0));
+    }
+
+    @Test
     @DisplayName("400 événement inconnu ; 403 mesure pour un non-ADMIN ; 401 sans jeton")
     void errors() throws Exception {
         event(adminToken, "{\"event\":\"DANCE\"}").andExpect(status().isBadRequest())

@@ -27,6 +27,9 @@ export class Gestures {
   private pinch = 0;
   private lastTap = -Infinity;
   private touchedOnce = false;
+  private lastWheel = -Infinity;
+  /** SF-236-06 — gestes commencés (un appui, ou une salve de molette), pour la mesure du rendu. */
+  count = 0;
   private readonly listeners: [EventTarget, string, EventListener][] = [];
 
   constructor(private readonly canvas: HTMLCanvasElement, private readonly sink: GestureSink) {
@@ -65,6 +68,9 @@ export class Gestures {
 
   private down(e: PointerEvent): void {
     this.first();
+    if (this.pointers.size === 0) {
+      this.count++;
+    }
     this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY,
       at: performance.now() });
     if (this.pointers.size === 2) {
@@ -116,6 +122,11 @@ export class Gestures {
   private wheel(e: WheelEvent): void {
     e.preventDefault();
     this.first();
+    const now = performance.now();
+    if (now - this.lastWheel > 500) {
+      this.count++;
+    }
+    this.lastWheel = now;
     this.sink.zoom(Math.exp(Math.max(-1, Math.min(1, e.deltaY / 400))));
   }
 

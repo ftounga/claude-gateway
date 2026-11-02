@@ -43,7 +43,8 @@ public class JarvisAdoptionController {
         try {
             service.record(currentUser.requireId(), body == null ? null : body.event(),
                     body == null ? null : body.seconds(), body == null ? null : body.scenes(),
-                    body == null ? null : body.lit(), body == null ? null : body.shows());
+                    body == null ? null : body.lit(), body == null ? null : body.shows(),
+                    body == null ? null : body.mode(), body == null ? null : body.render());
             return ResponseEntity.noContent().build();
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(new ErrorResponse("validation_error", e.getMessage()));
@@ -59,15 +60,22 @@ public class JarvisAdoptionController {
     /**
      * Corps de {@code POST /api/jarvis/usage} : {@code SESSION}, {@code SPOKEN} (+ secondes), {@code WAKE},
      * {@code IDLE_END} (SF-233-11) ; F-234 / SF-234-11 : {@code SCENES} (+ {@code scenes}, {@code lit},
-     * {@code shows}), {@code TOUCH}, {@code SOBER}.
+     * {@code shows}), {@code TOUCH}, {@code SOBER} ; F-236 / SF-236-06 : {@code RENDER} (+ {@code mode} = 3d / 2d,
+     * {@code render} = compteurs du vocabulaire fermé).
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record UsageEvent(String event, Long seconds, java.util.Map<String, Integer> scenes, Integer lit,
-            Integer shows) {
+            Integer shows, String mode, java.util.Map<String, Integer> render) {
 
         /** Forme d'avant F-234 (sans scènes). */
         public UsageEvent(String event, Long seconds) {
-            this(event, seconds, null, null, null);
+            this(event, seconds, null, null, null, null, null);
+        }
+
+        /** Forme F-234 (sans rendu). */
+        public UsageEvent(String event, Long seconds, java.util.Map<String, Integer> scenes, Integer lit,
+                Integer shows) {
+            this(event, seconds, scenes, lit, shows, null, null);
         }
     }
 }
