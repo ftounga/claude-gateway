@@ -160,7 +160,8 @@ class JarvisFastBrainBenchServiceTest {
         int turns = set.scenarios().stream().mapToInt(s -> s.turns().size()).sum();
         assertThat(report.cases()).isEqualTo(turns);
         assertThat(report.conversation().scenarios()).hasSize(set.scenarios().size());
-        assertThat(report.conversation().delegationRate()).isZero();
+        // F-240 / SF-240-04 — seul « Vérifie. » (F04) délègue : délégation forcée, sans appel au modèle.
+        assertThat(report.conversation().delegationRate()).isLessThan(0.05);
         assertThat(report.conversation().costPerExchangeEur()).isPositive();
         // Le cerveau rapide répond à tout : les demandes métier (à déléguer) font échouer la porte.
         assertThat(report.gatePassed()).isFalse();

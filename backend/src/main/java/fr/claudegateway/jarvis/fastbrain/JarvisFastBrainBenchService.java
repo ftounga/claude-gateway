@@ -281,14 +281,17 @@ public class JarvisFastBrainBenchService {
             List<JarvisConversationBench.TurnVerdict> turns = new ArrayList<>();
             List<java.math.BigDecimal> costs = new ArrayList<>();
             for (int i = 0; i < s.turns().size(); i++) {
-                String context = JarvisConversationBench.contextFor(set.context(), previous,
+                String context = JarvisConversationBench.contextFor(
+                        s.context() == null ? set.context() : set.context() + "\n\n" + s.context(), previous,
                         i == 0 ? s.heardBeforeCut() : null);
                 JarvisFastBrainService.Outcome outcome = fastBrain.bench(new JarvisFastBrainService.Request(userId,
                         null, null, s.turns().get(i).said(), null), model, context);
                 String[] routeAndSaid = JarvisConversationBench.routeAndSaid(outcome);
                 costs.add(JarvisConversationBench.fastCostEur(outcome, USD_TO_EUR));
-                turns.add(JarvisConversationBench.judge(provider, judgeModel, apiKey, s, i, context, routeAndSaid[1],
-                        routeAndSaid[0]));
+                turns.add(JarvisConversationBench.ROUTE_MORE.equals(routeAndSaid[0])
+                        ? JarvisConversationBench.descent(s, i)
+                        : JarvisConversationBench.judge(provider, judgeModel, apiKey, s, i, context, routeAndSaid[1],
+                                routeAndSaid[0]));
                 previous.add(new String[] { s.turns().get(i).said(), routeAndSaid[1] });
             }
             allTurns.addAll(turns);

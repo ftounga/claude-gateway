@@ -32,6 +32,9 @@ import { DictationError, DictationService } from '../core/services/dictation.ser
 import { JarvisVoiceError, JarvisVoiceService, SpeakHooks } from '../core/services/jarvis-voice.service';
 import { TurnClock, TurnCounter, spokenWordCount } from './jarvis-turn-clock';
 import { jarvisTiers } from './jarvis-tiers';
+import {
+  INVITATION_WINDOW_MS, MoreReader, NOTHING_MORE_PHRASE, isMoreAssent, isMoreCommand, isMoreMark,
+} from './jarvis-more';
 import { BargeInController, JarvisVadService, RunningVad, bargeInEnabled, encodeWav } from './jarvis-barge-in';
 import { CutSnapshot } from '../core/services/jarvis-voice.service';
 import { JarvisStreamOpener, LISTEN_AUDIO, LiveListening } from './jarvis-stream-listener';
@@ -206,14 +209,26 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const reply = this.detail();
     return reply ? jarvisTiers(reply) : null;
   });
-  /** F-240 / SF-240-03 — la mesure du tour dont la réponse est montrée (l'étage atteint y entre). */
-  private answerClock: TurnClock | null = null;
+  /**
+   * F-240 / SF-240-03 / SF-240-04 — la réponse d'Opus montrée : sa lecture étage par étage (« dis-m'en plus ») et la
+   * mesure de son tour (l'étage atteint y entre). `null` sans réponse d'Opus à l'écran.
+   */
+  private answer: { reader: MoreReader; clock: TurnClock | null } | null = null;
 
   /** F-240 / SF-240-03 — montre une réponse : l'essentiel seul, le détail replié ; sa mesure recevra l'étage atteint. */
   private showAnswer(reply: string | null | undefined, clock: TurnClock | null): void {
+    this.flushParked();
     this.detail.set(reply ? stripInvitationLines(stripShowLines(reply)) : null);
     this.showDetail.set(false);
-    this.answerClock = clock;
+    this.answer = reply ? { reader: new MoreReader(reply), clock } : null;
+  }
+
+  /** F-240 / SF-240-04 — plus de réponse d'Opus à l'écran (un autre échange a commencé à répondre). */
+  private clearAnswer(): void {
+    this.flushParked();
+    this.detail.set(null);
+    this.showDetail.set(false);
+    this.answer = null;
   }
 
   /** F-240 / SF-240-03 (D10) — un toucher sur « Voir le détail » ouvre l'étage 3 sans rien dire, et le mesure. */
@@ -221,7 +236,52 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const open = !this.showDetail();
     this.showDetail.set(open);
     if (open) {
-      this.answerClock?.reach(3, 'toucher');
+      this.answer?.clock?.reach(3, 'toucher');
+    }
+  }
+
+  /**
+   * F-240 / SF-240-04 (D7, D9) — **descend d'un étage** dans la réponse d'Opus déjà calculée : l'essentiel, puis le
+   * détail section par section, puis « C'est tout ». **Aucun appel** : la réponse est à l'écran (sinon relue dans le
+   * fil du sujet, sous l'identité de l'utilisateur). `false` s'il n'y a rien à développer (tour normal ensuite).
+   */
+  async descend(): Promise<boolean> {
+    let answer = this.answer;
+    if (!answer) {
+      const reply = await this.lastOpusReply();
+      if (!reply) {
+        return false;
+      }
+      this.showAnswer(reply, null);
+      answer = this.answer;
+    }
+    if (!answer) {
+      return false;
+    }
+    this.invitedAt = 0;
+    const step = answer.reader.next();
+    if (step.kind === 'detail') {
+      this.showDetail.set(true);
+    }
+    if (step.depth) {
+      answer.clock?.reach(step.depth, 'voix');
+    }
+    await this.say(step.speech);
+    return true;
+  }
+
+  /** F-240 / SF-240-04 (D9) — la dernière réponse d'Opus du fil courant (historique du terminal, filtré `user_id`). */
+  private async lastOpusReply(): Promise<string | null> {
+    const subjectId = this.subjectId();
+    if (!subjectId) {
+      return null;
+    }
+    try {
+      const history = await firstValueFrom(this.atelier.getHistory(subjectId));
+      const last = [...(history ?? [])].reverse().find((m) => m.role === 'ASSISTANT' && m.brain !== 'FAST');
+      return last?.content?.trim() ? last.content : null;
+    } catch {
+      return null;
     }
   }
 
@@ -1365,6 +1425,15 @@ export class JarvisComponent implements OnInit, OnDestroy {
         return;
       }
     }
+    // F-240 / SF-240-04 (D7, D8) — « dis-m'en plus » (liste fermée), ou un « oui » juste après une invitation ciblée :
+    // descend d'un étage dans la réponse déjà calculée, sur l'appareil, sans aucun appel (ni cerveau rapide, ni Opus).
+    const invited = this.invitedAt > 0 && Date.now() - this.invitedAt <= INVITATION_WINDOW_MS;
+    if (!directToOpus && (isMoreCommand(text) || (invited && isMoreAssent(text)))) {
+      if (await this.descend()) {
+        this.dropPendingClock();
+        return;
+      }
+    }
     // SF-233-11 — une demande dite : le silence de la conversation repart de zéro.
     this.conversation.touch();
     if (isPauseCommand(text)) {
@@ -1460,7 +1529,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
    */
   private async converse(text: string): Promise<void> {
     this.state.set('reflexion');
-    this.detail.set(null);
+    // F-240 / SF-240-04 — la réponse d'Opus reste à l'écran tant que le cerveau rapide n'a rien répondu d'autre :
+    // « développe le point Helios » (ligne-marque ⤵) la lit.
     this.spoken.set(null);
     const heardBeforeCut = this.heardBeforeCut;
     const subjectId = this.subjectId();
@@ -1483,13 +1553,24 @@ export class JarvisComponent implements OnInit, OnDestroy {
     let delegationReason: string | null = null;
     // F-240 / SF-240-01 — l'échange a délégué : sa mesure attend que la fin de la délégation soit dite.
     let delegatedId: string | null = null;
+    // F-240 / SF-240-04 — le cerveau rapide a répondu « ⤵ » : l'écran descend d'un étage, sans le dire.
+    let moreAsked = false;
     const sayNow = (sentence: string) => {
       if (!latest()) {
+        return;
+      }
+      if (isMoreMark(sentence)) {
+        moreAsked = true;
+        this.filler.answered();
+        this.clearAck();
         return;
       }
       this.filler.answered();
       this.clearAck();
       const first = said === '';
+      if (first) {
+        this.clearAnswer();
+      }
       said = first ? sentence : `${said} ${sentence}`;
       this.spoken.set(said);
       this.state.set('parole');
@@ -1615,6 +1696,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
       }
       if (latest() && (this.state() === 'parole' || this.state() === 'reflexion')) {
         this.state.set('repos');
+      }
+      // F-240 / SF-240-04 — « ⤵ » : la suite de la réponse déjà calculée, lue sur l'appareil (jamais Opus).
+      if (latest() && moreAsked && !(await this.descend())) {
+        await this.say(NOTHING_MORE_PHRASE);
       }
       this.flushAnnouncements();
     });
@@ -1748,7 +1833,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
   /** Envoie dans le fil du sujet, marqué « via Jarvis » (SF-231-06). */
   send(subjectId: string, text: string): void {
     this.state.set('reflexion');
-    this.detail.set(null);
+    this.clearAnswer();
     this.spoken.set(null);
     // Seul le dernier envoi parle : une précision dite pendant un tour suit le même tour, et sa fin ne doit pas
     // être lue deux fois.
@@ -1951,21 +2036,21 @@ export class JarvisComponent implements OnInit, OnDestroy {
   /** SF-233-06 — le fournisseur de la voix de Jarvis (mesure). */
   private ttsProvider: string | null = null;
 
-  /**
-   * F-240 / SF-240-01 — **le dernier tour fini est gardé** : l'étage atteint ensuite (« dis-m'en plus », toucher sur
-   * « Voir le détail ») entre dans sa mesure. Elle part au tour suivant, à la sortie de l'écran, ou au plus tard après
-   * {@link PARKED_CLOCK_MS}.
-   */
-  private parkedClock: TurnClock | null = null;
   /** F-240 / SF-240-02 — l'instant où une invitation ciblée a été dite (un « oui » ensuite descend d'un étage). */
   private invitedAt = 0;
+  /**
+   * F-240 / SF-240-01 / SF-240-04 — **la mesure de la réponse montrée est gardée** : l'étage atteint ensuite
+   * (« dis-m'en plus », toucher sur « Voir le détail ») entre dans sa mesure. Elle part quand une autre réponse la
+   * remplace, à la sortie de l'écran, ou au plus tard après {@link PARKED_CLOCK_MS}. Les autres tours sont déclarés à
+   * leur fin.
+   */
   private parkTimer: ReturnType<typeof setTimeout> | null = null;
   /** F-240 / SF-240-01 — les mesures des échanges délégués, jusqu'à ce que la fin de leur délégation soit dite. */
   private readonly delegationClocks = new Map<string, { clock: TurnClock; timer: ReturnType<typeof setTimeout> }>();
   /** F-240 / SF-240-01 — l'instant où chaque ligne 🎙 a commencé à être dite (par position dans le flux). */
   private lineStarts = new Map<number, number>();
 
-  /** F-240 / SF-240-01 — le tour en cours est fini : sa mesure est gardée (voir {@link parkedClock}). */
+  /** F-240 / SF-240-01 — le tour en cours est fini (voir {@link park}). */
   private parkClock(): void {
     this.refreshCosts();
     const clock = this.clock;
@@ -1975,20 +2060,31 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** F-240 — un tour fini : gardé s'il porte la réponse montrée (l'étage atteint y entrera), déclaré sinon. */
   private park(clock: TurnClock): void {
-    this.flushParked();
-    this.parkedClock = clock;
-    this.parkTimer = setTimeout(() => this.flushParked(), PARKED_CLOCK_MS);
+    if (clock === this.answer?.clock) {
+      if (!this.parkTimer) {
+        this.parkTimer = setTimeout(() => this.flushParked(), PARKED_CLOCK_MS);
+      }
+      return;
+    }
+    const report = clock.takeReport();
+    if (report) {
+      this.jarvis.timings(report);
+    }
   }
 
-  /** F-240 / SF-240-01 — déclare la mesure gardée (une seule fois). */
+  /** F-240 / SF-240-01 — déclare la mesure de la réponse montrée (une seule fois). */
   private flushParked(): void {
     if (this.parkTimer) {
       clearTimeout(this.parkTimer);
       this.parkTimer = null;
     }
-    const report = this.parkedClock?.takeReport();
-    this.parkedClock = null;
+    const clock = this.answer?.clock ?? null;
+    if (this.answer) {
+      this.answer = { ...this.answer, clock: null };
+    }
+    const report = clock?.takeReport();
     if (report) {
       this.jarvis.timings(report);
     }
@@ -2036,7 +2132,6 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   /** SF-233-01 — l'envoi part : le chronomètre de la phrase transcrite devient celui du tour. */
   private startClock(): void {
-    this.flushParked();
     this.reportClock();
     this.clock = this.pendingClock;
     this.pendingClock = null;

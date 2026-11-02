@@ -116,4 +116,37 @@ class JarvisConversationBenchTest {
                 BigDecimal.ZERO, 0.0, List.of(), List.of(hello, longer));
         assertThat(report.fastWordsP90()).isEqualTo(12);
     }
+
+    @Test
+    void f240TheFourMoreScenariosAreInTheSetWithTheirOwnContext() {
+        List<JarvisConversationBench.Scenario> more = SET.scenarios().stream()
+                .filter(s -> "SUITE_F240".equals(s.category())).toList();
+        assertThat(more).extracting(JarvisConversationBench.Scenario::id).containsExactly("F01", "F02", "F03", "F04");
+        assertThat(more.get(0).context()).contains("Opus : ");
+        assertThat(more.get(2).context()).isNull();
+        assertThat(more).extracting(s -> s.turns().get(0).expect())
+                .containsExactly("descendre", "descendre", "repondre", "deleguer");
+    }
+
+    @Test
+    void f240ADescentIsJudgedWithoutModelAndCostsNoOpusTurn() {
+        JarvisConversationBench.Scenario s = new JarvisConversationBench.Scenario("F01", "SUITE_F240", null,
+                List.of(new JarvisConversationBench.Turn("Dis-m'en plus.", "descendre")));
+        JarvisConversationBench.TurnVerdict v = JarvisConversationBench.descent(s, 0);
+        assertThat(v.route()).isEqualTo("descendre");
+        assertThat(v.meaningRight()).isTrue();
+        JarvisConversationBench.ScenarioVerdict verdict = JarvisConversationBench.scenario(s, List.of(v), SET,
+                List.of(new BigDecimal("0.01")));
+        assertThat(verdict.passed()).isTrue();
+        assertThat(verdict.delegations()).isZero();
+        // Une descente là où une délégation était attendue fait échouer le scénario.
+        JarvisConversationBench.Scenario verify = new JarvisConversationBench.Scenario("F04", "SUITE_F240", null,
+                List.of(new JarvisConversationBench.Turn("Vérifie.", "deleguer")));
+        assertThat(JarvisConversationBench.scenario(verify, List.of(JarvisConversationBench.descent(verify, 0)), SET,
+                List.of(BigDecimal.ZERO)).passed()).isFalse();
+        assertThat(JarvisConversationBench.routeAndSaid(new JarvisFastBrainService.Outcome(
+                JarvisFastBrainService.Kind.ANSWER, "⤵", null, "more", "m", 1, null,
+                JarvisFastBrainService.Guards.NONE)))
+                .containsExactly("descendre", "⤵");
+    }
 }
