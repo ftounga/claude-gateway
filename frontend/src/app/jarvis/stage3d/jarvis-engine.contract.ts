@@ -71,6 +71,8 @@ export interface JarvisEngine {
   setInsets(left: number, right: number): void;
   /** SF-236-15 — un nœud à l'écran (filaments liste ↔ nœud) ; `null` s'il n'est pas posé ou derrière la caméra. */
   project(key: string): { x: number; y: number } | null;
+  /** SF-236-19 — regarder un nœud (recherche, inspecteur) : même cadrage qu'un toucher, sans naviguer. */
+  look(key: string): void;
   /** Images dessinées depuis l'ouverture. */
   readonly frames: number;
   /** Libère tout (géométries, matières, rendu, contexte, écouteurs) ; idempotent. */

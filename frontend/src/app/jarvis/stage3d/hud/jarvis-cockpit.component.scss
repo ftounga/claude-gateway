@@ -448,3 +448,33 @@
   border: 1px solid color-mix(in srgb, var(--cg-holo, #E07B39) 45%, transparent);
   font: 12px var(--cg-font-mono);
 }
+
+// SF-236-19 — recherche « montre-moi » et inspecteur.
+.ck__search {
+  margin-bottom: var(--cg-space-3);
+}
+
+.ck__search-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 var(--cg-space-2);
+  border: 1px solid color-mix(in srgb, var(--cg-holo, #E07B39) 55%, transparent);
+  background: color-mix(in srgb, var(--cg-navy, #0B1020) 60%, transparent);
+  color: var(--cg-cream, #F5EFE3);
+  font: 13px var(--cg-font-body);
+
+  &:focus-visible {
+    outline: 2px solid var(--cg-holo-text, #F0954F);
+  }
+}
+
+.ck__results .ck__item {
+  cursor: pointer;
+}
+
+.ck__card-title {
+  margin: 0 0 var(--cg-space-1);
+  color: var(--cg-holo-core, #FFF3E4);
+  font: 600 15px var(--cg-font-heading);
+}

@@ -198,4 +198,5 @@
 <!-- F-236 / SF-236-15 — le cockpit PC (panneaux latéraux en verre, filaments liste ↔ nœud) : rien hors PC large en 3D. -->
 <app-jarvis-cockpit #cockpit [stage]="stage3d" [signals]="stageSignals()" [sober]="sober()"
                     [toSendAdded]="toSendAdded()" [shownFilter]="localShowFilter()"
-                    (choose)="touchSubject($event)" (show)="showLocal($event)" />
+                    (choose)="touchSubject($event)" (show)="showLocal($event)"
+                    (showSearch)="showLocal($event.filter, $event.client)" />

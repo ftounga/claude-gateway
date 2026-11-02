@@ -15,6 +15,7 @@ export class FakeCockpitStage implements CockpitStage {
   isNarrow = false;
   readonly positions = new Map<string, { x: number; y: number }>();
   session?: () => SessionSnapshot;
+  look?: (key: string) => void;
   project(key: string): { x: number; y: number } | null {
     return this.positions.get(key) ?? null;
   }
@@ -212,6 +213,47 @@ describe('F-236 / SF-236-15 — JarvisCockpitComponent (panneaux latéraux, repl
     (card.querySelector('.ck__detach') as HTMLButtonElement).click();
     fixture.detectChanges();
     expect(el.querySelector('.ck__float')).toBeNull();
+  });
+
+  it('SF-236-19 — inspecteur : une ligne touchée ouvre la fiche ; un lien ouvre la sienne et la caméra le regarde', () => {
+    mount();
+    const looked: string[] = [];
+    stage.look = (key) => looked.push(key);
+    (fixture.nativeElement.querySelector('.ck__item[data-key="h-cagip"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('.ck__card-title')?.textContent).toBe('CAGIP');
+    (el.querySelector('.ck__inspector .ck__item[data-key="h-cagip:zahi"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('.ck__card-title')?.textContent).toBe('Zahi Ben');
+    expect(looked).toEqual(['h-cagip:zahi']);
+    (el.querySelector('.ck__inspector .ck__detach') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('.ck__inspector')).toBeNull();
+  });
+
+  it('SF-236-19 — recherche au clavier : « / » donne le focus, ↓ Entrée applique, Échap efface ; aucun tour', () => {
+    mount();
+    const shows: unknown[] = [];
+    const looked: string[] = [];
+    cockpit.showSearch.subscribe((s) => shows.push(s));
+    stage.look = (key) => looked.push(key);
+    const input = fixture.nativeElement.querySelector('.ck__search-input') as HTMLInputElement;
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '/' }));
+    expect(document.activeElement).toBe(input);
+    input.value = 'bloqué';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    expect(shows).toEqual([{ filter: 'chantiers-bloques', client: null }]);
+    cockpit.setQuery('ingress');
+    fixture.detectChanges();
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    expect(looked).toEqual(['s-dup2']);
+    expect(cockpit.inspected()?.key).toBe('s-dup2');
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(cockpit.query()).toBe('');
   });
 
   it('univers vide ⇒ liste vide, message écrit', () => {

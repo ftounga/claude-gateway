@@ -15,6 +15,8 @@ import { DayFigure, dayBoard, weatherRows } from './jarvis-day-board';
 import { WEATHER_WORD } from './jarvis-weather';
 import { FloatId, floatSpot, peopleMap, sendShelf, ticketWall } from './jarvis-people-map';
 import { SessionSnapshot } from '../scenes3d/jarvis-session-memory';
+import { InspectorCard, SearchResult, inspect, search } from './jarvis-inspector';
+import { Node3dKind } from '../jarvis-layout-3d';
 import { IDLE_SCREEN, ScreenSignals } from '../jarvis-stage-director';
 import {
   CockpitFolds, CockpitInsets, CockpitMode, cockpitInsets, cockpitMode, readFolds, writeFolds,
@@ -27,6 +29,8 @@ export interface CockpitStage {
   project(key: string): { x: number; y: number } | null;
   /** SF-236-18 — la mémoire de session de l'écran (tickets vus), si la scène la tient. */
   session?: () => SessionSnapshot;
+  /** SF-236-19 — regarder un nœud (la caméra le cadre). */
+  look?: (key: string) => void;
 }
 
 /** Une ligne de liste reliée à un nœud de l'univers (filament au survol). */
@@ -115,6 +119,7 @@ export function universeItems(universe: JarvisUniverse | null, subjectId: string
   host: {
     '[attr.data-mode]': 'mode()',
     '(window:resize)': 'width.set(viewportWidth())',
+    '(window:keydown)': 'onGlobalKey($event)',
   },
 })
 export class JarvisCockpitComponent implements OnDestroy {
@@ -237,6 +242,93 @@ export class JarvisCockpitComponent implements OnDestroy {
   private readonly floatHost = viewChild<ElementRef<HTMLElement>>('floats');
   private floatFrame: number | null = null;
 
+  /** SF-236-19 (NF-7) — l'inspecteur : la fiche du nœud touché (univers, liste, recherche). */
+  readonly inspected = signal<{ key: string; kind: Node3dKind } | null>(null);
+  readonly card = computed<InspectorCard | null>(() => {
+    const target = this.inspected();
+    return target ? inspect(this.signals().universe, target.key, target.kind) : null;
+  });
+
+  /** Ouvre la fiche d'un nœud ; `look` = la caméra le cadre aussi (recherche, liens de la fiche). */
+  inspectNode(key: string, kind: Node3dKind, look = false): void {
+    this.inspected.set({ key, kind });
+    if (look) {
+      this.stage()?.look?.(key);
+    }
+  }
+
+  closeInspector(): void {
+    this.inspected.set(null);
+  }
+
+  /** SF-236-19 (NF-8) — la recherche « montre-moi » : filtres de « Montrer » + noms, sans tour. */
+  readonly query = signal('');
+  readonly results = computed<SearchResult[]>(() => search(this.signals().universe, this.query()));
+  readonly active = signal(0);
+  /** Un résultat « Montrer » choisi : l'écran l'applique localement (filtre, client normalisé). */
+  readonly showSearch = output<{ filter: ShowFilter; client: string | null }>();
+  private readonly searchBox = viewChild<ElementRef<HTMLInputElement>>('searchBox');
+
+  setQuery(value: string): void {
+    this.query.set(value);
+    this.active.set(0);
+  }
+
+  apply(result: SearchResult | undefined): void {
+    if (!result) {
+      return;
+    }
+    if (result.type === 'show') {
+      this.showSearch.emit({ filter: result.filter, client: result.client });
+    } else {
+      this.inspectNode(result.key, result.kind, true);
+    }
+  }
+
+  /** Clavier complet : ↓ ↑ parcourent, Entrée applique, Échap efface puis rend le focus. */
+  onSearchKey(event: KeyboardEvent): void {
+    const n = this.results().length;
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault();
+        this.active.set(n === 0 ? 0 : (this.active() + 1) % n);
+        break;
+      case 'ArrowUp':
+        event.preventDefault();
+        this.active.set(n === 0 ? 0 : (this.active() - 1 + n) % n);
+        break;
+      case 'Enter':
+        event.preventDefault();
+        this.apply(this.results()[this.active()]);
+        break;
+      case 'Escape':
+        event.preventDefault();
+        if (this.query()) {
+          this.setQuery('');
+        } else {
+          (event.target as HTMLElement).blur();
+        }
+        break;
+    }
+  }
+
+  /** `/` ou Ctrl+K (⌘K) n'importe où ⇒ la recherche (sauf pendant une saisie). */
+  onGlobalKey(event: KeyboardEvent): void {
+    if (this.mode() !== 'cockpit') {
+      return;
+    }
+    const target = event.target as HTMLElement | null;
+    const typing = !!target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
+    const shortcut = (event.key === '/' && !typing) || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k');
+    if (shortcut) {
+      event.preventDefault();
+      if (this.folds().left) {
+        this.toggle('left');
+      }
+      this.searchBox()?.nativeElement.focus();
+    }
+  }
+
   readonly rightBoards: readonly FloatId[] = ['envoyer', 'tickets'];
   readonly floatTitle: Readonly<Record<FloatId, string>> = {
     personnes: 'Personnes et attentes', tickets: 'Mur de tickets', envoyer: 'À envoyer',
@@ -315,11 +407,13 @@ export class JarvisCockpitComponent implements OnDestroy {
     writeFolds(next);
   }
 
-  /** Une ligne touchée : un sujet se choisit ; les autres nœuds se regardent (inspecteur à venir, SF-236-19). */
+  /** Une ligne touchée : un sujet se choisit ; tout nœud ouvre sa fiche dans l'inspecteur (SF-236-19). */
   pick(item: CockpitNodeItem): void {
     if (item.subjectId) {
       this.choose.emit(item.subjectId);
     }
+    // SF-236-19 — et sa fiche s'ouvre dans l'inspecteur.
+    this.inspectNode(item.key, item.depth === 0 ? 'client' : 'subject');
   }
 
   private hover: { key: string; el: HTMLElement; side: 'left' | 'right' } | null = null;

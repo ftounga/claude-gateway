@@ -305,6 +305,14 @@ export class JarvisStage3dComponent implements OnDestroy {
     return this.engine?.project(key) ?? null;
   }
 
+  /** SF-236-19 — regarder un nœud (recherche « montre-moi », inspecteur) : la caméra le cadre, rien ne navigue. */
+  look(key: string): void {
+    const engine = this.engine;
+    if (engine) {
+      this.zone.runOutsideAngular(() => engine.look(key));
+    }
+  }
+
   /** Bascule « Vue 3D / 2D », retenue par appareil. */
   /** SF-236-05 — saute l'entrée (premier toucher, n'importe où sur l'écran). */
   skipEntry(): void {
