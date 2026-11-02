@@ -11,7 +11,8 @@ export const PANELS_CSS = `
 .jv3d-panels {
   position: absolute;
   inset: 0;
-  z-index: 1;
+  /* Au-dessus des étiquettes : CSS2DRenderer leur donne un z-index par profondeur (jusqu'au nombre de nœuds). */
+  z-index: 100000;
   pointer-events: none;
   overflow: hidden;
 }
@@ -73,7 +74,7 @@ export const PANELS_CSS = `
   max-width: min(300px, 100vw - 32px);
   padding: 8px 12px 12px;
   border: 1px solid color-mix(in srgb, var(--tone) 70%, transparent);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--tone) 13%, transparent), transparent 70%), color-mix(in srgb, var(--cg-navy, #0B1020) 72%, transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--tone) 13%, transparent), transparent 70%), color-mix(in srgb, var(--cg-navy, #0B1020) 84%, transparent);
   clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
   color: var(--cg-cream, #F5EFE3);
   opacity: 0;

@@ -517,12 +517,20 @@ class ThreeJarvisEngine implements JarvisEngine {
       const dt = Math.min(Math.max(frameMs, 0), MAX_DT_MS);
       const f = this.brains.at(t);
       this.heart.group.scale.setScalar(f.coreScale);
-      this.heart.lightGain = f.coreLight;
+      // SF-236-14 — réserve du PO (itération 1) : grand cerveau déployé, le centre saturait sur PC. Le petit cœur,
+      // au milieu du champ, baisse sa lumière d'un tiers quand le violet monte (le noyau reste visible, à l'écoute).
+      this.heart.lightGain = f.coreLight * (1 - 0.35 * f.hue);
       this.heart.flash = f.flash;
       this.heart.frame(t, dt, this.options.voiceLevel());
       this.brain.frame(dt, f, this.plan.brains.pearls, this.brains.current === 'deployed' ? 'normal'
         : this.plan.brains.variant);
-      bloom = this.heart.bloom.value(t) + f.bloom;
+      bloom = this.heart.bloom.value(t) + f.bloom * (this.level === 'high' ? 0.6 : 1);
+      // SF-236-14 — réserve du PO : le grand cerveau déployé, les étiquettes prennent un fond de verre (lisibles).
+      const deep = f.spread > 0.4 ? '1' : '0';
+      const host = this.options.labelHost;
+      if (host && host.dataset['deep'] !== deep) {
+        host.dataset['deep'] = deep;
+      }
       light = this.heart.light;
       spread = f.spread;
       // Le fond et le sol virent au violet quand le grand cerveau travaille.

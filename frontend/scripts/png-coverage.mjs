@@ -78,9 +78,30 @@ export function coverage(png, threshold = 60, background = [0x0b, 0x10, 0x20]) {
   return off / (width * height);
 }
 
+/**
+ * F-236 / SF-236-14 — part de la capture couverte par le message d'erreur du serveur de développement (boîte gris
+ * neutre ~#181818) : une capture prise pendant une recompilation ratée n'est pas « non vide », elle est fausse.
+ */
+export function overlayShare(png) {
+  const { width, height, channels, pixels } = png;
+  let gray = 0;
+  for (let i = 0; i < width * height; i++) {
+    const o = i * channels;
+    const r = pixels[o];
+    const g = pixels[o + 1];
+    const b = pixels[o + 2];
+    if (Math.abs(r - g) < 3 && Math.abs(g - b) < 4 && r > 18 && r < 34) gray++;
+  }
+  return gray / (width * height);
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   try {
     const png = decodePng(readFileSync(process.argv[2]));
+    if (process.argv[3] === '--overlay') {
+      console.log(overlayShare(png).toFixed(4));
+      process.exit(0);
+    }
     console.log(coverage(png, Number(process.argv[3] ?? 60)).toFixed(4));
   } catch (error) {
     console.error(`png-coverage : ${error.message}`);
