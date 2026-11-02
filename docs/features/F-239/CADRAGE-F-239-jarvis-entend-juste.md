@@ -48,11 +48,25 @@ nombreuses (micro, accent, hésitations) ; l'écart entre options est ce qui com
 | gpt-4o-mini-transcribe + prompt (arrêt 26/02/2027) | 0 % | 0 | 685 / 863 ms | ≈ 0,69 € |
 | whisper-1 (dictée actuelle) | 11 % | 17 | 1 023 / 2 022 ms | ≈ 1,38 € |
 
-Lecture : **le vocabulaire fait tout** (6-11 % ⇒ 0-1,6 %) ; Scribe v2 batch + vocabulaire est le meilleur et le plus
-rapide, chez le sous-traitant déjà retenu (D-PO-1 F-233). La latence mesurée ici (≈ 630 ms depuis un poste en France,
-audio envoyé en une fois) dépasse la cible de 500 ms : SF-239-04 la réduit en envoyant l'audio **pendant** la parole
-(seule la fin reste à envoyer) et la mesure en prod. Les résultats en flux (avec / sans vocabulaire) et la découpe par
-silence (0,7 / 1,0 / 1,2 / 1,5 s) complètent le rapport du banc (SF-239-03).
+**Second passage (2026-11-02, 72 énoncés)** : 18 phrases (dont 6 phrases réelles du PO avec hésitations) × 2 voix ×
+2 variantes — propre, et **dégradée** (réverbération de pièce, bande téléphone 200-3 800 Hz, Opus 12 kb/s, bruit
+≈ 15 dB sous la voix).
+
+| Option | WER propre | WER dégradé | Noms manqués | Latence p50 / p90 |
+|---|---|---|---|---|
+| Scribe v2 batch | 6,1 % | 8,2 % | 30 | 581 / 800 ms |
+| **Scribe v2 batch + vocabulaire** | **0,3 %** | **1,1 %** | **0** | **620 / 861 ms** |
+| gpt-transcribe + vocabulaire | 0,8 % | 1,1 % | 0 | 688 / 951 ms |
+| gpt-4o-transcribe + prompt (arrêt 26/02/2027) | 0,3 % | 1,1 % | 2 | 963 / 1 571 ms |
+| whisper-1 (dictée, interruption — chemin actuel) | 10,1 % | 15,1 % | 47 | 2 708 / 9 491 ms |
+| Flux Scribe v2 Realtime (prod) | 3,7 % | 5,3 % | 23 | + 210 ms après commit |
+| Flux Scribe v2 Realtime + vocabulaire | 1,1 % | 2,6 % | 2 | + 212 ms après commit |
+
+Lecture : **le vocabulaire fait tout** (6-15 % ⇒ 0,3-1,1 %) ; **Scribe v2 batch + vocabulaire** est le plus juste, y
+compris sur l'audio dégradé, chez le sous-traitant déjà retenu (D-PO-1 F-233). Le flux reçoit aussi le vocabulaire :
+le texte provisoire et le repli s'améliorent (3,7 % ⇒ 1,1 %) sans latence. La retranscription ajoute ≈ 0,6 s ; elle part
+dès la fin de la parole, en parallèle de l'attente du dernier segment du flux. **Audio synthétique** : ces chiffres
+classent les options ; la capture audio réelle (SF-239-03) donnera les vrais taux.
 
 ## Décisions
 
@@ -66,19 +80,21 @@ silence (0,7 / 1,0 / 1,2 / 1,5 s) complètent le rapport du banc (SF-239-03).
 | D6 | **Tour de parole** : silence de fin de tour mesuré par le banc, prolongé quand la phrase est en suspens (trait d'union, virgule, conjonction, article, préposition) ; un segment validé en suspens ne clôt plus l'écoute. |
 | D7 | **Correction visible** : le texte compris (relu) s'affiche ; un mot se corrige d'un toucher ou par « non, j'ai dit … » ; la correction repart comme la demande corrigée. |
 
-## Découpage (ordre imposé par le PO : A, puis D, puis C, puis B)
+## Découpage (ordre imposé par le PO : A, puis D, puis C, puis B ; coûts tôt)
 
 | SF | Bloc | Objet | Estim. | État |
 |---|---|---|---|---|
 | SF-239-01 | — | **Ni formule creuse ni tour fantôme** (écran) | 2 j | **Livrée** (#1494) |
-| SF-239-02 | — | **Une salutation ne se délègue jamais** (serveur) : consigne v3, garde d'invitation, annonce d'office vide, trace des refus | 1 j | Livrée |
-| SF-239-03 | A | **Le banc d'écoute** : outil reproductible (`tools/jarvis-stt-bench`), phrases réelles du PO (prod du 2026-11-02) et synthétiques avec noms propres et hésitations ; WER avant / après relecture, taux de « sens compris », latence, € ; rapport et recommandation | 1,5 j | |
-| SF-239-04 | A | **Retranscrire l'énoncé complet** : l'écran garde l'audio de l'écoute ; la passerelle le retranscrit (fournisseur batch derrière une interface, Scribe v2 par défaut) avec le vocabulaire de l'univers (D2) ; repli sur le texte en flux au-delà d'un délai ; compté en €, sous le plafond voix | 2 j | |
-| SF-239-05 | A | **Comprendre ce qui a été voulu** : ligne `compris:` du cerveau rapide (D3), garde anti-invention, affichage, message USER relu ; passe dédiée si le cerveau rapide est éteint | 2 j | |
-| SF-239-06 | A | **Corriger d'un toucher ou de la voix** (D7) | 1,5 j | |
-| SF-239-07 | D | **Le banc de conversation, porte de déploiement** (D4) : 30 scénarios multi-tours + tours réels, juge et grille, seuil, ligne de release checklist | 2 j | |
-| SF-239-08 | C | **Converser comme une personne** : consigne v4 (D5), état du jour dans le message, réplique « je n'ai pas saisi » | 2 j | |
-| SF-239-09 | C | **La mémoire du jour** : le fil de la conversation du jour (au lieu de 30 min / 12 échanges), borné | 1 j | |
+| SF-239-02 | — | **Une salutation ne se délègue jamais** (serveur) : consigne v3, garde d'invitation, annonce d'office vide, trace des refus | 1 j | **Livrée** (#1500) |
+| SF-239-04 | A | **Retranscrire l'énoncé complet** (D1, D2) : Scribe v2 batch + vocabulaire de l'univers, **tous les chemins** (flux, dictée, interruption), en parallèle de la fin du flux, repli à 2,5 s ; le flux reçoit aussi le vocabulaire | 2 j | Livrée (priorité PO) |
+| SF-239-03 | A | **Le banc d'écoute et la capture réelle** : interrupteur ADMIN explicite, N derniers énoncés de Jarvis gardés (S3, `user_id`, purge 7 j, jamais pour les autres comptes) ; outil `tools/jarvis-stt-bench` (synthétique propre / dégradé, captures réelles) ; WER avant / après relecture, « sens compris », latence fin de parole → premier son | 2 j | |
+| SF-239-05 | A | **Comprendre ce qui a été voulu** (D3) : ligne `compris:` du cerveau rapide dans le même appel, garde anti-invention, affichage, message USER relu ; passe dédiée si le cerveau rapide est éteint | 2 j | |
+| SF-239-11 | coûts | **Des coûts sans escalade** : plafond du cerveau rapide = réponse sobre, jamais Opus (plafond doux / dur), quota sans Opus ; **cache du cerveau rapide** (univers relu, volatil non marqué : ≈ 0,028 $ ⇒ ≈ 0,010 $ l'échange) | 1,5 j | |
+| SF-239-06 | A | **Corriger d'un toucher ou de la voix** (D7) — la correction devient aussi la référence des captures réelles | 1,5 j | |
+| SF-239-07 | D | **Le banc de conversation, porte de déploiement** (D4) : ~30 scénarios multi-tours + tours réels, juge et grille, **budget en € par scénario** (toute délégation Opus sur un bavardage, une salutation ou une navigation fait échouer), coût moyen par échange et taux de délégation rapportés ; ligne de release checklist | 2 j | |
+| SF-239-08 | C | **Converser comme une personne** : consigne v4 (D5), état du jour dans le message | 2 j | |
+| SF-239-09 | C | **La mémoire du jour** | 1 j | |
+| SF-239-12 | coûts | **Le compteur visible** : ce que Jarvis a coûté aujourd'hui et ce mois-ci, en € (cerveau rapide, Opus délégué, voix, écoute), dans les réglages / HUD et la mesure admin | 1,5 j | |
 | SF-239-10 | B | **Laisser finir la phrase** (D6) | 1,5 j | |
 
 Chaque SF de C et B passe le banc de conversation (SF-239-07) avant merge.
@@ -95,8 +111,8 @@ Chaque SF de C et B passe le banc de conversation (SF-239-07) avant merge.
 
 ## Configuration prod (à poser par l'exploitation, au fil des SF)
 
-- `APP_JARVIS_UTTERANCE_PROVIDER=elevenlabs`, `APP_JARVIS_UTTERANCE_MODEL=scribe_v2` (SF-239-04 ; clé
-  `APP_ELEVENLABS_API_KEY` déjà présente).
+- SF-239-04 : rien à poser (défauts `APP_JARVIS_UTTERANCE_PROVIDER=elevenlabs`, `APP_JARVIS_UTTERANCE_MODEL=scribe_v2`,
+  clé `APP_ELEVENLABS_API_KEY` déjà présente) ; coupe-circuit `APP_JARVIS_UTTERANCE_PROVIDER=none`.
 - Seuil de fin de tour (SF-239-10) : valeur issue du banc.
 
 ## Hors périmètre
