@@ -1,4 +1,5 @@
 import { SceneData, SceneView } from '../../scenes/jarvis-scene-reader';
+import type { Ambient } from '../../scenes/jarvis-scene-bus.service';
 import { NodeRef } from '../../scenes/jarvis-universe.models';
 
 /**
@@ -67,6 +68,18 @@ export const BANC_SCENE_VIEWS: Readonly<Record<string, SceneView>> = {
   essaim: sceneOf('S13', 'explore', '4 explorations déléguées', { count: 4 }, { satellites: [
     'Où est défini le TTL ?', 'Qui consomme la zone ?', 'Quels ingress pointent ici ?', 'Le runbook existe ?'] }),
   veille: sceneOf('S17', 'veille_poser', 'Veille posée', { detail: 'Jira FORGE · lun → ven 9 h' }),
+};
+
+/** SF-236-13 — une ambiance de test : rien. */
+export const QUIET: Ambient = { hostDown: null, liveSubjects: new Set(), calling: null, cost: null, alert: null };
+
+/** SF-236-13 — les ambiances du banc (`ambiance-<nom>`). */
+export const BANC_AMBIENTS: Readonly<Record<string, Ambient>> = {
+  'poste-muet': { ...QUIET, hostDown: { clientKey: 'h-cagip', name: 'CAGIP' } },
+  vivants: { ...QUIET, liveSubjects: new Set(['s-forge', 's-doc', 's-web']) },
+  cloche: { ...QUIET, calling: { subjectId: 's-doc', label: 'Doc archi' } },
+  cout: { ...QUIET, cost: '0,42 €' },
+  veille: { ...QUIET, alert: { clientKey: 'h-cagip', label: 'Veille Jira · CAGIP — 2 changements' } },
 };
 
 /** SF-236-09 — une session de test : des fichiers lus et écrits dans trois dossiers (nuage du dépôt). */

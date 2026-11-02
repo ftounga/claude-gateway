@@ -10,6 +10,9 @@ import { EMPTY_SESSION, SessionSnapshot } from './scenes3d/jarvis-session-memory
 import { ScenePlan3d } from './scenes3d/jarvis-scene3d.model';
 import { ShowFocus } from '../scenes/jarvis-show';
 import { ShowPlan3d } from './scenes3d/jarvis-show-3d';
+import type { Ambient } from '../scenes/jarvis-scene-bus.service';
+import { AmbientPlan3d } from './scenes3d/jarvis-ambiance-3d';
+import { SceneTone } from './scenes3d/jarvis-scene3d.model';
 
 /**
  * F-236 — **le directeur de scène** (cadrage §3). Fichier <b>pur</b> : il lit les signaux existants de l'écran et
@@ -67,12 +70,16 @@ export interface ScreenSignals {
   stepsDone: Readonly<Record<string, number>>;
   /** H3 — SF-236-11 : « Montrer » résolu sur l'univers (`resolveShow`), `null` sinon. */
   showFocus: ShowFocus | null;
+  /** H4 — SF-236-13 : l'ambiance hors tour (A1-A5), lue sur le bus F-234. */
+  ambient: Ambient | null;
+  /** H15 — SF-236-13 : l'utilisateur est administrateur (A4, coût en €). */
+  admin: boolean;
 }
 
 export const IDLE_SCREEN: ScreenSignals = { state: 'repos', frozen: false, waiting: false, conversing: false,
   wakeCalls: 0, delegations: 0, fastBrainOn: false, turnActive: false, brainEnd: 'normal', universe: null,
   subjectId: null, lit: [], said: [], shown: null, scene: null, pulses: 0, spokenTickets: [],
-  stepsDone: {}, showFocus: null };
+  stepsDone: {}, showFocus: null, ambient: null, admin: false };
 
 /** Deux relevés de l'écran identiques (évite de recalculer le plan pour rien). */
 export function sameScreen(a: ScreenSignals, b: ScreenSignals): boolean {
@@ -82,7 +89,7 @@ export function sameScreen(a: ScreenSignals, b: ScreenSignals): boolean {
     && a.subjectId === b.subjectId && sameKeys(a.lit, b.lit) && sameKeys(a.said, b.said)
     && (a.shown === b.shown || (!!a.shown && !!b.shown && sameKeys(a.shown, b.shown)))
     && a.scene === b.scene && a.pulses === b.pulses && sameKeys(a.spokenTickets, b.spokenTickets)
-    && a.stepsDone === b.stepsDone && a.showFocus === b.showFocus;
+    && a.stepsDone === b.stepsDone && a.showFocus === b.showFocus && a.ambient === b.ambient && a.admin === b.admin;
 }
 
 function sameKeys(a: readonly string[], b: readonly string[]): boolean {
@@ -141,6 +148,48 @@ export interface StagePlan {
   bancPanelsOut?: boolean;
   /** SF-236-11 — « Montrer » en 3D (S20, T-M), `null` sinon. */
   show?: ShowPlan3d | null;
+  /** SF-236-13 — l'ambiance et les alertes (A1-A5), `null` sinon. */
+  ambient?: AmbientPlan3d | null;
+}
+
+/**
+ * SF-236-13 (N13) — toutes les teintes qu'un plan emploie (panneaux, lignes, effets, « Montrer », ambiance), avec ce
+ * qui les porte : le rouge (`alert`) ne doit venir que des alertes A1 / A5.
+ */
+export function planTones(plan: StagePlan): { tone: SceneTone; from: string }[] {
+  const out: { tone: SceneTone; from: string }[] = [];
+  const panels = (from: string, list: readonly { tone: SceneTone; lines: readonly { tone?: SceneTone }[] }[]) => {
+    for (const p of list) {
+      out.push({ tone: p.tone, from });
+      for (const l of p.lines) {
+        if (l.tone) {
+          out.push({ tone: l.tone, from });
+        }
+      }
+    }
+  };
+  if (plan.scene) {
+    panels(`scene:${plan.scene.id}`, plan.scene.panels);
+    for (const e of plan.scene.effects) {
+      if ('tone' in e) {
+        out.push({ tone: e.tone, from: `scene:${plan.scene.id}` });
+      }
+    }
+  }
+  if (plan.show) {
+    panels('show', plan.show.panels);
+    Object.values(plan.show.tones).forEach((tone) => out.push({ tone, from: 'show' }));
+  }
+  if (plan.ambient) {
+    panels('ambient', plan.ambient.panels);
+    Object.values(plan.ambient.tones).forEach((tone) => out.push({ tone, from: 'ambient' }));
+    for (const e of plan.ambient.effects) {
+      if ('tone' in e) {
+        out.push({ tone: e.tone, from: 'ambient' });
+      }
+    }
+  }
+  return out;
 }
 
 /** SF-236-08 — la scène F-234 en cours ⇒ son plan 3D, ancré sur l'univers posé. */
@@ -172,7 +221,8 @@ export function directStage(signals: StageSignals, universe: UniverseView = EMPT
 export function samePlan(a: StagePlan, b: StagePlan): boolean {
   return a.mood === b.mood && a.wakes === b.wakes && a.brains.target === b.brains.target
     && a.brains.variant === b.brains.variant && a.brains.pearls === b.brains.pearls && a.universe === b.universe
-    && sameScenePlan(a.scene, b.scene) && (a.show ?? null) === (b.show ?? null);
+    && sameScenePlan(a.scene, b.scene) && (a.show ?? null) === (b.show ?? null)
+    && (a.ambient ?? null) === (b.ambient ?? null);
 }
 
 /** Deux plans de scène identiques (petits objets déclaratifs : comparaison de leur forme écrite). */

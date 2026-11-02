@@ -39,7 +39,9 @@ export const BANC_SCENES = ['coeur', 'ecoute', 'reflexion', 'parole', 'oui', 'co
   'montrer-chantiers-bloques', 'montrer-etapes-en-cours', 'montrer-a-envoyer',
   // SF-236-12 — web, création, vidéo, passation, mémoire, essaim, veille.
   'scene-web', 'scene-page', 'scene-montage', 'scene-video', 'scene-passation', 'scene-souvenir', 'scene-carte',
-  'scene-essaim', 'scene-veille'] as const;
+  'scene-essaim', 'scene-veille',
+  // SF-236-13 — ambiance et alertes (A1-A5).
+  'ambiance-poste-muet', 'ambiance-vivants', 'ambiance-cloche', 'ambiance-cout', 'ambiance-veille'] as const;
 
 const SCENE_NAME = /^[a-z0-9-]{1,40}$/;
 

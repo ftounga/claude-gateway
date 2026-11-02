@@ -14,6 +14,7 @@ import { SLEEP_AFTER_MS, SleepWatch } from './jarvis-heart';
 import { EMPTY_SESSION, SessionMemory, SessionSnapshot } from './scenes3d/jarvis-session-memory';
 import { clientKey } from '../scenes/jarvis-universe.models';
 import { ShowPlan3d, directShow } from './scenes3d/jarvis-show-3d';
+import { AmbientPlan3d, COST_VISIBLE_MS, directAmbient } from './scenes3d/jarvis-ambiance-3d';
 import { PANEL_POOL } from './jarvis-panels';
 import {
   IDLE_SCREEN, ScreenSignals, StagePlan, UniverseView, directStage, samePlan, stageScene, universeView,
@@ -138,7 +139,7 @@ export class JarvisStage3dComponent implements OnDestroy {
     const plan = directStage({ state: s.state, frozen: s.frozen, waiting: s.waiting, asleep: this.asleep(),
       wakes: this.wakes(), delegations: s.delegations, fastBrainOn: s.fastBrainOn, turnActive: s.turnActive,
       brainEnd: s.brainEnd }, universe, scene);
-    return { ...plan, show: this.show() };
+    return { ...plan, show: this.show(), ambient: this.ambientPlan() };
   }, { equal: samePlan });
 
   /** SF-236-11 — « Montrer » en 3D : recalculé seulement quand la demande résolue change (même objet sinon). */
@@ -150,6 +151,51 @@ export class JarvisStage3dComponent implements OnDestroy {
     // Les panneaux de « Montrer » prennent la place restante du pool après ceux de la scène (T6).
     const limit = (this.narrow ? PANEL_POOL.narrow : PANEL_POOL.wide) - 1;
     return { ...plan, panels: plan.panels.slice(0, Math.max(1, limit)) };
+  }, { equal: (a, b) => a === b || (!!a && !!b && JSON.stringify(a) === JSON.stringify(b)) });
+
+  /** SF-236-13 — A4 : le coût du dernier tour reste 5 s ; A3 : une onde par appel d'un autre sujet. */
+  private readonly costFresh = signal(false);
+  private readonly callingSeq = signal(0);
+  private costTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastCost: string | null = null;
+  private lastCalling: string | null = null;
+  private readonly ambientFollow = effect(() => {
+    const ambient = this.signals().ambient;
+    untracked(() => {
+      const cost = ambient?.cost ?? null;
+      if (cost !== this.lastCost) {
+        this.lastCost = cost;
+        if (this.costTimer !== null) {
+          clearTimeout(this.costTimer);
+          this.costTimer = null;
+        }
+        this.costFresh.set(cost !== null);
+        if (cost !== null) {
+          this.costTimer = setTimeout(() => {
+            this.costTimer = null;
+            this.costFresh.set(false);
+          }, COST_VISIBLE_MS);
+        }
+      }
+      const calling = ambient?.calling?.subjectId ?? null;
+      if (calling !== this.lastCalling) {
+        this.lastCalling = calling;
+        if (calling) {
+          this.callingSeq.update((n) => n + 1);
+        }
+      }
+    });
+  });
+
+  /** SF-236-13 — l'ambiance (A1-A5) : au repos seulement, sauf la veille qui sonne. */
+  private readonly ambientPlan = computed<AmbientPlan3d | null>(() => {
+    const s = this.signals();
+    if (this.sober()) {
+      return null;
+    }
+    const universe = this.universe();
+    return directAmbient(s.ambient, { universe: s.universe, nodes: new Set(universe.layout.nodes.map((n) => n.key)),
+      busy: s.turnActive || s.scene !== null, admin: s.admin, costFresh: this.costFresh(), seq: this.callingSeq() });
   }, { equal: (a, b) => a === b || (!!a && !!b && JSON.stringify(a) === JSON.stringify(b)) });
 
   /** SF-236-09 — la mémoire de session de l'écran (tickets vus, nuage du dépôt) : noms seulement, aucun appel. */
@@ -280,6 +326,10 @@ export class JarvisStage3dComponent implements OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    if (this.costTimer !== null) {
+      clearTimeout(this.costTimer);
+      this.costTimer = null;
+    }
     this.clearSleepTimer();
     if (this.retireTimer !== null) {
       clearTimeout(this.retireTimer);
