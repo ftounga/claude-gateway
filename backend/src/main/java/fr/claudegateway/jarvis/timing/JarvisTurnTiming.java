@@ -145,4 +145,15 @@ public class JarvisTurnTiming {
     @Builder.Default
     @Column(name = "correction", nullable = false)
     private boolean correction = false;
+
+    /**
+     * F-239 / SF-239-02 (D3b) — la parole a été refusée par la porte de parole réelle (aucun tour) : la raison (liste
+     * fermée : empty, noise, hallucination, no_voice, implausible), {@code null} sinon. Jamais le texte.
+     */
+    @Column(name = "rejected_kind", length = 16)
+    private String rejectedKind;
+
+    /** F-239 / SF-239-02 (D3b) — la longueur du texte transcrit refusé, {@code null} sinon. */
+    @Column(name = "rejected_chars")
+    private Integer rejectedChars;
 }

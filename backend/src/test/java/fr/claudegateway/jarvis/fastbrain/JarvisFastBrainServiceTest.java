@@ -193,10 +193,79 @@ class JarvisFastBrainServiceTest {
             throw new IllegalStateException("panne");
         };
 
-        JarvisFastBrainService.Outcome outcome = service(failing, null, null).converse(ask("Bonjour"), null);
+        JarvisFastBrainService.Outcome outcome = service(failing, null, null).converse(ask("Où en est Kestrel ?"),
+                null);
 
         assertThat(outcome.delegation().automatic()).isTrue();
         assertThat(outcome.delegation().reason()).isEqualTo("error");
+        // F-239 / SF-239-02 (D1) — l'annonce d'office n'est plus « Je vérifie, Monsieur. » : silence.
+        assertThat(outcome.delegation().annonce()).isEmpty();
+    }
+
+    // ---------------------------------------------------------------- F-239 / SF-239-02 : salutation, invitations
+
+    @Test
+    void aGreetingIsNeverDelegatedTheUngroundedNewsIsDropped() {
+        // 2026-11-02 08:11:52 : « Bonjour Jarvis. » ⇒ bilan non demandé, garde d'ancrage, délégation à Opus (23 s).
+        StringBuilder heard = new StringBuilder();
+        JarvisFastBrainService.Outcome outcome = service(streaming("Bonjour Monsieur. ",
+                "Deux fermetures d'attentes attendent votre clic, et LDIC-223 reste le prochain chantier."), null, null)
+                .converse(ask("Bonjour Jarvis."), heard::append);
+
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(outcome.spokenText()).isEqualTo("Bonjour Monsieur.");
+        assertThat(outcome.guards().groundingTrips()).isEqualTo(1);
+        assertThat(heard.toString()).doesNotContain("LDIC");
+    }
+
+    @Test
+    void aGreetingTheModelDelegatesOrFailsGetsACourteousReplySaidNow() {
+        StringBuilder heard = new StringBuilder();
+        JarvisFastBrainService.Outcome outcome = service(delegating("""
+                {"demande": "faire le point", "label": "point du jour", "annonce": "Je fais le point.", "sujet": "",
+                 "chantier": null}
+                """), null, null).converse(ask("Bonjour Jarvis"), heard::append);
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(outcome.spokenText()).isEqualTo("Bonjour, Monsieur.");
+        assertThat(heard.toString().strip()).isEqualTo("Bonjour, Monsieur.");
+
+        AiAgentProvider failing = request -> {
+            throw new IllegalStateException("panne");
+        };
+        outcome = service(failing, null, null).converse(ask("Merci Jarvis"), null);
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(outcome.spokenText()).isEqualTo("Avec plaisir, Monsieur.");
+    }
+
+    @Test
+    void aGreetingStillStepsAsideWhenTheBudgetIsSpent() {
+        when(usage.monthFastBrainCostUsd(any())).thenReturn(new BigDecimal("1000"));
+        JarvisFastBrainService.Outcome outcome = service(answering("Bonjour."), "1", null)
+                .converse(ask("Bonjour Jarvis"), null);
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.FALLBACK);
+    }
+
+    @Test
+    void anInvitationToSpeakIsRemovedEvenAsAConclusion() {
+        StringBuilder heard = new StringBuilder();
+        JarvisFastBrainService.Outcome outcome = service(streaming("Le chantier en est aux tests. ",
+                "Je vous écoute pour la suite de la journée."), null, null)
+                .converse(ask("Et le chantier ?"), heard::append);
+
+        assertThat(outcome.spokenText()).isEqualTo("Le chantier en est aux tests.");
+        assertThat(outcome.guards().fillersRemoved()).isEqualTo(1);
+        assertThat(heard.toString()).doesNotContain("écoute");
+    }
+
+    @Test
+    void withoutASubjectTheQuestionIsSaid() {
+        StringBuilder heard = new StringBuilder();
+        service(delegating("""
+                {"demande": "x", "label": "tickets", "annonce": "Je regarde les tickets.", "sujet": "",
+                 "chantier": null}
+                """), null, null).converse(new JarvisFastBrainService.Request(alice, null, null,
+                "Regarde les tickets", null), heard::append);
+        assertThat(heard.toString().strip()).isEqualTo(JarvisFastBrainService.ASK_SUBJECT);
     }
 
     @Test

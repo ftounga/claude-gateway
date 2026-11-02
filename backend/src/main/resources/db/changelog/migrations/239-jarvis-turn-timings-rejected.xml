@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-239 / SF-239-02 - LA TRACE DES PAROLES REFUSEES (D3b).
+
+      jarvis_turn_timings + rejected_kind (liste fermee : empty, noise, hallucination, no_voice, implausible) et
+      rejected_chars (longueur du texte transcrit) : une parole refusee par la porte de parole reelle de l'ecran
+      (aucun tour lance). JAMAIS le texte. Colonnes additives, NULL pour les lignes existantes et les tours acceptes.
+      Purge 90 j existante inchangee.
+
+      Numero 239 = numero de la feature. Rollback : les colonnes se retirent.
+    -->
+
+    <changeSet id="239-jarvis-turn-timings-rejected" author="claude-gateway">
+        <addColumn tableName="jarvis_turn_timings">
+            <column name="rejected_kind" type="varchar(16)"/>
+            <column name="rejected_chars" type="int"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="jarvis_turn_timings" columnName="rejected_chars"/>
+            <dropColumn tableName="jarvis_turn_timings" columnName="rejected_kind"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

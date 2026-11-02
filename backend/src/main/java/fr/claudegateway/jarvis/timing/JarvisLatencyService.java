@@ -112,6 +112,10 @@ public class JarvisLatencyService {
                 .forcedDelegation(Boolean.TRUE.equals(report.forcedDelegation()))
                 .delegationReason(closed(report.delegationReason(), REASONS))
                 .correction(Boolean.TRUE.equals(report.correction()))
+                // F-239 / SF-239-02 (D3b) — raison et longueur d'une parole refusée, jamais le texte.
+                .rejectedKind(closed(report.rejectedKind(), REJECTIONS))
+                .rejectedChars(report.rejectedKind() == null || report.rejectedChars() == null ? null
+                        : Math.max(0, Math.min(MAX_REJECTED_CHARS, report.rejectedChars())))
                 .build());
     }
 
@@ -175,6 +179,10 @@ public class JarvisLatencyService {
 
     /** F-235 / SF-235-07 — les cerveaux d'un tour vocal (liste fermée). */
     static final List<String> BRAINS = List.of("FAST", "FAST_DELEGATED", "OPUS");
+    /** F-239 / SF-239-02 — les raisons d'un refus de parole (liste fermée de la porte de l'écran). */
+    static final List<String> REJECTIONS = List.of("empty", "noise", "hallucination", "no_voice", "implausible");
+    /** F-239 / SF-239-02 — borne de la longueur rapportée. */
+    static final int MAX_REJECTED_CHARS = 10_000;
     /** F-235 / SF-235-07 — les raisons d'une délégation d'office ou d'un repli (liste fermée). */
     static final List<String> REASONS = List.of("grounding", "refusal", "error", "timeout", "empty", "tool_text",
             "forced", "budget", "quota", "no_subject");
@@ -223,7 +231,9 @@ public class JarvisLatencyService {
             // F-235 / SF-235-07 (D14) — facultatifs, absents des écrans d'avant F-235.
             String brain, String fastModel, Integer fastFirstTokenMs, Integer groundingTrips, Integer fillersRemoved,
             Integer repeatsRemoved, Integer imitationsRemoved, Boolean forcedDelegation, String delegationReason,
-            Boolean correction) {
+            Boolean correction,
+            // F-239 / SF-239-02 (D3b) — facultatifs : une parole refusée par l'écran (aucun tour).
+            String rejectedKind, Integer rejectedChars) {
     }
 
     /** Une étape : nombre de tours où elle a eu lieu, p50 et p90 en ms (nuls sans mesure). */

@@ -128,7 +128,14 @@ public class JarvisFastBrainService {
     static final int REPEAT_WINDOW = 5;
 
     /** L'annonce d'une délégation d'office : courte, vraie, jamais un fait. */
-    static final String AUTO_ANNOUNCE = "Je vérifie, Monsieur.";
+    /**
+     * L'annonce d'une délégation d'office. F-239 / SF-239-02 (D1, D3) : <b>vide</b> — « Je vérifie, Monsieur. » ne
+     * disait rien de la demande ; mieux vaut le silence (le cœur montre le travail) qu'une formule creuse.
+     */
+    static final String AUTO_ANNOUNCE = "";
+
+    /** L'annonce d'une délégation demandée par le PO (« vérifie ») : elle répond à la demande elle-même. */
+    static final String FORCED_ANNOUNCE = "Je vérifie.";
 
     private final AiAgentProvider provider;
     private final JarvisFastBrainProperties properties;
@@ -214,7 +221,12 @@ public class JarvisFastBrainService {
      * d'office ou un repli.
      */
     public Outcome converse(Request request, Sink sink) {
-        Outcome outcome = route(request, decide(request, sink));
+        Outcome decided = decide(request, sink);
+        Outcome outcome = route(request, decided);
+        if (sink != null && decided.kind() == Kind.DELEGATE && outcome.kind() == Kind.ANSWER) {
+            // F-239 / SF-239-02 — la question du sujet est dite (elle n'était jamais poussée au fil de l'eau).
+            sink.text(outcome.spokenText() + " ");
+        }
         // SF-235-04 (D12) : un échange rapide est tracé dans le fil du sujet courant (jamais rejoué comme un tour).
         if (exchanges != null && outcome.kind() == Kind.ANSWER && request.workspace() != null) {
             exchanges.write(request.userId(), request.workspace().getId(), request.chantier(), request.text(),
@@ -327,6 +339,30 @@ public class JarvisFastBrainService {
 
     private Outcome decide(Request request, Sink sink, String benchModel, String fixedContext) {
         Sink out = sink == null ? delta -> { } : sink;
+        Outcome outcome = decideRaw(request, out, benchModel, fixedContext);
+        return JarvisFastGuards.isSmallTalk(request.text()) ? courteous(request, outcome, out) : outcome;
+    }
+
+    /**
+     * F-239 / SF-239-02 (D3) — <b>une salutation ou une politesse ne se délègue jamais</b> : si la décision est une
+     * délégation (outil appelé, échec d'ancrage, refus, délai, erreur, réponse vide), le cerveau rapide répond quand
+     * même — ce qu'il a déjà dit de sûr, sinon une réponse courtoise fixe, dite maintenant. Un repli (plafond, quota)
+     * reste un repli.
+     */
+    Outcome courteous(Request request, Outcome outcome, Sink out) {
+        if (outcome.kind() != Kind.DELEGATE) {
+            return outcome;
+        }
+        String said = outcome.spokenText() == null ? "" : outcome.spokenText().strip();
+        if (said.isEmpty()) {
+            said = JarvisFastGuards.courtesyReply(request.text());
+            out.text(said + " ");
+        }
+        return new Outcome(Kind.ANSWER, said, null, null, outcome.model(), outcome.firstTokenMs(), outcome.costUsd(),
+                outcome.guards());
+    }
+
+    private Outcome decideRaw(Request request, Sink out, String benchModel, String fixedContext) {
         UUID userId = request.userId();
         boolean bench = benchModel != null;
         String model = bench ? benchModel : properties.model();
@@ -347,7 +383,7 @@ public class JarvisFastBrainService {
         String apiKey = byok == null ? null : byok.resolveActiveApiKey(userId).orElse(null);
         String context = fixedContext != null ? fixedContext : context(request);
         SentenceGate gate = new SentenceGate(context, request.text(), bench ? List.of() : recentSentences(userId),
-                out);
+                out, JarvisFastGuards.isSmallTalk(request.text()));
         AgentTurnRequest call = new AgentTurnRequest(model, systemFor(userId),
                 bench ? List.of(AgentMessage.userText(message(context, request.text())
                         + (sober(request, context) ? "\n\n" + fr.claudegateway.jarvis.preferences.JarvisSobriety.NOTE
@@ -439,7 +475,7 @@ public class JarvisFastBrainService {
                 : previous + "\n(L'utilisateur demande de vérifier : « " + said + " ». La réponse rapide précédente "
                         + "n'était pas vérifiée.)";
         UUID subject = request.workspace() == null ? null : request.workspace().getId();
-        return new Outcome(Kind.DELEGATE, "", new Delegation(UUID.randomUUID(), demande, "", AUTO_ANNOUNCE, subject,
+        return new Outcome(Kind.DELEGATE, "", new Delegation(UUID.randomUUID(), demande, "", FORCED_ANNOUNCE, subject,
                 request.chantier(), true, REASON_FORCED), REASON_FORCED, properties.model(), -1L, null,
                 new Guards(0, 0, 0, true, false, 0));
     }
@@ -450,7 +486,7 @@ public class JarvisFastBrainService {
      */
     Delegation withSafeAnnounce(Delegation d, SentenceGate gate) {
         String annonce = d.annonce();
-        boolean bad = annonce == null || annonce.isBlank() || AUTO_ANNOUNCE.equals(annonce)
+        boolean bad = annonce == null || annonce.isBlank()
                 || JarvisFastGuards.isFillerAlone(annonce) || gate.repeats(annonce)
                 || JarvisFastGuards.looksLikeToolCall(annonce) || gate.ungrounded(annonce) != null;
         if (!bad) {
@@ -460,7 +496,7 @@ public class JarvisFastBrainService {
         String safe = label.isEmpty() || JarvisFastGuards.looksLikeToolCall(label) || gate.ungrounded(label) != null
                 ? AUTO_ANNOUNCE
                 : "Je regarde : " + label + ".";
-        if (!AUTO_ANNOUNCE.equals(safe) && gate.repeats(safe)) {
+        if (!safe.isEmpty() && gate.repeats(safe)) {
             safe = "Je lance la recherche : " + label + ".";
         }
         return new Delegation(d.delegationId(), d.demande(), d.label(), safe, d.subjectId(), d.chantier(),
@@ -511,12 +547,19 @@ public class JarvisFastBrainService {
         private int repeatsRemoved;
         private boolean toolText;
         private int imitationsRemoved;
+        /** F-239 / SF-239-02 (D3) — une salutation : une phrase non ancrée est retirée, jamais déléguée. */
+        private final boolean smallTalk;
 
         SentenceGate(String context, String said, List<String> recent, Sink out) {
+            this(context, said, recent, out, false);
+        }
+
+        SentenceGate(String context, String said, List<String> recent, Sink out, boolean smallTalk) {
             this.context = context == null ? "" : context;
             this.said = said == null ? "" : said;
             this.recent = recent == null ? List.of() : recent;
             this.out = out;
+            this.smallTalk = smallTalk;
         }
 
         void accept(String delta) {
@@ -564,11 +607,14 @@ public class JarvisFastBrainService {
                 }
                 if (ungrounded(sentence) != null) {
                     groundingTrips++;
+                    if (smallTalk) {
+                        return; // F-239 (D3) : sur une salutation, la partie non ancrée est retirée, sans délégation
+                    }
                     abort(REASON_GROUNDING);
                     return;
                 }
-                if (JarvisFastGuards.isFillerAlone(sentence)) {
-                    fillersRemoved++;
+                if (JarvisFastGuards.isFillerAlone(sentence) || JarvisFastGuards.isListeningInvitation(sentence)) {
+                    fillersRemoved++; // F-239 (D3) : « Je vous écoute… » retiré, seul ou en conclusion
                     return;
                 }
                 if (repeats(sentence)) {
