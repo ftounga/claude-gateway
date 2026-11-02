@@ -66,6 +66,7 @@ import { BrainEnd } from './stage3d/jarvis-brains';
 import { UniverseTouch } from './stage3d/jarvis-layout-3d';
 import { ScreenSignals, sameScreen } from './stage3d/jarvis-stage-director';
 import { isShowDismiss, stripShowLines } from './scenes/jarvis-show';
+import { ticketKeys } from './scenes/jarvis-scene-reader';
 import {
   ASK_SUBJECT, AnnouncementQueue, CORRECTION_WINDOW_MS, FastDelegation, FastDone, JarvisFastBrainClient,
   announcementText, isCorrection, isRepeatCommand,
@@ -1534,6 +1535,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
       // SF-236-08 — la scène en cours et les appels d'outil : panneaux holographiques et impulsions en 3D.
       scene: reader.scene,
       pulses: reader.pulses,
+      // SF-236-09 — la carte de ticket nommée dans la phrase dite s'illumine (clés seulement).
+      spokenTickets: ticketKeys(this.spoken()),
     };
   }, { equal: sameScreen });
 

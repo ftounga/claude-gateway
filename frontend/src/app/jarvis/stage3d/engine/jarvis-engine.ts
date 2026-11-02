@@ -23,6 +23,7 @@ import { Gestures } from './jarvis-gestures';
 import { HEART_RADIUS } from './jarvis-heart-3d';
 import { Heart3d } from './jarvis-heart-3d';
 import { Universe3d } from './jarvis-universe-3d';
+import { Node3d } from '../jarvis-layout-3d';
 import { JarvisPost } from './jarvis-post';
 import { Effects3d } from './jarvis-effects-3d';
 import { Panels3d } from './jarvis-panels-3d';
@@ -227,7 +228,7 @@ class ThreeJarvisEngine implements JarvisEngine {
         options.onTouch);
       this.universe.setSize(options.width, options.height);
       this.panels = new Panels3d(options.labelHost);
-      this.effects = new Effects3d(this.scene);
+      this.effects = new Effects3d(this.scene, options.width < 768, this.renderer.getPixelRatio());
       this.applyPlan(options.plan, start, true);
       this.placeCamera(overviewShot(overviewDistance(options.plan.universe.layout.extent,
         options.width / Math.max(options.height, 1)), options.width < options.height * 0.8), true);
@@ -345,6 +346,16 @@ class ThreeJarvisEngine implements JarvisEngine {
     const halfV = Math.tan((CAMERA_FOV * Math.PI) / 360);
     const r = Math.max(28, (HEART_RADIUS / (this.camera.position.length() * halfV)) * (this.height / 2));
     return { x: (this.projected.x + 1) * 0.5 * this.width, y: (1 - this.projected.y) * 0.5 * this.height, r };
+  }
+
+  /**
+   * SF-236-09 — le nœud que la caméra cadre : celui de la scène en cours (S3 le poste, S4 le client…) s'il est posé,
+   * sinon le premier nœud cité (§9.3).
+   */
+  private focusNode(): Node3d | null {
+    const key = this.plan.scene?.focus;
+    const view = this.plan.universe;
+    return (key ? view.layout.nodes.find((n) => n.key === key) : undefined) ?? view.focus;
   }
 
   /** SF-236-08 — un nœud à l'écran (ancre d'un panneau) ; `null` s'il n'est pas posé ou derrière la caméra. */
@@ -562,7 +573,7 @@ class ThreeJarvisEngine implements JarvisEngine {
       const view = this.plan.universe;
       const portrait = this.width < this.height * 0.8;
       const shot = this.director.decide({
-        focus: view.focus, subjectId: view.subjectId, listening: this.plan.mood === 'ecoute', waiting,
+        focus: this.focusNode(), subjectId: view.subjectId, listening: this.plan.mood === 'ecoute', waiting,
         overview: this.overview(), portrait,
       }, now);
       // Pendant un geste, les ordres attendent — sauf l'autorisation S2, toujours devant.
@@ -599,7 +610,8 @@ class ThreeJarvisEngine implements JarvisEngine {
       const view = this.plan.universe;
       const portrait = this.width < this.height * 0.8;
       const wide = overviewShot(this.overview(), portrait);
-      const close = view.focus ? nodeShot(view.focus, portrait) : wide;
+      const focus = this.focusNode();
+      const close = focus ? nodeShot(focus, portrait) : wide;
       const [from, to] = this.plan.bancCamera === 'dezoom' ? [close, wide] : this.plan.bancCamera === 'zoom'
         ? [wide, close] : [close, close];
       this.placeCamera(from, true);

@@ -6,6 +6,7 @@ import { Graph3d, MAX_LIT_NODES, linkGraph } from './jarvis-link-graph';
 import { SceneView } from '../scenes/jarvis-scene-reader';
 import { directScene } from './scenes3d';
 import { boundPanels } from './jarvis-panels';
+import { EMPTY_SESSION, SessionSnapshot } from './scenes3d/jarvis-session-memory';
 import { ScenePlan3d } from './scenes3d/jarvis-scene3d.model';
 
 /**
@@ -58,11 +59,13 @@ export interface ScreenSignals {
   /** H2 — SF-236-08 : la scène F-234 en cours (une à la fois) et le compteur d'appels d'outil du tour. */
   scene: SceneView | null;
   pulses: number;
+  /** SF-236-09 — les clés de tickets nommées dans la phrase dite par Jarvis (la carte s'illumine). */
+  spokenTickets: readonly string[];
 }
 
 export const IDLE_SCREEN: ScreenSignals = { state: 'repos', frozen: false, waiting: false, conversing: false,
   wakeCalls: 0, delegations: 0, fastBrainOn: false, turnActive: false, brainEnd: 'normal', universe: null,
-  subjectId: null, lit: [], said: [], shown: null, scene: null, pulses: 0 };
+  subjectId: null, lit: [], said: [], shown: null, scene: null, pulses: 0, spokenTickets: [] };
 
 /** Deux relevés de l'écran identiques (évite de recalculer le plan pour rien). */
 export function sameScreen(a: ScreenSignals, b: ScreenSignals): boolean {
@@ -71,7 +74,7 @@ export function sameScreen(a: ScreenSignals, b: ScreenSignals): boolean {
     && a.turnActive === b.turnActive && a.brainEnd === b.brainEnd && a.universe === b.universe
     && a.subjectId === b.subjectId && sameKeys(a.lit, b.lit) && sameKeys(a.said, b.said)
     && (a.shown === b.shown || (!!a.shown && !!b.shown && sameKeys(a.shown, b.shown)))
-    && a.scene === b.scene && a.pulses === b.pulses;
+    && a.scene === b.scene && a.pulses === b.pulses && sameKeys(a.spokenTickets, b.spokenTickets);
 }
 
 function sameKeys(a: readonly string[], b: readonly string[]): boolean {
@@ -130,9 +133,10 @@ export interface StagePlan {
 }
 
 /** SF-236-08 — la scène F-234 en cours ⇒ son plan 3D, ancré sur l'univers posé. */
-export function stageScene(s: ScreenSignals, view: UniverseView, narrow: boolean): ScenePlan3d | null {
+export function stageScene(s: ScreenSignals, view: UniverseView, narrow: boolean,
+    session: SessionSnapshot = EMPTY_SESSION): ScenePlan3d | null {
   const plan = directScene(s.scene, { universe: s.universe, subjectId: s.subjectId, pulses: s.pulses, narrow,
-    nodes: new Set(view.layout.nodes.map((n) => n.key)) });
+    nodes: new Set(view.layout.nodes.map((n) => n.key)), session, spokenTickets: s.spokenTickets });
   // T6 — pool borné (PC 8, téléphone 2) ; « devant tout » (S2) d'abord, jamais écarté.
   return plan ? { ...plan, panels: boundPanels(plan.panels, narrow) } : null;
 }

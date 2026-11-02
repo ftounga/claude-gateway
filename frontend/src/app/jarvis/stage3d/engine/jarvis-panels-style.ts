@@ -11,6 +11,7 @@ export const PANELS_CSS = `
 .jv3d-panels {
   position: absolute;
   inset: 0;
+  z-index: 1;
   pointer-events: none;
   overflow: hidden;
 }
@@ -108,6 +109,23 @@ export const PANELS_CSS = `
   white-space: pre;
 }
 
+@keyframes jv3d-pages {
+  from { background-position: 0 0; }
+  to { background-position: 0 -60px; }
+}
+.jv3d-panel__pages {
+  position: relative;
+  display: block;
+  height: 36px;
+  margin-top: 8px;
+  background: repeating-linear-gradient(180deg, color-mix(in srgb, var(--tone) 35%, transparent) 0 2px,
+    transparent 2px 6px, color-mix(in srgb, var(--tone) 22%, transparent) 6px 8px, transparent 8px 12px);
+  background-size: 70% 60px;
+  background-repeat: repeat-y;
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 30%, #000 70%, transparent);
+  mask-image: linear-gradient(180deg, transparent, #000 30%, #000 70%, transparent);
+  animation: jv3d-pages 4s linear infinite;
+}
 @media (max-width: 767px) {
   .jv3d-panel {
     max-width: min(240px, 100vw - 32px);
