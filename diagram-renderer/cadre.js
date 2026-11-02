@@ -19,6 +19,8 @@
 
 const fs = require("node:fs");
 const ELK = require("elkjs/lib/elk.bundled.js");
+const { compose } = require("./cadre-composition.js");
+const { routeAll } = require("./cadre-routage.js");
 
 /** Pas de la grille : toutes les coordonnées utiles en sont des multiples. */
 const GRID = 8;
@@ -86,12 +88,20 @@ function nodeSize(node) {
   };
 }
 
+/**
+ * Le sens du flux. Donné : TB/BT ⇒ de haut en bas, LR/RL ⇒ de gauche à droite. Absent (cadrage §19 Q2) : de
+ * haut en bas pour un schéma multi-AZ (AZ en colonnes, la forme des schémas de référence AWS), sinon de gauche
+ * à droite.
+ */
 function directionOf(prepared) {
   const raw = String(prepared.direction || "").toUpperCase();
   if (raw === "TB" || raw === "BT") {
     return "TB";
   }
-  return "LR";
+  if (raw === "LR" || raw === "RL") {
+    return "LR";
+  }
+  return (prepared.groups || []).filter((g) => g.kind === "az").length >= 2 ? "TB" : "LR";
 }
 
 // ------------------------------------------------------------------------------------------------ ELK
@@ -256,6 +266,98 @@ async function layoutElk(prepared) {
     notices: [...(prepared.notices || [])],
     resources: prepared.resources || "",
   };
+}
+
+// ------------------------------------------------------------------------------- composition + routeur
+
+/**
+ * La mise en page CADRÉE (SF-238-03/04) : zones composées par nous (AZ parallèles, bande régionale, flux),
+ * nœuds placés par ELK dans leur zone sur la grille de 8 px, liaisons routées par notre routeur orthogonal.
+ */
+async function layoutCadre(prepared) {
+  const direction = directionOf(prepared);
+  const comp = await compose(prepared, direction);
+  const groups = new Map(prepared.groups.map((g) => [g.id, g]));
+  const top = MARGIN + (prepared.title ? TITLE_H : 0);
+  const left = MARGIN;
+  const shift = (b) => ({ x: b.x + left, y: b.y + top, w: b.w, h: b.h });
+  const depthOf = (gid) => {
+    let depth = 0;
+    let current = groups.get(gid);
+    while (current && current.parent && groups.has(current.parent)) {
+      depth += 1;
+      current = groups.get(current.parent);
+    }
+    return depth;
+  };
+  const zones = prepared.groups.map((g) => ({
+    id: g.id,
+    kind: g.kind || "generic",
+    label: g.label,
+    parent: g.parent && groups.has(g.parent) ? g.parent : "",
+    depth: depthOf(g.id),
+    inferred: g.inferred !== false,
+    box: shift(comp.zones.get(g.id)),
+  }));
+  const nodes = prepared.nodes.map((n) => ({
+    ...n,
+    group: n.group && groups.has(n.group) ? n.group : "",
+    box: shift(comp.nodes.get(n.id)),
+  }));
+  const bounds = {
+    w: snapUp(Math.max(comp.w + 2 * MARGIN, textWidth(prepared.title, TITLE_FONT) + 2 * MARGIN)),
+    h: snapUp(comp.h + top + MARGIN),
+  };
+  const routed = routeAll({
+    bounds,
+    direction,
+    zones: zones.map((z) => ({ ...z, header: headerRect(z) })),
+    nodes,
+    edges: prepared.edges,
+  });
+  const model = {
+    title: prepared.title,
+    direction,
+    bounds,
+    zones,
+    nodes,
+    edges: prepared.edges.map((e, i) => ({
+      id: "e" + i,
+      from: e.from,
+      to: e.to,
+      label: e.label,
+      bidirectional: e.bidirectional === true,
+      points: routed.points[i],
+      labelBox: null,
+    })),
+    notices: [...(prepared.notices || []), ...routed.notices],
+    resources: prepared.resources || "",
+  };
+  placeLabels(model);
+  return model;
+}
+
+/** Les étiquettes de flux : au milieu du plus long segment de leur liaison (SF-238-03). */
+function placeLabels(model) {
+  for (const edge of model.edges) {
+    if (!edge.label) {
+      continue;
+    }
+    const w = textWidth(edge.label, EDGE_FONT) + 8;
+    const h = LINE_H;
+    let best = null;
+    for (let i = 1; i < edge.points.length; i += 1) {
+      const a = edge.points[i - 1];
+      const b = edge.points[i];
+      const length = Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+      if (!best || length > best.length) {
+        best = { length, a, b };
+      }
+    }
+    const cx = (best.a.x + best.b.x) / 2;
+    const cy = (best.a.y + best.b.y) / 2;
+    edge.labelBox = { x: Math.round(cx - w / 2), y: Math.round(cy - h / 2), w, h };
+  }
 }
 
 /** Retire les points intermédiaires alignés : une polyligne n'a que ses coudes. */
@@ -486,8 +588,9 @@ function densityNotice(bounds) {
 }
 
 /** Une description préparée entre ; `{svg, graph, model}` sort. */
-async function build(prepared) {
-  const model = await layoutElk(prepared);
+async function build(prepared, options = {}) {
+  // `mode: "elk"` garde la mise en page ELK du graphe entier (SF-238-01) : le repli du cadrage §22.
+  const model = options.mode === "elk" ? await layoutElk(prepared) : await layoutCadre(prepared);
   return { svg: toSvg(model), graph: toGraph(model), model };
 }
 
