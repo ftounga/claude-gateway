@@ -28,6 +28,8 @@ import fr.claudegateway.atelier.AtelierMessageRepository;
 import fr.claudegateway.atelier.Workspace;
 import fr.claudegateway.atelier.WorkspaceService;
 import fr.claudegateway.atelier.besoin.AppRequest;
+import fr.claudegateway.atelier.besoin.AppRequestAttachment;
+import fr.claudegateway.atelier.besoin.AppRequestAttachmentRepository;
 import fr.claudegateway.atelier.besoin.AppRequestRepository;
 import fr.claudegateway.atelier.deposit.AtelierDepositedFile;
 import fr.claudegateway.atelier.deposit.AtelierDepositedFileRepository;
@@ -124,6 +126,7 @@ public class JarvisPieceService {
     private final SubjectJourneyRepository journeys;
     private final AtelierDepositedFileRepository deposits;
     private final AppRequestRepository requests;
+    private final AppRequestAttachmentRepository attachments;
     private final ProofCaptureRepository proofs;
     private final MessageBlockSendRepository sends;
     private final ClientEmailRepository emails;
@@ -146,7 +149,7 @@ public class JarvisPieceService {
     @SuppressWarnings("java:S107") // un agrégat lit, par définition, toutes ses sources
     public JarvisPieceService(WorkspaceService workspaces, AtelierMessageRepository messages,
             SubjectJourneyRepository journeys, AtelierDepositedFileRepository deposits, AppRequestRepository requests,
-            ProofCaptureRepository proofs, MessageBlockSendRepository sends, ClientEmailRepository emails,
+            AppRequestAttachmentRepository attachments, ProofCaptureRepository proofs, MessageBlockSendRepository sends, ClientEmailRepository emails,
             PageRepository pages, GeneratedImageRepository images, PresentationRepository presentations,
             VideoRepository videos, VideoVersionRepository videoVersions, VideoSeriesRepository videoSeries,
             RunnerRegistry runners, Clock clock) {
@@ -155,6 +158,7 @@ public class JarvisPieceService {
         this.journeys = journeys;
         this.deposits = deposits;
         this.requests = requests;
+        this.attachments = attachments;
         this.proofs = proofs;
         this.sends = sends;
         this.emails = emails;
@@ -298,7 +302,14 @@ public class JarvisPieceService {
 
     /** E3 — les besoins notés (F-205), décrits par leur reformulation. */
     private void requests(UUID userId, UUID ws, PieceChantierIndex index, List<Piece> out) {
-        for (AppRequest r : requests.findTop50ByUserIdAndWorkspaceIdOrderByCreatedAtAsc(userId, ws)) {
+        List<AppRequest> rows = requests.findTop50ByUserIdAndWorkspaceIdOrderByCreatedAtAsc(userId, ws);
+        if (rows.isEmpty()) {
+            return;
+        }
+        Map<UUID, List<AppRequestAttachment>> joinedByRequest = attachments
+                .findByRequestIdInAndUserIdOrderBySeqAsc(rows.stream().map(AppRequest::getId).toList(), userId)
+                .stream().collect(Collectors.groupingBy(AppRequestAttachment::getRequestId));
+        for (AppRequest r : rows) {
             PieceCaptions.Caption caption = PieceCaptions.first(
                     PieceCaptions.of(r.getReformulation(), Piece.CaptionSource.REFORMULATION),
                     PieceCaptions.of(r.getDescription(), Piece.CaptionSource.DESCRIPTION),
@@ -306,6 +317,13 @@ public class JarvisPieceService {
             PieceChantierIndex.Link link = index.link(r.getMessageId(), r.getCreatedAt(), r.getId().toString());
             Map<String, Object> meta = new LinkedHashMap<>();
             meta.put("status", r.getStatus());
+            List<AppRequestAttachment> joined = joinedByRequest.getOrDefault(r.getId(), List.of()).stream()
+                    .filter(a -> AppRequestAttachment.COPIED.equals(a.getCopyStatus())).toList();
+            if (!joined.isEmpty()) {
+                meta.put("attachments", joined.stream().map(a -> Map.<String, Object>of("name",
+                        a.getName() == null ? "piece" : a.getName(), "open",
+                        "/jarvis/pieces/req:" + r.getId() + "/attachments/" + a.getSeq())).toList());
+            }
             out.add(new Piece("req:" + r.getId(), Piece.Category.ENTREE, Piece.Kind.TEXT,
                     PieceCaptions.clip(r.getTitle(), PieceCaptions.MAX_TITLE), caption == null ? null : caption.text(),
                     caption == null ? null : caption.source(), r.getCreatedAt(), ws, link.chantier(), link.link(),
@@ -323,6 +341,7 @@ public class JarvisPieceService {
             PieceCaptions.Caption caption = PieceCaptions.proof(c.getTitle(), c.getStep(), statuses, codes);
             PieceChantierIndex.Link link = index.link(null, c.getCapturedAt(), c.getCallId(), hex);
             String image = "/workspaces/" + ws + "/proofs/" + hex;
+            String thumb = thumbOf("proof:" + hex);
             Map<String, Object> meta = new LinkedHashMap<>();
             if (c.getStep() != null) {
                 meta.put("step", c.getStep());
@@ -337,7 +356,7 @@ public class JarvisPieceService {
             meta.put("commands", statuses.size());
             out.add(new Piece("proof:" + hex, Piece.Category.PREUVE, Piece.Kind.IMAGE,
                     PieceCaptions.clip(c.getTitle() == null ? "Preuve" : c.getTitle(), PieceCaptions.MAX_TITLE),
-                    caption.text(), caption.source(), c.getCapturedAt(), ws, link.chantier(), link.link(), image, image,
+                    caption.text(), caption.source(), c.getCapturedAt(), ws, link.chantier(), link.link(), thumb, image,
                     meta, Piece.Availability.ONLINE));
         }
     }
@@ -369,7 +388,7 @@ public class JarvisPieceService {
             out.add(new Piece("mail:" + e.getId(), Piece.Category.PREUVE, Piece.Kind.TEXT,
                     PieceCaptions.clip("Courriel : " + e.getSubject(), PieceCaptions.MAX_TITLE),
                     caption == null ? null : caption.text(), caption == null ? null : caption.source(), at, ws,
-                    link.chantier(), link.link(), null, "/client-emails/" + e.getId(), meta,
+                    link.chantier(), link.link(), null, "/jarvis/pieces/mail:" + e.getId() + "/text", meta,
                     Piece.Availability.ONLINE));
         }
     }
@@ -383,6 +402,7 @@ public class JarvisPieceService {
             PieceChantierIndex.Link link = index.link(null, p.getCreatedAt(), p.getId().toString());
             Map<String, Object> meta = new LinkedHashMap<>();
             meta.put("version", p.getCurrentVersion());
+            meta.put("pdf", "/pages/" + p.getId() + "/pdf");
             out.add(new Piece("page:" + p.getId() + "@v" + p.getCurrentVersion(), Piece.Category.PRODUCTION,
                     Piece.Kind.PAGE, PieceCaptions.clip(p.getTitle(), PieceCaptions.MAX_TITLE),
                     caption == null ? null : caption.text(), caption == null ? null : caption.source(),
@@ -400,7 +420,8 @@ public class JarvisPieceService {
             out.add(new Piece("img:" + i.getId(), Piece.Category.PRODUCTION, Piece.Kind.IMAGE,
                     PieceCaptions.clip("Image : " + i.getPrompt(), 60),
                     PieceCaptions.clip(i.getPrompt(), PieceCaptions.MAX_PROMPT), Piece.CaptionSource.PROMPT,
-                    i.getCreatedAt(), ws, link.chantier(), link.link(), path, path, null, Piece.Availability.ONLINE));
+                    i.getCreatedAt(), ws, link.chantier(), link.link(), thumbOf("img:" + i.getId()), path, null,
+                    Piece.Availability.ONLINE));
         }
     }
 
@@ -417,7 +438,7 @@ public class JarvisPieceService {
             if (slides != null) {
                 meta.put("slides", slides);
             }
-            String thumb = slides != null && slides > 0 ? "/presentations/" + p.getId() + "/slides/1" : null;
+            String thumb = slides != null && slides > 0 ? thumbOf("slides:" + p.getId()) : null;
             out.add(new Piece("slides:" + p.getId(), Piece.Category.PRODUCTION, Piece.Kind.SLIDES,
                     PieceCaptions.clip(p.getTitle(), PieceCaptions.MAX_TITLE), caption == null ? null : caption.text(),
                     caption == null ? null : caption.source(), p.getUpdatedAt(), ws, link.chantier(), link.link(),
@@ -462,13 +483,20 @@ public class JarvisPieceService {
                 meta.put("chapters", chapters.stream()
                         .map(c -> Map.<String, Object>of("t", c.t(), "title", c.titre())).toList());
             }
-            out.add(new Piece("video:" + v.getId() + "@v" + v.getCurrentVersion(), Piece.Category.PRODUCTION,
+            String pieceId = "video:" + v.getId() + "@v" + v.getCurrentVersion();
+            String thumb = version != null && version.getPosterKey() != null ? thumbOf(pieceId) : null;
+            out.add(new Piece(pieceId, Piece.Category.PRODUCTION,
                     v.getKind() == VideoKind.AUDIO ? Piece.Kind.AUDIO : Piece.Kind.VIDEO,
                     PieceCaptions.clip(v.getTitle(), PieceCaptions.MAX_TITLE), caption == null ? null : caption.text(),
                     caption == null ? null : caption.source(), v.getCreatedAt(), ws, link.chantier(), link.link(),
-                    null, "/videos/" + v.getId() + "/versions/" + v.getCurrentVersion() + "/media", meta,
+                    thumb, "/videos/" + v.getId() + "/versions/" + v.getCurrentVersion() + "/media", meta,
                     Piece.Availability.ONLINE));
         }
+    }
+
+    /** Le chemin passerelle de la vignette réduite (SF-237-02). */
+    static String thumbOf(String pieceId) {
+        return "/jarvis/pieces/" + pieceId + "/thumb";
     }
 
     private Piece.Availability availability(Workspace workspace) {
