@@ -8,6 +8,8 @@ import { Observable } from 'rxjs';
 import { AtelierMessage } from '../../../core/models/atelier.models';
 import { AtelierService } from '../../../core/services/atelier.service';
 import { ReplayTrack, trackOf } from './jarvis-replay';
+import { WatchClock, clockX, watchClock } from './jarvis-watch-clock';
+import { VeilleService } from '../../../core/services/veille.service';
 import { DayTurn, FAMILY_TONE, FAMILY_WORD, Pearl, TurnTimeline, dayAxis, dayTurns } from './jarvis-timelines';
 
 import { JarvisUniverse, clientKey } from '../../scenes/jarvis-universe.models';
@@ -60,6 +62,18 @@ export const JARVIS_DAY_HISTORY = new InjectionToken<(subjectId: string) => Obse
       return (subjectId: string) => atelier.getHistory(subjectId);
     },
   });
+
+/**
+ * SF-236-25 — les veilles du compte (`GET /api/jarvis/watches`, filtré `user_id`), lues une fois hors tour ;
+ * injectable pour les tests et le banc.
+ */
+export const JARVIS_WATCHES = new InjectionToken<() => Observable<unknown>>('JARVIS_WATCHES', {
+  providedIn: 'root',
+  factory: () => {
+    const veilles = inject(VeilleService);
+    return () => veilles.listForAccount();
+  },
+});
 
 /** Une perle à l'écran : position sur l'arc et teinte. */
 export interface PearlDot {
@@ -225,6 +239,32 @@ export class JarvisCockpitComponent implements OnDestroy {
   }
 
   private dayMessages: readonly AtelierMessage[] = [];
+
+  /** SF-236-25 (NF-14) — l'horloge des veilles : lue une fois, à la première ouverture du cockpit, hors tour. */
+  readonly watchClock = signal<WatchClock | null>(null);
+  private watchesRead = false;
+  readonly clockX = clockX;
+  private readonly watchesLoad = effect(() => {
+    const shown = this.mode() !== 'none';
+    const busy = this.signals().turnActive;
+    untracked(() => {
+      if (shown && !busy && !this.watchesRead) {
+        this.watchesRead = true;
+        this.loadWatches();
+      }
+    });
+  });
+
+  private loadWatches(): void {
+    try {
+      this.injector.get(JARVIS_WATCHES)().subscribe({
+        next: (list) => this.watchClock.set(watchClock(list, new Date())),
+        error: () => this.watchClock.set(null),
+      });
+    } catch {
+      this.watchClock.set(null); // illisible ⇒ rien, aucune erreur
+    }
+  }
 
   /** SF-236-22 — rejoue le tour choisi (déjà lu : aucun appel). Refusé pendant un tour vivant. */
   replayTurn(turn: DayTurn): void {

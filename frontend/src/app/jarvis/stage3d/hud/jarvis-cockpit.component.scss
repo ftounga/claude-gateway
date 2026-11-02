@@ -546,3 +546,63 @@
   overflow-y: auto;
   padding: var(--cg-space-3) 16px;
 }
+
+// SF-236-25 (NF-14) — l'horloge des veilles : cinq pistes (lun → ven), un trait par passage, la prochaine en surbrillance.
+.ck__clock-next {
+  margin: 0 0 var(--cg-space-2);
+  font-size: 12px;
+}
+
+.ck__clock-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-left: 40px;
+  font-family: var(--cg-font-mono);
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+.ck__clock-days {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ck__clock-day {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  height: 18px;
+  opacity: 0.75;
+
+  &--today {
+    opacity: 1;
+  }
+}
+
+.ck__clock-label {
+  width: 36px;
+  font-size: 11px;
+}
+
+.ck__clock-track {
+  position: relative;
+  flex: 1;
+  height: 1px;
+  background: color-mix(in srgb, var(--cg-holo, #E07B39) 30%, transparent);
+}
+
+.ck__clock-mark {
+  position: absolute;
+  top: -5px;
+  width: 2px;
+  height: 11px;
+  background: color-mix(in srgb, var(--cg-holo, #E07B39) 70%, transparent);
+
+  &--next {
+    width: 4px;
+    margin-left: -1px;
+    background: var(--cg-holo-core, #FFF3E4);
+    box-shadow: 0 0 8px var(--cg-holo, #E07B39);
+  }
+}

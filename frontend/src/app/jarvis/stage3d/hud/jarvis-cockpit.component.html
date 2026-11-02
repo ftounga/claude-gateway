@@ -25,6 +25,7 @@
       <ng-container *ngTemplateOutlet="turnTpl" />
       <ng-container *ngTemplateOutlet="boardsTpl" />
       <ng-container *ngTemplateOutlet="dayTpl" />
+      <ng-container *ngTemplateOutlet="watchClockTpl" />
     </div>
   </aside>
 
@@ -71,6 +72,7 @@
           @case ('journee') {
             <ng-container *ngTemplateOutlet="boardTpl" />
             <ng-container *ngTemplateOutlet="boardsTpl" />
+            <ng-container *ngTemplateOutlet="watchClockTpl" />
           }
           @case ('meteo') {
             <ng-container *ngTemplateOutlet="weatherTpl" />
@@ -419,5 +421,33 @@
             (mouseenter)="col.clientKey && link(col.clientKey, $event, 'right')" (mouseleave)="unlink()">{{ t.key }}</li>
       }
     </ul>
+  }
+</ng-template>
+
+<!-- SF-236-25 (NF-14) — l'horloge des veilles : lun → ven, la prochaine en surbrillance ; illisible ⇒ rien. -->
+<ng-template #watchClockTpl>
+  @if (watchClock(); as clock) {
+    <section class="ck__section ck__clock" aria-labelledby="ck-veilles">
+      <h2 id="ck-veilles" class="ck__title">Horloge des veilles</h2>
+      @if (clock.next; as n) {
+        <p class="ck__clock-next">Prochaine : <strong>{{ n.name }}</strong> · {{ n.when }}</p>
+      }
+      <div class="ck__clock-axis" aria-hidden="true">
+        <span>{{ hourLabel(clock.from) }}</span><span>{{ hourLabel(clock.to) }}</span>
+      </div>
+      <ul class="ck__clock-days">
+        @for (d of clock.days; track d.label) {
+          <li class="ck__clock-day" [class.ck__clock-day--today]="d.today">
+            <span class="ck__clock-label">{{ d.label }}</span>
+            <span class="ck__clock-track">
+              @for (m of d.marks; track m.watchId + m.minute) {
+                <i class="ck__clock-mark" [class.ck__clock-mark--next]="m.next" [style.left.%]="clockX(clock, m.minute)"
+                   [attr.title]="m.time + ' — ' + m.name + ' (' + m.subject + ')'"></i>
+              }
+            </span>
+          </li>
+        }
+      </ul>
+    </section>
   }
 </ng-template>
