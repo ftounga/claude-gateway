@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Schéma cadré, avant et après</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root { --bg: #0B1020; --card: #121a30; --ink: #F5EFE3; --muted: #b9b2a5; --accent: #E07B39; --ok: #4CF2A0; --ko: #FF5A6E; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 Inter, system-ui, sans-serif; }
+  main { max-width: 1400px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1, h2 { font-family: "Space Grotesk", sans-serif; letter-spacing: .04em; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h2 { font-size: 18px; margin: 40px 0 12px; color: var(--accent); text-transform: uppercase; letter-spacing: .12em; }
+  p.lead { color: var(--muted); max-width: 900px; }
+  .row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  @media (max-width: 900px) { .row { grid-template-columns: 1fr; } }
+  figure { margin: 0; background: var(--card); border-radius: 10px; padding: 12px; }
+  figure img { width: 100%; height: auto; display: block; background: #fff; border-radius: 6px; }
+  figcaption { margin-top: 8px; font-size: 13px; color: var(--muted); }
+  figcaption b { color: var(--ink); }
+  .ok { color: var(--ok); } .ko { color: var(--ko); }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  td, th { border-bottom: 1px solid #26314f; padding: 6px 8px; text-align: left; }
+</style>
+</head>
+<body>
+<main>
+<h1>Le schéma AWS cadré — essai du 2026-11-02</h1>
+<p class="lead">Trois schémas types rendus trois fois avec la même description : <b>aujourd'hui</b> (Graphviz, liaisons
+<code>spline</code>, réglage SF-142-17), <b>Graphviz <code>splines=ortho</code></b>, et le <b>prototype ELK</b>
+(liaisons orthogonales, zones aux conventions AWS). Le prototype n'a pas encore la composition des zones
+(Availability Zones côte à côte et symétriques) : c'est l'objet de SF-238-03. Garde automatique : nombre de segments de
+liaison obliques ou courbes.</p>
+
+<table>
+<tr><th>Schéma</th><th>Aujourd'hui (spline)</th><th>Graphviz ortho</th><th>Prototype ELK</th></tr>
+<tr><td>3-tiers multi-AZ</td><td class="ko">12 / 15 non orthogonaux</td><td>0 / 19, étiquettes décollées</td><td class="ok">0 / 34</td></tr>
+<tr><td>EKS</td><td class="ko">21 / 23</td><td>0 / 19, étiquettes décollées</td><td class="ok">0 / 27</td></tr>
+<tr><td>Serverless</td><td class="ko">4 / 9</td><td>0 / 13, liaisons qui finissent dans le vide</td><td class="ok">0 / 15</td></tr>
+</table>
+
+<h2>3-tiers multi-AZ</h2>
+<div class="row">
+<figure><img src="trois-tiers-spline.png" alt="3-tiers, rendu actuel"><figcaption><b>Aujourd'hui</b> : liaisons obliques et courbes, zones pastel génériques, aucune icône de groupe.</figcaption></figure>
+<figure><img src="trois-tiers-ortho.png" alt="3-tiers, Graphviz ortho"><figcaption><b>Graphviz ortho</b> : angles droits, mais « HTTPS » posé sur le libellé du VPC et des liaisons qui longent les bordures.</figcaption></figure>
+<figure><img src="trois-tiers-elk.png" alt="3-tiers, prototype ELK"><figcaption><b>Prototype ELK</b> : angles droits, AWS Cloud, Région (pointillés), VPC (violet), sous-réseaux public (vert) et privé (bleu). Défaut restant : AZ empilées, non symétriques.</figcaption></figure>
+</div>
+
+<h2>EKS</h2>
+<div class="row">
+<figure><img src="eks-spline.png" alt="EKS, rendu actuel"><figcaption><b>Aujourd'hui</b>.</figcaption></figure>
+<figure><img src="eks-ortho.png" alt="EKS, Graphviz ortho"><figcaption><b>Graphviz ortho</b> : « journaux » et « images » flottent loin de leur liaison.</figcaption></figure>
+<figure><img src="eks-elk.png" alt="EKS, prototype ELK"><figcaption><b>Prototype ELK</b> : flux de gauche à droite, étiquettes posées sur leur liaison.</figcaption></figure>
+</div>
+
+<h2>Serverless</h2>
+<div class="row">
+<figure><img src="serverless-spline.png" alt="Serverless, rendu actuel"><figcaption><b>Aujourd'hui</b>.</figcaption></figure>
+<figure><img src="serverless-ortho.png" alt="Serverless, Graphviz ortho"><figcaption><b>Graphviz ortho</b> : « auth » et « écrit » se terminent dans le vide (défaut connu de l'ortho avec des clusters).</figcaption></figure>
+<figure><img src="serverless-elk.png" alt="Serverless, prototype ELK"><figcaption><b>Prototype ELK</b> : chaque liaison arrive sur son service.</figcaption></figure>
+</div>
+
+<h2>Pourquoi une couche de composition des zones</h2>
+<div class="row">
+<figure><img src="trois-tiers-elk-lr.png" alt="3-tiers, ELK de gauche à droite"><figcaption><b>ELK seul, de gauche à droite</b> : les deux AZ sont mises <b>l'une après l'autre</b> dans le sens du flux, comme deux étapes. C'est faux pour AWS : des AZ sont parallèles. D'où SF-238-03, qui compose les zones avant le placement.</figcaption></figure>
+</div>
+</main>
+</body>
+</html>

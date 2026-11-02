@@ -1,0 +1,7 @@
+{"title":"API serverless","direction":"LR",
+"groups":[{"id":"cloud","label":"AWS Cloud"},{"id":"region","label":"Région eu-west-3","parent":"cloud"}],
+"nodes":[{"id":"u","type":"aws.users","label":"Clients"},{"id":"cf","type":"aws.cloudfront","label":"CloudFront","group":"cloud"},{"id":"s3","type":"aws.s3","label":"Site statique","group":"region"},
+{"id":"apigw","type":"aws.apigw","label":"API Gateway","group":"region"},{"id":"cog","type":"aws.cognito","label":"Cognito","group":"region"},{"id":"l1","type":"aws.lambda","label":"Commandes","group":"region"},
+{"id":"l2","type":"aws.lambda","label":"Paiements","group":"region"},{"id":"ddb","type":"aws.ddb","label":"DynamoDB","group":"region"},{"id":"sqs","type":"aws.sqs","label":"File SQS","group":"region"},{"id":"sns","type":"aws.sns","label":"Notifications","group":"region"}],
+"edges":[{"from":"u","to":"cf","label":"HTTPS"},{"from":"cf","to":"s3"},{"from":"cf","to":"apigw","label":"/api"},{"from":"apigw","to":"cog","label":"auth"},{"from":"apigw","to":"l1"},
+{"from":"l1","to":"ddb","label":"écrit"},{"from":"l1","to":"sqs"},{"from":"sqs","to":"l2","label":"déclenche"},{"from":"l2","to":"sns"}]}
