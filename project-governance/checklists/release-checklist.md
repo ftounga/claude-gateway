@@ -32,6 +32,11 @@ Tous les items doivent être verts.
 
 ---
 
+## Jarvis — porte de conversation (F-239 / SF-239-07)
+- [ ] Si la PR touche Jarvis (cerveau rapide, consigne, écoute, formules) : le banc de conversation est au vert
+      (`POST /api/admin/jarvis/fast-brain/bench {"set":"CONVERSATION"}` sur le modèle de prod) — **aucun déploiement
+      de Jarvis sans banc au vert** ; coût moyen par échange et taux de délégation reportés dans la PR
+
 ## Sécurité
 
 - [ ] Aucune donnée sensible dans le diff (clé API, token, secret)

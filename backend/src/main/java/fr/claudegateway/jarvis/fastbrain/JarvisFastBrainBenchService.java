@@ -62,6 +62,8 @@ public class JarvisFastBrainBenchService {
     /** Les jeux du banc. */
     public static final String SET_REAL = "REAL";
     public static final String SET_PERSONALITY = "PERSONALITY";
+    /** F-239 / SF-239-07 — le banc de conversation, porte de déploiement de Jarvis. */
+    public static final String SET_CONVERSATION = "CONVERSATION";
     static final int MAX_CASES = 60;
     static final int MAX_CONTEXT_FOR_JUDGE = 6_000;
     static final int MAX_RUNS_PER_USER = 5;
@@ -77,7 +79,23 @@ public class JarvisFastBrainBenchService {
     public record Report(UUID runId, String status, String set, String model, String judgeModel, int cases,
             int judged, Double routeAgreement, int actionsNotDelegated, int ungroundedSaid, Double hollowShare,
             Boolean gatePassed, List<String> gateFailures, List<Verdict> verdicts, OffsetDateTime startedAt,
-            OffsetDateTime finishedAt) {
+            OffsetDateTime finishedAt, ConversationReport conversation) {
+
+        public Report(UUID runId, String status, String set, String model, String judgeModel, int cases, int judged,
+                Double routeAgreement, int actionsNotDelegated, int ungroundedSaid, Double hollowShare,
+                Boolean gatePassed, List<String> gateFailures, List<Verdict> verdicts, OffsetDateTime startedAt,
+                OffsetDateTime finishedAt) {
+            this(runId, status, set, model, judgeModel, cases, judged, routeAgreement, actionsNotDelegated,
+                    ungroundedSaid, hollowShare, gatePassed, gateFailures, verdicts, startedAt, finishedAt, null);
+        }
+    }
+
+    /**
+     * F-239 / SF-239-07 — le détail d'un passage du banc de conversation : taux de scénarios réussis, coût moyen par
+     * échange (en €), taux de délégation, verdicts par scénario et par tour.
+     */
+    public record ConversationReport(double passRate, java.math.BigDecimal costPerExchangeEur, double delegationRate,
+            List<JarvisConversationBench.ScenarioVerdict> scenarios, List<JarvisConversationBench.TurnVerdict> turns) {
     }
 
     private record Run(UUID userId, Report report) {
@@ -122,7 +140,7 @@ public class JarvisFastBrainBenchService {
             throw new IllegalArgumentException("Modèle candidat inconnu.");
         }
         String which = set == null || set.isBlank() ? SET_REAL : set.strip().toUpperCase();
-        if (!SET_REAL.equals(which) && !SET_PERSONALITY.equals(which)) {
+        if (!SET_REAL.equals(which) && !SET_PERSONALITY.equals(which) && !SET_CONVERSATION.equals(which)) {
             throw new IllegalArgumentException("Jeu inconnu.");
         }
         prune(userId);
@@ -152,6 +170,9 @@ public class JarvisFastBrainBenchService {
 
     /** Un passage, de bout en bout (synchrone : appelé en tâche de fond, et directement par les tests). */
     Report run(UUID userId, UUID runId, String set, String model, OffsetDateTime startedAt) {
+        if (SET_CONVERSATION.equals(set)) {
+            return conversation(userId, runId, model, startedAt);
+        }
         List<Case> cases = SET_PERSONALITY.equals(set) ? personalityCases(userId) : realCases(userId);
         List<Verdict> verdicts = new ArrayList<>();
         for (Case c : cases) {
@@ -159,6 +180,46 @@ public class JarvisFastBrainBenchService {
             verdicts.add(judge(userId, c, outcome));
         }
         return summarize(runId, set, model, startedAt, verdicts);
+    }
+
+    /** Le taux de conversion du coût d'un tour du cerveau rapide (dollars ⇒ euros). */
+    static final java.math.BigDecimal USD_TO_EUR = new java.math.BigDecimal("0.92");
+
+    /**
+     * F-239 / SF-239-07 — le banc de conversation : chaque scénario rejoué tour par tour (les échanges précédents dans
+     * le contexte, comme le fil en prod), chaque tour jugé, la porte calculée (taux, zéros, budget en €).
+     */
+    Report conversation(UUID userId, UUID runId, String model, OffsetDateTime startedAt) {
+        JarvisConversationBench.Set set = JarvisConversationBench.load();
+        String apiKey = byok == null ? null : byok.resolveActiveApiKey(userId).orElse(null);
+        List<JarvisConversationBench.TurnVerdict> allTurns = new ArrayList<>();
+        List<JarvisConversationBench.ScenarioVerdict> scenarios = new ArrayList<>();
+        for (JarvisConversationBench.Scenario s : set.scenarios()) {
+            List<String[]> previous = new ArrayList<>();
+            List<JarvisConversationBench.TurnVerdict> turns = new ArrayList<>();
+            List<java.math.BigDecimal> costs = new ArrayList<>();
+            for (int i = 0; i < s.turns().size(); i++) {
+                String context = JarvisConversationBench.contextFor(set.context(), previous,
+                        i == 0 ? s.heardBeforeCut() : null);
+                JarvisFastBrainService.Outcome outcome = fastBrain.bench(new JarvisFastBrainService.Request(userId,
+                        null, null, s.turns().get(i).said(), null), model, context);
+                String[] routeAndSaid = JarvisConversationBench.routeAndSaid(outcome);
+                costs.add(JarvisConversationBench.fastCostEur(outcome, USD_TO_EUR));
+                turns.add(JarvisConversationBench.judge(provider, judgeModel, apiKey, s, i, context, routeAndSaid[1],
+                        routeAndSaid[0]));
+                previous.add(new String[] { s.turns().get(i).said(), routeAndSaid[1] });
+            }
+            allTurns.addAll(turns);
+            scenarios.add(JarvisConversationBench.scenario(s, turns, set, costs));
+        }
+        JarvisConversationBench.Result result = JarvisConversationBench.summarize(allTurns, scenarios);
+        int judged = (int) allTurns.stream().filter(JarvisConversationBench.TurnVerdict::judged).count();
+        int ungrounded = (int) allTurns.stream().filter(JarvisConversationBench.TurnVerdict::ungrounded).count();
+        int actions = (int) allTurns.stream().filter(JarvisConversationBench.TurnVerdict::actionNotDelegated).count();
+        return new Report(runId, "DONE", SET_CONVERSATION, model, judgeModel, allTurns.size(), judged, null, actions,
+                ungrounded, null, result.gatePassed(), result.failures(), List.of(), startedAt,
+                OffsetDateTime.now(clock), new ConversationReport(result.passRate(), result.costPerExchangeEur(),
+                        result.delegationRate(), result.scenarios(), result.turns()));
     }
 
     /** Un cas : la demande à rejouer, son contexte figé éventuel, sa catégorie. */
