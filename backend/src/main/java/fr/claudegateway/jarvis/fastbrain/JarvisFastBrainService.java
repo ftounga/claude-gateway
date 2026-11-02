@@ -402,6 +402,19 @@ public class JarvisFastBrainService {
         return decide(request, null, model, fixedContext);
     }
 
+    /** F-237 / SF-237-13 — la lecture des pièces au banc : le texte fixe du jeu, pour le fil appelant. */
+    private static final ThreadLocal<String> BENCH_PIECES_FIXTURE = new ThreadLocal<>();
+
+    /** F-237 / SF-237-13 — le banc des pièces : la même décision à blanc, l'outil {@code pieces} rend {@code pieces}. */
+    public Outcome benchWithPieces(Request request, String model, String fixedContext, String pieces) {
+        BENCH_PIECES_FIXTURE.set(pieces);
+        try {
+            return bench(request, model, fixedContext);
+        } finally {
+            BENCH_PIECES_FIXTURE.remove();
+        }
+    }
+
     private Outcome decide(Request request, Sink sink, String benchModel, String fixedContext) {
         Sink out = sink == null ? delta -> { } : sink;
         java.util.concurrent.atomic.AtomicReference<String> understood = new java.util.concurrent.atomic.AtomicReference<>();
@@ -696,7 +709,8 @@ public class JarvisFastBrainService {
     /** L'outil {@code pieces} : lu par la passerelle sous {@code user_id} (au banc : réponse fixe). */
     String readPieces(Request request, JsonNode input, boolean bench) {
         if (bench || fastPieces == null) {
-            return BENCH_PIECES;
+            String fixture = BENCH_PIECES_FIXTURE.get();
+            return bench && fixture != null ? fixture : BENCH_PIECES;
         }
         return fastPieces.read(request.userId(), request.workspace() == null ? null : request.workspace().getId(),
                 input);
