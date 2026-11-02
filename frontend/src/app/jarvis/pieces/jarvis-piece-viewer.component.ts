@@ -12,6 +12,7 @@ import {
   videoInfoPath,
 } from './jarvis-piece-media';
 import { PieceNav } from './jarvis-piece-nav';
+import { SvgBox, SvgTarget, findTarget, svgTargets, viewOf } from './jarvis-piece-svg';
 import { JarvisPieceStore } from './jarvis-piece-store';
 import { viewerFor } from './jarvis-piece-viewers';
 import { Piece, PieceChapter } from './jarvis-piece.models';
@@ -48,7 +49,24 @@ interface PageInfo {
       } @else {
         @switch (viewer().name) {
           @case ('image') { <ng-container [ngTemplateOutlet]="zoomable" /> }
-          @case ('schema-svg') { <ng-container [ngTemplateOutlet]="zoomable" /> }
+          @case ('schema-svg') {
+            <ng-container [ngTemplateOutlet]="zoomable" />
+            @if (nav().target && !targetView()) {
+              <p class="pv__note">Je ne trouve pas « {{ nav().target }} » sur ce schéma.</p>
+            }
+            @if (svgZones().length) {
+              <div class="pv__zones" aria-label="Zones du schéma">
+                @for (zone of svgZones(); track zone.label) {
+                  <button type="button" class="pv__zone" [class.pv__zone--on]="nav().target === zone.label"
+                          (click)="store.dispatch({ type: 'zoom', target: zone.label })">{{ zone.label }}</button>
+                }
+                @if (nav().zoom > 1 || nav().target) {
+                  <button type="button" class="pv__zone" (click)="store.dispatch({ type: 'zoom', step: 'reset' })">
+                    Tout le schéma</button>
+                }
+              </div>
+            }
+          }
           @case ('video') {
             @if (mediaUrl()) {
               <video #media class="pv__video" [src]="mediaUrl()" [attr.poster]="posterUrl()" controls playsinline
@@ -127,6 +145,11 @@ interface PageInfo {
     .pv__chapters button { background: none; border: 0; color: inherit; font: inherit; cursor: pointer;
       min-height: 32px; text-align: left; }
     .pv__chapter--on { color: var(--cg-holo-green, #4CF2A0); }
+    .pv__zones { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .pv__zone { min-height: 32px; padding: 0 12px; border-radius: 4px; cursor: pointer; color: inherit;
+      font: 12px Inter, sans-serif; background: transparent;
+      border: 1px solid color-mix(in srgb, var(--cg-holo, #E07B39) 55%, transparent); }
+    .pv__zone--on { border-color: var(--cg-holo-green, #4CF2A0); }
     @media (prefers-reduced-motion: reduce) { .pv__image, .pv__slide { transition: none; } }
   `],
 })
@@ -161,8 +184,26 @@ export class JarvisPieceViewerComponent implements OnDestroy {
     // URL d'objet locale (blob:) lue sous JWT par la passerelle : sûre à intégrer.
     return url ? this.sanitizer.bypassSecurityTrustResourceUrl(pdfAt(url, this.nav().page)) : null;
   });
+  /** SF-237-07 — le SVG d'un schéma, analysé (jamais inséré) : son cadre et ses cibles nommées. */
+  private readonly svg = signal<{ frame: SvgBox | null; targets: SvgTarget[] }>({ frame: null, targets: [] });
+  /** Les groupes de premier plan proposés au toucher (≤ 8). */
+  readonly svgZones = computed(() => this.svg().targets.slice(0, 8));
+  /** Le cadrage de la cible nommée de l'état, s'il la trouve. */
+  readonly targetView = computed(() => {
+    const target = this.nav().target;
+    const { frame, targets } = this.svg();
+    if (!target || !frame) {
+      return null;
+    }
+    const found = findTarget(targets, target);
+    return found ? viewOf(frame, found.box) : null;
+  });
   readonly transform = computed(() => {
     const nav = this.nav();
+    const view = this.targetView();
+    if (view) {
+      return `translate(${nav.pan.x}px, ${nav.pan.y}px) scale(${Math.max(view.zoom, 1)}) translate(${view.tx}%, ${view.ty}%)`;
+    }
     return `translate(${nav.pan.x}px, ${nav.pan.y}px) scale(${nav.zoom})`;
   });
 
@@ -228,6 +269,7 @@ export class JarvisPieceViewerComponent implements OnDestroy {
     this.text.set(null);
     this.failed.set(false);
     this.videoChapters.set([]);
+    this.svg.set({ frame: null, targets: [] });
     const piece = this.piece();
     if (!piece || piece.available === 'HOST_OFFLINE') {
       return;
@@ -236,9 +278,16 @@ export class JarvisPieceViewerComponent implements OnDestroy {
     this.loading = controller;
     switch (viewerFor(piece.kind).name) {
       case 'image':
-      case 'schema-svg':
         await this.loadImage(piece.open ?? piece.thumb ?? null, controller);
         break;
+      case 'schema-svg': {
+        await this.loadImage(piece.open ?? piece.thumb ?? null, controller);
+        const text = await this.client.text(piece.open, controller.signal);
+        if (!controller.signal.aborted && text && text.includes('<svg')) {
+          this.svg.set(svgTargets(text));
+        }
+        break;
+      }
       case 'video':
       case 'audio': {
         const info = await this.client.json<VideoInfo>(videoInfoPath(piece.id), controller.signal);
