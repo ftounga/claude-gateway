@@ -295,3 +295,99 @@
   white-space: normal;
   text-align: right;
 }
+
+// SF-236-17 — chronologies : perles par famille (grammaire §23), axe de la journée, résumé d'un tour.
+.ck__arc {
+  display: block;
+  width: 100%;
+  margin-top: var(--cg-space-2);
+}
+
+.ck__arc-path {
+  fill: none;
+  stroke: color-mix(in srgb, var(--cg-holo, #E07B39) 35%, transparent);
+  stroke-dasharray: 2 4;
+}
+
+.ck__pearl,
+.ck__pearl-dot {
+  --tone: var(--cg-holo, #E07B39);
+
+  &[data-tone='wait'] { --tone: var(--cg-holo-wait, #5FD4FF); }
+  &[data-tone='green'] { --tone: var(--cg-holo-green, #4CF2A0); }
+  &[data-tone='deep'] { --tone: var(--cg-holo-deep, #9B7BFF); }
+  &[data-tone='off'] { --tone: color-mix(in srgb, var(--cg-cream, #F5EFE3) 55%, transparent); }
+}
+
+.ck__pearl {
+  fill: var(--tone);
+  filter: drop-shadow(0 0 3px var(--tone));
+}
+
+.ck__pearl-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 3px;
+  border-radius: 50%;
+  background: var(--tone);
+}
+
+.ck__more,
+.ck__summary p {
+  margin: var(--cg-space-1) 0 0;
+  font-size: 12px;
+}
+
+.ck__axis {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  height: 26px;
+  margin-bottom: var(--cg-space-1);
+  border-bottom: 1px solid color-mix(in srgb, var(--cg-holo, #E07B39) 45%, transparent);
+  font: 11px var(--cg-font-mono);
+}
+
+.ck__tick {
+  position: absolute;
+  bottom: -4px;
+  width: 7px;
+  height: 7px;
+  margin-left: -3.5px;
+  border-radius: 50%;
+  background: var(--cg-holo, #E07B39);
+
+  &--on {
+    background: var(--cg-holo-core, #FFF3E4);
+    box-shadow: 0 0 6px var(--cg-holo, #E07B39);
+  }
+}
+
+.ck__turn[aria-pressed='true'] {
+  border-color: color-mix(in srgb, var(--cg-holo, #E07B39) 55%, transparent);
+}
+
+.ck__summary {
+  margin-top: var(--cg-space-1);
+  padding: var(--cg-space-1) var(--cg-space-2);
+  border-left: 2px solid var(--cg-holo, #E07B39);
+}
+
+.ck__load {
+  min-height: 36px;
+  margin-top: var(--cg-space-2);
+  padding: 0 var(--cg-space-2);
+  border: 1px solid color-mix(in srgb, var(--cg-holo, #E07B39) 55%, transparent);
+  background: none;
+  color: var(--cg-holo-text, #F0954F);
+  font: 600 12px var(--cg-font-heading);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+}
