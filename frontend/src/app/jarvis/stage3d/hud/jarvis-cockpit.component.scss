@@ -391,3 +391,60 @@
     cursor: default;
   }
 }
+
+// SF-236-18 — tableaux détachables (calque L4) : même verre, ancrés à leur client ; mur de tickets en étiquettes.
+.ck__detach {
+  float: right;
+  min-height: 24px;
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--cg-holo, #E07B39) 45%, transparent);
+  background: none;
+  color: inherit;
+  font: 600 10px var(--cg-font-heading);
+  letter-spacing: 0.08em;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+}
+
+.ck__floats {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.ck__float {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 260px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: var(--cg-space-2);
+  border: 1px solid color-mix(in srgb, var(--cg-holo, #E07B39) 55%, transparent);
+  background: color-mix(in srgb, var(--cg-navy, #0B1020) 72%, transparent);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  backdrop-filter: blur(10px);
+  color: var(--cg-cream, #F5EFE3);
+  pointer-events: auto;
+  will-change: transform;
+}
+
+.ck__tickets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0 0 var(--cg-space-1);
+  padding: 0;
+  list-style: none;
+}
+
+.ck__ticket {
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--cg-holo, #E07B39) 45%, transparent);
+  font: 12px var(--cg-font-mono);
+}

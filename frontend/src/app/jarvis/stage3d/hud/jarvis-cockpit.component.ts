@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy, Component, ElementRef, InjectionToken, Injector, NgZone, OnDestroy, computed, effect, inject,
   input, output, signal, untracked, viewChild,
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { Observable } from 'rxjs';
 
 import { AtelierMessage } from '../../../core/models/atelier.models';
@@ -12,6 +13,8 @@ import { JarvisUniverse, clientKey } from '../../scenes/jarvis-universe.models';
 import { ShowFilter } from '../../scenes/jarvis-show';
 import { DayFigure, dayBoard, weatherRows } from './jarvis-day-board';
 import { WEATHER_WORD } from './jarvis-weather';
+import { FloatId, floatSpot, peopleMap, sendShelf, ticketWall } from './jarvis-people-map';
+import { SessionSnapshot } from '../scenes3d/jarvis-session-memory';
 import { IDLE_SCREEN, ScreenSignals } from '../jarvis-stage-director';
 import {
   CockpitFolds, CockpitInsets, CockpitMode, cockpitInsets, cockpitMode, readFolds, writeFolds,
@@ -22,6 +25,8 @@ export interface CockpitStage {
   shown(): boolean;
   readonly isNarrow: boolean;
   project(key: string): { x: number; y: number } | null;
+  /** SF-236-18 — la mémoire de session de l'écran (tickets vus), si la scène la tient. */
+  session?: () => SessionSnapshot;
 }
 
 /** Une ligne de liste reliée à un nœud de l'univers (filament au survol). */
@@ -103,6 +108,7 @@ export function universeItems(universe: JarvisUniverse | null, subjectId: string
  */
 @Component({
   selector: 'app-jarvis-cockpit',
+  imports: [NgTemplateOutlet],
   templateUrl: './jarvis-cockpit.component.html',
   styleUrl: './jarvis-cockpit.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -221,6 +227,88 @@ export class JarvisCockpitComponent implements OnDestroy {
     return `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
   }
 
+  /** SF-236-18 (NF-5) — personnes et attentes ; (NF-6) mur de tickets ; étagère « À envoyer ». */
+  readonly people = computed(() => peopleMap(this.signals().universe));
+  readonly shelf = computed(() => sendShelf(this.signals().universe));
+  readonly tickets = computed(() => ticketWall(this.stage()?.session?.().tickets ?? [], this.signals().universe));
+
+  /** SF-236-18 — tableaux détachés du panneau et posés dans l'espace (calque L4), ancrés à un client. */
+  readonly detached = signal<readonly FloatId[]>([]);
+  private readonly floatHost = viewChild<ElementRef<HTMLElement>>('floats');
+  private floatFrame: number | null = null;
+
+  readonly rightBoards: readonly FloatId[] = ['envoyer', 'tickets'];
+  readonly floatTitle: Readonly<Record<FloatId, string>> = {
+    personnes: 'Personnes et attentes', tickets: 'Mur de tickets', envoyer: 'À envoyer',
+  };
+
+  /** Le mot d'une personne : ce que j'attends d'elle, et le message prêt. */
+  personNote(p: { awaitedBy: string[]; message: boolean }): string {
+    const parts: string[] = [];
+    if (p.awaitedBy.length > 0) {
+      parts.push(p.awaitedBy.length > 1 ? `attendue (${p.awaitedBy.length})` : 'attendue');
+    }
+    if (p.message) {
+      parts.push('message prêt');
+    }
+    return parts.join(' · ');
+  }
+
+  isDetached(id: FloatId): boolean {
+    return this.detached().includes(id);
+  }
+
+  detach(id: FloatId): void {
+    if (!this.isDetached(id)) {
+      this.detached.update((list) => [...list, id]);
+      if (this.floatFrame === null) {
+        this.zone.runOutsideAngular(() => this.floatTick());
+      }
+    }
+  }
+
+  attach(id: FloatId): void {
+    this.detached.update((list) => list.filter((d) => d !== id));
+  }
+
+  /** Le client auquel un tableau s'ancre : celui du sujet courant, sinon le premier qui a des éléments. */
+  anchorOf(id: FloatId): string | null {
+    const s = this.signals();
+    const current = s.universe?.clients.find((c) => c.subjects.some((x) => x.id === s.subjectId));
+    if (current) {
+      return clientKey(current);
+    }
+    const first = id === 'personnes' ? this.people()[0]?.clientKey : id === 'envoyer' ? this.shelf()[0]?.clientKey
+      : this.tickets()[0]?.clientKey;
+    return first ?? null;
+  }
+
+  /** Une image des tableaux flottants : chacun suit son ancre projetée (hors zone, style écrit directement). */
+  floatTick(): void {
+    this.floatFrame = null;
+    const ids = this.detached();
+    const host = this.floatHost()?.nativeElement;
+    if (ids.length === 0 || this.mode() !== 'cockpit') {
+      return;
+    }
+    if (host) {
+      const insets = this.insets();
+      const view = { width: typeof window === 'undefined' ? 1920 : window.innerWidth,
+        height: typeof window === 'undefined' ? 1080 : window.innerHeight, left: insets.left, right: insets.right };
+      ids.forEach((id, i) => {
+        const card = host.querySelector<HTMLElement>(`[data-float="${id}"]`);
+        if (card) {
+          const anchor = this.anchorOf(id);
+          const spot = floatSpot(anchor ? this.stage()?.project(anchor) ?? null : null, i, view);
+          card.style.transform = `translate(${spot.x}px, ${spot.y}px)`;
+        }
+      });
+    }
+    if (typeof requestAnimationFrame === 'function') {
+      this.floatFrame = requestAnimationFrame(() => this.floatTick());
+    }
+  }
+
   toggle(side: 'left' | 'right'): void {
     const next = { ...this.folds(), [side]: !this.folds()[side] };
     this.folds.set(next);
@@ -274,6 +362,11 @@ export class JarvisCockpitComponent implements OnDestroy {
       cancelAnimationFrame(this.frame);
     }
     this.frame = null;
+    this.detached.set([]);
+    if (this.floatFrame !== null && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(this.floatFrame);
+    }
+    this.floatFrame = null;
   }
 
   private draw(line: { x1: number; y1: number; x2: number; y2: number } | null): void {

@@ -207,7 +207,8 @@ export class JarvisStage3dComponent implements OnDestroy {
 
   /** SF-236-09 — la mémoire de session de l'écran (tickets vus, nuage du dépôt) : noms seulement, aucun appel. */
   private readonly memory = new SessionMemory();
-  private readonly session = signal<SessionSnapshot>(EMPTY_SESSION);
+  /** SF-236-18 — lue aussi par le cockpit (mur de tickets). */
+  readonly session = signal<SessionSnapshot>(EMPTY_SESSION);
   private readonly sessionFollow = effect(() => {
     const s = this.signals();
     untracked(() => {

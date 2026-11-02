@@ -4,6 +4,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { testUniverse } from '../../scenes/jarvis-universe.fixture';
 import { IDLE_SCREEN, ScreenSignals } from '../jarvis-stage-director';
 import { COCKPIT_FOLDS_KEY } from './jarvis-cockpit-layout';
+import { SessionSnapshot } from '../scenes3d/jarvis-session-memory';
 import { of, throwError } from 'rxjs';
 
 import { CockpitStage, JARVIS_DAY_HISTORY, JarvisCockpitComponent, universeItems } from './jarvis-cockpit.component';
@@ -13,6 +14,7 @@ export class FakeCockpitStage implements CockpitStage {
   readonly shown = signal(true);
   isNarrow = false;
   readonly positions = new Map<string, { x: number; y: number }>();
+  session?: () => SessionSnapshot;
   project(key: string): { x: number; y: number } | null {
     return this.positions.get(key) ?? null;
   }
@@ -49,7 +51,7 @@ describe('F-236 / SF-236-15 — JarvisCockpitComponent (panneaux latéraux, repl
     mount();
     const el: HTMLElement = fixture.nativeElement;
     expect(el.querySelectorAll('aside.ck').length).toBe(2);
-    const labels = [...el.querySelectorAll('.ck__item:not(.ck__weather) .ck__label')].map((n) => n.textContent?.trim());
+    const labels = [...el.querySelectorAll('section[aria-labelledby="ck-univers"] .ck__item .ck__label')].map((n) => n.textContent?.trim());
     expect(labels).toEqual(['CAGIP', 'Migration Forge', 'Doc archi', 'web', 'Ingress', 'Edenred', 'Runner', 'Ingress']);
     expect(el.querySelector('.ck__item--current .ck__label')?.textContent?.trim()).toBe('Migration Forge');
     // La couleur ne porte jamais seule l'information : l'état est écrit.
@@ -186,6 +188,30 @@ describe('F-236 / SF-236-15 — JarvisCockpitComponent (panneaux latéraux, repl
     cockpit.loadDay();
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('La journée n\'a pas pu être lue.');
+  });
+
+  it('SF-236-18 — personnes, étagère, mur de tickets (session de la scène) ; détacher ⇒ tableau ancré au client', () => {
+    mount();
+    stage.session = () => ({ tickets: [{ key: 'FORGE-42', source: 'Jira', clientKey: 'h-cagip', seenAt: 1 }],
+      files: [] });
+    fixture.componentRef.setInput('signals', { ...screen, pulses: 4 });
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('.ck__item[data-key="h-cagip:zahi"]')?.textContent).toContain('attendue · message prêt');
+    expect(el.textContent).toContain('pour Zahi');
+    expect(el.querySelector('.ck__ticket')?.textContent?.trim()).toBe('FORGE-42');
+    cockpit.detach('personnes');
+    fixture.detectChanges();
+    const card = el.querySelector('.ck__float[data-float="personnes"]') as HTMLElement;
+    expect(card).not.toBeNull();
+    expect(el.textContent).toContain('Posé dans l\'univers.');
+    stage.positions.set('h-cagip', { x: 700, y: 500 });
+    cockpit.floatTick();
+    expect(card.style.transform).toContain('translate(');
+    expect(card.style.transform).toContain('740px');
+    (card.querySelector('.ck__detach') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('.ck__float')).toBeNull();
   });
 
   it('univers vide ⇒ liste vide, message écrit', () => {

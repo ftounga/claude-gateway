@@ -47,7 +47,9 @@ export const BANC_SCENES = ['coeur', 'ecoute', 'reflexion', 'parole', 'oui', 'co
   // SF-236-16 — la journée (un chiffre touché : « Montrer » local) et la météo des chantiers.
   'cockpit-journee', 'cockpit-meteo',
   // SF-236-17 — chronologies (arc du tour, journée chargée, un tour touché).
-  'cockpit-chronologies'] as const;
+  'cockpit-chronologies',
+  // SF-236-18 — personnes et attentes, étagère « À envoyer », tableaux détachés (L4).
+  'cockpit-personnes'] as const;
 
 const SCENE_NAME = /^[a-z0-9-]{1,40}$/;
 

@@ -62,6 +62,20 @@
           </ul>
         </section>
       }
+      <!-- SF-236-18 (NF-5) — personnes et attentes, détachables dans l'univers (L4). -->
+      @if (people().length > 0) {
+        <section class="ck__section" aria-labelledby="ck-personnes">
+          <h2 id="ck-personnes" class="ck__title">Personnes et attentes
+            <button type="button" class="ck__detach" [disabled]="isDetached('personnes')" (click)="detach('personnes')"
+                    aria-label="Détacher « Personnes et attentes » dans l'univers">Détacher</button>
+          </h2>
+          @if (isDetached('personnes')) {
+            <p class="ck__empty">Posé dans l'univers.</p>
+          } @else {
+            <ng-container *ngTemplateOutlet="peopleTpl" />
+          }
+        </section>
+      }
       <section class="ck__section" aria-labelledby="ck-univers">
         <h2 id="ck-univers" class="ck__title">Univers</h2>
         <ul class="ck__list">
@@ -118,6 +132,22 @@
           }
         }
       </section>
+      <!-- SF-236-18 — l'étagère « À envoyer » et le mur de tickets, détachables dans l'univers (L4). -->
+      @for (id of rightBoards; track id) {
+        @if (id === 'envoyer' ? shelf().length > 0 : tickets().length > 0) {
+          <section class="ck__section" [attr.aria-label]="floatTitle[id]">
+            <h2 class="ck__title">{{ floatTitle[id] }}
+              <button type="button" class="ck__detach" [disabled]="isDetached(id)" (click)="detach(id)"
+                      [attr.aria-label]="'Détacher « ' + floatTitle[id] + ' » dans l’univers'">Détacher</button>
+            </h2>
+            @if (isDetached(id)) {
+              <p class="ck__empty">Posé dans l'univers.</p>
+            } @else {
+              <ng-container *ngTemplateOutlet="id === 'envoyer' ? shelfTpl : ticketsTpl" />
+            }
+          </section>
+        }
+      }
       <!-- SF-236-17 (NF-3) — la journée du sujet, lue hors tour et à la demande. -->
       <section class="ck__section" aria-labelledby="ck-journee">
         <h2 id="ck-journee" class="ck__title">Chronologie de la journée</h2>
@@ -173,6 +203,64 @@
       </section>
     </div>
   </aside>
+
+  <!-- SF-236-18 — les tableaux flottants (calque L4), ancrés à leur client, déplacés image par image hors zone. -->
+  <div #floats class="ck__floats">
+    @for (id of detached(); track id) {
+      <section class="ck__float" [attr.data-float]="id" [attr.aria-label]="floatTitle[id]">
+        <h2 class="ck__title">{{ floatTitle[id] }}
+          <button type="button" class="ck__detach" (click)="attach(id)"
+                  [attr.aria-label]="'Rattacher « ' + floatTitle[id] + ' » au panneau'">Rattacher</button>
+        </h2>
+        <ng-container *ngTemplateOutlet="id === 'personnes' ? peopleTpl : id === 'envoyer' ? shelfTpl : ticketsTpl" />
+      </section>
+    }
+  </div>
+
+  <ng-template #peopleTpl>
+    <ul class="ck__list">
+      @for (p of people(); track p.key) {
+        <li>
+          <button type="button" class="ck__item" [attr.data-key]="p.key"
+                  [attr.data-tone]="p.awaitedBy.length > 0 || p.message ? 'wait' : 'normal'"
+                  [attr.title]="p.awaitedBy.join(' · ') || null" (mouseenter)="link(p.key, $event, 'left')"
+                  (focus)="link(p.key, $event, 'left')" (mouseleave)="unlink()" (blur)="unlink()">
+            <span class="ck__dot" aria-hidden="true"></span>
+            <span class="ck__label">{{ p.name }}<small class="ck__where">{{ p.clientName }}{{ p.role ? ' · ' + p.role : '' }}</small></span>
+            <span class="ck__note">{{ personNote(p) }}</span>
+          </button>
+        </li>
+      }
+    </ul>
+  </ng-template>
+
+  <ng-template #shelfTpl>
+    <ul class="ck__list">
+      @for (row of shelf(); track row.clientKey) {
+        <li>
+          <button type="button" class="ck__item" data-tone="wait" [attr.data-key]="row.clientKey"
+                  (mouseenter)="link(row.clientKey, $event, 'right')" (focus)="link(row.clientKey, $event, 'right')"
+                  (mouseleave)="unlink()" (blur)="unlink()">
+            <span class="ck__dot" aria-hidden="true"></span>
+            <span class="ck__label">{{ row.clientName }}<small class="ck__where">pour {{ row.recipients.join(', ') }}</small></span>
+            <span class="ck__note">{{ row.recipients.length }} prêt{{ row.recipients.length > 1 ? 's' : '' }}</span>
+          </button>
+        </li>
+      }
+    </ul>
+  </ng-template>
+
+  <ng-template #ticketsTpl>
+    @for (col of tickets(); track col.clientKey) {
+      <p class="ck__where">{{ col.clientName }}</p>
+      <ul class="ck__tickets">
+        @for (t of col.tickets; track t.key) {
+          <li class="ck__ticket" [attr.title]="t.source"
+              (mouseenter)="col.clientKey && link(col.clientKey, $event, 'right')" (mouseleave)="unlink()">{{ t.key }}</li>
+        }
+      </ul>
+    }
+  </ng-template>
 
   <!-- Le filament liste ↔ nœud (calque L5 → L2), posé image par image hors zone. -->
   <svg class="ck__filaments" aria-hidden="true">
