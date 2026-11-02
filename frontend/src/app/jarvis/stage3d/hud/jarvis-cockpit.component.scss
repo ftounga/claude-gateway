@@ -219,3 +219,79 @@
   stroke: var(--cg-holo-core, #FFF3E4);
   stroke-width: 1.5;
 }
+
+// SF-236-16 — « Aujourd'hui » : des chiffres touchables (JetBrains Mono), enfoncés quand leur « Montrer » est posé.
+.ck__board {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: var(--cg-space-1);
+}
+
+.ck__figure {
+  --tone: var(--cg-holo, #E07B39);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-height: 44px;
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--tone) 45%, transparent);
+  background: color-mix(in srgb, var(--tone) 8%, transparent);
+  color: inherit;
+  cursor: pointer;
+
+  &[data-tone='green'] { --tone: var(--cg-holo-green, #4CF2A0); }
+  &[data-tone='wait'] { --tone: var(--cg-holo-wait, #5FD4FF); }
+  &[data-tone='alert'] { --tone: var(--cg-holo-red, #FF5A6E); }
+  &[data-tone='off'] { --tone: var(--cg-holo-off, #2A4256); }
+
+  &[aria-pressed='true'] {
+    border-color: var(--tone);
+    box-shadow: 0 0 8px color-mix(in srgb, var(--tone) 55%, transparent);
+  }
+
+  &:disabled {
+    cursor: default;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--cg-holo-text, #F0954F);
+  }
+}
+
+.ck__figure-value {
+  color: var(--tone);
+  font: 600 18px var(--cg-font-mono);
+}
+
+.ck__figure[data-tone='off'] .ck__figure-value {
+  color: color-mix(in srgb, var(--cg-cream, #F5EFE3) 72%, transparent);
+}
+
+.ck__figure-label {
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+// SF-236-16 — la météo : même grammaire que le ciel 3D (soleil vert, nuage cyan, orage rouge, brume éteinte).
+.ck__sky {
+  flex: none;
+  display: inline-flex;
+  color: var(--cg-holo-green, #4CF2A0);
+}
+
+.ck__weather[data-weather='nuage'] .ck__sky { color: var(--cg-holo-wait, #5FD4FF); }
+.ck__weather[data-weather='orage'] .ck__sky { color: var(--cg-holo-red, #FF5A6E); }
+.ck__weather[data-weather='brume'] .ck__sky { color: color-mix(in srgb, var(--cg-cream, #F5EFE3) 60%, transparent); }
+
+.ck__where {
+  display: block;
+  font-size: 11px;
+  opacity: 0.72;
+}
+
+.ck__weather .ck__note {
+  flex: 0 1 auto;
+  max-width: 45%;
+  white-space: normal;
+  text-align: right;
+}

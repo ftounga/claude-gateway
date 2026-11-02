@@ -58,3 +58,30 @@
     outline-offset: 2px;
   }
 }
+
+// SF-236-16 (NF-2) — la météo des chantiers : un petit ciel au-dessus du losange (soleil vert, nuage cyan d'attente,
+// orage rouge, brume éteinte) ; le mot est porté par `title` et par la liste météo du cockpit.
+:host ::ng-deep .jv3d-sky {
+  display: block;
+  line-height: 0;
+  color: var(--cg-holo-green, #4CF2A0);
+  filter: drop-shadow(0 0 3px currentColor);
+
+  svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  &[data-weather='nuage'] {
+    color: var(--cg-holo-wait, #5FD4FF);
+  }
+
+  &[data-weather='orage'] {
+    color: var(--cg-holo-red, #FF5A6E);
+  }
+
+  &[data-weather='brume'] {
+    color: color-mix(in srgb, var(--cg-cream, #F5EFE3) 60%, transparent);
+    filter: none;
+  }
+}

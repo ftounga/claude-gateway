@@ -47,7 +47,7 @@ describe('F-236 / SF-236-15 — JarvisCockpitComponent (panneaux latéraux, repl
     mount();
     const el: HTMLElement = fixture.nativeElement;
     expect(el.querySelectorAll('aside.ck').length).toBe(2);
-    const labels = [...el.querySelectorAll('.ck__item .ck__label')].map((n) => n.textContent?.trim());
+    const labels = [...el.querySelectorAll('.ck__item:not(.ck__weather) .ck__label')].map((n) => n.textContent?.trim());
     expect(labels).toEqual(['CAGIP', 'Migration Forge', 'Doc archi', 'web', 'Ingress', 'Edenred', 'Runner', 'Ingress']);
     expect(el.querySelector('.ck__item--current .ck__label')?.textContent?.trim()).toBe('Migration Forge');
     // La couleur ne porte jamais seule l'information : l'état est écrit.
@@ -111,6 +111,36 @@ describe('F-236 / SF-236-15 — JarvisCockpitComponent (panneaux latéraux, repl
     (fixture.nativeElement.querySelector('.ck__item[data-key="s-doc"]') as HTMLButtonElement).click();
     (fixture.nativeElement.querySelector('.ck__item[data-key="h-cagip"]') as HTMLButtonElement).click();
     expect(chosen).toEqual(['s-doc']);
+  });
+
+  it('SF-236-16 — « Aujourd’hui » : chiffres de l’univers ; toucher un chiffre émet son filtre (aucun tour) ; enfoncé', () => {
+    mount();
+    const shown: string[] = [];
+    cockpit.show.subscribe((f) => shown.push(f));
+    const figure = (id: string) => fixture.nativeElement.querySelector(`.ck__figure[data-figure="${id}"]`) as HTMLButtonElement;
+    expect(figure('postes').textContent).toContain('1/2');
+    expect(figure('attentes').textContent).toContain('1');
+    figure('attentes').click();
+    expect(shown).toEqual(['chantiers-bloques']);
+    expect(figure('alertes').disabled).toBeTrue();
+    fixture.componentRef.setInput('shownFilter', 'chantiers-bloques');
+    fixture.detectChanges();
+    expect(figure('attentes').getAttribute('aria-pressed')).toBe('true');
+    expect(figure('postes').getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('SF-236-16 — météo : une ligne par chantier, ciel nommé et mot écrit ; filament vers le losange', () => {
+    mount();
+    const row = fixture.nativeElement.querySelector('.ck__weather') as HTMLElement;
+    expect(row.getAttribute('data-weather')).toBe('nuage');
+    expect(row.querySelector('.ck__sky')?.getAttribute('aria-label')).toBe('Nuageux');
+    expect(row.textContent).toContain('attend Zahi');
+    expect(row.textContent).toContain('CAGIP · Migration Forge');
+    stage.positions.set('s-forge#3', { x: 700, y: 300 });
+    cockpit.link('s-forge#3', { currentTarget: row } as unknown as Event, 'left');
+    cockpit.tick();
+    expect((fixture.nativeElement.querySelector('.ck__filament') as SVGLineElement).getAttribute('x2')).toBe('700.0');
+    cockpit.unlink();
   });
 
   it('univers vide ⇒ liste vide, message écrit', () => {

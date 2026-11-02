@@ -15,6 +15,7 @@ import { SHOW_STAGGER_MS, ShowPlan3d } from '../scenes3d/jarvis-show-3d';
 import { AmbientPlan3d } from '../scenes3d/jarvis-ambiance-3d';
 import { QualityLevel } from '../jarvis-render-capability';
 
+import { WEATHER_ICON, WEATHER_WORD, Weather } from '../hud/jarvis-weather';
 /**
  * F-236 / SF-236-04 — **l'univers 3D et ses liaisons** (cadrage §8) : un maillage instancié par forme (client =
  * sphère, sujet = lune, chantier = losange, étape = perle, personne = carré), des filaments à largeur en pixels
@@ -269,6 +270,7 @@ export class Universe3d {
     this.live = layout.nodes.map((n) => {
       const before = previous.get(n.key);
       if (before) {
+        this.syncSky(before, n);
         return before;
       }
       // Un nœud nouveau naît à la place de son parent (le cœur pour un client), puis glisse à sa place.
@@ -454,7 +456,34 @@ export class Universe3d {
     object.center.set(0.5, live.node.kind === 'client' ? -3.2 : -1.4);
     object.position.set(0, 0, 0);
     this.group.add(object);
+    if (live.node.kind === 'chantier' && live.node.weather) {
+      // SF-236-16 (NF-2) — le petit ciel au-dessus du losange, enfant de l'étiquette (masqué avec elle).
+      const sky = document.createElement('span');
+      sky.className = 'jv3d-sky';
+      const skyObject = new CSS2DObject(sky);
+      skyObject.center.set(0.5, 2.6);
+      object.add(skyObject);
+      this.paintSky(sky, live.node.weather);
+    }
     return object;
+  }
+
+  /** SF-236-16 — la météo d'un chantier relu (univers relu à la fin d'un tour) : le ciel change sans recréer. */
+  private syncSky(live: Live, next: Node3d): void {
+    const sky = live.label?.children[0] as CSS2DObject | undefined;
+    if (sky && next.weather) {
+      this.paintSky(sky.element, next.weather);
+    }
+  }
+
+  private paintSky(element: HTMLElement, weather: Weather): void {
+    if (element.dataset['weather'] === weather) {
+      return;
+    }
+    element.dataset['weather'] = weather;
+    element.setAttribute('title', WEATHER_WORD[weather]);
+    // Icône statique (aucune donnée de l'utilisateur).
+    element.innerHTML = WEATHER_ICON[weather];
   }
 
   private styleLabel(live: Live, state: LinkState | undefined): void {

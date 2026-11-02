@@ -995,6 +995,10 @@ valeur en dur ailleurs.
   nombres JetBrains Mono. Une ligne qui désigne un nœud tend au survol un **filament** `--cg-holo` pointillé jusqu'à
   lui. Calques du PC : profondeur de champ des particules du fond, SMAA, finition (vignette, grain, aberration
   légère sur les bords) ; **jamais au téléphone**.
+- **Journée et météo (SF-236-16)** — chiffres du jour en JetBrains Mono 18 px dans des tuiles touchables (≥ 44 px),
+  enfoncées (liseré plein + halo) quand leur « Montrer » est posé ; zéro ⇒ éteint. Météo des chantiers : soleil
+  `--cg-holo-green`, nuage `--cg-holo-wait`, orage `--cg-holo-red`, brume crème 60 % ; icônes SVG 16 px (liste) et
+  20 px (ciel au-dessus du losange en 3D) ; le mot est toujours écrit.
 
 ## Logo & marque (ajout 2026-07-03)
 

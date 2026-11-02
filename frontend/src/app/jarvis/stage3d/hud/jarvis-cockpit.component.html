@@ -6,6 +6,62 @@
       <span aria-hidden="true">{{ folds().left ? '›' : '‹' }}</span>
     </button>
     <div class="ck__body" [attr.inert]="folds().left ? '' : null">
+      <!-- SF-236-16 (NF-1) — « Aujourd'hui » : toucher un chiffre = « Montrer » local, sans tour. -->
+      @if (board().length > 0) {
+        <section class="ck__section" aria-labelledby="ck-jour">
+          <h2 id="ck-jour" class="ck__title">Aujourd'hui</h2>
+          <div class="ck__board">
+            @for (f of board(); track f.id) {
+              <button type="button" class="ck__figure" [attr.data-tone]="f.tone" [attr.data-figure]="f.id"
+                      [disabled]="!f.filter" [attr.aria-pressed]="f.filter !== null && shownFilter() === f.filter"
+                      (click)="touchFigure(f)">
+                <span class="ck__figure-value">{{ f.value }}</span>
+                <span class="ck__figure-label">{{ f.label }}</span>
+              </button>
+            }
+          </div>
+        </section>
+      }
+      <!-- SF-236-16 (NF-2) — la météo des chantiers ; filament vers le losange au survol. -->
+      @if (weather().length > 0) {
+        <section class="ck__section" aria-labelledby="ck-meteo">
+          <h2 id="ck-meteo" class="ck__title">Météo des chantiers</h2>
+          <ul class="ck__list">
+            @for (row of weather(); track row.node.key) {
+              <li>
+                <button type="button" class="ck__item ck__weather" [attr.data-weather]="row.weather"
+                        [attr.data-key]="row.node.key" (mouseenter)="link(row.node.key, $event, 'left')"
+                        (focus)="link(row.node.key, $event, 'left')" (mouseleave)="unlink()" (blur)="unlink()">
+                  <span class="ck__sky" [attr.aria-label]="weatherWord[row.weather]" role="img">
+                    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                      @switch (row.weather) {
+                        @case ('soleil') {
+                          <circle cx="8" cy="8" r="3.2" fill="currentColor" />
+                          <path d="M8 1v2.2M8 12.8V15M1 8h2.2M12.8 8H15M3 3l1.5 1.5M11.5 11.5L13 13M3 13l1.5-1.5M11.5 4.5L13 3"
+                                stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+                        }
+                        @case ('brume') {
+                          <path d="M2 5.5h12M3.5 8.5h9M2 11.5h12" stroke="currentColor" stroke-width="1.3"
+                                stroke-linecap="round" />
+                        }
+                        @default {
+                          <path d="M4.5 9.5h7.2a2.6 2.6 0 0 0 .3-5.2A3.6 3.6 0 0 0 5.1 3.4 3 3 0 0 0 4.5 9.5z" fill="none"
+                                stroke="currentColor" stroke-width="1.3" />
+                          @if (row.weather === 'orage') {
+                            <path d="M8.6 9.5L7 12.2h2L7.6 15" fill="none" stroke="currentColor" stroke-width="1.3" />
+                          }
+                        }
+                      }
+                    </svg>
+                  </span>
+                  <span class="ck__label">{{ row.node.label }}<small class="ck__where">{{ row.where }}</small></span>
+                  <span class="ck__note">{{ row.note }}</span>
+                </button>
+              </li>
+            }
+          </ul>
+        </section>
+      }
       <section class="ck__section" aria-labelledby="ck-univers">
         <h2 id="ck-univers" class="ck__title">Univers</h2>
         <ul class="ck__list">

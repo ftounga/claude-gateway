@@ -4,6 +4,9 @@ import {
 } from '@angular/core';
 
 import { JarvisUniverse, clientKey } from '../../scenes/jarvis-universe.models';
+import { ShowFilter } from '../../scenes/jarvis-show';
+import { DayFigure, dayBoard, weatherRows } from './jarvis-day-board';
+import { WEATHER_WORD } from './jarvis-weather';
 import { IDLE_SCREEN, ScreenSignals } from '../jarvis-stage-director';
 import {
   CockpitFolds, CockpitInsets, CockpitMode, cockpitInsets, cockpitMode, readFolds, writeFolds,
@@ -79,6 +82,12 @@ export class JarvisCockpitComponent implements OnDestroy {
   readonly sober = input(false);
   /** Un sujet touché dans une liste : l'écran le choisit (comme dans l'univers). */
   readonly choose = output<string>();
+  /** SF-236-16 — messages finis pendant le tour (compteur « À envoyer » du jour). */
+  readonly toSendAdded = input(0);
+  /** SF-236-16 — le filtre « Montrer » posé localement (chiffre enfoncé). */
+  readonly shownFilter = input<ShowFilter | null>(null);
+  /** SF-236-16 — un chiffre touché : « Montrer » local, sans tour. */
+  readonly show = output<ShowFilter>();
 
   private readonly zone = inject(NgZone);
   private readonly filament = viewChild<ElementRef<SVGLineElement>>('filament');
@@ -96,6 +105,19 @@ export class JarvisCockpitComponent implements OnDestroy {
   /** Ce que couvrent les panneaux : relayé à la scène (l'univers se centre dans la zone libre). */
   readonly insets = computed<CockpitInsets>(() => cockpitInsets(this.mode(), this.folds()),
     { equal: (a, b) => a.left === b.left && a.right === b.right });
+
+  /** SF-236-16 (NF-1) — « Aujourd'hui » : les chiffres comptés dans l'univers et l'ambiance. */
+  readonly board = computed(() => dayBoard(this.signals().universe, this.signals().ambient, this.toSendAdded()));
+  /** SF-236-16 (NF-2) — la météo des chantiers, du plus grave au plus serein. */
+  readonly weather = computed(() => weatherRows(this.signals().universe));
+  readonly weatherWord = WEATHER_WORD;
+
+  /** Un chiffre touché : son filtre « Montrer », appliqué localement par l'écran (aucun tour). */
+  touchFigure(figure: DayFigure): void {
+    if (figure.filter) {
+      this.show.emit(figure.filter);
+    }
+  }
 
   readonly universeList = computed(() => universeItems(this.signals().universe, this.signals().subjectId));
 

@@ -197,4 +197,5 @@
 <div #labels3d class="jv3d-labels" [style.opacity]="stage3d.shown() ? 1 : 0" [attr.aria-hidden]="!stage3d.shown()"></div>
 <!-- F-236 / SF-236-15 — le cockpit PC (panneaux latéraux en verre, filaments liste ↔ nœud) : rien hors PC large en 3D. -->
 <app-jarvis-cockpit #cockpit [stage]="stage3d" [signals]="stageSignals()" [sober]="sober()"
-                    (choose)="touchSubject($event)" />
+                    [toSendAdded]="toSendAdded()" [shownFilter]="localShowFilter()"
+                    (choose)="touchSubject($event)" (show)="showLocal($event)" />

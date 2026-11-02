@@ -2,6 +2,7 @@ import { normalizeName } from '../scenes/jarvis-name-matcher';
 import { currentClient } from '../scenes/jarvis-constellation-layout';
 import { JarvisUniverse, NodeKind, clientKey } from '../scenes/jarvis-universe.models';
 
+import { Weather, weatherOf } from './hud/jarvis-weather';
 /**
  * F-236 / SF-236-04 — **la disposition 3D de l'univers** (cadrage §8.1). Fichier <b>pur</b>, <b>déterministe</b> :
  * mêmes entrées ⇒ mêmes positions (hachage stable des clés) — le PO apprend sa carte. Le cœur est à l'origine.
@@ -38,6 +39,8 @@ export interface Node3d {
   awaited?: boolean;
   /** Chantier : personnes attendues. */
   waitingOn?: string[];
+  /** SF-236-16 — chantier : sa météo (NF-2), un petit ciel au-dessus du losange. */
+  weather?: Weather;
 }
 
 /** Un nœud touché (étiquette) : sujet ⇒ « passe sur X » ; tout autre nœud ⇒ regarder, sans naviguer (D9). */
@@ -117,7 +120,7 @@ export function layoutUniverse3d(universe: JarvisUniverse | null, options: Layou
         const ca = (j / Math.max(chantiers.length, 1)) * Math.PI * 2 + 0.4;
         const cpos = ringAround(around, CHANTIER_ORBIT, ca, tilt + 0.6);
         nodes.push({ key, kind: 'chantier', label: `Chantier ${chantier.number} — ${chantier.title}`, clientKey: ck,
-          subjectId: subject.id, waitingOn: chantier.waitingOn, ...cpos });
+          subjectId: subject.id, waitingOn: chantier.waitingOn, weather: weatherOf(chantier).weather, ...cpos });
         const focused = (isCurrentSubject && chantier.focus) || options.shown.has(key);
         if (focused && chantier.total > 0) {
           const total = Math.min(chantier.total, MAX_STEPS);
