@@ -301,7 +301,15 @@
 <!-- F-236 / SF-236-24 (NF-13) — le veilleur de nuit : voile sombre, horloge, veilles, alertes ; réveil à l'alerte. -->
 <!-- F-241 / SF-241-01 — le volet « Mon portrait » : jamais en présentation (aucun élément personnel montré). -->
 @if (portraitOpen() && !presentation()) {
-  <app-jarvis-portrait (closed)="portraitOpen.set(false)" />
+  <app-jarvis-portrait [draft]="interviewDraft()" (draftDone)="interviewDraftDone()" (closed)="portraitOpen.set(false)" />
+}
+<!-- F-241 / SF-241-02 (D13) — la proposition d'entretien : jamais en présentation ; « oui » à la voix ou ici. -->
+@if (interviewOffer() && !presentation()) {
+  <aside class="jv__interview-offer" role="status">
+    <span>{{ interviewOfferText }}</span>
+    <button mat-flat-button color="primary" type="button" class="jv__interview-start" (click)="startInterview('INITIAL')">Commencer</button>
+    <button mat-button type="button" class="jv__interview-later" (click)="postponeInterview()">Plus tard</button>
+  </aside>
 }
 @if (night()) {
   <app-jarvis-night [ambient]="ambientNow()" (exit)="night.set(false)" />

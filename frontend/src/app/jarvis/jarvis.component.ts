@@ -88,6 +88,11 @@ import { JarvisOrbComponent, JarvisState } from './jarvis-orb.component';
 import { JarvisAppUpdate } from './jarvis-app-update';
 import { JarvisCompanionsComponent } from './jarvis-companions.component';
 import { JarvisPortraitComponent } from './jarvis-portrait.component';
+import {
+  INTERVIEW_END, INTERVIEW_INTRO, INTERVIEW_NOTHING, INTERVIEW_OFFER, INTERVIEW_QUESTIONS, INTERVIEW_UPDATE_INTRO,
+  InterviewDraft, JarvisInterview, JarvisInterviewClient, isInterviewCommand, updateQuestions,
+} from './jarvis-interview';
+import { JarvisPortraitClient } from './jarvis-portrait';
 import { JarvisSceneBus } from './scenes/jarvis-scene-bus.service';
 import { JarvisSceneComponent } from './scenes/jarvis-scene.component';
 import { JarvisConstellationComponent } from './scenes/jarvis-constellation.component';
@@ -342,6 +347,91 @@ export class JarvisComponent implements OnInit, OnDestroy {
   /** Le volet « Mon portrait » est ouvert. */
   readonly portraitOpen = signal(false);
 
+  // ---- F-241 / SF-241-02 : l'entretien oral (sur l'appareil ; rien d'enregistré avant « Valider ») ----
+  private readonly interviewClient = inject(JarvisInterviewClient);
+  private readonly portraitClient = inject(JarvisPortraitClient);
+  /** L'entretien en cours : ses réponses ne vont ni au fil, ni à la mémoire du jour, ni à la capture. */
+  private interview: JarvisInterview | null = null;
+  /** D13 — la proposition d'entretien, affichée (et dite au premier échange) tant qu'elle n'est ni prise ni remise. */
+  readonly interviewOffer = signal(false);
+  readonly interviewOfferText = INTERVIEW_OFFER;
+  /** Le brouillon rangé, à relire dans le volet « Mon portrait ». */
+  readonly interviewDraft = signal<InterviewDraft | null>(null);
+
+  /** Vrai pendant un entretien (l'écran l'indique). */
+  interviewing(): boolean {
+    return this.interview !== null;
+  }
+
+  /** D13 — la cadence est tenue par la passerelle ; ni en présentation, ni pendant une tâche. */
+  private loadInterviewOffer(): void {
+    if (this.presentation()) {
+      return;
+    }
+    this.interviewClient.offer().subscribe({
+      next: (o) => this.interviewOffer.set(o.offer && !this.presentation()),
+      error: () => undefined,
+    });
+  }
+
+  /** « Plus tard » : la proposition revient dans 7 jours (3 fois au plus). */
+  postponeInterview(): void {
+    this.interviewOffer.set(false);
+    this.interviewClient.offered().subscribe({ error: () => undefined });
+  }
+
+  /** Lance l'entretien : premier (dix questions) ou mise à jour (« à revoir » d'abord, D16). */
+  async startInterview(mode: 'INITIAL' | 'UPDATE'): Promise<void> {
+    if (this.presentation() || this.turnRunning || this.delegations().length > 0) {
+      return;
+    }
+    this.interviewOffer.set(false);
+    this.interviewDraft.set(null);
+    let questions: string[] = [...INTERVIEW_QUESTIONS];
+    if (mode === 'UPDATE') {
+      const portrait = await new Promise<import('./jarvis-portrait').Portrait | null>((resolve) =>
+        this.portraitClient.get().subscribe({ next: resolve, error: () => resolve(null) }));
+      questions = updateQuestions(portrait);
+    }
+    this.interview = new JarvisInterview(mode, questions);
+    await this.say(mode === 'UPDATE' ? INTERVIEW_UPDATE_INTRO : INTERVIEW_INTRO);
+    const first = this.interview?.current();
+    if (first) {
+      await this.say(first);
+    }
+  }
+
+  /** Une parole pendant l'entretien : réponse, « je passe », « on arrête là ». */
+  private async interviewHears(text: string): Promise<void> {
+    const interview = this.interview;
+    if (!interview) {
+      return;
+    }
+    const done = interview.hear(text);
+    if (!done) {
+      await this.say(interview.current() ?? '');
+      return;
+    }
+    this.interview = null;
+    if (!interview.hasAnswers()) {
+      await this.say(INTERVIEW_NOTHING);
+      return;
+    }
+    await this.say(INTERVIEW_END);
+    this.interviewClient.draft(interview.answers()).subscribe({
+      next: (draft) => {
+        this.interviewDraft.set(draft);
+        this.portraitOpen.set(true);
+      },
+      error: () => this.notice.set('Le rangement de l’entretien a échoué ; rien n’a été enregistré.'),
+    });
+  }
+
+  /** Le brouillon est validé ou abandonné : il disparaît (abandonné, il ne laisse aucune trace). */
+  interviewDraftDone(): void {
+    this.interviewDraft.set(null);
+  }
+
   /** Bascule « Humour : aucun / léger » ; revient en arrière si l'enregistrement échoue. */
   toggleHumour(): void {
     const previous = this.humour();
@@ -405,7 +495,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
   /** F-239 / SF-239-03 — garde l'énoncé pour le banc si l'interrupteur est allumé (WAV seulement). */
   private keepForBench(audio: Blob | null, seconds: number | null, mode: string, provider: string | null,
                        streamText: string, finalText: string): void {
-    if (!this.captureAudio() || !this.admin() || !audio || audio.size === 0 || !audio.type.includes('wav')) {
+    // F-241 / SF-241-02 — les réponses de l'entretien ne sont jamais gardées pour le banc.
+    if (this.interview || !this.captureAudio() || !this.admin() || !audio || audio.size === 0
+        || !audio.type.includes('wav')) {
       return;
     }
     this.jarvis.capture(audio, { seconds, listenMode: mode, provider, streamText, finalText });
@@ -484,6 +576,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const installed = fromCompanion && Number.isInteger(rawInstalled) && rawInstalled >= 1 ? rawInstalled : null;
     this.loadCompanion(installed);
     this.loadPreferences();
+    this.loadInterviewOffer();
     this.refreshCosts();
     this.atelier.listWorkspaces().subscribe({
       next: (list) => {
@@ -1361,6 +1454,29 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   /** Ce qui a été dit : une confirmation, un ordre d'arrêt, un changement de sujet, sinon une demande au cerveau. */
   async handle(text: string): Promise<void> {
+    // F-241 / SF-241-02 — pendant l'entretien, la parole est une réponse : elle ne part nulle part ailleurs.
+    if (this.interview) {
+      await this.interviewHears(text);
+      return;
+    }
+    if (!this.presentation() && !this.pendingConfirm) {
+      if (isInterviewCommand(text)) {
+        await this.startInterview(this.interviewOffer() ? 'INITIAL' : 'UPDATE');
+        return;
+      }
+      if (this.interviewOffer()) {
+        const answer = classifyConfirmation(text);
+        if (answer === 'oui') {
+          await this.startInterview('INITIAL');
+          return;
+        }
+        if (answer === 'non') {
+          this.postponeInterview();
+          await this.say('Entendu, une autre fois.');
+          return;
+        }
+      }
+    }
     if (this.pendingConfirm) {
       await this.answerToolConfirmation(this.pendingConfirm, text);
       return;

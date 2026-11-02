@@ -29,6 +29,8 @@ import { AuthService } from '../core/services/auth.service';
 import { JarvisVadService, VadHandlers } from './jarvis-barge-in';
 import { FORMULAS, FORMULA_CLIPS, tutoie } from './jarvis-phrases';
 import { JARVIS_3D_LOADER, JarvisEngineFactory } from './stage3d/jarvis-engine.contract';
+import { JarvisInterviewClient } from './jarvis-interview';
+import { JarvisPortraitClient } from './jarvis-portrait';
 import { JARVIS_RENDER_PROBE, RenderProbe } from './stage3d/jarvis-render-capability';
 import { FakeEngine, NO_WEBGL_PROBE, PC_PROBE, fakeEngineFactory } from './stage3d/jarvis-stage3d.testing';
 
@@ -62,6 +64,8 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
   let vad: VadHandlers | null;
   let vadStop: jasmine.Spy;
   let fastBrain: jasmine.SpyObj<JarvisFastBrainClient>;
+  let interviewClient: jasmine.SpyObj<JarvisInterviewClient>;
+  let portraitClient: jasmine.SpyObj<JarvisPortraitClient>;
   let fast: FastBrainHandlers | null;
   let renderProbe: RenderProbe;
   let loader3d: jasmine.Spy<() => Promise<JarvisEngineFactory>>;
@@ -79,6 +83,12 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     fast = null;
     // F-235 / SF-235-05 — par défaut, le cerveau rapide est éteint (503) : l'écran garde le mode actuel.
     fastBrain = jasmine.createSpyObj<JarvisFastBrainClient>('JarvisFastBrainClient', ['warm', 'converse']);
+    // F-241 / SF-241-02 — l'entretien : par défaut, aucune proposition (la cadence est tenue par la passerelle).
+    interviewClient = jasmine.createSpyObj<JarvisInterviewClient>('JarvisInterviewClient', ['offer', 'offered', 'draft']);
+    interviewClient.offer.and.returnValue(of({ offer: false, offers: 0 }));
+    interviewClient.offered.and.returnValue(of({ offer: false, offers: 1 }));
+    portraitClient = jasmine.createSpyObj<JarvisPortraitClient>('JarvisPortraitClient',
+      ['get', 'update', 'eraseAll', 'addSouvenir', 'patchSouvenir', 'deleteSouvenir', 'integrate']);
     fastBrain.warm.and.resolveTo(false);
     fastBrain.converse.and.callFake((_body, h) => {
       fast = h;
@@ -152,6 +162,8 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
         { provide: JarvisStreamOpener, useValue: opener },
         { provide: JarvisVadService, useValue: vadService },
         { provide: JarvisFastBrainClient, useValue: fastBrain },
+        { provide: JarvisInterviewClient, useValue: interviewClient },
+        { provide: JarvisPortraitClient, useValue: portraitClient },
         { provide: JARVIS_USER_AGENT, useFactory: () => userAgent },
         { provide: NotificationCenterService, useValue: notificationCenter },
         { provide: LiveTerminalService, useValue: liveTerminals },
@@ -289,6 +301,70 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     fixture.detectChanges();
     expect(el.querySelector('app-jarvis-portrait')).toBeNull();
     fixture.componentInstance.ngOnDestroy();
+    fixture.destroy();
+  }));
+
+  it('F-241 / SF-241-02 — l’entretien : proposé (pas en présentation), « oui » lance les questions, réponses jamais envoyées au cerveau, brouillon à relire', fakeAsync(() => {
+    interviewClient.offer.and.returnValue(of({ offer: true, offers: 0 }));
+    interviewClient.draft.and.returnValue(of({ sections: { QUI: 'Chef de projet' }, souvenirs: [] }));
+    configure({ presentation: '1' });
+    let fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    expect(fixture.componentInstance.interviewOffer()).toBeFalse();
+    expect(interviewClient.offer).not.toHaveBeenCalled();
+    fixture.componentInstance.ngOnDestroy();
+    fixture.destroy();
+
+    configure({});
+    fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    const jarvis = fixture.componentInstance;
+    fixture.detectChanges();
+    expect(jarvis.interviewOffer()).toBeTrue();
+    expect((fixture.nativeElement as HTMLElement).querySelector('.jv__interview-offer')).not.toBeNull();
+    const spoken: string[] = [];
+    spyOn(jarvis, 'say').and.callFake(async (phrase: string) => { spoken.push(phrase); });
+    void jarvis.handle('oui');
+    flushMicrotasks();
+    expect(jarvis.interviewing()).toBeTrue();
+    expect(spoken).toContain('Comment souhaitez-vous que je vous appelle ?');
+    void jarvis.handle('Franck');
+    flushMicrotasks();
+    void jarvis.handle('je passe');
+    flushMicrotasks();
+    void jarvis.handle('on arrête là');
+    flushMicrotasks();
+    expect(jarvis.interviewing()).toBeFalse();
+    expect(fastBrain.converse).not.toHaveBeenCalled();
+    expect(atelier.streamChat).not.toHaveBeenCalled();
+    const sent = interviewClient.draft.calls.mostRecent().args[0];
+    expect(sent.length).toBe(2);
+    expect(sent[0].answer).toBe('Franck');
+    expect(sent[1].answer).toBe('');
+    expect(jarvis.interviewDraft()?.sections.QUI).toBe('Chef de projet');
+    expect(jarvis.portraitOpen()).toBeTrue();
+    jarvis.interviewDraftDone();
+    expect(jarvis.interviewDraft()).toBeNull();
+    jarvis.ngOnDestroy();
+    fixture.destroy();
+  }));
+
+  it('F-241 / SF-241-02 — « plus tard » : la proposition est remise (passerelle), pas d’entretien', fakeAsync(() => {
+    interviewClient.offer.and.returnValue(of({ offer: true, offers: 0 }));
+    configure({});
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    const jarvis = fixture.componentInstance;
+    spyOn(jarvis, 'say').and.callFake(async () => undefined);
+    void jarvis.handle('non');
+    flushMicrotasks();
+    expect(interviewClient.offered).toHaveBeenCalled();
+    expect(jarvis.interviewOffer()).toBeFalse();
+    expect(jarvis.interviewing()).toBeFalse();
+    jarvis.ngOnDestroy();
     fixture.destroy();
   }));
 

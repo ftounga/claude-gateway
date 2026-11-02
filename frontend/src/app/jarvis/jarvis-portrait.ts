@@ -95,10 +95,12 @@ export class JarvisPortraitClient {
     return this.http.get<Portrait>('/api/jarvis/portrait');
   }
 
-  update(sections: Partial<Record<PortraitSectionKey, string>> | null, enabled?: boolean): Observable<Portrait> {
+  update(sections: Partial<Record<PortraitSectionKey, string>> | null, enabled?: boolean, interviewed = false):
+    Observable<Portrait> {
     return this.http.put<Portrait>('/api/jarvis/portrait', {
       ...(sections ? { sections } : {}),
       ...(enabled === undefined ? {} : { enabled }),
+      ...(interviewed ? { interviewed: true } : {}),
     });
   }
 

@@ -1367,6 +1367,30 @@ public class JarvisFastBrainService {
         }
     }
 
+    /**
+     * F-241 / SF-241-02 — le coût d'un appel annexe du cerveau rapide (rangement de l'entretien du portrait) : même
+     * journal et même journée Jarvis qu'un échange. Best-effort.
+     */
+    public void accountAnnex(UUID userId, AgentTurn turn) {
+        if (turn != null) {
+            account(userId, null, turn);
+        }
+    }
+
+    /** F-241 / SF-241-02 — la clé du compte pour un appel annexe (BYOK si actif, sinon celle de la plateforme). */
+    public String apiKeyFor(UUID userId) {
+        try {
+            return byok == null ? null : byok.resolveActiveApiKey(userId).orElse(null);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** F-241 / SF-241-02 — l'effort configuré du cerveau rapide. */
+    public String effort() {
+        return properties.effort();
+    }
+
     /** Le plafond du mois en euros et ce qui en est dépensé (lecture admin, mesure). */
     public BigDecimal monthSpentEur(UUID userId) {
         return usage.monthFastBrainCostUsd(userId).multiply(usdToEur).setScale(2, RoundingMode.HALF_UP);

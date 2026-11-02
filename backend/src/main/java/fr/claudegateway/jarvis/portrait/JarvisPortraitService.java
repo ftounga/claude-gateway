@@ -216,6 +216,7 @@ public class JarvisPortraitService {
         portraits.findById(userId).ifPresent(row -> {
             row.setLastInterviewAt(OffsetDateTime.now(clock));
             portraits.save(row);
+            cache.remove(userId);
         });
     }
 
@@ -224,6 +225,11 @@ public class JarvisPortraitService {
     public void eraseAll(UUID userId) {
         souvenirs.deleteByUser(userId);
         portraits.deleteByUser(userId);
+        cache.remove(userId);
+    }
+
+    /** Oublie le portrait déchiffré gardé en mémoire (une colonne hors sections a changé). */
+    public void invalidate(UUID userId) {
         cache.remove(userId);
     }
 
