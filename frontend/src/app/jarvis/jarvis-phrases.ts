@@ -12,25 +12,30 @@ export interface Formula {
   id: string;
   kind: FormulaKind;
   text: string;
+  /**
+   * F-239 / SF-239-01 — formule **retirée du tirage** (clip toujours servi par la passerelle) : « Je vous écoute »
+   * sonnait faux au réveil, et une formule d'attente générique est pire qu'un silence animé.
+   */
+  retired?: true;
 }
 
 /** Le répertoire. Les textes doivent rester identiques à `JarvisClipService.CLIPS`. */
 export const FORMULAS: readonly Formula[] = [
   { id: 'oui', kind: 'wake', text: 'Oui, Monsieur ?' },
   { id: 'oui-court', kind: 'wake', text: 'Oui ?' },
-  { id: 'je-vous-ecoute', kind: 'wake', text: 'Je vous écoute.' },
+  { id: 'je-vous-ecoute', kind: 'wake', text: 'Je vous écoute.', retired: true },
   { id: 'dites-moi', kind: 'wake', text: 'Dites-moi.' },
   { id: 'allez-y', kind: 'wake', text: 'Allez-y.' },
-  { id: 'a-votre-ecoute', kind: 'wake', text: 'À votre écoute.' },
-  { id: 'je-regarde', kind: 'filler', text: 'Je regarde.' },
-  { id: 'une-seconde', kind: 'filler', text: 'Une seconde.' },
-  { id: 'un-instant', kind: 'filler', text: 'Un instant.' },
-  { id: 'je-m-en-occupe', kind: 'filler', text: 'Je m’en occupe.' },
-  { id: 'voyons', kind: 'filler', text: 'Voyons cela.' },
-  { id: 'je-verifie', kind: 'filler', text: 'Je vérifie.' },
-  { id: 'en-cours', kind: 'filler', text: 'C’est en cours.' },
-  { id: 'laissez-moi', kind: 'filler', text: 'Laissez-moi regarder.' },
-  { id: 'je-m-en-charge', kind: 'filler', text: 'Je m’en charge, Monsieur.' },
+  { id: 'a-votre-ecoute', kind: 'wake', text: 'À votre écoute.', retired: true },
+  { id: 'je-regarde', kind: 'filler', text: 'Je regarde.' , retired: true },
+  { id: 'une-seconde', kind: 'filler', text: 'Une seconde.' , retired: true },
+  { id: 'un-instant', kind: 'filler', text: 'Un instant.' , retired: true },
+  { id: 'je-m-en-occupe', kind: 'filler', text: 'Je m’en occupe.' , retired: true },
+  { id: 'voyons', kind: 'filler', text: 'Voyons cela.' , retired: true },
+  { id: 'je-verifie', kind: 'filler', text: 'Je vérifie.' , retired: true },
+  { id: 'en-cours', kind: 'filler', text: 'C’est en cours.' , retired: true },
+  { id: 'laissez-moi', kind: 'filler', text: 'Laissez-moi regarder.' , retired: true },
+  { id: 'je-m-en-charge', kind: 'filler', text: 'Je m’en charge, Monsieur.' , retired: true },
 ];
 
 /** Tous les noms de clips, à précharger. */
@@ -75,7 +80,7 @@ export class FormulaPicker {
    * Tire une formule du genre `kind` parmi celles que `available` accepte (clip chargé…), ou `null`.
    */
   pick(kind: FormulaKind, available: (id: string) => boolean = () => true): Formula | null {
-    const pool = FORMULAS.filter((f) => f.kind === kind && available(f.id));
+    const pool = FORMULAS.filter((f) => f.kind === kind && !f.retired && available(f.id));
     if (pool.length === 0) {
       return null;
     }
@@ -88,6 +93,8 @@ export class FormulaPicker {
       pool.filter((f) => !window.includes(f.id) && !hasMonsieur(f)),
       // Plutôt « Monsieur » (s'il n'a pas été dit récemment) qu'une formule récente.
       pool.filter((f) => !window.includes(f.id)),
+      // F-239 — petit répertoire (réveil seul) : plutôt une formule sans « Monsieur » qu'un « Monsieur » de trop.
+      pool.filter((f) => f.id !== last && (allowMonsieur || !hasMonsieur(f))),
       pool.filter((f) => f.id !== last),
     ];
     const candidates = tiers.find((tier) => tier.length > 0);
@@ -108,6 +115,66 @@ export class FormulaPicker {
   get history(): readonly string[] {
     return this.recent;
   }
+}
+
+// ---------------------------------------------------------------- F-239 / SF-239-01 : l'attente liée à la demande
+
+/** Une phrase d'attente n'est dite qu'après ce délai sans réponse, et seulement sur le chemin Opus direct. */
+export const LINKED_FILLER_DELAY_MS = 2_500;
+
+/** Les gabarits d'une attente liée à la demande ; `{}` = l'objet nommé dans la parole. */
+export const LINKED_FILLER_TEMPLATES: readonly string[] = [
+  'Je regarde pour {}.',
+  'Je consulte {}.',
+  'Je me penche sur {}.',
+];
+
+/** Une attente liée : son gabarit (pour ne pas le redire au tour suivant) et son texte. */
+export interface LinkedFiller {
+  template: number;
+  text: string;
+}
+
+/** Minuscules, sans accents, ponctuation en espaces. */
+function plain(text: string): string {
+  return text.toLowerCase().normalize('NFD').replace(/\p{M}+/gu, '').replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+const SMALL_TALK_UNIT = '(?:bonjour|bonsoir|salut|hello|coucou|merci|merci beaucoup|merci bien|ca va|comment ca va|'
+  + 'comment allez vous|comment vas tu|vous allez bien|bonne journee|bonne soiree|bonne nuit|au revoir|a plus|a bientot|'
+  + 'a demain|ok|d accord|parfait|tres bien|super|genial|c est bon|c est tout|ce sera tout|a vous|a toi|aussi|monsieur|'
+  + 'et vous|et toi|oui|non|bien)';
+const SMALL_TALK = new RegExp(`^${SMALL_TALK_UNIT}(?: ${SMALL_TALK_UNIT})*$`);
+
+/** Une salutation ou une politesse (« Bonjour Jarvis », « Merci », « Ça va ? ») — jamais un travail. */
+export function isSmallTalk(said: string | null | undefined): boolean {
+  const words = plain(said ?? '').replace(/\b(jarvis|ok jarvis)\b/g, ' ').replace(/\s+/g, ' ').trim();
+  return words === '' || SMALL_TALK.test(words);
+}
+
+/**
+ * F-239 / SF-239-01 (D1) — **l'attente liée à la demande**, ou rien : un sujet du compte nommé dans la parole
+ * (« … Edenred … » ⇒ « Je regarde pour Edenred. »), sinon un chantier (« chantier 3 » ⇒ « Je regarde pour le chantier
+ * 3. »). Jamais pour une salutation, jamais le gabarit `lastTemplate`. Sans objet nommé : `null` — un silence animé
+ * vaut mieux qu'une formule creuse.
+ */
+export function linkedFiller(said: string, subjectNames: readonly string[], lastTemplate: number | null,
+                             random: () => number = Math.random): LinkedFiller | null {
+  if (isSmallTalk(said)) {
+    return null;
+  }
+  const text = ` ${plain(said)} `;
+  const named = subjectNames
+    .filter((name) => plain(name).length >= 3 && text.includes(` ${plain(name)} `))
+    .sort((a, b) => plain(b).length - plain(a).length)[0];
+  const chantier = /\bchantier (\d{1,4})\b/.exec(text);
+  const object = named ?? (chantier ? `le chantier ${chantier[1]}` : null);
+  if (!object) {
+    return null;
+  }
+  const choices = LINKED_FILLER_TEMPLATES.map((_, i) => i).filter((i) => i !== lastTemplate);
+  const template = choices[Math.min(choices.length - 1, Math.floor(random() * choices.length))];
+  return { template, text: LINKED_FILLER_TEMPLATES[template].replace('{}', object) };
 }
 
 /**

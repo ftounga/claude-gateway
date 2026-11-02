@@ -130,6 +130,12 @@ export interface TurnTimingReport {
   forcedDelegation?: boolean;
   delegationReason?: string | null;
   correction?: boolean;
+  /**
+   * F-239 / SF-239-01 (D3b) — une parole refusée par la porte de parole réelle (aucun tour) : la raison et la longueur
+   * du texte transcrit, **jamais le texte**.
+   */
+  rejectedKind?: 'empty' | 'noise' | 'hallucination' | 'no_voice' | 'implausible' | null;
+  rejectedChars?: number | null;
 }
 
 /** F-233 / SF-233-04 — une session d'écoute en flux : de quoi parler directement au fournisseur (jamais la clé). */

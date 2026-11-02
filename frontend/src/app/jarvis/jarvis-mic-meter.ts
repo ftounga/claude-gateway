@@ -90,6 +90,11 @@ export class MicMeter {
     }
   }
 
+  /** F-239 — vrai si le niveau est réellement mesuré (sinon `level()` rend 0 sans rien dire de la voix). */
+  get available(): boolean {
+    return this.analyser !== null;
+  }
+
   level(): number {
     if (!this.analyser || !this.samples) {
       return 0;

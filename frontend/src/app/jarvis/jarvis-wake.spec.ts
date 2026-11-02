@@ -1,5 +1,5 @@
 import {
-  END_SILENCE_FRAMES, MIN_WORD_FRAMES, WAKE_RATE, WordSegmenter, downsample, dtw, enrollThreshold, frameEnergies,
+  END_SILENCE_FRAMES, MIN_WORD_FRAMES, PHRASE_GAP_FRAMES, WAKE_RATE, WordSegmenter, downsample, dtw, enrollThreshold, frameEnergies,
   matchesProfile, mfcc,
 } from './jarvis-wake';
 
@@ -65,6 +65,38 @@ describe('Jarvis — le mot d’éveil sur l’appareil (F-231 / SF-231-05)', ()
       results.push(segmenter.push(e));
     }
     expect(results.filter((r) => r !== null)).toEqual([]);
+  });
+
+  it('F-239 — sait si « Jarvis » suit une parole proche (« Bonjour Jarvis ») ou un long calme', () => {
+    const quiet = (n: number) => new Array(n).fill(0.001);
+    const speech = (n: number) => new Array(n).fill(0.2);
+    const run = (energies: number[]) => {
+      const segmenter = new WordSegmenter();
+      const words: { word: [number, number]; before: number; phrase: number }[] = [];
+      for (const e of energies) {
+        const found = segmenter.push(e);
+        if (found) {
+          words.push({ word: found, before: segmenter.speechBeforeWord, phrase: segmenter.phraseStartFrame });
+        }
+      }
+      return { words, segmenter };
+    };
+    // « Bonjour » (40), 30 trames de calme, « Jarvis » (40) : deux mots, le second précédé de parole.
+    const greeting = run([...quiet(30), ...speech(40), ...quiet(30), ...speech(40), ...quiet(END_SILENCE_FRAMES)]);
+    expect(greeting.words.length).toBe(2);
+    const jarvis = greeting.words[1];
+    expect(jarvis.word[0] - jarvis.before).toBeLessThanOrEqual(PHRASE_GAP_FRAMES);
+    expect(jarvis.phrase).toBe(30);
+    // « Jarvis » après 2 s de calme : rien avant.
+    const alone = run([...quiet(30), ...speech(40), ...quiet(200), ...speech(40), ...quiet(END_SILENCE_FRAMES)]);
+    const second = alone.words[1];
+    expect(second.word[0] - second.before).toBeGreaterThan(PHRASE_GAP_FRAMES);
+    expect(second.phrase).toBe(second.word[0]);
+    // La parole qui reprend après le mot se voit.
+    const wordEnd = second.word[1];
+    expect(alone.segmenter.lastSpeechFrame > wordEnd).toBeFalse();
+    alone.segmenter.push(0.2);
+    expect(alone.segmenter.lastSpeechFrame > wordEnd).toBeTrue();
   });
 
   it('mesure l’énergie par trame de 10 ms', () => {

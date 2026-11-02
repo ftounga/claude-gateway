@@ -34,9 +34,29 @@ export const WAKE_PROFILE_KEY = 'cg.jarvis.wake';
 /** Nombre de répétitions demandées à l'apprentissage. */
 export const ENROLL_COUNT = 3;
 
+/**
+ * F-239 / SF-239-01 (D2) — **un réveil, avec son contexte** : « Jarvis » était-il dans une phrase ? Le moteur continue
+ * d'écouter après l'avoir signalé, jusqu'à son arrêt : `speechAfter()` dit si la parole a repris depuis, et
+ * `takeAudio()` rend l'audio de la phrase (16 kHz mono, au plus {@link PRE_ROLL_MAX_S} s avant le mot) jusqu'à
+ * maintenant — pour que l'écoute en flux transcrive « Bonjour Jarvis » en entier.
+ */
+export interface WakeEvent {
+  /** De la parole juste avant le mot (écart ≤ {@link PHRASE_GAP_FRAMES} trames) : « Jarvis » est dans une phrase. */
+  readonly precededBySpeech: boolean;
+  /** Vrai si de la parole a été entendue depuis la fin du mot. */
+  speechAfter(): boolean;
+  /** L'audio de la phrase, du début de la phrase (ou du mot) jusqu'à maintenant. */
+  takeAudio(): Float32Array;
+}
+
+/** Un calme plus long sépare deux phrases (en trames de 10 ms). */
+export const PHRASE_GAP_FRAMES = 100;
+/** La pré-écoute remonte au plus aussi loin avant le mot. */
+export const PRE_ROLL_MAX_S = 4;
+
 /** Le moteur du mot d'éveil : n'importe quelle implémentation sur l'appareil. */
 export interface WakeWordEngine {
-  start(onWake: () => void): Promise<void>;
+  start(onWake: (event: WakeEvent) => void): Promise<void>;
   stop(): void;
   readonly running: boolean;
 }
@@ -237,6 +257,13 @@ export class WordSegmenter {
   private start: number | null = null;
   private quiet = 0;
   private index = 0;
+  /** F-239 — la dernière trame de parole (toutes paroles confondues, mots trop longs compris). */
+  lastSpeechFrame = Number.NEGATIVE_INFINITY;
+  /** F-239 — le début de la phrase en cours : première parole après un calme de plus de {@link PHRASE_GAP_FRAMES}. */
+  phraseStartFrame = Number.NEGATIVE_INFINITY;
+  /** F-239 — pour le dernier mot rendu : la dernière parole avant son début (−∞ si aucune). */
+  speechBeforeWord = Number.NEGATIVE_INFINITY;
+  private speechBeforeCurrent = Number.NEGATIVE_INFINITY;
 
   /** Rend `[début, fin]` (en trames) quand un mot vient de finir, sinon `null`. */
   push(energy: number): [number, number] | null {
@@ -246,6 +273,13 @@ export class WordSegmenter {
       this.floor = this.floor * 0.95 + energy * 0.05;
     }
     if (speech) {
+      if (i - this.lastSpeechFrame > PHRASE_GAP_FRAMES) {
+        this.phraseStartFrame = i;
+      }
+      if (this.start === null) {
+        this.speechBeforeCurrent = this.lastSpeechFrame;
+      }
+      this.lastSpeechFrame = i;
       this.start ??= i;
       this.quiet = 0;
       if (i - this.start > MAX_WORD_FRAMES) {
@@ -268,6 +302,7 @@ export class WordSegmenter {
     if (!Number.isFinite(begin) || end - begin < MIN_WORD_FRAMES) {
       return null;
     }
+    this.speechBeforeWord = this.speechBeforeCurrent;
     return [begin, end];
   }
 
@@ -312,7 +347,7 @@ export class TemplateWakeWordEngine implements WakeWordEngine {
   private context: AudioContext | null = null;
   private stream: MediaStream | null = null;
   private processor: ScriptProcessorNode | null = null;
-  private onWord: ((features: number[][]) => void) | null = null;
+  private onWord: ((features: number[][], event: WakeEvent) => void) | null = null;
 
   constructor(private readonly profile: () => WakeProfile | null) {}
 
@@ -320,12 +355,12 @@ export class TemplateWakeWordEngine implements WakeWordEngine {
     return this.context !== null;
   }
 
-  /** Écoute, et appelle `onWake` à chaque « Jarvis » reconnu. */
-  start(onWake: () => void): Promise<void> {
-    return this.open((features) => {
+  /** Écoute, et appelle `onWake` à chaque « Jarvis » reconnu, avec son contexte (F-239). */
+  start(onWake: (event: WakeEvent) => void): Promise<void> {
+    return this.open((features, event) => {
       const profile = this.profile();
       if (profile && matchesProfile(features, profile)) {
-        onWake();
+        onWake(event);
       }
     });
   }
@@ -345,7 +380,7 @@ export class TemplateWakeWordEngine implements WakeWordEngine {
     this.onWord = null;
   }
 
-  private async open(onWord: (features: number[][]) => void): Promise<void> {
+  private async open(onWord: (features: number[][], event: WakeEvent) => void): Promise<void> {
     this.stop();
     this.onWord = onWord;
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -356,8 +391,9 @@ export class TemplateWakeWordEngine implements WakeWordEngine {
     const source = context.createMediaStreamSource(stream);
     const processor = context.createScriptProcessor(4096, 1, 1);
     const segmenter = new WordSegmenter();
-    // Une seconde et demie de signal à 16 kHz en mémoire, pas plus : de quoi reprendre le mot qui vient de finir.
-    const keep = WAKE_RATE * 2;
+    // F-239 — six secondes de signal à 16 kHz en mémoire, pas plus : de quoi reprendre la phrase qui contient le mot
+    // (au plus PRE_ROLL_MAX_S avant lui) et ce qui suit jusqu'à l'ouverture de l'écoute. Rien n'est envoyé ni gardé.
+    const keep = WAKE_RATE * 6;
     let buffer = new Float32Array(0);
     let bufferStartFrame = 0;
     let carry = new Float32Array(0);
@@ -374,7 +410,17 @@ export class TemplateWakeWordEngine implements WakeWordEngine {
           const from = Math.max(0, (word[0] - 5 - bufferStartFrame) * HOP);
           const to = Math.max(from, (word[1] + 3 - bufferStartFrame) * HOP);
           const features = mfcc(buffer.slice(from, Math.min(buffer.length, to)));
-          this.onWord?.(features);
+          const before = segmenter.speechBeforeWord;
+          const preceded = Number.isFinite(before) && word[0] - before <= PHRASE_GAP_FRAMES;
+          const phraseStart = preceded ? Math.max(segmenter.phraseStartFrame, word[0] - PRE_ROLL_MAX_S * 100)
+            : word[0];
+          const wordEnd = word[1];
+          const event: WakeEvent = {
+            precededBySpeech: preceded,
+            speechAfter: () => segmenter.lastSpeechFrame > wordEnd,
+            takeAudio: () => buffer.slice(Math.max(0, (phraseStart - 5 - bufferStartFrame) * HOP)),
+          };
+          this.onWord?.(features, event);
         }
       }
       if (buffer.length > keep) {

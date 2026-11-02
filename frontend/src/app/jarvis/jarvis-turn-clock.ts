@@ -33,6 +33,8 @@ export class TurnClock {
   fast: Partial<Pick<TurnTimingReport, 'brain' | 'fastModel' | 'fastFirstTokenMs' | 'groundingTrips'
     | 'fillersRemoved' | 'repeatsRemoved' | 'imitationsRemoved' | 'forcedDelegation' | 'delegationReason'
     | 'correction'>> = {};
+  /** F-239 / SF-239-01 — la parole a été refusée (aucun tour) : raison et longueur, jamais le texte. */
+  rejected: Pick<TurnTimingReport, 'rejectedKind' | 'rejectedChars'> | null = null;
   private reported = false;
 
   /**
@@ -86,6 +88,7 @@ export class TurnClock {
       doneMs: ms('done'),
       ...this.counters,
       ...this.fast,
+      ...(this.rejected ?? {}),
     };
   }
 }

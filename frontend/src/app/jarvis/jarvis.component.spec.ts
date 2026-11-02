@@ -21,9 +21,10 @@ import { AtelierService } from '../core/services/atelier.service';
 import { DictationService } from '../core/services/dictation.service';
 import { JarvisVoiceService } from '../core/services/jarvis-voice.service';
 import { JarvisService } from '../core/services/jarvis.service';
-import { FastBrainHandlers, FastBrainOutcome, JarvisFastBrainClient } from './jarvis-fast-brain';
+import { ASK_SUBJECT, FastBrainHandlers, FastBrainOutcome, JarvisFastBrainClient } from './jarvis-fast-brain';
 import { VeilleService } from '../core/services/veille.service';
 import { JarvisStreamOpener, StreamHandlers } from './jarvis-stream-listener';
+import { WakeEvent } from './jarvis-wake';
 import { JarvisVadService, VadHandlers } from './jarvis-barge-in';
 import { FORMULAS, FORMULA_CLIPS, tutoie } from './jarvis-phrases';
 import { JARVIS_3D_LOADER, JarvisEngineFactory } from './stage3d/jarvis-engine.contract';
@@ -552,19 +553,20 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(jarvis.state()).toBe('ecoute');
   }));
 
-  it('SF-231-03 / SF-233-11 — un tour qui tarde reçoit UNE formule d’attente variée, puis s’annonce terminé',
+  it('SF-231-03 / F-239 / SF-239-01 — un tour Opus qui tarde reçoit UNE attente liée à la demande, puis s’annonce terminé',
     fakeAsync(() => {
     const fixture = TestBed.createComponent(JarvisComponent);
     fixture.detectChanges();
     const jarvis = fixture.componentInstance;
 
-    jarvis.send('w-2', 'Lance les tests');
-    tick(1_199);
+    jarvis.send('w-2', 'Lance les tests sur CAGIP');
+    tick(2_499);
     expect(voice.speak).not.toHaveBeenCalled();
     tick(1);
     expect(voice.speak).toHaveBeenCalledTimes(1);
     const said = voice.speak.calls.mostRecent().args[0];
-    expect(FILLERS).toContain(said);
+    expect(said).toMatch(/^Je (regarde pour|consulte|me penche sur) CAGIP\.$/);
+    expect(FILLERS).not.toContain(said);
     expect(jarvis.state()).toBe('reflexion');
     // Une seule formule par échange : rien de plus pendant que le tour tourne.
     tick(20_000);
@@ -710,7 +712,8 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(companionOffer(NO_COMPANION, null, true)).toBeNull();
   });
 
-  it('F-233 / SF-233-11 — charge le répertoire ; formule d’attente seulement si la réponse tarde', fakeAsync(() => {
+  it('F-233 / SF-233-11 / F-239 — charge le répertoire ; aucune formule creuse, même quand la réponse tarde',
+    fakeAsync(() => {
     voice.hasClip.and.returnValue(true);
     voice.playClip.and.resolveTo(true);
     const fixture = TestBed.createComponent(JarvisComponent);
@@ -723,15 +726,40 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     flushMicrotasks();
     void jarvis.talk();
     flushMicrotasks();
-    // Plus de réaction immédiate à la fin de la parole.
+    tick(10_000);
+    // Aucun objet nommé : silence (le cœur montre qu'il réfléchit), jamais une formule générique.
     expect(voice.playClip).not.toHaveBeenCalled();
-    tick(1_200);
-    expect(voice.playClip).toHaveBeenCalledTimes(1);
-    const clip = voice.playClip.calls.mostRecent().args[0];
-    expect(FORMULAS.find((f) => f.id === clip)?.kind).toBe('filler');
+    expect(voice.speak).not.toHaveBeenCalled();
     jarvis.ngOnDestroy();
     tick(1_000);
   }));
+
+  it('F-239 / SF-239-01 — chemin Opus direct : rien pour « Bonjour », et jamais le même gabarit deux tours de suite',
+    fakeAsync(() => {
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      const jarvis = fixture.componentInstance;
+
+      jarvis.send('w-2', 'Bonjour Jarvis');
+      tick(5_000);
+      expect(voice.speak).not.toHaveBeenCalled();
+      handlers!.onDone({ reply: '🎙 Bonjour, Monsieur.', actions: [], messageId: 'm-0' });
+      flushMicrotasks();
+      voice.speak.calls.reset();
+
+      const said: string[] = [];
+      for (let i = 0; i < 6; i++) {
+        jarvis.send('w-2', 'Regarde le chantier 3 sur CAGIP');
+        tick(2_500);
+        said.push(voice.speak.calls.mostRecent().args[0]);
+        handlers!.onDone({ reply: '🎙 Fait.', actions: [], messageId: `m-${i}` });
+        flushMicrotasks();
+      }
+      for (let i = 1; i < said.length; i++) {
+        expect(said[i].replace('CAGIP', '')).not.toBe(said[i - 1].replace('CAGIP', ''));
+      }
+      jarvis.ngOnDestroy();
+    }));
 
   it('F-233 / SF-233-11 — aucune formule si la première phrase est déjà là', fakeAsync(() => {
     voice.hasClip.and.returnValue(true);
@@ -1130,6 +1158,148 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(jarvis.state()).toBe('repos');
     jarvis.ngOnDestroy();
   }));
+
+  it('F-239 / SF-239-01 — cerveau rapide lent : aucune formule d’attente, seulement la réponse', fakeAsync(() => {
+    voice.hasClip.and.returnValue(true);
+    voice.playClip.and.resolveTo(true);
+    const jarvis = fastOn();
+    void jarvis.handle('Où en est le chantier 3 sur CAGIP ?');
+    flushMicrotasks();
+    tick(8_000);
+    expect(voice.playClip).not.toHaveBeenCalled();
+    expect(voice.speak).not.toHaveBeenCalled();
+    expect(voice.enqueue).not.toHaveBeenCalled();
+    fast!.onText('Le chantier 3 en est aux tests.');
+    fast!.onDone({ brain: 'FAST', spokenText: 'Le chantier 3 en est aux tests.', firstTokenMs: 8_000, model: 'm' });
+    fastDone!('ok');
+    flushMicrotasks();
+    expect(voice.enqueue.calls.allArgs().map((a) => a[0])).toEqual(['Le chantier 3 en est aux tests.']);
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-239 / SF-239-01 — délégation sans sujet : il demande le sujet ; annonce vide : silence, le tour part',
+    fakeAsync(() => {
+      const jarvis = fastOn();
+      void jarvis.handle('Regarde les tickets');
+      flushMicrotasks();
+      fast!.onDelegated({ delegationId: 'd-0', subjectId: null, chantier: null, label: 'x',
+        announce: 'Je vérifie, Monsieur.', demande: 'x', automatic: true, reason: 'grounding' });
+      fastDone!('ok');
+      flushMicrotasks();
+      expect(voice.enqueue.calls.allArgs().map((a) => a[0])).toEqual([ASK_SUBJECT]);
+      expect(atelier.streamChat).not.toHaveBeenCalled();
+
+      voice.enqueue.calls.reset();
+      void jarvis.handle('Regarde les tickets d’AGENOR');
+      flushMicrotasks();
+      fast!.onDelegated({ delegationId: 'd-1', subjectId: 'w-1', chantier: null, label: 'tickets', announce: '',
+        demande: 'x', automatic: true, reason: 'grounding' });
+      fastDone!('ok');
+      flushMicrotasks();
+      expect(voice.enqueue).not.toHaveBeenCalled();
+      expect(atelier.streamChat).toHaveBeenCalled();
+      jarvis.ngOnDestroy();
+    }));
+
+  /** Une écoute en flux prête : le ticket, et ce que l'écran a donné à l'ouverture. */
+  function streamReady(): { stt: () => StreamHandlers; preRoll: () => (() => Float32Array | null) | null | undefined } {
+    jarvisApi.sttSession.and.returnValue(of({
+      sessionId: 's-1', provider: 'elevenlabs', url: 'wss://x/realtime?model_id=m', token: 't',
+      expiresAt: '2030-01-01T00:00:00Z', sampleRate: 16000, maxSeconds: 120,
+    }));
+    let stt: StreamHandlers | null = null;
+    let preRoll: (() => Float32Array | null) | null | undefined;
+    const listening = jasmine.createSpyObj('LiveListening', ['commit', 'close'], { stream: undefined });
+    listening.close.and.returnValue(2);
+    opener.open.and.callFake((_t, h, p) => {
+      stt = h;
+      preRoll = p;
+      return Promise.resolve(listening);
+    });
+    return { stt: () => stt!, preRoll: () => preRoll };
+  }
+
+  /** Un réveil sur l'appareil, avec son contexte. */
+  function wakeEvent(precededBySpeech: boolean, speechAfter = false): WakeEvent {
+    return { precededBySpeech, speechAfter: () => speechAfter, takeAudio: () => new Float32Array(1_600) };
+  }
+
+  it('F-239 / SF-239-01 — « Bonjour Jarvis » : ni formule de réveil ni d’attente, seulement la réponse', fakeAsync(() => {
+    voice.hasClip.and.returnValue(true);
+    voice.playClip.and.resolveTo(true);
+    const ready = streamReady();
+    const jarvis = fastOn();
+    jarvis.state.set('repos');
+
+    // Le moteur a reconnu « Jarvis » juste après « Bonjour » : la phrase est donnée d'abord à l'écoute en flux.
+    void (jarvis as unknown as { onWake(e: WakeEvent): Promise<void> }).onWake(wakeEvent(true));
+    flushMicrotasks();
+    expect(jarvis.state()).toBe('ecoute');
+    expect(ready.preRoll()).toBeTruthy();
+    expect(ready.preRoll()!()!.length).toBe(1_600);
+    ready.stt().onCommitted('Bonjour Jarvis.');
+    flushMicrotasks();
+    expect(fastBrain.converse).toHaveBeenCalledWith(jasmine.objectContaining({ text: 'Bonjour Jarvis.' }),
+      jasmine.any(Object));
+    tick(3_000);
+    fast!.onText('Bonjour, Monsieur.');
+    fast!.onDone({ brain: 'FAST', spokenText: 'Bonjour, Monsieur.', firstTokenMs: 2_900, model: 'm' });
+    fastDone!('ok');
+    flushMicrotasks();
+
+    expect(voice.playClip).not.toHaveBeenCalled();
+    expect(voice.speak).not.toHaveBeenCalled();
+    expect(voice.enqueue.calls.allArgs().map((a) => a[0])).toEqual(['Bonjour, Monsieur.']);
+    expect(atelier.streamChat).not.toHaveBeenCalled();
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-239 / SF-239-01 — « Jarvis, … » qui continue : aucune formule ; « Jarvis » seul : une formule courte, jamais « Je vous écoute »',
+    fakeAsync(() => {
+      voice.hasClip.and.returnValue(true);
+      voice.playClip.and.resolveTo(true);
+      streamReady();
+      const jarvis = fastOn();
+      const wake = (e: WakeEvent) => (jarvis as unknown as { onWake(e: WakeEvent): Promise<void> }).onWake(e);
+
+      void wake(wakeEvent(false, true));
+      tick(600);
+      flushMicrotasks();
+      expect(voice.playClip).not.toHaveBeenCalled();
+      expect(jarvis.state()).toBe('ecoute');
+
+      jarvis.state.set('repos');
+      jarvis.conversation.rest();
+      void wake(wakeEvent(false, false));
+      tick(600);
+      flushMicrotasks();
+      expect(voice.playClip).toHaveBeenCalledTimes(1);
+      const clip = voice.playClip.calls.mostRecent().args[0];
+      expect(['oui', 'oui-court', 'dites-moi', 'allez-y']).toContain(clip);
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-239 / SF-239-01 — tour fantôme : « Sous-titres… » ou « Merci. » sans parole ⇒ aucun tour, mesure sans texte',
+    fakeAsync(() => {
+      const ready = streamReady();
+      const jarvis = fastOn();
+      for (const ghost of ['Sous-titres réalisés par la communauté d’Amara.org', 'Merci.', '(musique)']) {
+        jarvis.state.set('repos');
+        void jarvis.talk();
+        flushMicrotasks();
+        expect(jarvis.state()).toBe('ecoute');
+        ready.stt().onCommitted(ghost);
+        flushMicrotasks();
+        const report = jarvisApi.timings.calls.mostRecent().args[0];
+        expect(report.falseTriggers).toBe(1);
+        expect(report.rejectedKind).toBe('hallucination');
+        expect(report.rejectedChars).toBe(ghost.length);
+        expect(JSON.stringify(report)).not.toContain(ghost);
+      }
+      expect(fastBrain.converse).not.toHaveBeenCalled();
+      expect(atelier.streamChat).not.toHaveBeenCalled();
+      jarvis.ngOnDestroy();
+    }));
 
   it('F-235 / SF-235-05 — délégation : annonce dite, tour Opus dans le fil cible, 🎙 intermédiaires muettes, fin annoncée avec son label',
     fakeAsync(() => {
