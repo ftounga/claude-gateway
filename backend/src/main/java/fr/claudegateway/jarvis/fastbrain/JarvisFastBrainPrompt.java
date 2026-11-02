@@ -13,24 +13,32 @@ import fr.claudegateway.agent.AgentTool;
  * ni heure, ni état, ni sujet. Tout ce qui change d'un appel à l'autre va <b>dans le message</b>. La consigne et
  * l'outil forment le préfixe caché ; ils sont identiques octet pour octet d'un appel à l'autre (test).</p>
  *
- * <p><b>Un seul outil</b> : {@value #TOOL_NAME}. Le cerveau rapide n'a <b>aucun</b> outil d'action ni de lecture —
- * agir, chercher, vérifier passent par le tour Opus du terminal, inchangé.</p>
+ * <p><b>Trois outils, aucun d'action</b> : {@value #TOOL_NAME} ; et, depuis F-237 / SF-237-08 (amendement F-235 D8),
+ * {@value #PIECES_TOOL} (lecture de l'index des pièces en base passerelle, jamais le poste) et {@value #SHOW_TOOL}
+ * (pilote l'écran). Agir, chercher, vérifier passent par le tour Opus du terminal, inchangé.</p>
  */
 public final class JarvisFastBrainPrompt {
 
     /** Version de la consigne : à incrémenter à chaque modification du texte (une nouvelle entrée de cache). */
-    public static final String VERSION = "6";
+    public static final String VERSION = "7";
 
-    /** Le seul outil du cerveau rapide. */
+    /** L'outil qui confie une demande à Opus. */
     public static final String TOOL_NAME = "deleguer";
+
+    /** F-237 / SF-237-08 — l'outil de lecture de l'index des pièces (aucun effet). */
+    public static final String PIECES_TOOL = "pieces";
+
+    /** F-237 / SF-237-08 — l'outil qui pilote l'écran (aucun effet en base). */
+    public static final String SHOW_TOOL = "afficher";
 
     /** Le cœur de la consigne : identité, route, ancrage, style. */
     public static final String CORE = """
             Tu es Jarvis, le majordome vocal d'un chef de projet (« Monsieur »). Tu tiens la CONVERSATION à l'oral. \
             Derrière toi travaille un agent plus lent et plus puissant (« Opus ») qui, lui, a tous les outils : le \
-            poste de travail, les fichiers, Jira, Confluence, le web, les courriels, les commandes. Toi, tu n'as qu'un \
-            outil : deleguer, qui lui confie une demande. Tu réponds en une à deux secondes ; Opus prend le temps \
-            qu'il faut.
+            poste de travail, les fichiers, Jira, Confluence, le web, les courriels, les commandes. Toi, tu as trois \
+            outils, dont aucun n'agit : deleguer, qui lui confie une demande ; pieces, qui lit la liste des pièces \
+            d'un chantier ou d'un sujet ; afficher, qui les montre à l'écran. Tu réponds en une à deux secondes ; \
+            Opus prend le temps qu'il faut.
 
             # Ce que tu reçois
             Chaque message de l'utilisateur contient un bloc [Contexte] puis sa parole, transcrite de la voix. Le \
@@ -130,6 +138,36 @@ public final class JarvisFastBrainPrompt {
             demande, dis-le au lieu de deviner. N'écris jamais de balise interne ni de texte qui imite un appel \
             d'outil.
 
+            # Montrer les pièces
+            L'écran sait montrer les pièces d'un chantier ou d'un sujet : les entrées (le besoin initial, ce que \
+            l'utilisateur avait fourni), les preuves (captures de preuve, envois, courriels), les productions (pages, \
+            schémas, vidéos, présentations). Le bloc « ## Pièces » du contexte les compte par chantier ; le bloc \
+            « ## Écran » dit ce qui est affiché, numéroté.
+            - Montre une pièce quand elle APPUIE ce que tu dis, sans attendre qu'on te le demande (raison appui) : \
+            (1) point d'avancement (« où en est-on ? ») : les entrées du chantier, le besoin initial d'abord ; \
+            (2) doute sur une fin (« tu es sûr que c'est fini ? », « tu as vérifié ? ») : les preuves du chantier ; \
+            s'il n'y en a aucune, ne montre rien et propose de les générer (« Voulez-vous que je génère la preuve, \
+            Monsieur ? ») ; (3) origine (« pourquoi on fait ça ? », « qu'est-ce que je t'avais donné ? ») : les \
+            entrées ; (4) vérification d'un envoi : la preuve d'envoi ; (5) « ça marche maintenant ? » : comparer la \
+            capture d'entrée et la preuve ; (6) architecture (« comment c'est déployé ? ») : le schéma ; (7) livrable \
+            (« montre ce que tu as fait ») : la page, la vidéo, la présentation.
+            - Une demande explicite (« montre-moi », « la galerie des vidéos ») : raison demande.
+            - Au plus trois pièces d'initiative par réponse, toujours du chantier ou du sujet dont on parle ; rien \
+            quand l'écran est en présentation ; rien sur une salutation ou une politesse.
+            - Le plus souvent, appelle directement afficher avec une portée (action galerie, portée chantier et \
+            catégorie). Appelle pieces seulement pour choisir une pièce précise (« celle sur le déploiement ») ou \
+            lire sa description, une seule fois par réponse.
+            - Pour naviguer, sers-toi du bloc « ## Écran » : « la deuxième » = action selection, index 2 ; « va au \
+            chapitre sur Terraform » = action aller, chapitre « Terraform » ; « raconte-moi le chantier 3 » = action \
+            raconter ; « qu'est-ce qu'on a produit aujourd'hui ? » = action planche ; avant et après = action comparer.
+            - Écris ta phrase, puis appelle afficher dans la même réponse. Dis la pièce montrée en une phrase, avec \
+            sa description si elle existe ; sinon seulement son titre et sa date. N'invente jamais ce qu'elle \
+            contient : décrire une image sans description se demande à Opus (deleguer). Une pièce rattachée au \
+            chantier « d'après la date » se dit ainsi.
+            - Sur un « oui » à ta proposition de générer la preuve, appelle deleguer (générer les captures de preuve \
+            du chantier avec capturer_preuves, puis les montrer). Sans « oui », rien.
+            - Montrer et naviguer n'engagent rien ; générer, commenter, partager passent par deleguer.
+
             # Exemples
             Parole : « Où en est le chantier 3 ? » — contexte : « chantier 3 — Migration Keycloak — étape : tests \
             d'intégration (en cours) ».
@@ -157,6 +195,10 @@ public final class JarvisFastBrainPrompt {
             Réponse :
             compris: Allons chez le client et donnez-
             Pardon, Monsieur, je n'ai pas saisi la fin.
+            Parole : « Tu es sûr que le chantier 3 est terminé ? » — contexte : « ## Pièces » « chantier 3 : besoin \
+            initial, 2 preuves ».
+            Réponse : « compris: Tu es sûr que le chantier 3 est terminé ? », « Oui, voici les preuves du chantier \
+            3. », puis afficher(action « galerie », portée chantier 3 et catégorie « preuves », raison « appui »).
             Parole : « Merci Jarvis. »
             Réponse :
             compris: Merci Jarvis.
@@ -228,6 +270,95 @@ public final class JarvisFastBrainPrompt {
                         + "À appeler pour toute action, tout outil, tout fait absent du contexte, toute réflexion "
                         + "profonde, et dans le doute.",
                 schema);
+    }
+
+    /** Les actions d'écran comprises par {@value #SHOW_TOOL} (fermées). */
+    public static final List<String> SHOW_ACTIONS = List.of("galerie", "piece", "suivante", "precedente",
+            "selection", "retour", "remonter", "fermer", "lecture", "pause", "aller", "page", "zoom", "comparer",
+            "raconter", "planche");
+
+    /** Les catégories dites ({@code ""} : toutes). */
+    public static final List<String> CATEGORIES = List.of("", "entrees", "preuves", "productions");
+
+    /** Les types dits ({@code ""} : tous). */
+    public static final List<String> TYPES = List.of("", "image", "video", "audio", "pdf", "page", "architecture",
+            "schema", "diaporama", "texte", "fichier");
+
+    /**
+     * F-237 / SF-237-08 — <b>les trois outils</b>, dans un ordre fixe : définitions <b>figées</b>, identiques octet
+     * pour octet d'un appel à l'autre (préfixe de cache). Aucun n'agit.
+     */
+    public static List<AgentTool> tools() {
+        return Holder.TOOLS;
+    }
+
+    /** Construits une fois (initialisation paresseuse, après les constantes). */
+    private static final class Holder {
+        static final List<AgentTool> TOOLS = List.of(delegateTool(), piecesTool(), showTool());
+    }
+
+    /** {@value #PIECES_TOOL} : lecture de l'index des pièces, exécutée par la passerelle. */
+    public static AgentTool piecesTool() {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("sujet", Map.of("type", "string",
+                "description", "Identifiant du sujet tel que dans le contexte ; vide pour le sujet courant."));
+        properties.put("chantier", Map.of("type", List.of("integer", "null"),
+                "description", "Numéro du chantier, sinon null."));
+        properties.put("categorie", Map.of("type", "string", "enum", CATEGORIES,
+                "description", "entrees, preuves ou productions ; vide pour toutes."));
+        properties.put("type", Map.of("type", "string", "enum", TYPES,
+                "description", "Type de pièce ; vide pour tous."));
+        properties.put("recherche", Map.of("type", "string",
+                "description", "Mots du titre ou de la description cherchés ; vide sinon."));
+        return new AgentTool(PIECES_TOOL,
+                "Lit la liste des pièces (entrées, preuves, productions) d'un chantier ou d'un sujet : identifiant, "
+                        + "type, titre, description existante, date. Aucun effet. Une seule fois par réponse.",
+                strict(properties));
+    }
+
+    /** {@value #SHOW_TOOL} : pilote l'écran (relayé au navigateur), aucun effet en base. */
+    public static AgentTool showTool() {
+        Map<String, Object> scope = new LinkedHashMap<>();
+        scope.put("sujet", Map.of("type", "string", "description", "Identifiant du sujet ; vide pour le courant."));
+        scope.put("chantier", Map.of("type", List.of("integer", "null"), "description", "Numéro du chantier."));
+        scope.put("categorie", Map.of("type", "string", "enum", CATEGORIES, "description", "Catégorie."));
+        scope.put("type", Map.of("type", "string", "enum", TYPES, "description", "Type de pièce."));
+        scope.put("serie", Map.of("type", "string", "description", "Identifiant d'une série de cours ; vide sinon."));
+        scope.put("depuis", Map.of("type", "string",
+                "description", "Date ISO (AAAA-MM-JJ) de début ; vide sinon."));
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("action", Map.of("type", "string", "enum", SHOW_ACTIONS,
+                "description", "Ce que fait l'écran."));
+        properties.put("pieces", Map.of("type", "array", "items", Map.of("type", "string"),
+                "description", "Identifiants de pièces (au plus 8), lus dans pieces ; vide sinon."));
+        properties.put("portee", strict(scope));
+        properties.put("index", Map.of("type", List.of("integer", "null"),
+                "description", "Numéro de la pièce dans la galerie affichée (bloc « ## Écran »)."));
+        properties.put("temps", Map.of("type", List.of("integer", "null"),
+                "description", "Instant en secondes (vidéo, audio)."));
+        properties.put("chapitre", Map.of("type", "string",
+                "description", "Numéro ou mots du titre d'un chapitre ; vide sinon."));
+        properties.put("page", Map.of("type", List.of("integer", "null"), "description", "Page ou diapo."));
+        properties.put("zoom", Map.of("type", "string",
+                "description", "« + », « - », « reset » ou un facteur de 1 à 8 ; vide sinon."));
+        properties.put("cible", Map.of("type", "string",
+                "description", "Partie nommée d'un schéma à cadrer (« le VPC de prod ») ; vide sinon."));
+        properties.put("raison", Map.of("type", "string", "enum", List.of("demande", "appui"),
+                "description", "demande : on te l'a demandé ; appui : tu montres de toi-même ce qui appuie ta "
+                        + "phrase."));
+        return new AgentTool(SHOW_TOOL,
+                "Montre des pièces à l'écran ou y navigue. Aucun effet en base. Montre une pièce quand elle appuie "
+                        + "ce que tu dis (au plus trois d'initiative par réponse), jamais en présentation.",
+                strict(properties));
+    }
+
+    private static Map<String, Object> strict(Map<String, Object> properties) {
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "object");
+        schema.put("properties", properties);
+        schema.put("required", List.copyOf(properties.keySet()));
+        schema.put("additionalProperties", false);
+        return schema;
     }
 
     private JarvisFastBrainPrompt() {

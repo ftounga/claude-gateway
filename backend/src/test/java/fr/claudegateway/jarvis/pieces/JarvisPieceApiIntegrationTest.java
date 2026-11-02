@@ -66,6 +66,7 @@ class JarvisPieceApiIntegrationTest {
     @Autowired private GeneratedImageRepository images;
     @Autowired private AppRequestRepository requests;
     @Autowired private JwtService jwt;
+    @Autowired private fr.claudegateway.jarvis.fastbrain.JarvisFastPieces fastPieces;
 
     private String aliceToken;
     private String bobToken;
@@ -188,5 +189,23 @@ class JarvisPieceApiIntegrationTest {
         call(jwt.generateToken(carol), "?subjectId=" + onHost)
                 .andExpect(jsonPath("$.pieces[0].kind").value("VIDEO"))
                 .andExpect(jsonPath("$.pieces[0].available").value("HOST_OFFLINE"));
+    }
+
+    @Test
+    @DisplayName("SF-237-08 — l'outil pieces du cerveau rapide : ses pièces, jamais celles d'autrui")
+    void fastBrainPiecesToolIsIsolated() throws Exception {
+        com.fasterxml.jackson.databind.ObjectMapper json = new com.fasterxml.jackson.databind.ObjectMapper();
+        UUID alice = workspaces.findById(aliceSubject).orElseThrow().getUserId();
+        UUID bob = workspaces.findById(bobSubject).orElseThrow().getUserId();
+
+        String mine = fastPieces.read(alice, aliceSubject, json.readTree("""
+                {"sujet":"","chantier":3,"categorie":"preuves","type":"","recherche":""}"""));
+        org.assertj.core.api.Assertions.assertThat(mine).contains("proof:" + proofHex).contains("Santé du portail");
+
+        String theirs = fastPieces.read(bob, bobSubject, json.readTree("{\"sujet\":\"" + aliceSubject + "\"}"));
+        org.assertj.core.api.Assertions.assertThat(theirs).isEqualTo("Sujet inconnu.");
+        org.assertj.core.api.Assertions.assertThat(fastPieces.block(bob, aliceSubject)).isEmpty();
+        org.assertj.core.api.Assertions.assertThat(fastPieces.block(alice, aliceSubject))
+                .startsWith("## Pièces").contains("chantier 3 : besoin initial");
     }
 }

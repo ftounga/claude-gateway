@@ -1,11 +1,12 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 
 import { JarvisPieceClient, PieceQuery } from './jarvis-piece-client';
+import { GalleryMode, ShowCommand, ShowContext, ShowRefusal, showPlan } from './jarvis-piece-show';
 import { NavAction, NavOrigin, NavReason, NavScope, PieceNav, initialNav, reduceNav, selectedItem } from './jarvis-piece-nav';
 import { Piece } from './jarvis-piece.models';
 
 /** Refus de la galerie : ceux du réducteur, plus le mode présentation et l'index injoignable. */
-export type PieceStoreReason = NavReason | 'PRESENTATION' | 'UNAVAILABLE';
+export type PieceStoreReason = NavReason | 'PRESENTATION' | 'UNAVAILABLE' | Exclude<ShowRefusal, 'PRESENTATION'>;
 
 export interface PieceStoreResult {
   ok: boolean;
@@ -25,6 +26,10 @@ export class JarvisPieceStore {
   readonly nav = signal<PieceNav>(initialNav());
   readonly pieces = signal<ReadonlyMap<string, Piece>>(new Map());
   readonly presentation = signal(false);
+  /** F-237 / SF-237-08 — la présentation de la galerie : éventail, comparaison, récit, planche contact. */
+  readonly mode = signal<GalleryMode>('fan');
+  /** F-237 / SF-237-08 — pièces montrées d'initiative, et quand (garde des 10 min, §7). */
+  private readonly shownProactively = new Map<string, number>();
   /** Une galerie ou une pièce est ouverte. */
   readonly open = computed(() => {
     const level = this.nav().level;
@@ -80,12 +85,60 @@ export class JarvisPieceStore {
     return this.dispatch({ type: 'openGallery', scope, pieces, origin });
   }
 
+  /**
+   * F-237 / SF-237-08 — **un ordre du cerveau rapide** (`afficher`, événement `show`) : la même porte que le toucher
+   * et la voix locale. Les garde-fous écran (présentation, hors sujet, 10 min, sobre) sont ceux de `showPlan`.
+   */
+  async applyShow(cmd: ShowCommand, ctx: Omit<ShowContext, 'nav' | 'recent' | 'presentation' | 'now'>,
+    now = Date.now()): Promise<PieceStoreResult> {
+    const plan = showPlan(cmd, {
+      ...ctx, nav: this.nav(), recent: this.shownProactively, presentation: this.presentation(), now,
+    });
+    if (plan.kind === 'refuse') {
+      return { ok: false, reason: plan.reason };
+    }
+    if (plan.kind === 'nav') {
+      return this.dispatch(plan.action);
+    }
+    this.loading?.abort();
+    const controller = new AbortController();
+    this.loading = controller;
+    const response = await this.client.list(plan.query, controller.signal);
+    if (controller.signal.aborted) {
+      return { ok: false, reason: 'UNAVAILABLE' };
+    }
+    this.loading = null;
+    if (!response) {
+      return { ok: false, reason: 'UNAVAILABLE' };
+    }
+    let pieces = response.pieces;
+    if (plan.ids.length) {
+      const byId = new Map(pieces.map((p) => [p.id, p]));
+      pieces = plan.ids.map((id) => byId.get(id)).filter((p): p is Piece => p != null);
+    }
+    if (!pieces.length) {
+      return { ok: false, reason: 'NOT_FOUND' };
+    }
+    if (plan.origin === 'PROACTIVE') {
+      for (const p of pieces) {
+        this.shownProactively.set(p.id, now);
+      }
+    }
+    this.mode.set(plan.mode);
+    const shown = this.show(plan.scope, pieces, plan.origin);
+    if (shown.ok && plan.select != null) {
+      return this.dispatch({ type: 'select', ref: plan.select });
+    }
+    return shown;
+  }
+
   /** Tout ferme (sortie de l'écran, bascule en présentation). */
   reset(): void {
     this.loading?.abort();
     this.loading = null;
     this.nav.set(initialNav());
     this.pieces.set(new Map());
+    this.mode.set('fan');
   }
 }
 
@@ -102,6 +155,11 @@ export function refusalPhrase(reason: PieceStoreReason | undefined): string {
       return 'Je ne la trouve pas.';
     case 'PRESENTATION':
       return 'Pas de pièce en mode présentation.';
+    case 'NOT_IN_SCOPE':
+      return 'Cette pièce n’est pas du sujet en cours.';
+    case 'RECENT':
+    case 'NOTHING':
+      return '';
     default:
       return 'Je n’arrive pas à lire les pièces pour le moment.';
   }
