@@ -84,6 +84,17 @@
   opacity: 0;
 }
 
+/* F-236 / SF-236-08 — en 3D, la scène s'écrit dans les panneaux holographiques : la carte 2D de la scène (décorative,
+   `aria-hidden`) s'efface — l'équivalent accessible (fil d'Ariane, état dit) reste. */
+.jv__scene {
+  transition: opacity var(--jv-dur-fade, 400ms) var(--jv-ease-glisse, ease-in-out);
+}
+
+.jv--3d .jv__scene {
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* F-236 / SF-236-04 — l'univers 3D remplace la carte 2D (le fil d'Ariane, équivalent accessible, reste). */
 .jv__constellation ::ng-deep .cst__map {
   transition: opacity var(--jv-dur-fade, 400ms) var(--jv-ease-glisse, ease-in-out);

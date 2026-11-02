@@ -12,7 +12,7 @@ import { MOTION_DURATIONS } from './jarvis-motion';
 import { UniverseTouch } from './jarvis-layout-3d';
 import { SLEEP_AFTER_MS, SleepWatch } from './jarvis-heart';
 import {
-  IDLE_SCREEN, ScreenSignals, StagePlan, UniverseView, directStage, samePlan, universeView,
+  IDLE_SCREEN, ScreenSignals, StagePlan, UniverseView, directStage, samePlan, stageScene, universeView,
 } from './jarvis-stage-director';
 import {
   ContextLossPolicy, JARVIS_RENDER_PROBE, QualityLevel, RenderDecision, SESSION_CONTEXT_LOSS, canOffer3d, decideRender,
@@ -129,9 +129,10 @@ export class JarvisStage3dComponent implements OnDestroy {
       return override;
     }
     const s = this.signals();
+    const universe = this.universe();
     return directStage({ state: s.state, frozen: s.frozen, waiting: s.waiting, asleep: this.asleep(),
       wakes: this.wakes(), delegations: s.delegations, fastBrainOn: s.fastBrainOn, turnActive: s.turnActive,
-      brainEnd: s.brainEnd }, this.universe());
+      brainEnd: s.brainEnd }, universe, this.sober() ? null : stageScene(s, universe, this.narrow));
   }, { equal: samePlan });
 
   /** SF-236-04 — l'univers : recalculé seulement quand ce qui le décide change. */

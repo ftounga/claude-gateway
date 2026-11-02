@@ -93,6 +93,15 @@ export const MOTION_DURATIONS = {
   sleep: 2500,
   /** T-V2 — réveil (onde de choc). */
   wake: 600,
+  /** SF-236-08 — T-P1 apparition d'un panneau (`rebond`), balayage lumineux, filament d'ancrage, écart entre panneaux. */
+  panelIn: 420,
+  panelSweep: 300,
+  panelFilament: 250,
+  panelStagger: 90,
+  /** T-P2 — disparition d'un panneau (`entree`). */
+  panelOut: 280,
+  /** S-GEN — un anneau d'impulsion par appel. */
+  pulse: 900,
 } as const;
 
 /** Lit une courbe en `cubic-bezier(...)`. */
