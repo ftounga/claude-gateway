@@ -28,6 +28,8 @@ export class JarvisPieceStore {
   readonly nav = signal<PieceNav>(initialNav());
   readonly pieces = signal<ReadonlyMap<string, Piece>>(new Map());
   readonly presentation = signal(false);
+  /** F-237 / SF-237-12 — l'instant de lecture de la vidéo / de l'audio ouvert (s), pour horodater un retour. */
+  readonly mediaTime = signal<number | null>(null);
   /** F-237 / SF-237-08 — la présentation de la galerie : éventail, comparaison, récit, planche contact. */
   readonly mode = signal<GalleryMode>('fan');
   /** F-237 / SF-237-08 — pièces montrées d'initiative, et quand (garde des 10 min, §7). */

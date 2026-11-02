@@ -70,12 +70,13 @@ interface PageInfo {
           @case ('video') {
             @if (mediaUrl()) {
               <video #media class="pv__video" [src]="mediaUrl()" [attr.poster]="posterUrl()" controls playsinline
-                     (play)="onPlay()" (pause)="onPause()"></video>
+                     (play)="onPlay()" (pause)="onPause()" (timeupdate)="onTime($event)"></video>
             } @else if (failed()) { <p class="pv__note">Vidéo illisible pour le moment.</p> }
           }
           @case ('audio') {
             @if (mediaUrl()) {
-              <audio #media class="pv__audio" [src]="mediaUrl()" controls (play)="onPlay()" (pause)="onPause()"></audio>
+              <audio #media class="pv__audio" [src]="mediaUrl()" controls (play)="onPlay()" (pause)="onPause()"
+                     (timeupdate)="onTime($event)"></audio>
             } @else if (failed()) { <p class="pv__note">Audio illisible pour le moment.</p> }
           }
           @case ('pdf') {
@@ -393,6 +394,14 @@ export class JarvisPieceViewerComponent implements OnDestroy {
         this.rampTimer = null;
       }
     }, 20);
+  }
+
+  /** F-237 / SF-237-12 — l'instant de lecture, pour horodater un retour dicté. */
+  onTime(event: Event): void {
+    const t = (event.target as HTMLMediaElement | null)?.currentTime;
+    if (typeof t === 'number' && Number.isFinite(t)) {
+      this.store.mediaTime.set(t);
+    }
   }
 
   onPlay(): void {
