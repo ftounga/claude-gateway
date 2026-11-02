@@ -1,7 +1,12 @@
 import {
-  ChangeDetectionStrategy, Component, ElementRef, NgZone, OnDestroy, computed, inject, input, output, signal,
-  viewChild,
+  ChangeDetectionStrategy, Component, ElementRef, InjectionToken, Injector, NgZone, OnDestroy, computed, effect, inject,
+  input, output, signal, untracked, viewChild,
 } from '@angular/core';
+import { Observable } from 'rxjs';
+
+import { AtelierMessage } from '../../../core/models/atelier.models';
+import { AtelierService } from '../../../core/services/atelier.service';
+import { DayTurn, FAMILY_TONE, FAMILY_WORD, Pearl, TurnTimeline, dayAxis, dayTurns } from './jarvis-timelines';
 
 import { JarvisUniverse, clientKey } from '../../scenes/jarvis-universe.models';
 import { ShowFilter } from '../../scenes/jarvis-show';
@@ -30,6 +35,37 @@ export interface CockpitNodeItem {
   subjectId?: string;
   current?: boolean;
   depth: 0 | 1;
+}
+
+/**
+ * SF-236-17 — l'historique du fil d'un sujet (H14), lu <b>hors tour, à la demande</b> ; injectable pour les tests.
+ * Résolu au premier chargement seulement (le cockpit ne dépend pas du client HTTP pour s'afficher).
+ */
+export const JARVIS_DAY_HISTORY = new InjectionToken<(subjectId: string) => Observable<AtelierMessage[]>>(
+  'JARVIS_DAY_HISTORY', {
+    providedIn: 'root',
+    factory: () => {
+      const atelier = inject(AtelierService);
+      return (subjectId: string) => atelier.getHistory(subjectId);
+    },
+  });
+
+/** Une perle à l'écran : position sur l'arc et teinte. */
+export interface PearlDot {
+  x: number;
+  y: number;
+  tone: string;
+  word: string;
+}
+
+/** L'arc de perles du tour (N14) : 160° d'une ellipse 110 × 96 dans un cadre 280 × 120, de gauche à droite. */
+export function pearlArc(pearls: readonly Pearl[]): PearlDot[] {
+  const n = pearls.length;
+  return pearls.map((p, i) => {
+    const a = Math.PI * (1 - (0.0555 + 0.889 * (n === 1 ? 0.5 : i / (n - 1))));
+    return { x: Math.round((140 + 110 * Math.cos(a)) * 10) / 10, y: Math.round((112 - 96 * Math.sin(a)) * 10) / 10,
+      tone: FAMILY_TONE[p.family], word: FAMILY_WORD[p.family] };
+  });
 }
 
 const STATE_WORD: Record<ScreenSignals['state'], string> = {
@@ -131,6 +167,59 @@ export class JarvisCockpitComponent implements OnDestroy {
       active: s.turnActive,
     };
   });
+
+  /** SF-236-17 (NF-4 / N14) — la chronologie du tour en cours : une perle par appel, famille du registre. */
+  private readonly timeline = new TurnTimeline();
+  readonly turnPearls = signal<{ dots: PearlDot[]; more: number }>({ dots: [], more: 0 });
+  private readonly timelineFollow = effect(() => {
+    const s = this.signals();
+    untracked(() => {
+      if (this.timeline.observe({ turnActive: s.turnActive, pulses: s.pulses, scene: s.scene })) {
+        const snap = this.timeline.snapshot();
+        this.turnPearls.set({ dots: pearlArc(snap.pearls), more: snap.more });
+      }
+    });
+  });
+
+  /** SF-236-17 (NF-3) — la journée du sujet : chargée à la demande, jamais pendant un tour. */
+  private readonly injector = inject(Injector);
+  readonly day = signal<{ subjectId: string; turns: DayTurn[]; axis: { from: number; to: number } } | null>(null);
+  readonly dayState = signal<'idle' | 'loading' | 'error'>('idle');
+  readonly dayPick = signal<DayTurn | null>(null);
+  readonly familyTone = FAMILY_TONE;
+
+  /** Charge les tours du jour du sujet courant ; refusé pendant un tour (aucun appel pendant un tour). */
+  loadDay(): void {
+    const s = this.signals();
+    if (s.turnActive || !s.subjectId || this.dayState() === 'loading') {
+      return;
+    }
+    const subjectId = s.subjectId;
+    this.dayState.set('loading');
+    this.dayPick.set(null);
+    this.injector.get(JARVIS_DAY_HISTORY)(subjectId).subscribe({
+      next: (messages) => {
+        const now = new Date();
+        const turns = dayTurns(messages ?? [], now);
+        this.day.set({ subjectId, turns, axis: dayAxis(turns, now) });
+        this.dayState.set('idle');
+      },
+      error: () => this.dayState.set('error'),
+    });
+  }
+
+  /** Position d'un tour sur l'axe de la journée (0-100 %). */
+  dayX(turn: DayTurn): number {
+    const axis = this.day()?.axis;
+    if (!axis) {
+      return 0;
+    }
+    return Math.round(((turn.minute - axis.from) / Math.max(1, axis.to - axis.from)) * 1000) / 10;
+  }
+
+  hourLabel(minute: number): string {
+    return `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
+  }
 
   toggle(side: 'left' | 'right'): void {
     const next = { ...this.folds(), [side]: !this.folds()[side] };

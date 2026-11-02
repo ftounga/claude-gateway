@@ -4,7 +4,9 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { testUniverse } from '../../scenes/jarvis-universe.fixture';
 import { IDLE_SCREEN, ScreenSignals } from '../jarvis-stage-director';
 import { COCKPIT_FOLDS_KEY } from './jarvis-cockpit-layout';
-import { CockpitStage, JarvisCockpitComponent, universeItems } from './jarvis-cockpit.component';
+import { of, throwError } from 'rxjs';
+
+import { CockpitStage, JARVIS_DAY_HISTORY, JarvisCockpitComponent, universeItems } from './jarvis-cockpit.component';
 
 /** Une scène 3D simulée : affichée ou non, téléphone ou PC, positions des nœuds à l'écran. */
 export class FakeCockpitStage implements CockpitStage {
@@ -141,6 +143,49 @@ describe('F-236 / SF-236-15 — JarvisCockpitComponent (panneaux latéraux, repl
     cockpit.tick();
     expect((fixture.nativeElement.querySelector('.ck__filament') as SVGLineElement).getAttribute('x2')).toBe('700.0');
     cockpit.unlink();
+  });
+
+  it('SF-236-17 — arc de perles du tour : une perle par appel, teinte de la famille', () => {
+    mount({ ...screen, pulses: 0, scene: null });
+    fixture.componentRef.setInput('signals', { ...screen, pulses: 2, scene: { id: 'S3', key: 'k', libelle: 'Commande',
+      count: 1, detail: null, entity: null, pinned: false, since: 0, updatedAt: 0 } });
+    fixture.detectChanges();
+    const pearls = fixture.nativeElement.querySelectorAll('.ck__pearl');
+    expect(pearls.length).toBe(2);
+    expect(pearls[0].getAttribute('data-tone')).toBe('normal');
+  });
+
+  it('SF-236-17 — la journée : jamais pendant un tour ; à la demande hors tour ; résumé d’un tour touché', () => {
+    const history = jasmine.createSpy('history').and.returnValue(of([
+      { id: 'u1', role: 'USER', content: 'Vérifie les pods', createdAt: new Date().toISOString() },
+      { id: 'a1', role: 'ASSISTANT', content: 'Tout va bien. Trois pods.', createdAt: new Date().toISOString(),
+        terminal: { blocks: [{ tool: 'bash' }], omittedBlocks: 0 } },
+    ]));
+    TestBed.overrideProvider(JARVIS_DAY_HISTORY, { useValue: history });
+    mount();
+    const load = fixture.nativeElement.querySelector('.ck__load') as HTMLButtonElement;
+    expect(load.disabled).toBeTrue();
+    cockpit.loadDay();
+    expect(history).not.toHaveBeenCalled();
+    fixture.componentRef.setInput('signals', { ...screen, turnActive: false });
+    fixture.detectChanges();
+    expect(load.disabled).toBeFalse();
+    load.click();
+    fixture.detectChanges();
+    expect(history).toHaveBeenCalledOnceWith('s-forge');
+    const turn = fixture.nativeElement.querySelector('.ck__turn') as HTMLButtonElement;
+    expect(turn.textContent).toContain('Vérifie les pods');
+    turn.click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.ck__summary')?.textContent).toContain('Tout va bien.');
+  });
+
+  it('SF-236-17 — journée illisible ⇒ message, aucune erreur', () => {
+    TestBed.overrideProvider(JARVIS_DAY_HISTORY, { useValue: () => throwError(() => new Error('500')) });
+    mount({ ...screen, turnActive: false });
+    cockpit.loadDay();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('La journée n\'a pas pu être lue.');
   });
 
   it('univers vide ⇒ liste vide, message écrit', () => {

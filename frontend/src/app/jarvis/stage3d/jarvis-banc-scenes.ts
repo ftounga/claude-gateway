@@ -73,6 +73,10 @@ export function bancScreen(scene: string): ScreenSignals {
   const universe = scene === 'cockpit-meteo' ? bancWeatherUniverse() : testUniverse();
   const base: ScreenSignals = { ...IDLE_SCREEN, universe, subjectId: 's-forge', state: 'reflexion', turnActive: true,
     pulses: 3, delegations: 1, scene: BANC_SCENE_VIEWS['commande'] ?? null };
+  if (scene === 'cockpit-chronologies') {
+    // Fin de tour : l'arc du tour reste lisible, la journée se charge (hors tour).
+    return { ...base, state: 'repos', turnActive: false, pulses: 6 };
+  }
   if (scene === 'cockpit-journee') {
     // Le chiffre « Attentes » touché : « Montrer » local des chantiers bloqués, au repos (aucun tour).
     const focus = resolveShow(universe, { filter: 'chantiers-bloques', client: null });

@@ -6,6 +6,9 @@ import { holoCssVars } from './jarvis-motion';
 import { JarvisCockpitComponent } from './hud/jarvis-cockpit.component';
 import { OPEN_FOLDS, writeFolds } from './hud/jarvis-cockpit-layout';
 import { ShowFilter } from '../scenes/jarvis-show';
+import { Observable, of } from 'rxjs';
+import { AtelierMessage } from '../../core/models/atelier.models';
+import { JARVIS_DAY_HISTORY } from './hud/jarvis-cockpit.component';
 
 /**
  * F-236 / SF-236-01 — **la page du banc de captures** (`/jarvis-banc?banc=<scène>&t=<ms>`), <b>développement
@@ -26,6 +29,8 @@ import { ShowFilter } from '../scenes/jarvis-show';
     }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
+  // SF-236-17 — le banc ne lit jamais le réseau : la journée vient d'un historique simulé.
+  providers: [{ provide: JARVIS_DAY_HISTORY, useValue: () => bancHistory() }],
   host: { '[style]': 'vars' },
   styleUrls: ['./jarvis-labels.scss'],
   styles: [':host { display: block; min-height: 100dvh; background: #0B1020; }'],
@@ -53,5 +58,37 @@ export class JarvisBancComponent {
         item?.dispatchEvent(new MouseEvent('mouseenter'));
       }, 1500));
     }
+    if (this.scene === 'cockpit-chronologies') {
+      // SF-236-17 — la journée chargée (historique simulé, aucun appel) et un tour touché.
+      afterNextRender(() => setTimeout(() => {
+        this.cockpitRef()?.loadDay();
+        setTimeout(() => document.querySelectorAll<HTMLElement>('.ck__turn')[2]?.click(), 100);
+      }, 1500));
+    }
   }
+}
+
+/** SF-236-17 — la journée du banc : cinq tours du jour, outils variés (familles), dont un dit à Jarvis. */
+export function bancHistory(): Observable<AtelierMessage[]> {
+  const at = (h: number, m: number) => {
+    const d = new Date();
+    d.setHours(h, m, 0, 0);
+    return d.toISOString();
+  };
+  const turn = (id: string, h: number, m: number, ask: string, reply: string, tools: string[], voice = false) => [
+    { id: `u${id}`, role: 'USER', content: ask, createdAt: at(h, m), via: voice ? 'JARVIS' : null },
+    { id: `a${id}`, role: 'ASSISTANT', content: reply, createdAt: at(h, m + 1),
+      terminal: { blocks: tools.map((tool) => ({ tool, command: null, toolUseId: null, output: '', hasOutput: false,
+        error: false })), omittedBlocks: 0, inputTokens: 0, outputTokens: 0, activeSeconds: 0 } },
+  ] as AtelierMessage[];
+  return of([
+    ...turn('1', 8, 10, 'Où en est la bascule DNS ?', 'Étape 2 sur 5 faite. Zahi doit valider le TTL.',
+      ['read_file', 'bash', 'bash']),
+    ...turn('2', 8, 40, 'Prépare le message pour Zahi', 'Le brouillon est prêt dans À envoyer.',
+      ['read_file', 'email_draft'], true),
+    ...turn('3', 9, 15, 'Vérifie les pods de forge', 'Trois pods tournent, aucun redémarrage.',
+      ['bash', 'bash', 'bash', 'grep', 'read_file', 'bash']),
+    ...turn('4', 10, 50, 'Publie la page d’architecture', 'Page publiée.', ['read_file', 'publish_page']),
+    ...turn('5', 11, 5, 'Fais le point', 'Deux tickets bloqués, une attente.', ['memory_search', 'bash']),
+  ]);
 }
