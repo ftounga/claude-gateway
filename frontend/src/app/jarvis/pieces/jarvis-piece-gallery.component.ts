@@ -251,7 +251,7 @@ export class JarvisPieceGalleryComponent implements OnDestroy {
   });
 
   act(action: NavAction): PieceStoreResult {
-    return this.store.dispatch(action);
+    return this.store.dispatch(action, 'touch');
   }
 
   transform(item: NavItem): string {

@@ -4,6 +4,7 @@ import { pieceVoiceCommand } from './pieces/jarvis-piece-voice';
 import { screenBlock } from './pieces/jarvis-piece-screen';
 import { ShowCommand } from './pieces/jarvis-piece-show';
 import { StoryRunner } from './pieces/jarvis-piece-story';
+import { isProofDemand, isProofOffer, latencyKey } from './pieces/jarvis-piece-measure';
 import {
   VoiceComment, commentQuestion, isPinCommand, isUnpinCommand, parseVoiceComment,
 } from './pieces/jarvis-piece-comment';
@@ -1269,6 +1270,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
       if (answer === 'oui') {
         const saved = await this.pieceClient.addVideoComment(comment.videoId, comment.version, comment.tStartMs,
           comment.text);
+        if (saved) {
+          this.pieces.count('p_note');
+        }
         await this.say(saved ? 'C’est noté.' : 'Je n’ai pas pu noter ce retour.');
         return;
       }
@@ -1354,7 +1358,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       return;
     }
     if (pieceAction) {
-      const done = this.pieces.dispatch(pieceAction);
+      const done = this.pieces.dispatch(pieceAction, 'voice');
       if (!done.ok) {
         await this.say(refusalPhrase(done.reason));
       }
@@ -1458,11 +1462,19 @@ export class JarvisComponent implements OnInit, OnDestroy {
     let understood: string | null = null;
     // F-237 / SF-237-08 — ce que l'écran montre, pour que « la deuxième » ait un sens (dans le message, jamais la consigne).
     const screen = screenBlock(this.pieces.nav(), this.presentation());
+    const heardAt = Date.now();
+    let measuredLatency = false;
     const outcome = await this.fastBrain.converse({ subjectId, text, heardBeforeCut, screen }, {
       onText: (sentence) => this.zone.run(() => sayNow(sentence)),
       onShow: (command) => this.zone.run(() => {
         if (latest()) {
-          void this.applyShow(command);
+          void this.applyShow(command).then((ok) => {
+            // F-237 / SF-237-14 — délai parole → pièce (première pièce de la réponse), en classes.
+            if (ok && !measuredLatency) {
+              measuredLatency = true;
+              this.pieces.count(latencyKey(Date.now() - heardAt));
+            }
+          });
         }
       }),
       onUnderstood: (read) => this.zone.run(() => {
@@ -1474,6 +1486,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
       }),
       onDelegated: (delegation) => this.zone.run(() => {
         delegationReason = delegation.automatic ? delegation.reason : null;
+        if (isProofDemand(delegation.demande, delegation.label)) {
+          this.pieces.count('pf_ok'); // F-237 / SF-237-14 — « oui » à la proposition de preuve (chaîne §6.4)
+        }
         if (!delegation.subjectId) {
           // F-239 / SF-239-01 — aucun sujet engagé : rien ne partirait ; Jarvis demande au lieu d'annoncer un travail.
           sayNow(ASK_SUBJECT);
@@ -1534,6 +1549,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
       if (done?.budget && !this.budgetNoticed) {
         this.budgetNoticed = true;
         this.notice.set(done.budget === 'hard' ? BUDGET_HARD_NOTICE : BUDGET_SOFT_NOTICE);
+      }
+      if (done?.brain === 'FAST' && isProofOffer(done.spokenText)) {
+        this.pieces.count('pf_off'); // F-237 / SF-237-14 — proposition de générer la preuve, dite
       }
       this.clock?.mark('done');
       this.reportClock();
@@ -2129,7 +2147,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
    * F-237 / SF-237-08 — un ordre d'écran du cerveau rapide : appliqué au réducteur des pièces ; un refus utile
    * (pièce introuvable, index hors bornes) est dit, court ; un refus silencieux (déjà montrée) ne dit rien.
    */
-  async applyShow(command: ShowCommand): Promise<void> {
+  async applyShow(command: ShowCommand): Promise<boolean> {
     const done = await this.pieces.applyShow(command, {
       subjectId: this.subjectId(), subjectName: this.subject()?.name ?? null, sober: this.sober(),
     });
@@ -2138,12 +2156,19 @@ export class JarvisComponent implements OnInit, OnDestroy {
       if (phrase) {
         await this.say(phrase);
       }
-      return;
+      return false;
     }
     if (command.action === 'raconter' && this.pieces.mode() === 'story') {
       void this.startStory();
     }
+    return true;
   }
+
+  /** F-237 / SF-237-14 — la mesure des pièces passe par le compte-rendu de rendu de l'ouverture (`RENDER`). */
+  private readonly pieceCounter = (() => {
+    this.pieces.counter = (key, n) => this.stage3dRef?.countPiece(key, n);
+    return true;
+  })();
 
   /** F-237 / SF-237-12 — le retour dicté en attente de « oui ». */
   private pendingComment: VoiceComment | null = null;
@@ -2161,6 +2186,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
     this.pinnedPiece = piece;
     const heard = this.leader.pin(piece);
+    if (heard) {
+      this.pieces.count('p_pin');
+    }
     await this.say(heard ? 'Épinglée au cockpit.' : 'Aucun cockpit n’est ouvert.');
   }
 
@@ -2219,6 +2247,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       },
     });
     this.story = runner;
+    this.pieces.count('p_story');
     await this.voice.idle();
     if (this.story !== runner) {
       return;
@@ -2284,7 +2313,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
   private liveProof(event: AtelierProofEvent, subjectId: string, chantier: number | null): void {
     const name = this.subjects().find((s) => s.id === subjectId)?.name ?? null;
     const label = `Preuves${chantier != null ? ` du chantier ${chantier}` : ''}${name ? ` — ${name}` : ''}`;
-    this.pieces.addLive({ subjectId, chantier, category: 'PREUVE', label }, proofPieces(event, subjectId, chantier));
+    const cards = proofPieces(event, subjectId, chantier);
+    this.pieces.count('pf_gen', cards.length);
+    this.pieces.addLive({ subjectId, chantier, category: 'PREUVE', label }, cards);
   }
 
   /** F-237 / SF-237-09 (§14 idée 6) — la proposition de preuve en attente d'un « oui ». */
@@ -2309,6 +2340,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       return;
     }
     this.proofOffer = { closed, at: Date.now() };
+    this.pieces.count('pf_off');
     this.announcements.push({ label: '', phrase: proofOfferPhrase(closed), subjectId: closed.subjectId,
       confirm: false });
     this.flushAnnouncements();
@@ -2316,6 +2348,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   /** « Oui » : la délégation existante, outil existant `capturer_preuves` ; les captures arrivent au fil de l'eau. */
   private acceptProofOffer(closed: ClosedChantier): void {
+    this.pieces.count('pf_ok');
     const delegation: FastDelegation = {
       delegationId: crypto.randomUUID(), subjectId: closed.subjectId, chantier: closed.number,
       label: `preuve du chantier ${closed.number}`, announce: 'Je génère la preuve.', demande: proofDemand(closed.number),
@@ -2394,16 +2427,15 @@ export class JarvisComponent implements OnInit, OnDestroy {
         this.leaderGone.set(signals === null);
       }), () => Date.now(), (piece) => this.zone.run(() => this.showPinned(piece)));
     } else {
-      this.leader = new CockpitLeader(channel);
+      // F-237 / SF-237-14 — le bouton « Cockpit » de la galerie suit l'arrivée et le départ du cockpit.
+      this.leader = new CockpitLeader(channel, () => Date.now(),
+        (listening) => this.zone.run(() => this.cockpitListening.set(listening)));
     }
     return channel;
   })();
   private readonly linkPublish = effect(() => {
     const s = this.stageSignals();
-    untracked(() => {
-      this.leader?.publish(s);
-      this.cockpitListening.set(this.leader?.listening ?? false);
-    });
+    untracked(() => this.leader?.publish(s));
   });
 
   /** Le navigateur sait-il ouvrir une seconde fenêtre reliée (canal local) ? */

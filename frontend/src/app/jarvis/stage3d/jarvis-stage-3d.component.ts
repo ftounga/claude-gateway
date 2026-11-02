@@ -1,4 +1,5 @@
 import { RenderView } from './jarvis-render-stats';
+import { PieceCountKey } from '../pieces/jarvis-piece-measure';
 import { ActivityRing } from './hud/jarvis-activity';
 import type { Effect3d } from './scenes3d/jarvis-scene3d.model';
 import {
@@ -161,6 +162,11 @@ export class JarvisStage3dComponent implements OnDestroy {
   /** SF-236-26 — une vue de l'itération 4 ouverte : comptée dans la mesure du rendu (sans contenu). */
   countView(key: RenderView): void {
     this.stats.view(key);
+  }
+
+  /** F-237 / SF-237-14 — un compteur des pièces (vocabulaire fermé, aucun contenu). */
+  countPiece(key: PieceCountKey, n = 1): void {
+    this.stats.piece(key, n);
   }
 
   setActivity(rings: ActivityRing[] | null): void {

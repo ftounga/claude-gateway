@@ -15,6 +15,10 @@ import { ShowFilter } from '../scenes/jarvis-show';
 import { Observable, of } from 'rxjs';
 import { AtelierMessage } from '../../core/models/atelier.models';
 import { JARVIS_ACTIVITY, JARVIS_DAY_HISTORY, JARVIS_WATCHES } from './hud/jarvis-cockpit.component';
+import { JarvisPieceGalleryComponent } from '../pieces/jarvis-piece-gallery.component';
+import { JarvisPieceClient } from '../pieces/jarvis-piece-client';
+import { JarvisPieceStore } from '../pieces/jarvis-piece-store';
+import { BANC_PIECE_CLIENT, stageBancPieces } from '../pieces/jarvis-piece-banc';
 
 /**
  * F-236 / SF-236-01 — **la page du banc de captures** (`/jarvis-banc?banc=<scène>&t=<ms>`), <b>développement
@@ -25,7 +29,8 @@ import { JARVIS_ACTIVITY, JARVIS_DAY_HISTORY, JARVIS_WATCHES } from './hud/jarvi
  */
 @Component({
   selector: 'app-jarvis-banc',
-  imports: [JarvisStage3dComponent, JarvisCockpitComponent, JarvisReplayComponent, JarvisNightComponent],
+  imports: [JarvisStage3dComponent, JarvisCockpitComponent, JarvisReplayComponent, JarvisNightComponent,
+    JarvisPieceGalleryComponent],
   template: `
     <app-jarvis-stage-3d #stage [withCore]="true" [planOverride]="staged.plan" [voiceLevel]="voice"
                          [labelLayer]="labels" [insets]="cockpit ? cockpitRef()?.insets() ?? noInsets : noInsets" />
@@ -35,6 +40,11 @@ import { JARVIS_ACTIVITY, JARVIS_DAY_HISTORY, JARVIS_WATCHES } from './hud/jarvi
     }
     @if (scene === 'veilleur') {
       <app-jarvis-night [ambient]="nightAmbient" />
+    }
+    @if (pieces) {
+      <!-- F-237 / SF-237-14 — les pièces du banc : galerie, héros, avant / après, planche (aucun réseau). -->
+      <app-jarvis-piece-gallery [threeD]="scene === 'pieces-galerie' || scene === 'pieces-proactif'"
+                                [subjectLabel]="'Edenred'" />
     }
     @if (scene === 'cockpit-replay') {
       <app-jarvis-replay #replayRef />
@@ -48,7 +58,9 @@ import { JARVIS_ACTIVITY, JARVIS_DAY_HISTORY, JARVIS_WATCHES } from './hud/jarvi
     // SF-236-25 — l'horloge des veilles du cockpit : les mêmes veilles simulées.
     { provide: JARVIS_WATCHES, useValue: () => bancWatches() },
     // SF-236-26 — la carte d'activité du banc (aucun appel).
-    { provide: JARVIS_ACTIVITY, useValue: () => of(BANC_ACTIVITY) }],
+    { provide: JARVIS_ACTIVITY, useValue: () => of(BANC_ACTIVITY) },
+    // F-237 / SF-237-14 — les contenus des pièces du banc sont dessinés sur place.
+    { provide: JarvisPieceClient, useValue: BANC_PIECE_CLIENT }],
   host: { '[style]': 'vars' },
   styleUrls: ['./jarvis-labels.scss'],
   styles: [':host { display: block; min-height: 100dvh; background: #0B1020; }'],
@@ -61,6 +73,9 @@ export class JarvisBancComponent {
     typeof matchMedia === 'function' && matchMedia('(max-width: 767px)').matches);
   protected readonly voice = (): number => this.staged.voice;
   protected readonly cockpit = this.scene.startsWith('cockpit');
+  /** F-237 / SF-237-14 — les scènes `pieces-*` posent la galerie des pièces. */
+  protected readonly pieces = this.scene.startsWith('pieces');
+  private readonly pieceStore = inject(JarvisPieceStore);
   protected readonly screen = bancScreen(this.scene);
   protected readonly noInsets = { left: 0, right: 0 };
   protected readonly shownFilter: ShowFilter | null = this.scene === 'cockpit-journee' ? 'chantiers-bloques' : null;
@@ -71,6 +86,9 @@ export class JarvisBancComponent {
     calling: null, cost: null, alert: null };
 
   constructor() {
+    if (this.pieces) {
+      stageBancPieces(this.pieceStore, this.scene);
+    }
     if (this.cockpit) {
       writeFolds(this.scene === 'cockpit-replie' ? { left: true, right: true } : OPEN_FOLDS);
     }

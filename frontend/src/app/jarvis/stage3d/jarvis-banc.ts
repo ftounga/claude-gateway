@@ -24,7 +24,11 @@ function levelOf(raw: string | null): QualityLevel | null {
 }
 
 /** Les scènes que le banc sait poser ; une scène inconnue retombe sur `coeur`. */
-export const BANC_SCENES = ['coeur', 'ecoute', 'reflexion', 'parole', 'oui', 'coupure', 'veille', 'reveil',
+export const BANC_SCENES = [
+  // F-237 / SF-237-14 — les pièces (galerie, héros, avant / après, planche).
+  'pieces-galerie', 'pieces-proactif', 'pieces-grille', 'pieces-image', 'pieces-texte', 'pieces-avant-apres',
+  'pieces-planche',
+  'coeur', 'ecoute', 'reflexion', 'parole', 'oui', 'coupure', 'veille', 'reveil',
   'cerveau-aller', 'cerveau', 'cerveau-retour', 'cerveau-annule', 'univers', 'univers-cite', 'univers-montrer',
   'univers-telephone', 'entree', 'entree-courte', 'focus-chantier', 'zoom', 'dezoom',
   // SF-236-08 — panneaux holographiques et S-GEN 3D.
