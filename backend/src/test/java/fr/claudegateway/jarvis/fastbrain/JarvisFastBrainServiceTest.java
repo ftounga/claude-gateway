@@ -791,7 +791,7 @@ class JarvisFastBrainServiceTest {
         assertThat(JSON.writeValueAsString(calls.get(1).tools())).isEqualTo(first);
         assertThat(JSON.writeValueAsString(calls.get(2).tools())).isEqualTo(first);
         assertThat(calls.get(0).system()).isEqualTo(calls.get(2).system());
-        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("7");
+        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("8");
         assertThat(first).doesNotContain("Kestrel").doesNotContain(subject.toString());
     }
 
@@ -911,5 +911,108 @@ class JarvisFastBrainServiceTest {
         assertThat(message).contains("## Écran\nGalerie : Entrées du chantier 3");
         assertThat(message.length()).isLessThan(3_000);
         assertThat(calls.get(0).system()).doesNotContain("Galerie : Entrées");
+    }
+
+    // ------------------------------------------------------- F-237 / SF-237-15 : porte du banc PIECES
+
+    private static final String DELEGATE_CHECK = """
+            {"demande":"Vérifier le chantier et générer les captures de preuve","label":"preuve du chantier",
+             "annonce":"Je vérifie le chantier, Monsieur.","sujet":"","chantier":null}""";
+
+    private JarvisFastBrainService withPiecesBlock(JarvisFastBrainService service, String block) {
+        JarvisFastPieces pieces = mock(JarvisFastPieces.class);
+        when(pieces.block(alice, subject)).thenReturn(block);
+        service.setPieces(pieces);
+        return service;
+    }
+
+    @Test
+    void anUngroundedCaptionIsRemovedButTheScreenStillShowsWithoutEscalatingToOpus() {
+        Screen screen = new Screen();
+        JarvisFastBrainService.Outcome outcome = service(scripted(new AgentTurn("Voici la démo tournée chez Zorglub.",
+                List.of(tool("s1", "afficher", SHOW_PROOFS)), true, 100, 10)), null, null)
+                .converse(ask("Montre-moi les preuves du chantier 3."), screen);
+
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(outcome.delegation()).isNull();
+        assertThat(screen.shows).hasSize(1);
+        assertThat(outcome.shows()).hasSize(1);
+        assertThat(screen.said.toString()).doesNotContain("Zorglub").contains("Voici.");
+        assertThat(outcome.guards().groundingTrips()).isEqualTo(1);
+    }
+
+    @Test
+    void anUngroundedSentenceWithoutAnyShowIsStillDelegated() {
+        JarvisFastBrainService.Outcome outcome = service(answering("Le chantier est chez Zorglub."), null, null)
+                .converse(ask("Où en est le chantier 3 ?"), new Screen());
+
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.DELEGATE);
+        assertThat(outcome.reason()).isEqualTo(JarvisFastBrainService.REASON_GROUNDING);
+    }
+
+    @Test
+    void aDoubtOnAChantierWithoutProofIsAProposalWithoutAnyModelCall() {
+        Screen screen = new Screen();
+        JarvisFastBrainService service = withPiecesBlock(service(delegating(DELEGATE_CHECK), null, null),
+                "## Pièces\nchantier 5 : besoin initial, 1 entrée, 0 preuve\nchantier 3 : 2 entrées, 2 preuves");
+
+        JarvisFastBrainService.Outcome outcome = service.converse(ask("Le cache Redis du chantier 5, tu as vérifié ?"),
+                screen);
+
+        assertThat(calls).isEmpty();
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(outcome.reason()).isEqualTo(JarvisFastBrainService.REASON_PROOF_GUARD);
+        assertThat(outcome.spokenText()).contains("chantier 5").endsWith("?");
+        assertThat(screen.said.toString()).contains("Voulez-vous que je la génère");
+        assertThat(screen.shows).isEmpty();
+    }
+
+    @Test
+    void aDoubtThatTheModelDelegatesShowsTheExistingProofsInstead() {
+        Screen screen = new Screen();
+        JarvisFastBrainService service = withPiecesBlock(service(delegating(DELEGATE_CHECK), null, null),
+                "## Pièces\nchantier 3 : besoin initial, 2 entrées, 2 preuves");
+
+        JarvisFastBrainService.Outcome outcome = service.converse(ask("Prouve-moi que le portail répond."), screen);
+
+        assertThat(calls).hasSize(1);
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(outcome.delegation()).isNull();
+        assertThat(screen.shows).singleElement().satisfies(cmd -> {
+            assertThat(cmd.action()).isEqualTo("galerie");
+            assertThat(cmd.scope().chantier()).isEqualTo(3);
+            assertThat(cmd.scope().category()).isEqualTo("preuves");
+        });
+        assertThat(outcome.spokenText()).isEqualTo("Voici les preuves du chantier 3.");
+    }
+
+    @Test
+    void aDoubtWithUnknownProofsIsNeverDelegatedButProposed() {
+        JarvisFastBrainService.Outcome outcome = service(delegating(DELEGATE_CHECK), null, null)
+                .converse(ask("Tu es sûr que c'est fini ?"), new Screen());
+
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(outcome.spokenText()).isEqualTo(JarvisProofGuard.PROPOSE_CHECK);
+    }
+
+    @Test
+    void theYesToTheProposalIsDelegated() {
+        JarvisFastBrainService service = withPiecesBlock(service(delegating(DELEGATE_CHECK), null, null),
+                "## Pièces\nchantier 5 : besoin initial, 1 entrée, 0 preuve");
+
+        JarvisFastBrainService.Outcome outcome = service.converse(ask("Oui, vas-y."), new Screen());
+
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.DELEGATE);
+    }
+
+    @Test
+    void anExplicitOrderIsNotGuarded() {
+        JarvisFastBrainService service = withPiecesBlock(service(delegating(DELEGATE_CHECK), null, null),
+                "## Pièces\nchantier 5 : besoin initial, 1 entrée, 0 preuve");
+
+        JarvisFastBrainService.Outcome outcome = service.converse(
+                ask("Tu es sûr pour le chantier 5 ? Génère la preuve."), new Screen());
+
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.DELEGATE);
     }
 }

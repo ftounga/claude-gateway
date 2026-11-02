@@ -261,13 +261,32 @@ public final class JarvisFastGuards {
                 return true;
             }
         }
-        Matcher m = Pattern.compile("\\d+(?:[\\s.,:h]+\\d+)*").matcher(known);
+        // F-237 / SF-237-15 — une suite de nombres ne franchit jamais une fin de ligne (« 14:00\n3. » recollait en
+        // « 14003 ») ; toute sous-suite contiguë compte (« lundi 14:00 » dans « 2 : Terraform — lundi 14:00 ») et
+        // les zéros de tête sont ignorés (« 9h55 » = « 09:55 »).
+        String wanted = stripZeros(digits);
+        Matcher m = NUMBER_RUN.matcher(known);
         while (m.find()) {
-            if (m.group().replaceAll("[^0-9]", "").equals(digits)) {
-                return true;
+            String[] tokens = m.group().split("[^0-9]+");
+            for (int from = 0; from < tokens.length; from++) {
+                StringBuilder joined = new StringBuilder();
+                for (int to = from; to < tokens.length && joined.length() <= digits.length() + 2; to++) {
+                    joined.append(tokens[to]);
+                    if (joined.toString().equals(digits) || stripZeros(joined.toString()).equals(wanted)) {
+                        return true;
+                    }
+                }
             }
         }
         return false;
+    }
+
+    /** Une suite de nombres d'une même ligne, séparés par espace, tabulation, « . », « , », « : » ou « h ». */
+    private static final Pattern NUMBER_RUN = Pattern.compile("\\d+(?:[ \\t\\u00A0\\u202F.,:h]+\\d+)*");
+
+    private static String stripZeros(String digits) {
+        String s = digits.replaceFirst("^0+(?=\\d)", "");
+        return s;
     }
 
     /** Les mots à majuscule qui ne commencent pas une phrase (noms propres probables). */
