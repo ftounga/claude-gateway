@@ -230,6 +230,94 @@ public final class JarvisPortraitNote {
         return false;
     }
 
+    // ---- SF-241-04 (D11, D12 b/c) : les allusions ----
+
+    /**
+     * Les lignes-marques du <b>cerveau rapide seul</b> (Opus ne les reçoit pas : elles s'afficheraient). Texte figé,
+     * joint après le bloc portrait : il fait partie du préfixe caché.
+     */
+    public static final String FAST_MARKS = """
+
+
+            # Ce que tu dis de sa vie (lignes-marques, jamais dites)
+            Quand ta réponse fait une allusion à la vie de Monsieur, ajoute une ligne seule « ✦ allusion: <sujet en \
+            six mots au plus> » ; pour un trait d'humour : « ✦ humour: <résumé en six mots au plus> ». Ces lignes ne \
+            sont jamais dites. Le message peut porter « [Jarvis — déjà dit récemment, ne pas répéter : …] » : ne \
+            répète jamais ces allusions ni ces traits ; « allusion spontanée déjà faite aujourd'hui : oui » interdit \
+            toute nouvelle allusion que Monsieur n'a pas amenée.""";
+
+    /** Mots qui disent que le PO parle de sa propre vie : une allusion qui y répond n'est pas spontanée. */
+    private static final Set<String> PERSONAL_WORDS = Set.of("fils", "fille", "enfant", "enfants", "petit", "petite",
+            "bebe", "femme", "mari", "compagne", "compagnon", "epouse", "famille", "pere", "mere", "parents", "frere",
+            "soeur", "creve", "fatigue", "fatiguee", "epuise", "vacances", "conge", "anniversaire", "malade", "sante",
+            "hopital", "naissance", "mariage", "week", "weekend", "dimanche", "samedi", "sport", "course", "musique",
+            "jazz", "lecture", "nuit", "nuits", "dormi", "dort", "maison", "chez");
+
+    /** Les termes qui signent une allusion : noms propres des sections personnelles et des souvenirs. */
+    public static Set<String> allusionTerms(JarvisPortraitService.Snapshot s) {
+        if (s == null) {
+            return Set.of();
+        }
+        StringBuilder personal = new StringBuilder();
+        for (PortraitSection section : List.of(PortraitSection.ENTOURAGE, PortraitSection.MOMENT,
+                PortraitSection.GOUTS, PortraitSection.DATES)) {
+            personal.append(s.text(section)).append('\n');
+        }
+        s.souvenirs().forEach(m -> personal.append(m.text()).append('\n'));
+        return properNames(personal.toString());
+    }
+
+    /**
+     * Vrai si la parole du PO ouvre sa vie personnelle (un mot de la vie courante, ou un mot de ≥ 5 lettres de son
+     * portrait) : la connaissance qui y répond est attendue, pas spontanée.
+     */
+    public static boolean personalSaid(String said, JarvisPortraitService.Snapshot s) {
+        Set<String> heard = words(said);
+        if (heard.stream().anyMatch(PERSONAL_WORDS::contains)) {
+            return true;
+        }
+        if (s == null) {
+            return false;
+        }
+        StringBuilder text = new StringBuilder();
+        for (PortraitSection section : PortraitSection.values()) {
+            if (section != PortraitSection.QUI && section != PortraitSection.INTERDITS) {
+                text.append(s.text(section)).append(' ');
+            }
+        }
+        s.souvenirs().forEach(m -> text.append(m.text()).append(' '));
+        Set<String> portraitWords = words(text.toString());
+        return heard.stream().anyMatch(w -> w.length() >= 5 && !STOP.contains(w) && portraitWords.contains(w));
+    }
+
+    /** Le terme d'allusion que la phrase reprend sans que le PO l'ait dit, ou {@code null}. */
+    public static String allusionTerm(String sentence, String said, Set<String> terms) {
+        if (terms == null || terms.isEmpty() || sentence == null) {
+            return null;
+        }
+        Set<String> spoken = words(sentence);
+        Set<String> heard = words(said);
+        for (String term : terms) {
+            if (spoken.contains(term) && !heard.contains(term)) {
+                return term;
+            }
+        }
+        return null;
+    }
+
+    /** D12 (c) — vrai si le terme figure (au mot près) dans un sujet récent du journal. */
+    public static boolean repeats(String term, java.util.Collection<String> recentTopics) {
+        if (term == null || recentTopics == null) {
+            return false;
+        }
+        for (String topic : recentTopics) {
+            if (topic.equals(term) || words(topic).contains(term)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // ---- D18 : le détecteur de livrable ----
 
     private static final Set<String> COMMON_CAPS = Set.of("monsieur", "madame", "jarvis", "bonjour", "merci",
@@ -307,7 +395,7 @@ public final class JarvisPortraitNote {
     }
 
     /** Minuscules, sans accents, lettres et chiffres seulement, espaces repliés. */
-    static String normalize(String text) {
+    public static String normalize(String text) {
         if (text == null) {
             return "";
         }

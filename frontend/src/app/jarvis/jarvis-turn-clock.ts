@@ -32,7 +32,7 @@ export class TurnClock {
   /** F-235 / SF-235-07 (D14) — posé par l'échange avec le cerveau rapide ; absent pour un tour Opus d'avant. */
   fast: Partial<Pick<TurnTimingReport, 'brain' | 'fastModel' | 'fastFirstTokenMs' | 'groundingTrips'
     | 'fillersRemoved' | 'repeatsRemoved' | 'imitationsRemoved' | 'forcedDelegation' | 'delegationReason'
-    | 'correction' | 'portraitOn' | 'portraitBlocked'>> = {};
+    | 'correction' | 'portraitOn' | 'portraitBlocked' | 'personalAllusion'>> = {};
   /** F-239 / SF-239-01 — la parole a été refusée (aucun tour) : raison et longueur, jamais le texte. */
   rejected: Pick<TurnTimingReport, 'rejectedKind' | 'rejectedChars'> | null = null;
   /** F-240 / SF-240-01 — ce qui a été dit (longueur, coupe, invitation), jamais le texte. */

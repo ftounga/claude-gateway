@@ -144,12 +144,20 @@ public class JarvisFastBrainService {
      * consommé par la mesure (SF-235-07).
      */
     public record Guards(int groundingTrips, int fillersRemoved, int repeatsRemoved, boolean forcedDelegation,
-            boolean toolText, int imitationsRemoved, int portraitBlocked) {
-        public static final Guards NONE = new Guards(0, 0, 0, false, false, 0, 0);
+            boolean toolText, int imitationsRemoved, int portraitBlocked, String personalAllusion,
+            int allusionsBlocked) {
+        public static final Guards NONE = new Guards(0, 0, 0, false, false, 0, 0, null, 0);
 
         public Guards(int groundingTrips, int fillersRemoved, int repeatsRemoved, boolean forcedDelegation,
                 boolean toolText, int imitationsRemoved) {
-            this(groundingTrips, fillersRemoved, repeatsRemoved, forcedDelegation, toolText, imitationsRemoved, 0);
+            this(groundingTrips, fillersRemoved, repeatsRemoved, forcedDelegation, toolText, imitationsRemoved, 0,
+                    null, 0);
+        }
+
+        public Guards(int groundingTrips, int fillersRemoved, int repeatsRemoved, boolean forcedDelegation,
+                boolean toolText, int imitationsRemoved, int portraitBlocked) {
+            this(groundingTrips, fillersRemoved, repeatsRemoved, forcedDelegation, toolText, imitationsRemoved,
+                    portraitBlocked, null, 0);
         }
     }
 
@@ -261,12 +269,31 @@ public class JarvisFastBrainService {
     /** F-241 / SF-241-03 — le banc avec un portrait fictif (ou {@code null}) : même décision, à blanc. */
     public Outcome benchWithPortrait(Request request, String model, String fixedContext,
             fr.claudegateway.jarvis.portrait.JarvisPortraitService.Snapshot portrait) {
+        return benchWithPortrait(request, model, fixedContext, portrait, List.of());
+    }
+
+    /** F-241 / SF-241-04 — la trace fictive des allusions d'un scénario de banc (« aujourd'hui: » = du jour). */
+    private static final ThreadLocal<List<String>> BENCH_RECENT = new ThreadLocal<>();
+
+    /** F-241 / SF-241-04 — le banc avec un portrait fictif et une trace fictive : même décision, à blanc. */
+    public Outcome benchWithPortrait(Request request, String model, String fixedContext,
+            fr.claudegateway.jarvis.portrait.JarvisPortraitService.Snapshot portrait, List<String> recentAllusions) {
         BENCH_PORTRAIT.set(portrait);
+        BENCH_RECENT.set(recentAllusions == null ? List.of() : recentAllusions);
         try {
             return bench(request, model, fixedContext);
         } finally {
             BENCH_PORTRAIT.remove();
+            BENCH_RECENT.remove();
         }
+    }
+
+    // ---- F-241 / SF-241-04 : la trace des allusions ----
+    private fr.claudegateway.jarvis.portrait.JarvisAllusionService allusions;
+
+    @Autowired(required = false)
+    public void setAllusions(fr.claudegateway.jarvis.portrait.JarvisAllusionService allusions) {
+        this.allusions = allusions;
     }
 
     /**
@@ -302,7 +329,8 @@ public class JarvisFastBrainService {
     String systemFor(UUID userId, fr.claudegateway.jarvis.portrait.JarvisPortraitService.Snapshot portrait) {
         String base = systemFor(userId);
         return portrait == null ? base
-                : base + "\n\n" + fr.claudegateway.jarvis.portrait.JarvisPortraitNote.block(portrait);
+                : base + "\n\n" + fr.claudegateway.jarvis.portrait.JarvisPortraitNote.block(portrait)
+                        + fr.claudegateway.jarvis.portrait.JarvisPortraitNote.FAST_MARKS;
     }
 
     /** F-241 / SF-241-03 — vrai si le portrait sert à cet échange (mesure {@code portrait_on}, jamais le texte). */
@@ -718,6 +746,27 @@ public class JarvisFastBrainService {
                 : fr.claudegateway.jarvis.portrait.JarvisPortraitNote.forbiddenTerms(portrait));
         // Au banc, la date qui compte vient du contexte figé du scénario (jamais de l'horloge réelle).
         String notes = portraitNotes(request, bench ? null : portrait);
+        // F-241 / SF-241-04 (D11, D12 b/c) — la trace des allusions : volatile, dans le message ; et les filets.
+        if (portrait != null) {
+            java.time.OffsetDateTime now = java.time.OffsetDateTime.now(clock);
+            List<String> benchRecent = bench && BENCH_RECENT.get() != null ? BENCH_RECENT.get() : List.of();
+            List<fr.claudegateway.jarvis.portrait.JarvisAllusionService.Entry> recent = bench || allusions == null ? List.of()
+                    : allusions.recent(userId);
+            String trace = bench ? fr.claudegateway.jarvis.portrait.JarvisAllusionService.benchNote(benchRecent)
+                    : fr.claudegateway.jarvis.portrait.JarvisAllusionService.note(recent, now);
+            if (trace != null) {
+                notes = notes + "\n\n" + trace;
+            }
+            boolean spontaneousToday = bench
+                    ? benchRecent.stream().anyMatch(r -> r.toLowerCase(java.util.Locale.ROOT).startsWith("aujourd'hui:"))
+                    : fr.claudegateway.jarvis.portrait.JarvisAllusionService.spontaneousToday(recent, now);
+            List<String> topics = bench
+                    ? benchRecent.stream().map(r -> fr.claudegateway.jarvis.portrait.JarvisPortraitNote.normalize(
+                            r.replaceFirst("(?i)^aujourd'hui:", ""))).toList()
+                    : fr.claudegateway.jarvis.portrait.JarvisAllusionService.topicsWithin(recent, now);
+            gate.allusions(fr.claudegateway.jarvis.portrait.JarvisPortraitNote.allusionTerms(portrait),
+                    fr.claudegateway.jarvis.portrait.JarvisPortraitNote.personalSaid(request.text(), portrait), spontaneousToday, topics);
+        }
         List<AgentMessage> conversation = new ArrayList<>(bench
                 ? List.of(AgentMessage.userText(message(context, request.text())
                         + (sober(request, context) ? "\n\n" + fr.claudegateway.jarvis.preferences.JarvisSobriety.NOTE
@@ -805,6 +854,11 @@ public class JarvisFastBrainService {
             gate.nextCall();
         }
         understood.set(gate.understood());
+        // F-241 / SF-241-04 (D11) — chaque allusion dite est journalisée, déclarée (✦) ou rattrapée ; pas au banc.
+        if (!bench && portrait != null && allusions != null && gate.abortReason() == null) {
+            gate.journal((kind, topic, phrase, spontaneous) -> allusions.record(userId, kind, topic, phrase,
+                    spontaneous));
+        }
         if (gate.abortReason() != null) {
             if (REASON_GROUNDING.equals(gate.abortReason()) && !shown.isEmpty() && turn.toolCalls().stream()
                     .noneMatch(tc -> JarvisFastBrainPrompt.TOOL_NAME.equals(tc.name()))) {
@@ -1049,6 +1103,107 @@ public class JarvisFastBrainService {
             this.forbidden = terms == null ? java.util.Set.of() : terms;
         }
 
+        // ---- F-241 / SF-241-04 : les allusions (D11, D12 b/c) et les lignes-marques ----
+        private java.util.Set<String> allusionTerms = java.util.Set.of();
+        private boolean saidPersonal;
+        private boolean spontaneousBefore;
+        private List<String> recentTopics = List.of();
+        private boolean spontaneousNow;
+        private int allusionsBlocked;
+        /** Une allusion repérée dans une phrase dite (rattrapage déterministe). */
+        private record Detected(String term, String sentence, boolean spontaneous) {
+        }
+        private final List<Detected> detected = new ArrayList<>();
+        /** Une déclaration ✦ du modèle : {@code ALLUSION} ou {@code HUMOUR} et son sujet. */
+        private record Declared(String kind, String topic) {
+        }
+        private final List<Declared> declared = new ArrayList<>();
+        /** F-241 / SF-241-05 — les lignes 📌 relevées (jamais dites). */
+        private final List<String> pins = new ArrayList<>();
+        private static final java.util.regex.Pattern MARK_LINE = java.util.regex.Pattern
+                .compile("(?m)^[ \\t]*(✦|\uD83D\uDCCC)[^\\n]*(\\n|$)");
+        private static final java.util.regex.Pattern DECLARATION = java.util.regex.Pattern
+                .compile("(?i)^✦\\s*(allusion|humour)\\s*:?\\s*(.*)$");
+
+        void allusions(java.util.Set<String> terms, boolean saidPersonal, boolean spontaneousBefore,
+                List<String> recentTopics) {
+            this.allusionTerms = terms == null ? java.util.Set.of() : terms;
+            this.saidPersonal = saidPersonal;
+            this.spontaneousBefore = spontaneousBefore;
+            this.recentTopics = recentTopics == null ? List.of() : recentTopics;
+        }
+
+        List<String> pins() {
+            return List.copyOf(pins);
+        }
+
+        /** Une ligne-marque : jamais dite. ✦ ⇒ déclaration ; 📌 ⇒ relevée (SF-241-05). */
+        private void mark(String line) {
+            String l = line.strip();
+            if (l.startsWith("✦")) {
+                java.util.regex.Matcher m = DECLARATION.matcher(l);
+                if (m.matches() && !m.group(2).isBlank()) {
+                    declared.add(new Declared(m.group(1).equalsIgnoreCase("humour") ? "HUMOUR" : "ALLUSION",
+                            m.group(2).strip()));
+                }
+            } else if (!l.isEmpty()) {
+                pins.add(l);
+            }
+        }
+
+        /** Retire du tampon les lignes-marques complètes (ou la dernière, à la fin). Rend vrai s'il faut attendre. */
+        private boolean extractMarks(boolean last) {
+            java.util.regex.Matcher m = MARK_LINE.matcher(pending);
+            StringBuilder kept = new StringBuilder();
+            int from = 0;
+            while (m.find()) {
+                boolean complete = !m.group(2).isEmpty() || last;
+                if (!complete) {
+                    break;
+                }
+                kept.append(pending, from, m.start());
+                mark(m.group());
+                from = m.end();
+            }
+            kept.append(pending.substring(from));
+            pending.setLength(0);
+            pending.append(kept);
+            String rest = pending.toString().stripLeading();
+            return !last && (rest.startsWith("✦") || rest.startsWith("\uD83D\uDCCC"));
+        }
+
+        /** D11 — l'allusion de la journée : {@code SPONTANEE}, {@code REPONSE} ou {@code AUCUNE} ({@code null} sans portrait). */
+        String personalAllusion() {
+            if (allusionTerms.isEmpty() && declared.isEmpty() && detected.isEmpty()) {
+                return null;
+            }
+            boolean any = !detected.isEmpty() || declared.stream().anyMatch(d -> "ALLUSION".equals(d.kind()));
+            if (!any) {
+                return "AUCUNE";
+            }
+            return saidPersonal ? "REPONSE" : "SPONTANEE";
+        }
+
+        /** Ce qui est journalisé : les déclarations, puis les allusions rattrapées que rien ne déclarait. */
+        interface Journal {
+            void record(String kind, String topic, String phrase, boolean spontaneous);
+        }
+
+        void journal(Journal out) {
+            String phrase = spoken();
+            for (Declared d : declared) {
+                out.record(d.kind(), d.topic(), phrase, !saidPersonal);
+            }
+            for (Detected d : detected) {
+                boolean covered = declared.stream().anyMatch(x -> fr.claudegateway.jarvis.portrait.JarvisPortraitNote
+                        .repeats(d.term(), List.of(fr.claudegateway.jarvis.portrait.JarvisPortraitNote
+                                .normalize(x.topic()))));
+                if (!covered) {
+                    out.record("ALLUSION", d.term(), d.sentence(), d.spontaneous());
+                }
+            }
+        }
+
         int portraitBlocked() {
             return portraitBlocked;
         }
@@ -1136,6 +1291,10 @@ public class JarvisFastBrainService {
             }
             streamed = true;
             pending.append(delta);
+            // F-241 / SF-241-04 — les lignes-marques (✦, 📌) sortent du flux avant le découpage en phrases.
+            if (extractMarks(false)) {
+                return;
+            }
             JarvisFastGuards.Split split = JarvisFastGuards.split(pending.toString());
             pending.setLength(0);
             pending.append(split.rest());
@@ -1156,6 +1315,7 @@ public class JarvisFastBrainService {
                     pending.append(rest);
                 }
             }
+            extractMarks(true);
             String rest = pending.toString().strip();
             pending.setLength(0);
             if (!rest.isEmpty()) {
@@ -1169,6 +1329,10 @@ public class JarvisFastBrainService {
             }
             String sentence = raw.strip();
             if (sentence.isEmpty()) {
+                return;
+            }
+            if (sentence.startsWith("✦") || sentence.startsWith("\uD83D\uDCCC")) {
+                mark(sentence); // F-241 / SF-241-04 — une ligne-marque restée collée : jamais dite
                 return;
             }
             if (sentence.startsWith(JarvisFastBrainPrompt.MORE_MARK)) {
@@ -1217,6 +1381,19 @@ public class JarvisFastBrainService {
                 if (repeats(sentence)) {
                     repeatsRemoved++;
                     return;
+                }
+                // F-241 / SF-241-04 (D12 b, c) — une allusion spontanée : une seule par jour, jamais un sujet récent.
+                String term = fr.claudegateway.jarvis.portrait.JarvisPortraitNote.allusionTerm(sentence, said,
+                        allusionTerms);
+                if (term != null) {
+                    boolean spontaneous = !saidPersonal;
+                    if (spontaneous && (spontaneousBefore || spontaneousNow
+                            || fr.claudegateway.jarvis.portrait.JarvisPortraitNote.repeats(term, recentTopics))) {
+                        allusionsBlocked++;
+                        return;
+                    }
+                    detected.add(new Detected(term, sentence, spontaneous));
+                    spontaneousNow |= spontaneous;
                 }
             } catch (RuntimeException e) {
                 groundingTrips++;
@@ -1296,7 +1473,7 @@ public class JarvisFastBrainService {
 
         Guards guards() {
             return new Guards(groundingTrips, fillersRemoved, repeatsRemoved, false, toolText, imitationsRemoved,
-                    portraitBlocked);
+                    portraitBlocked, personalAllusion(), allusionsBlocked);
         }
     }
 

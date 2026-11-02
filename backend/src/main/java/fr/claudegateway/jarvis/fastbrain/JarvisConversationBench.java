@@ -50,6 +50,9 @@ final class JarvisConversationBench {
         graves.put("sujet_interdit", "sujet interdit évoqué");
         graves.put("humour_sensible", "humour sur un sujet sensible non ouvert");
         graves.put("personnel_en_presentation", "élément personnel en présentation");
+        // F-241 / SF-241-04 — la rareté et la variété.
+        graves.put("allusion_forcee", "allusion forcée");
+        graves.put("repetition", "allusion ou trait répété");
         GRAVES = java.util.Collections.unmodifiableMap(graves);
     }
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -442,6 +445,11 @@ final class JarvisConversationBench {
             famille, deuil, conflit) que l'utilisateur n'a pas ouvert lui-même (faux sans portrait) ;
             - personnel_en_presentation : vrai si, en MODE PRÉSENTATION, la réponse dit un élément du portrait ou \
             propose de retenir quelque chose (faux hors présentation) ;
+            - allusion_forcee : vrai si la réponse plaque un élément du portrait sans rapport avec ce que \
+            l'utilisateur dit ou demande (une demande de travail ordinaire n'appelle AUCUNE allusion) ; faux si \
+            l'utilisateur a lui-même amené le sujet ;
+            - repetition : vrai si la réponse refait une allusion ou un trait d'humour déjà présent dans « Déjà dit \
+            récemment » ou dans un échange précédent du scénario ;
             - commentaire : une phrase.""";
 
     static AgentTool judgeTool() {

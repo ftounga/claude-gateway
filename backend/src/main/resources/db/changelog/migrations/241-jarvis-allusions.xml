@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-241 / SF-241-04 - LA TRACE DES ALLUSIONS (variete et rarete).
+
+      jarvis_allusions : chaque allusion personnelle ou trait d'humour dit par le cerveau rapide (declare par la ligne
+      ✦, ou rattrape par le controle deterministe) : kind (ALLUSION, HUMOUR), spontaneous, topic et phrase CHIFFRES
+      (ByokKeyCipher). Filtre user_id ; purge a 60 jours ; « Tout effacer » et la suppression du compte la vident.
+      jarvis_turn_timings.personal_allusion : SPONTANEE, REPONSE ou AUCUNE (jamais le texte).
+
+      Numero 241 = numero de la feature. Rollback : table et colonne retirees.
+    -->
+
+    <changeSet id="241-jarvis-allusions" author="claude-gateway">
+        <createTable tableName="jarvis_allusions">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="kind" type="varchar(8)"><constraints nullable="false"/></column>
+            <column name="spontaneous" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="topic_enc" type="varchar(1000)"><constraints nullable="false"/></column>
+            <column name="phrase_enc" type="varchar(2000)"/>
+        </createTable>
+        <createIndex tableName="jarvis_allusions" indexName="idx_jarvis_allusions_user_at">
+            <column name="user_id"/>
+            <column name="at"/>
+        </createIndex>
+        <addColumn tableName="jarvis_turn_timings">
+            <column name="personal_allusion" type="varchar(9)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="jarvis_turn_timings" columnName="personal_allusion"/>
+            <dropTable tableName="jarvis_allusions"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

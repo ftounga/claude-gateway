@@ -186,6 +186,32 @@ class JarvisLatencyApiIntegrationTest {
     }
 
     @Test
+    @DisplayName("F-241 / SF-241-04 — taux d'allusion spontanée sur les tours avec portrait ; ADMIN, ses tours seulement")
+    void spontaneousAllusionRate() throws Exception {
+        report(adminToken, "{\"brain\":\"FAST\",\"portraitOn\":true,\"portraitBlocked\":1,"
+                + "\"personalAllusion\":\"SPONTANEE\"}").andExpect(status().isNoContent());
+        report(adminToken, "{\"brain\":\"FAST\",\"portraitOn\":true,\"personalAllusion\":\"REPONSE\"}")
+                .andExpect(status().isNoContent());
+        report(adminToken, "{\"brain\":\"FAST\",\"portraitOn\":true,\"personalAllusion\":\"AUCUNE\"}")
+                .andExpect(status().isNoContent());
+        report(adminToken, "{\"brain\":\"FAST\",\"portraitOn\":true,\"personalAllusion\":\"AUCUNE\"}")
+                .andExpect(status().isNoContent());
+        // Valeur hors liste fermée : ignorée (jamais de texte libre en base).
+        report(adminToken, "{\"brain\":\"FAST\",\"personalAllusion\":\"Léa\"}").andExpect(status().isNoContent());
+        report(otherAdminToken, "{\"portraitOn\":true,\"personalAllusion\":\"SPONTANEE\"}")
+                .andExpect(status().isNoContent());
+
+        latency(adminToken).andExpect(status().isOk())
+                .andExpect(jsonPath("$.allusions.portraitTurns").value(4))
+                .andExpect(jsonPath("$.allusions.spontaneous").value(1))
+                .andExpect(jsonPath("$.allusions.inResponse").value(1))
+                .andExpect(jsonPath("$.allusions.spontaneousRate").value(0.25));
+        latency(otherAdminToken).andExpect(jsonPath("$.allusions.spontaneousRate").value(1.0));
+        User plain = user("jarvis-lat-u-" + UUID.randomUUID() + "@ex.com", UserRole.USER);
+        latency(jwtService.generateToken(plain)).andExpect(status().isForbidden());
+    }
+
+    @Test
     @DisplayName("F-240 / SF-240-01 — ce qui est dit : mots, durée, coupe, invitation, étage ; p50/p90 ADMIN ; isolation")
     void spokenLengthIsMeasured() throws Exception {
         report(adminToken, "{\"brain\":\"OPUS\",\"spokenWords\":24,\"spokenChars\":140,\"spokenMs\":7800,"

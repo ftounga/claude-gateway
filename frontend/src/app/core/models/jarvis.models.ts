@@ -146,6 +146,8 @@ export interface TurnTimingReport {
   /** F-241 / SF-241-03 — le portrait servait à l'échange, et phrases écartées par ses interdits (jamais le texte). */
   portraitOn?: boolean | null;
   portraitBlocked?: number | null;
+  /** F-241 / SF-241-04 — l'allusion personnelle du tour (jamais le texte). */
+  personalAllusion?: 'SPONTANEE' | 'REPONSE' | 'AUCUNE' | null;
   /**
    * F-239 / SF-239-01 (D3b) — une parole refusée par la porte de parole réelle (aucun tour) : la raison et la longueur
    * du texte transcrit, **jamais le texte**.

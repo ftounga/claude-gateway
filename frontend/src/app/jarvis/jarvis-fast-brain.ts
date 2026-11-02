@@ -50,6 +50,9 @@ export interface FastGuards {
   imitationsRemoved: number;
   /** F-241 / SF-241-03 (D12 a) — phrases écartées par les interdits du portrait. */
   portraitBlocked?: number;
+  /** F-241 / SF-241-04 — l'allusion personnelle de l'échange, et les allusions écartées (rareté, variété). */
+  personalAllusion?: 'SPONTANEE' | 'REPONSE' | 'AUCUNE' | null;
+  allusionsBlocked?: number;
 }
 
 /** F-235 / SF-235-07 (D14) — une parole qui corrige la réponse rapide précédente (dite il y a ≤ 30 s). */

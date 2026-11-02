@@ -1532,6 +1532,24 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     jarvis.ngOnDestroy();
   }));
 
+  it('F-241 / SF-241-04 — une ligne-marque ✦ n’est jamais dite ; présentation transmise ; allusion mesurée', fakeAsync(() => {
+    const jarvis = fastOn();
+    void jarvis.handle('Bonjour Jarvis');
+    flushMicrotasks();
+    expect(fastBrain.converse.calls.mostRecent().args[0].presentation).toBeFalse();
+    fast!.onText('✦ allusion: le petit');
+    fast!.onText('Bonjour, Monsieur.');
+    fast!.onDone({ brain: 'FAST', spokenText: 'Bonjour, Monsieur.', firstTokenMs: 300, model: 'm',
+      guards: { groundingTrips: 0, fillersRemoved: 0, repeatsRemoved: 0, forcedDelegation: false, toolText: false,
+        imitationsRemoved: 0, portraitBlocked: 0, personalAllusion: 'SPONTANEE', allusionsBlocked: 0 }, portrait: true });
+    fastDone!('ok');
+    flushMicrotasks();
+    expect(voice.enqueue).toHaveBeenCalledTimes(1);
+    expect(voice.enqueue.calls.mostRecent().args[0]).toBe('Bonjour, Monsieur.');
+    expect(jarvis.spoken()).toBe('Bonjour, Monsieur.');
+    jarvis.ngOnDestroy();
+  }));
+
   it('F-239 / SF-239-01 — cerveau rapide lent : aucune formule d’attente, seulement la réponse', fakeAsync(() => {
     voice.hasClip.and.returnValue(true);
     voice.playClip.and.resolveTo(true);

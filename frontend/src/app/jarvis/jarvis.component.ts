@@ -92,7 +92,7 @@ import {
   INTERVIEW_END, INTERVIEW_INTRO, INTERVIEW_NOTHING, INTERVIEW_OFFER, INTERVIEW_QUESTIONS, INTERVIEW_UPDATE_INTRO,
   InterviewDraft, JarvisInterview, JarvisInterviewClient, isInterviewCommand, updateQuestions,
 } from './jarvis-interview';
-import { JarvisPortraitClient, portraitBlocks, portraitSafe } from './jarvis-portrait';
+import { JarvisPortraitClient, isPortraitMark, portraitBlocks, portraitSafe } from './jarvis-portrait';
 import { JarvisSceneBus } from './scenes/jarvis-scene-bus.service';
 import { JarvisSceneComponent } from './scenes/jarvis-scene.component';
 import { JarvisConstellationComponent } from './scenes/jarvis-constellation.component';
@@ -1697,6 +1697,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
       if (!latest()) {
         return;
       }
+      // F-241 / SF-241-04 — filet : une ligne-marque (✦, 📌) n'est jamais dite ni affichée (la passerelle la retire déjà).
+      if (isPortraitMark(sentence)) {
+        return;
+      }
       if (isMoreMark(sentence)) {
         moreAsked = true;
         this.filler.answered();
@@ -1803,6 +1807,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
           imitationsRemoved: guards?.imitationsRemoved ?? 0,
           portraitOn: done.portrait ?? false,
           portraitBlocked: guards?.portraitBlocked ?? 0,
+          personalAllusion: guards?.personalAllusion ?? null,
           forcedDelegation: guards?.forcedDelegation ?? false,
           delegationReason,
         };
