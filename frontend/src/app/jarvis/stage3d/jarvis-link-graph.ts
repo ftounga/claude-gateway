@@ -40,6 +40,8 @@ export interface GraphContext {
   /** « Montrer » : les nœuds demandés (null = pas de « Montrer » en cours). */
   shown: readonly string[] | null;
   asleep: boolean;
+  /** SF-236-20 — téléphone : seul le chemin du focus est dessiné ; le reste est absent (pas latent, §12.2). */
+  narrow?: boolean;
 }
 
 export interface Graph3d {
@@ -181,6 +183,9 @@ export function linkGraph(layout: Layout3d, ctx: GraphContext): Graph3d {
   }
   for (const link of links) {
     link.state = linkState.get(link.key) ?? 'latent';
+  }
+  if (ctx.narrow) {
+    return { links: links.filter((l) => l.state === 'active' || l.state === 'lit'), nodes: nodeState };
   }
   return { links, nodes: nodeState };
 }

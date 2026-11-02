@@ -123,7 +123,7 @@ export function universeView(s: ScreenSignals, asleep: boolean, narrow: boolean)
   const lit = entity && !cited.includes(entity) && cited.length < MAX_LIT_NODES ? [...cited, entity] : cited;
   const layout = layoutUniverse3d(s.universe, { subjectId: s.subjectId, narrow,
     shown: new Set([...lit, ...(s.shown ?? [])]), stepsDone: s.stepsDone });
-  const graph = linkGraph(layout, { subjectId: s.subjectId, lit, shown: s.shown, asleep });
+  const graph = linkGraph(layout, { subjectId: s.subjectId, lit, shown: s.shown, asleep, narrow });
   const focus = s.shown === null ? layout.nodes.find((n) => n.key === lit.find((k) => graph.nodes.get(k) === 'lit'))
     ?? null : null;
   return { layout, graph, freeze: s.state === 'ecoute' || lit.length > 0 || s.shown !== null, focus,
@@ -199,7 +199,7 @@ export function stageScene(s: ScreenSignals, view: UniverseView, narrow: boolean
     nodes: new Set(view.layout.nodes.map((n) => n.key)), session, spokenTickets: s.spokenTickets,
     stepsDone: s.stepsDone });
   // T6 — pool borné (PC 8, téléphone 2) ; « devant tout » (S2) d'abord, jamais écarté.
-  return plan ? { ...plan, panels: boundPanels(plan.panels, narrow) } : null;
+  return plan ? { ...plan, panels: boundPanels(plan.panels, narrow, s.scene?.id) } : null;
 }
 
 export const IDLE_SIGNALS: StageSignals = { state: 'repos', frozen: false, waiting: false, asleep: false, wakes: 0,

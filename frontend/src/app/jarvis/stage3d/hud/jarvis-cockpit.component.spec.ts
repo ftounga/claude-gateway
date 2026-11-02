@@ -256,6 +256,31 @@ describe('F-236 / SF-236-15 — JarvisCockpitComponent (panneaux latéraux, repl
     expect(cockpit.query()).toBe('');
   });
 
+  it('SF-236-20 — téléphone : aucun panneau dans la scène ; « ☰ Vues » ouvre un volet, une vue à la fois', () => {
+    mount(screen, 390);
+    stage.isNarrow = true;
+    cockpit.width.set(391);
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('aside')).toBeNull();
+    expect(el.querySelector('.ck__float')).toBeNull();
+    expect(cockpit.insets()).toEqual({ left: 0, right: 0 });
+    (el.querySelector('.ck__views') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('.ck__volet')).not.toBeNull();
+    expect(el.querySelector('.ck__volet .ck__figure')).not.toBeNull();
+    expect(el.querySelector('.ck__detach:not([aria-label="Fermer les vues"])')).toBeNull();
+    const tabs = el.querySelectorAll('.ck__tab') as NodeListOf<HTMLButtonElement>;
+    tabs[1].click();
+    fixture.detectChanges();
+    expect(el.querySelector('.ck__volet .ck__weather')).not.toBeNull();
+    expect(el.querySelector('.ck__volet .ck__figure')).toBeNull();
+    expect(tabs[1].getAttribute('aria-current')).toBe('page');
+    (el.querySelector('[aria-label="Fermer les vues"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('.ck__volet')).toBeNull();
+  });
+
   it('univers vide ⇒ liste vide, message écrit', () => {
     expect(universeItems(null, null)).toEqual([]);
     mount({ ...IDLE_SCREEN });

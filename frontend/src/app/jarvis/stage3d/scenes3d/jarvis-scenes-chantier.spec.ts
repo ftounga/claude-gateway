@@ -93,10 +93,11 @@ describe('F-236 / SF-236-10 — S2 « oui » / question', () => {
     expect(effect(plan.effects, 'countdown')).toEqual({ kind: 'countdown', fraction: 18 / 30, tone: 'wait' });
   });
 
-  it('S2 reste dans le pool même quand il déborde (téléphone : 2 panneaux)', () => {
+  it('S2 reste dans le pool même quand il déborde (téléphone : 1 panneau, SF-236-20 §12.2)', () => {
     const others: { id: string; front?: boolean }[] = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
     const s2 = { id: 's2', front: true };
-    expect(boundPanels([...others, s2], true).map((p) => p.id)).toEqual(['s2', 'a']);
+    expect(boundPanels([...others, s2], true, 'S2').map((p) => p.id)).toEqual(['s2']);
+    expect(boundPanels([...others, s2], false, 'S2')[0].id).toBe('s2');
   });
 
   it('sans échéance : l’arc reste plein, pas de secondes écrites', () => {

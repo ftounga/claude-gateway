@@ -30,6 +30,7 @@ import { Effects3d } from './jarvis-effects-3d';
 import { Panels3d } from './jarvis-panels-3d';
 import { boundPanels, panelViewport } from '../jarvis-panels';
 import { BOKEH_MAX_GROWTH, postChain } from '../jarvis-post-chain';
+import { deviceProfile, levelBudget } from '../hud/jarvis-device-profile';
 
 /**
  * F-236 / SF-236-01 — **le moteur 3D, socle** : seul fichier (avec ses voisins de `engine/`) qui importe `three`,
@@ -40,14 +41,10 @@ import { BOKEH_MAX_GROWTH, postChain } from '../jarvis-post-chain';
  * Tampons préalloués, uniformes seulement : zéro allocation par image.</p>
  */
 
-/** Ce que chaque niveau dessine (§6.1 / §6.3) ; le décor s'allège, il ne disparaît jamais d'un coup. */
-export const LEVEL_BUDGET: Record<QualityLevel, {
-  pixelRatio: number; starLayers: number; starsPerLayer: number; dust: number; floorRings: number; nebula: boolean;
-}> = {
-  high: { pixelRatio: 2, starLayers: 3, starsPerLayer: 900, dust: 600, floorRings: 7, nebula: true },
-  medium: { pixelRatio: 1.5, starLayers: 2, starsPerLayer: 500, dust: 250, floorRings: 5, nebula: true },
-  low: { pixelRatio: 1, starLayers: 1, starsPerLayer: 300, dust: 0, floorRings: 3, nebula: false },
-};
+/**
+ * Ce que chaque niveau dessine (§6.1 / §6.3) ; le décor s'allège, il ne disparaît jamais d'un coup.
+ * SF-236-20 — budgets dans `hud/jarvis-device-profile.ts` (pur, testé) : le téléphone retire nébuleuse et poussière.
+ */
 
 /** Le pas d'une image est borné : un onglet revenu ne fait pas « sauter » les animations. */
 const MAX_DT_MS = 50;
@@ -180,6 +177,7 @@ class ThreeJarvisEngine implements JarvisEngine {
   private gestures: Gestures | null = null;
   private entryStart = 0;
   private entryTotal = 0;
+  private entryKind: 'full' | 'short' | 'none' = 'none';
   private exitStart: number | null = null;
   private wallNow = 0;
   /** SF-236-06 — histogramme des i/s instantanés (6 classes), sans allocation. */
@@ -210,7 +208,7 @@ class ThreeJarvisEngine implements JarvisEngine {
   private disposed = false;
 
   constructor(private readonly options: JarvisEngineOptions) {
-    const budget = LEVEL_BUDGET[options.level];
+    const budget = levelBudget(options.level, options.width < 768);
     const canvas = options.canvas;
     this.level = options.level;
     this.plan = options.plan;
@@ -250,7 +248,10 @@ class ThreeJarvisEngine implements JarvisEngine {
       this.applyPlan(options.plan, start, true);
       this.placeCamera(overviewShot(overviewDistance(options.plan.universe.layout.extent,
         options.width / Math.max(options.height, 1)), options.width < options.height * 0.8), true);
-      this.entryTotal = options.entry === 'full' ? ENTRY_FULL_MS : options.entry === 'short' ? ENTRY_SHORT_MS : 0;
+      // SF-236-20 — au téléphone, l'entrée complète dure 1,2 s (§12.2) : la même chorégraphie, accélérée.
+      this.entryKind = options.entry;
+      this.entryTotal = options.entry === 'full' ? deviceProfile(options.width < 768).entryMs
+        : options.entry === 'short' ? ENTRY_SHORT_MS : 0;
       this.gestures = new Gestures(canvas, {
         orbit: (dYaw, dPitch) => this.manual(() => {
           this.rig.yaw.target += dYaw;
@@ -489,7 +490,8 @@ class ThreeJarvisEngine implements JarvisEngine {
     // effets d'abord (ceux de la scène, s'il y en a, priment dans chaque famille).
     this.universe?.setShow(plan.show ?? null, plan.ambient ?? null);
     const panels = [...(plan.scene?.panels ?? []), ...(plan.show?.panels ?? []), ...(plan.ambient?.panels ?? [])];
-    this.panels?.set(boundPanels(panels, this.width < 768), replay ? 0 : now, replay && plan.bancPanelsOut === true);
+    this.panels?.set(boundPanels(panels, this.width < 768, plan.scene?.id), replay ? 0 : now,
+      replay && plan.bancPanelsOut === true);
     this.effects?.set([...(plan.ambient?.effects ?? []), ...(plan.scene?.effects ?? [])], replay ? 0 : now, replay);
     const travel = plan.scene?.travel;
     if (travel && travel.id !== this.travelId) {
@@ -521,7 +523,7 @@ class ThreeJarvisEngine implements JarvisEngine {
   /** T-Q — nouveau niveau : ratio de pixels, bloom, poussière et densité du cœur, en fondu. */
   private applyLevel(level: QualityLevel, now: number): void {
     this.level = level;
-    const budget = LEVEL_BUDGET[level];
+    const budget = levelBudget(level, this.width < 768);
     this.renderer.setPixelRatio(Math.min(this.options.pixelRatio, budget.pixelRatio));
     this.post.setLevel(level);
     this.heart?.setLevel(level, now);
@@ -616,8 +618,9 @@ class ThreeJarvisEngine implements JarvisEngine {
     if (!this.firstFrameSeen) {
       this.entryStart = frameNow;
     }
-    const entry = entryFrame(this.entryTotal === ENTRY_FULL_MS ? 'full' : this.entryTotal > 0 ? 'short' : 'none',
-      this.options.replayFromZero ? t : frameNow - this.entryStart);
+    const elapsed = this.options.replayFromZero ? t : frameNow - this.entryStart;
+    const entry = entryFrame(this.entryKind, this.entryKind === 'full' && this.entryTotal > 0
+      ? elapsed * (ENTRY_FULL_MS / this.entryTotal) : elapsed);
     const exit = this.exitStart === null ? null : exitFrame(Math.min(EXIT_MS, frameNow - this.exitStart));
     this.backdrop.uniforms['uGlow'].value = (0.35 + 0.65 * light) * entry.light;
     if (this.heart) {
@@ -632,7 +635,8 @@ class ThreeJarvisEngine implements JarvisEngine {
       this.universe.frame(dt);
       this.universe.group.scale.setScalar((1 + 0.15 * spread) * (exit ? Math.max(0.001, exit.universe) : 1));
       // Dérive lente (un tour en 10 min), arrêtée pendant l'écoute et sur un focus (§8.1).
-      if (!this.plan.universe.freeze && this.options.adaptive) {
+      // SF-236-20 — au téléphone, aucune dérive : la caméra ne bouge qu'au changement de sujet et sur un focus.
+      if (!this.plan.universe.freeze && this.options.adaptive && deviceProfile(this.width < 768).autoDrift) {
         this.universe.group.rotation.y += (dt / 600_000) * Math.PI * 2;
       }
     }

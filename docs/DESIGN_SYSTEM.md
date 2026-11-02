@@ -999,6 +999,10 @@ valeur en dur ailleurs.
   enfoncées (liseré plein + halo) quand leur « Montrer » est posé ; zéro ⇒ éteint. Météo des chantiers : soleil
   `--cg-holo-green`, nuage `--cg-holo-wait`, orage `--cg-holo-red`, brume crème 60 % ; icônes SVG 16 px (liste) et
   20 px (ciel au-dessus du losange en 3D) ; le mot est toujours écrit.
+- **Téléphone allégé (SF-236-20, cadrage §12.2)** — aucun panneau latéral ni tableau flottant dans la scène : un
+  bouton « ☰ Vues » (Space Grotesk capitales, ≥ 44 px) ouvre un volet plein écran navy 94 %, sans flou, à onglets
+  (une vue à la fois). Décor : une profondeur d'étoiles, grille simple, ni nébuleuse ni poussière ; liaisons du
+  focus seulement ; un panneau ancré (deux pour les tickets) ; entrée 1,2 s.
 
 ## Logo & marque (ajout 2026-07-03)
 
