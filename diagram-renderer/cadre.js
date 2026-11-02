@@ -530,7 +530,7 @@ function drawZone(zone, parts, resources) {
     const uri = how === "png" && resources ? dataUri(`${resources}/${name}.png`) : null;
     if (uri) {
       parts.push(`<image class="zone-icone" x="${b.x}" y="${b.y}" width="${GROUP_ICON}" height="${GROUP_ICON}"`
-        + ` href="${uri}"/>`);
+        + ` xlink:href="${uri}"/>`);
     } else {
       parts.push(`<rect class="zone-icone" x="${b.x}" y="${b.y}" width="${GROUP_ICON}" height="${GROUP_ICON}"`
         + ` fill="${s.stroke}"/>` + (how === "drawn" ? drawnGlyph(name, b.x, b.y) : ""));
@@ -549,7 +549,11 @@ function drawNode(node, parts) {
   const uri = node.unknown ? null : dataUri(node.icon);
   const i = shape.icon;
   if (uri) {
-    parts.push(`<image x="${i.x}" y="${i.y}" width="${i.w}" height="${i.h}" href="${uri}"/>`);
+    parts.push(`<image x="${i.x}" y="${i.y}" width="${i.w}" height="${i.h}" xlink:href="${uri}"/>`);
+  } else if (node.neutral) {
+    // Moteur drawio (SF-238-05) : un nœud SANS type est une boîte nommée, pas un type inconnu.
+    parts.push(`<rect class="neutre" x="${i.x}" y="${i.y}" width="${i.w}" height="${i.h}" rx="8"`
+      + ` fill="#FFFFFF" stroke="${INK}" stroke-width="1.5"/>`);
   } else {
     // Aucun composant inventé : une forme en pointillé, nommée par son libellé (SF-142-12).
     parts.push(`<rect class="inconnu" x="${i.x}" y="${i.y}" width="${i.w}" height="${i.h}" rx="6"`
@@ -586,7 +590,7 @@ function drawEdgeLabel(edge, parts) {
 function toSvg(model) {
   const { w, h } = model.bounds;
   const parts = [];
-  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}"`
+  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}"`
     + ` font-family="Arial, Helvetica, sans-serif" data-moteur="cadre">`);
   parts.push('<defs><marker id="cg-fleche" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8"'
     + ` markerHeight="8" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"`
@@ -665,6 +669,17 @@ async function build(prepared, options = {}) {
   return { svg: toSvg(model), graph: toGraph(model), model };
 }
 
+/**
+ * Moteur `drawio` (SF-238-05) : un nœud SANS type est une boîte nommée (le contrat de SF-142-13), pas un type
+ * inconnu — il n'est ni signalé, ni dessiné en pointillé rouge.
+ */
+function neutralizeUntyped(prepared) {
+  const nodes = prepared.nodes.map((n) => (n.type ? n : { ...n, unknown: false, neutral: true, family: "generic" }));
+  const unknown = (prepared.unknown || []).filter((k) => k);
+  return { ...prepared, nodes, unknown, unknownSaid: unknown.length ? prepared.unknownSaid : "" };
+}
+
 module.exports = {
-  build, toSvg, toGraph, shapeOf, headerRect, textWidth, densityNotice, ZONE_STYLES, GRID, esc,
+  build, toSvg, toGraph, shapeOf, headerRect, textWidth, densityNotice, neutralizeUntyped, dataUri, zoneStyle,
+  ZONE_STYLES, GRID, esc,
 };

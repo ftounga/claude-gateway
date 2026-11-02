@@ -209,6 +209,23 @@ class HttpDiagramRendererTest {
     }
 
     @Test
+    @DisplayName("SF-238-05 : à elk, le .drawio est demandé cadré (layout=elk) ; le graphe en plus est ignoré")
+    void editablePostsElkLayoutWhenConfigured() {
+        serve(200, "application/json", ("{\"drawio\":\"" + base64("<mxfile/>") + "\",\"png\":\"\","
+                + "\"previewError\":\"\",\"width\":800,\"height\":400,\"graph\":{\"version\":1}}")
+                .getBytes(StandardCharsets.UTF_8));
+        properties.setCloudLayout("elk");
+        ObjectMapper mapper = new ObjectMapper();
+        com.fasterxml.jackson.databind.node.ObjectNode spec = mapper.createObjectNode();
+        spec.putArray("nodes").addObject().put("id", "a").put("label", "A");
+
+        DiagramRenderer.Editable editable = renderer.renderEditable(spec);
+
+        assertThat(new String(editable.drawio(), StandardCharsets.UTF_8)).isEqualTo("<mxfile/>");
+        assertThat(lastBody.get()).contains("\"engine\":\"drawio\"").contains("\"layout\":\"elk\"");
+    }
+
+    @Test
     @DisplayName("SF-142-13 : un aperçu manquant n'empêche pas le .drawio de partir — et c'est DIT")
     void aMissingPreviewDoesNotLoseTheFile() {
         serve(200, "application/json", ("{\"drawio\":\"" + base64("<mxfile/>")

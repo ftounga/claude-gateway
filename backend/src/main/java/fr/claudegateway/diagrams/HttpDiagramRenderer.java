@@ -120,6 +120,10 @@ public class HttpDiagramRenderer implements DiagramRenderer {
         ObjectNode body = mapper.createObjectNode();
         body.put("engine", "drawio");
         body.set("spec", spec);
+        if (properties.isCadre()) {
+            // F-238 / SF-238-05 : le .drawio reprend les coordonnées du schéma cadré (cadres imbriqués).
+            body.put("layout", "elk");
+        }
         HttpResponse<byte[]> response = post(body);
         int status = response.statusCode();
         if (status == 400 || status == 413 || status == 422) {

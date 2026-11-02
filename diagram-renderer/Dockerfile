@@ -37,12 +37,13 @@ WORKDIR /app
 # F-238 / SF-238-01 : elkjs (EPL-2.0, licence jointe dans node_modules/elkjs) — mise en page du schéma cadré,
 # version épinglée : la même entrée doit rendre le même SVG, octet pour octet.
 RUN npm install --omit=dev --no-audit --no-fund puppeteer-core@25.13.0 elkjs@0.9.3
-COPY server.js drawio.js pdf.js terminal.js icons.js cadre.js gardes.js puppeteer.json cloud.py deck.py office.py check_catalog.py ./
+COPY server.js drawio.js pdf.js terminal.js icons.js cadre.js cadre-composition.js cadre-routage.js drawio-cadre.js gardes.js puppeteer.json cloud.py deck.py office.py check_catalog.py ./
 # Le catalogue d'icônes est vérifié AU BUILD : une entrée qui ne désigne aucune classe réelle ferait
 # échouer le premier schéma d'un client, et pas la construction de l'image. On le refuse ici.
 # F-215 / SF-215-03 : la route /icons (cours vidéo) lit les PNG de la même lib — vérifiée elle aussi au build.
 RUN python3 check_catalog.py \
     && node -e "const i=require('./icons.js');if(i.search('aws balancer').length===0)process.exit(1)" \
+    && node -e "require('./cadre.js');require('./drawio-cadre.js');require('./gardes.js')" \
     && chown -R renderer:renderer /app
 
 USER renderer
