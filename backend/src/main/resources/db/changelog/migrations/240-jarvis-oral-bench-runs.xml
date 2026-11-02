@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-240 / SF-240-02 - LES PASSAGES DU BANC DE LA PAROLE (D12), EN BASE.
+
+      Meme patron que jarvis_bench_runs (F-239 / SF-239-13) : le rapport (JSON, verdicts et longueurs, sans parole
+      du compte : le jeu est fictif) sous user_id, lu depuis n'importe quel pod ; au plus 20 par compte. Table a part :
+      les deux bancs ont des rapports de forme differente et ne s'elaguent pas l'un l'autre. Rollback : la table se
+      retire.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="240-jarvis-oral-bench-runs-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="jarvis_oral_bench_runs">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="started_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="report_json" type="text"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="jarvis_oral_bench_runs" indexName="idx_jarvis_oral_bench_runs_user_started">
+            <column name="user_id"/>
+            <column name="started_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="jarvis_oral_bench_runs"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <!-- H2 mappe `text` sur CLOB, que la validation de schéma refuse : varchar(1000000), comme 239. -->
+    <changeSet id="240-jarvis-oral-bench-runs-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="jarvis_oral_bench_runs">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="started_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="report_json" type="varchar(1000000)"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="jarvis_oral_bench_runs" indexName="idx_jarvis_oral_bench_runs_user_started">
+            <column name="user_id"/>
+            <column name="started_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="jarvis_oral_bench_runs"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

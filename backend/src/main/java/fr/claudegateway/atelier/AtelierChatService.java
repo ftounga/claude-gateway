@@ -10734,6 +10734,16 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     record PromptBuild(String system, String subjectContext) {}
 
+    /**
+     * F-240 / SF-240-02 (D12) — la consigne système <b>réelle</b> du terminal pour un sujet du compte (mode ACT), telle
+     * qu'un tour la recevrait : le banc de la parole juge la forme de la réponse d'Opus avec elle. 404 si le sujet
+     * n'est pas au compte (isolation, toujours en premier). Lecture seule.
+     */
+    public String terminalSystemPrompt(UUID userId, UUID workspaceId) {
+        Workspace workspace = workspaceService.requireOwned(userId, workspaceId);
+        return buildSystemPrompt(userId, workspace, AgentTurnMode.ACT);
+    }
+
     /** Consigne système du tour en mode {@link AgentTurnMode#ACT} — forme historique conservée. */
     String buildSystemPrompt(UUID userId, Workspace workspace) {
         return buildSystemPrompt(userId, workspace, AgentTurnMode.ACT);

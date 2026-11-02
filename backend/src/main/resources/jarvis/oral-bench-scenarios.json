@@ -1,0 +1,70 @@
+{
+  "description": "F-240 / SF-240-02 (D12) — le banc de la parole : 8 scénarios de délégation, contexte figé (les résultats que les outils d'Opus auraient rendus). Jeu FICTIF : aucune donnée de compte.",
+  "scenarios": [
+    {
+      "id": "O1",
+      "category": "POINT_CLIENT",
+      "said": "Fais-moi le point sur CAGIP.",
+      "context": "Client CAGIP. Chantier 2 « Exposition du BFF » : déployé en recette le 30/10, attend les chemins réseau d'Iheb pour la production. Chantier 3 « Migration Keycloak » : tests d'intégration en cours, 41 tests sur 44 passent ; les 3 échecs portent sur le renouvellement des jetons. Chantier 4 « Runner Snowflake » : relance à Marc envoyée le 28/10, sans réponse. Mail de passation à Iheb préparé, pas encore envoyé.",
+      "invitation": "any",
+      "confirmation": false
+    },
+    {
+      "id": "O2",
+      "category": "ETAT_CHANTIER",
+      "said": "Où en est le chantier 3 ?",
+      "context": "Chantier 3 « Migration Keycloak » (CAGIP), étape 4 sur 6 : tests d'intégration. 41 tests sur 44 passent. Les 3 échecs : renouvellement du jeton de rafraîchissement (realm ca-savings), délai d'expiration à 300 s au lieu de 1 800 s dans la configuration Terraform. Prochaine étape : recette utilisateur, prévue jeudi.",
+      "invitation": "any",
+      "confirmation": false
+    },
+    {
+      "id": "O3",
+      "category": "DIAGNOSTIC",
+      "said": "Pourquoi le pipeline de déploiement d'Edenred échoue depuis ce matin ?",
+      "context": "Pipeline GitLab « edenred-api » : 6 échecs depuis 07:12. Journal de l'étape deploy : « Error: AccessDenied: User arn:aws:iam::...:role/gitlab-deployer is not authorized to perform: ecr:GetAuthorizationToken ». La politique IAM du rôle gitlab-deployer a été modifiée hier à 18:40 par une fusion Terraform (MR !412, « réduction des droits ») qui a retiré ecr:GetAuthorizationToken. Les étapes build et test passent.",
+      "invitation": "any",
+      "confirmation": false
+    },
+    {
+      "id": "O4",
+      "category": "CONSEIL_AB",
+      "said": "Pour Helios, je pars sur Keycloak ou sur Cognito ?",
+      "context": "Projet Helios : 3 applications internes, 400 utilisateurs, fédération avec l'Active Directory du client exigée, hébergement AWS imposé, équipe sans expérience Keycloak en production. Keycloak : déjà opéré pour CAGIP par notre équipe, fédération LDAP native, coût d'exploitation (2 instances, mises à jour). Cognito : géré, fédération SAML via ADFS du client possible, personnalisation des écrans limitée, coût ≈ 0 à ce volume.",
+      "invitation": "any",
+      "confirmation": false
+    },
+    {
+      "id": "O5",
+      "category": "TICKET",
+      "said": "Qu'est-ce que dit le ticket LDIC-223 ?",
+      "context": "Ticket Jira LDIC-223 « Migrer le state Terraform vers gitlab-tfstate » — priorité haute, assigné à vous, statut À faire. Description : le state est aujourd'hui dans un bucket S3 sans verrouillage ; migrer vers le backend HTTP de GitLab, avec verrouillage, pour les 4 environnements ; ne pas toucher à la production avant la recette. Commentaire de Paul (31/10) : « attention, le state de recette contient des ressources orphelines ».",
+      "invitation": "any",
+      "confirmation": false
+    },
+    {
+      "id": "O6",
+      "category": "LONG_TABLEAU",
+      "said": "Compare-moi les coûts AWS des trois environnements le mois dernier.",
+      "context": "Coûts AWS d'octobre (Cost Explorer). Dev : 412 € (EC2 180, RDS 120, NAT 70, divers 42). Recette : 1 284 € (EC2 510, RDS 390, NAT 210, EKS 140, divers 34). Production : 3 960 € (EC2 1 620, RDS 1 180, NAT 520, EKS 430, CloudFront 150, divers 60). Hausse de la recette : +38 % par rapport à septembre, due à une instance RDS db.r6g.2xlarge laissée allumée après les tests de charge du 14/10.",
+      "invitation": "any",
+      "confirmation": false
+    },
+    {
+      "id": "O7",
+      "category": "CONFIRMATION",
+      "said": "Envoie le compte rendu de la réunion d'hier à Paul.",
+      "context": "Compte rendu de la réunion du 01/11 (comité Helios) prêt dans le fil : décisions (Cognito retenu sous réserve d'un essai ADFS), actions (Paul : accès ADFS de recette avant vendredi ; vous : maquette d'écran de connexion). Adresse de Paul connue : paul.martin@exemple.fr. Aucun envoi n'a encore été fait. L'envoi d'un courriel engage : il se confirme.",
+      "invitation": "forbidden",
+      "confirmation": true
+    },
+    {
+      "id": "O8",
+      "category": "ANNEXE",
+      "said": "Le déploiement de CAGIP est fini ?",
+      "context": "Déploiement CAGIP en production terminé à 10:42 : 3 services mis à jour, vérifications de santé au vert, aucune erreur dans les journaux depuis. Point annexe important, sans lien direct avec la question : le certificat TLS du domaine helios.exemple.fr expire dans 3 jours (le 05/11) et son renouvellement automatique a échoué cette nuit (validation DNS refusée).",
+      "invitation": "required",
+      "confirmation": false,
+      "annexKeyword": "Helios"
+    }
+  ]
+}

@@ -1415,6 +1415,14 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   F-239 / SF-239-02 (migration `239-jarvis-turn-timings-rejected`) : `rejected_kind` (liste fermée `empty|noise|
   hallucination|no_voice|implausible`) et `rejected_chars` (longueur) — une parole refusée par la porte de parole
   réelle de l'écran, aucun tour lancé. **Jamais le texte.**
+  F-240 / SF-240-01 (migration `240-jarvis-turn-timings-spoken`) : `spoken_words`, `spoken_chars`, `spoken_ms`
+  (réponse dite, hors annonce), `announce_words` (annonce avant outils), `oral_cut` (garde des 35 mots),
+  `invitation` (invitation ciblée « ↪ » dite), `depth_reached` (1 dit, 2 essentiel, 3 détail), `depth_via`
+  (`voix|toucher`) — lus par `GET /api/admin/jarvis/latency` (bloc `spoken`). **Jamais le texte.**
+- **jarvis_oral_bench_runs** — **un passage du banc de la parole** (F-240 / SF-240-02, migration
+  `240-jarvis-oral-bench-runs`) : `user_id`, `started_at`, `status`, `report_json` (longueurs de la ligne 🎙,
+  invitations, verdicts du juge, coût ; jeu fictif). ≤ 20 par compte. Lancé par `POST /api/admin/jarvis/oral-bench`
+  (ADMIN, plafond 3 €), lu par `GET /api/admin/jarvis/oral-bench/{id}` sous `user_id`.
 - **jarvis_audio_captures** — **un énoncé de Jarvis gardé pour le banc d'écoute** (F-239 / SF-239-03, migration
   `239-jarvis-audio-captures`) : `user_id`, `created_at`, `storage_key` (audio WAV dans le stockage objet sous
   `atelier/{userId}/jarvis-captures/`), `seconds`, `listen_mode`, `provider`, `stream_text`, `final_text`,

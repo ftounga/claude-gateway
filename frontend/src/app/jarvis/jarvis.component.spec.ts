@@ -1807,4 +1807,29 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       expect(report.spokenWords).toBe(4);
       jarvis.ngOnDestroy();
     }));
+
+  it('F-240 / SF-240-02 — l’invitation ciblée est dite après la phrase, masquée du détail, et mesurée',
+    fakeAsync(() => {
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      const jarvis = fixture.componentInstance;
+      dictation.stop.and.resolveTo('Où en est le déploiement ?');
+      void jarvis.talk();
+      flushMicrotasks();
+      void jarvis.talk();
+      flushMicrotasks();
+      handlers!.onDone({ reply: '🎙 Le déploiement est terminé, Monsieur.\n↪ Il y a aussi un point sur Helios, je '
+        + 'vous le dis ?\n<<essentiel>>\n- Déployé\n<</essentiel>>\nDétail…', actions: [], messageId: 'm-1' });
+      flushMicrotasks();
+      const said = voice.speak.calls.allArgs().map((a) => a[0]);
+      expect(said).toEqual(['Le déploiement est terminé, Monsieur.', 'Il y a aussi un point sur Helios, je vous le dis ?']);
+      expect(jarvis.detail()).not.toContain('Helios');
+      jarvis['flushParked']();
+      const report = jarvisApi.timings.calls.mostRecent().args[0];
+      expect(report.invitation).toBeTrue();
+      expect(report.oralCut).toBeFalse();
+      expect(report.spokenWords).toBe(5);
+      jarvis.ngOnDestroy();
+    }));
 });
+
