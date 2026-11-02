@@ -132,6 +132,8 @@ public class JarvisLatencyService {
                 .invitation(report.invitation())
                 .depthReached(depth(report.depthReached()))
                 .depthVia(report.depthReached() == null ? null : closed(report.depthVia(), DEPTH_VIA))
+                .portraitOn(report.portraitOn())
+                .portraitBlocked(report.portraitBlocked() == null ? null : counter(report.portraitBlocked()))
                 .build());
     }
 
@@ -316,7 +318,9 @@ public class JarvisLatencyService {
             String rejectedKind, Integer rejectedChars,
             // F-240 / SF-240-01 — facultatifs : ce qui est dit (jamais le texte) et l'étage atteint.
             Integer spokenWords, Integer spokenChars, Integer spokenMs, Integer announceWords, Boolean oralCut,
-            Boolean invitation, Integer depthReached, String depthVia) {
+            Boolean invitation, Integer depthReached, String depthVia,
+            // F-241 / SF-241-03 — facultatifs : le portrait servait, phrases écartées par ses interdits.
+            Boolean portraitOn, Integer portraitBlocked) {
     }
 
     /** Une étape : nombre de tours où elle a eu lieu, p50 et p90 en ms (nuls sans mesure). */

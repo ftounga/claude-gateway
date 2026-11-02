@@ -314,7 +314,7 @@ export class AtelierService {
   async streamChat(id: string, message: string, handlers: AtelierStreamHandlers,
       mode: AtelierTurnMode = 'ACT', force = false, attachedDepositIds: string[] = [],
       chantier: number | null = null, split = false, via: 'JARVIS' | null = null,
-      heardBeforeCut: string | null = null): Promise<void> {
+      heardBeforeCut: string | null = null, presentation = false): Promise<void> {
     // F-131 / SF-131-01 : on retient si le tour s'est réellement CONCLU dans ce flux — un `done`
     // non-suite ou une erreur. Sinon, la fermeture du flux est un DÉTACHEMENT (le serveur a peut-être
     // fini, mais l'écran n'a rien reçu) : c'est ce cas qui laissait le spinner tourner sans fin.
@@ -361,6 +361,8 @@ export class AtelierService {
           ...(via ? { via } : {}),
           // F-233 / SF-233-09 (D10) : la part entendue de la réponse orale que le PO a coupée (voix seulement).
           ...(via && heardBeforeCut ? { heardBeforeCut } : {}),
+          // F-241 / SF-241-03 (D17) : l'écran Jarvis est en présentation — ni portrait, ni élément personnel.
+          ...(via && presentation ? { presentation: true } : {}),
         }),
       });
       if (!response.ok || !response.body) {

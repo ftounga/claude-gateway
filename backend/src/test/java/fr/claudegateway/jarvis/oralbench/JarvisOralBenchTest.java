@@ -14,9 +14,9 @@ class JarvisOralBenchTest {
 
     @Test
     void theSetHasTheEightDelegationScenariosOfTheCadrage() {
-        assertThat(SET).hasSize(8);
+        assertThat(SET).hasSize(10);
         assertThat(SET).extracting(JarvisOralBench.Scenario::category).containsExactly("POINT_CLIENT",
-                "ETAT_CHANTIER", "DIAGNOSTIC", "CONSEIL_AB", "TICKET", "LONG_TABLEAU", "CONFIRMATION", "ANNEXE");
+                "ETAT_CHANTIER", "DIAGNOSTIC", "CONSEIL_AB", "TICKET", "LONG_TABLEAU", "CONFIRMATION", "ANNEXE", "PORTRAIT_F241", "PORTRAIT_F241");
         assertThat(SET.get(6).invitation()).isEqualTo("forbidden");
         assertThat(SET.get(6).confirmation()).isTrue();
         assertThat(SET.get(7).invitation()).isEqualTo("required");
@@ -74,36 +74,39 @@ class JarvisOralBenchTest {
         }
         readings.add(reading(18, null, true));
         readings.add(reading(20, "Il y a aussi un point sur Helios, je vous le dis ?", false));
+        readings.add(reading(22, null, false)); // O9 — F-241, portrait fictif
+        readings.add(reading(22, null, false)); // O10 — F-241, portrait fictif
         return readings;
     }
 
     @Test
     void theGateIsGreenWhenEveryCriterionHolds() {
-        assertThat(JarvisOralBench.gate(SET, green(), 8, 7)).isEmpty();
+        assertThat(JarvisOralBench.gate(SET, green(), 10, 7)).isEmpty();
     }
 
     @Test
     void theGateFailsOnLengthVerdictInvitationAndConfirmation() {
         List<JarvisOralBench.Reading> tooLong = green();
         tooLong.set(0, reading(45, null, false));
-        assertThat(JarvisOralBench.gate(SET, tooLong, 8, 8)).anyMatch(f -> f.startsWith("p90 des mots dits 45"));
-        assertThat(JarvisOralBench.gate(SET, green(), 8, 6)).anyMatch(f -> f.startsWith("verdict d'abord 6/8"));
+        tooLong.set(1, reading(45, null, false)); // dix scénarios (F-241) : deux réponses longues font le p90
+        assertThat(JarvisOralBench.gate(SET, tooLong, 10, 8)).anyMatch(f -> f.startsWith("p90 des mots dits 45"));
+        assertThat(JarvisOralBench.gate(SET, green(), 10, 6)).anyMatch(f -> f.startsWith("verdict d'abord 6/10"));
 
         List<JarvisOralBench.Reading> generic = green();
         generic.set(1, reading(20, "Voulez-vous plus de détails ?", false));
-        assertThat(JarvisOralBench.gate(SET, generic, 8, 8)).contains("O2 : invitation générique");
+        assertThat(JarvisOralBench.gate(SET, generic, 10, 8)).contains("O2 : invitation générique");
 
         List<JarvisOralBench.Reading> noInvite = green();
         noInvite.set(7, reading(20, null, false));
-        assertThat(JarvisOralBench.gate(SET, noInvite, 8, 8)).contains("O8 : invitation ciblée absente");
+        assertThat(JarvisOralBench.gate(SET, noInvite, 10, 8)).contains("O8 : invitation ciblée absente");
 
         List<JarvisOralBench.Reading> inviteOnConfirm = green();
         inviteOnConfirm.set(6, reading(18, "Il y a aussi Helios, je vous le dis ?", true));
-        assertThat(JarvisOralBench.gate(SET, inviteOnConfirm, 8, 8)).contains("O7 : invitation sur une confirmation");
+        assertThat(JarvisOralBench.gate(SET, inviteOnConfirm, 10, 8)).contains("O7 : invitation sur une confirmation");
 
         List<JarvisOralBench.Reading> noConfirm = green();
         noConfirm.set(6, reading(18, null, false));
-        assertThat(JarvisOralBench.gate(SET, noConfirm, 8, 8)).contains("O7 : confirmation non demandée");
+        assertThat(JarvisOralBench.gate(SET, noConfirm, 10, 8)).contains("O7 : confirmation non demandée");
 
         assertThat(JarvisOralBench.gate(SET, green().subList(0, 5), 5, 5)).anyMatch(f -> f.contains("non joué"));
         assertThat(JarvisOralBench.gate(SET, green(), 7, 7)).anyMatch(f -> f.contains("non jugé"));

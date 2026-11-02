@@ -71,10 +71,15 @@ public class JarvisFastBrainService {
 
     /** Ce que l'écran demande. */
     public record Request(UUID userId, Workspace workspace, Integer chantier, String text, String heardBeforeCut,
-            String screen) {
+            String screen, boolean presentation) {
 
         public Request(UUID userId, Workspace workspace, Integer chantier, String text, String heardBeforeCut) {
-            this(userId, workspace, chantier, text, heardBeforeCut, null);
+            this(userId, workspace, chantier, text, heardBeforeCut, null, false);
+        }
+
+        public Request(UUID userId, Workspace workspace, Integer chantier, String text, String heardBeforeCut,
+                String screen) {
+            this(userId, workspace, chantier, text, heardBeforeCut, screen, false);
         }
     }
 
@@ -139,8 +144,13 @@ public class JarvisFastBrainService {
      * consommé par la mesure (SF-235-07).
      */
     public record Guards(int groundingTrips, int fillersRemoved, int repeatsRemoved, boolean forcedDelegation,
-            boolean toolText, int imitationsRemoved) {
-        public static final Guards NONE = new Guards(0, 0, 0, false, false, 0);
+            boolean toolText, int imitationsRemoved, int portraitBlocked) {
+        public static final Guards NONE = new Guards(0, 0, 0, false, false, 0, 0);
+
+        public Guards(int groundingTrips, int fillersRemoved, int repeatsRemoved, boolean forcedDelegation,
+                boolean toolText, int imitationsRemoved) {
+            this(groundingTrips, fillersRemoved, repeatsRemoved, forcedDelegation, toolText, imitationsRemoved, 0);
+        }
     }
 
     /** Ce qui reçoit les fragments de la réponse au fil de l'eau. */
@@ -234,6 +244,83 @@ public class JarvisFastBrainService {
     String systemFor(UUID userId) {
         return JarvisFastBrainPrompt.system(preferences == null ? fr.claudegateway.jarvis.preferences.JarvisHumour
                 .DEFAULT : preferences.humour(userId));
+    }
+
+    // ---- F-241 / SF-241-03 : le portrait (fin de consigne système, préfixe caché) ----
+    private fr.claudegateway.jarvis.portrait.JarvisPortraitService portraits;
+
+    @Autowired(required = false)
+    public void setPortraits(fr.claudegateway.jarvis.portrait.JarvisPortraitService portraits) {
+        this.portraits = portraits;
+    }
+
+    /** F-241 / SF-241-03 — le portrait fictif d'un scénario de banc (jamais le portrait réel), pour le fil appelant. */
+    private static final ThreadLocal<fr.claudegateway.jarvis.portrait.JarvisPortraitService.Snapshot> BENCH_PORTRAIT =
+            new ThreadLocal<>();
+
+    /** F-241 / SF-241-03 — le banc avec un portrait fictif (ou {@code null}) : même décision, à blanc. */
+    public Outcome benchWithPortrait(Request request, String model, String fixedContext,
+            fr.claudegateway.jarvis.portrait.JarvisPortraitService.Snapshot portrait) {
+        BENCH_PORTRAIT.set(portrait);
+        try {
+            return bench(request, model, fixedContext);
+        } finally {
+            BENCH_PORTRAIT.remove();
+        }
+    }
+
+    /**
+     * F-241 / SF-241-03 (D5, D17, D20) — le portrait qui sert à cet échange, ou {@code null} : jamais en présentation,
+     * jamais coupé, jamais vide ; au banc, seulement la fixture. Illisible (scellé dormant) ⇒ {@code null}.
+     */
+    fr.claudegateway.jarvis.portrait.JarvisPortraitService.Snapshot portraitFor(UUID userId, boolean presentation,
+            boolean bench) {
+        if (presentation) {
+            return null;
+        }
+        if (bench) {
+            fr.claudegateway.jarvis.portrait.JarvisPortraitService.Snapshot fixture = BENCH_PORTRAIT.get();
+            return fr.claudegateway.jarvis.portrait.JarvisPortraitNote.usable(fixture) ? fixture : null;
+        }
+        if (portraits == null || userId == null) {
+            return null;
+        }
+        try {
+            return portraits.snapshot(userId).filter(fr.claudegateway.jarvis.portrait.JarvisPortraitNote::usable)
+                    .orElse(null);
+        } catch (RuntimeException e) {
+            log.debug("Portrait illisible ({})", e.getClass().getSimpleName());
+            return null;
+        }
+    }
+
+    /**
+     * F-241 / SF-241-03 (D5) — la consigne système : celle d'aujourd'hui, suivie du bloc portrait s'il sert. Sans
+     * portrait (ou en présentation), identique à l'octet près à celle d'avant F-241. Le bloc ne dépend que du portrait
+     * (version) : il est relu en cache d'un appel à l'autre.
+     */
+    String systemFor(UUID userId, fr.claudegateway.jarvis.portrait.JarvisPortraitService.Snapshot portrait) {
+        String base = systemFor(userId);
+        return portrait == null ? base
+                : base + "\n\n" + fr.claudegateway.jarvis.portrait.JarvisPortraitNote.block(portrait);
+    }
+
+    /** F-241 / SF-241-03 — vrai si le portrait sert à cet échange (mesure {@code portrait_on}, jamais le texte). */
+    public boolean portraitInUse(UUID userId, boolean presentation) {
+        return portraitFor(userId, presentation, false) != null;
+    }
+
+    /** F-241 / SF-241-03 — les notes volatiles du message : présentation (D17), date qui compte (D3). */
+    String portraitNotes(Request request, fr.claudegateway.jarvis.portrait.JarvisPortraitService.Snapshot portrait) {
+        if (request.presentation()) {
+            return "\n\n" + fr.claudegateway.jarvis.portrait.JarvisPortraitNote.PRESENTATION_NOTE;
+        }
+        if (portrait == null) {
+            return "";
+        }
+        String date = fr.claudegateway.jarvis.portrait.JarvisPortraitNote.importantDate(portrait,
+                java.time.LocalDate.now(clock.withZone(ZONE)));
+        return date == null ? "" : "\n\n" + date;
     }
 
     @Autowired(required = false)
@@ -362,8 +449,8 @@ public class JarvisFastBrainService {
         warmed.put(userId, now);
         try {
             String apiKey = byok == null ? null : byok.resolveActiveApiKey(userId).orElse(null);
-            AgentTurn turn = provider.nextTurn(new AgentTurnRequest(properties.model(), systemFor(userId),
-                    List.of(AgentMessage.userText(WARM_TEXT)), JarvisFastBrainPrompt.tools(), apiKey,
+            AgentTurn turn = provider.nextTurn(new AgentTurnRequest(properties.model(),
+                    systemFor(userId, portraitFor(userId, false, false)), List.of(AgentMessage.userText(WARM_TEXT)), JarvisFastBrainPrompt.tools(), apiKey,
                     AgentReasoning.off(properties.effort()), AgentContextPolicy.none(), AgentTurnMode.ACT,
                     AgentCallShape.compact(0)));
             if (turn != null) {
@@ -619,14 +706,24 @@ public class JarvisFastBrainService {
         // F-239 / SF-239-11 — l'univers de référence (préfixe relu du cache) ; les gardes voient tout le contexte.
         String reference = bench ? "" : reference(request);
         String grounding = reference.isEmpty() ? context : reference + "\n\n" + context;
+        // F-241 / SF-241-03 — le portrait : il ancre ce que Jarvis en dit, et ses interdits ferment la porte (D12 a).
+        fr.claudegateway.jarvis.portrait.JarvisPortraitService.Snapshot portrait = portraitFor(userId,
+                request.presentation(), bench);
+        if (portrait != null) {
+            grounding = grounding + "\n\n" + fr.claudegateway.jarvis.portrait.JarvisPortraitNote.block(portrait);
+        }
         SentenceGate gate = new SentenceGate(grounding, request.text(), bench ? List.of() : recentSentences(userId),
                 out, JarvisFastGuards.isSmallTalk(request.text()));
+        gate.forbid(portrait == null ? java.util.Set.of()
+                : fr.claudegateway.jarvis.portrait.JarvisPortraitNote.forbiddenTerms(portrait));
+        // Au banc, la date qui compte vient du contexte figé du scénario (jamais de l'horloge réelle).
+        String notes = portraitNotes(request, bench ? null : portrait);
         List<AgentMessage> conversation = new ArrayList<>(bench
                 ? List.of(AgentMessage.userText(message(context, request.text())
                         + (sober(request, context) ? "\n\n" + fr.claudegateway.jarvis.preferences.JarvisSobriety.NOTE
-                                : "")))
-                : messages(request, context, reference));
-        String system = systemFor(userId);
+                                : "") + notes))
+                : messages(request, context, reference, notes));
+        String system = systemFor(userId, portrait);
 
         AgentTurn turn = null;
         long firstMs = -1L;
@@ -944,6 +1041,17 @@ public class JarvisFastBrainService {
         static final int MAX_SENTENCES = 3;
         /** F-239 / SF-239-02 (D3) — une salutation : une phrase non ancrée est retirée, jamais déléguée. */
         private final boolean smallTalk;
+        /** F-241 / SF-241-03 (D12 a) — les termes « À ne pas aborder » du portrait. */
+        private java.util.Set<String> forbidden = java.util.Set.of();
+        private int portraitBlocked;
+
+        void forbid(java.util.Set<String> terms) {
+            this.forbidden = terms == null ? java.util.Set.of() : terms;
+        }
+
+        int portraitBlocked() {
+            return portraitBlocked;
+        }
 
         SentenceGate(String context, String said, List<String> recent, Sink out) {
             this(context, said, recent, out, false);
@@ -1079,6 +1187,10 @@ public class JarvisFastBrainService {
                     abort(REASON_TOOL_TEXT);
                     return;
                 }
+                if (fr.claudegateway.jarvis.portrait.JarvisPortraitNote.blocked(sentence, said, forbidden)) {
+                    portraitBlocked++; // D12 (a) : un sujet interdit que le PO n'a pas amené n'est jamais dit
+                    return;
+                }
                 if (JarvisFastGuards.imitates(sentence, context, said)) {
                     imitationsRemoved++; // D18 : aucune imitation de l'œuvre — la phrase est retirée
                     return;
@@ -1183,7 +1295,8 @@ public class JarvisFastBrainService {
         }
 
         Guards guards() {
-            return new Guards(groundingTrips, fillersRemoved, repeatsRemoved, false, toolText, imitationsRemoved);
+            return new Guards(groundingTrips, fillersRemoved, repeatsRemoved, false, toolText, imitationsRemoved,
+                    portraitBlocked);
         }
     }
 
@@ -1234,6 +1347,11 @@ public class JarvisFastBrainService {
      * propre à l'appel, n'est pas écrit en cache (forme {@code compact}).
      */
     List<AgentMessage> messages(Request request, String context, String reference) {
+        return messages(request, context, reference, "");
+    }
+
+    /** F-241 / SF-241-03 — les mêmes messages, le dernier suivi des notes volatiles du portrait (ou rien). */
+    List<AgentMessage> messages(Request request, String context, String reference, String notes) {
         List<AgentMessage> messages = new ArrayList<>();
         if (reference != null && !reference.isBlank()) {
             messages.add(AgentMessage.userText(REFERENCE_HEADER + reference.strip()));
@@ -1254,7 +1372,7 @@ public class JarvisFastBrainService {
         if (sober(request, context)) {
             last = last + "\n\n" + fr.claudegateway.jarvis.preferences.JarvisSobriety.NOTE;
         }
-        messages.add(AgentMessage.userText(last));
+        messages.add(AgentMessage.userText(last + (notes == null ? "" : notes)));
         return messages;
     }
 

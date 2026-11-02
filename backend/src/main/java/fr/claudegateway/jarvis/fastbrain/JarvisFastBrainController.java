@@ -59,10 +59,15 @@ public class JarvisFastBrainController {
 
     /** La demande de l'écran. */
     public record ConverseRequest(UUID subjectId, String text, Integer chantier, String heardBeforeCut,
-            Long turnSeq, String screen) {
+            Long turnSeq, String screen, Boolean presentation) {
 
         public ConverseRequest(UUID subjectId, String text, Integer chantier, String heardBeforeCut, Long turnSeq) {
-            this(subjectId, text, chantier, heardBeforeCut, turnSeq, null);
+            this(subjectId, text, chantier, heardBeforeCut, turnSeq, null, null);
+        }
+
+        public ConverseRequest(UUID subjectId, String text, Integer chantier, String heardBeforeCut, Long turnSeq,
+                String screen) {
+            this(subjectId, text, chantier, heardBeforeCut, turnSeq, screen, null);
         }
     }
 
@@ -88,7 +93,8 @@ public class JarvisFastBrainController {
         }
         SseEmitter emitter = new SseEmitter(EMITTER_TIMEOUT_MS);
         JarvisFastBrainService.Request call = new JarvisFastBrainService.Request(userId, workspace.orElse(null),
-                request.chantier(), request.text(), request.heardBeforeCut(), request.screen());
+                request.chantier(), request.text(), request.heardBeforeCut(), request.screen(),
+                Boolean.TRUE.equals(request.presentation()));
         SseStreamDispatch.submit(executor, emitter, () -> relay(emitter, call, request.turnSeq()));
         return ResponseEntity.ok().contentType(MediaType.TEXT_EVENT_STREAM).body(emitter);
     }
@@ -145,7 +151,8 @@ public class JarvisFastBrainController {
                 }
             }
             send(emitter, "done", new DoneEvent(brainOf(outcome), outcome.spokenText(), outcome.firstTokenMs(),
-                    outcome.model(), turnSeq, outcome.guards(), budgetOf(outcome)));
+                    outcome.model(), turnSeq, outcome.guards(), budgetOf(outcome),
+                    service.portraitInUse(call.userId(), call.presentation())));
             emitter.complete();
         } catch (RuntimeException e) {
             log.warn("Cerveau rapide : flux interrompu ({})", e.getClass().getSimpleName());
@@ -193,7 +200,7 @@ public class JarvisFastBrainController {
      *               (plafond dur : réponse fixe), sinon {@code null}
      */
     record DoneEvent(String brain, String spokenText, long firstTokenMs, String model, Long turnSeq,
-            JarvisFastBrainService.Guards guards, String budget) {
+            JarvisFastBrainService.Guards guards, String budget, boolean portrait) {
     }
 
     static String budgetOf(JarvisFastBrainService.Outcome outcome) {

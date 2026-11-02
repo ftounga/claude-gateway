@@ -36,6 +36,8 @@ export interface FastDone {
    * atteint (réponse fixe, aucun appel) ; absent sinon. Jamais une bascule vers Opus.
    */
   budget?: 'soft' | 'hard' | null;
+  /** F-241 / SF-241-03 — le portrait servait à l'échange (mesure, jamais le texte). */
+  portrait?: boolean;
 }
 
 /** Les compteurs des garde-fous du serveur (SF-235-03, SF-235-09). */
@@ -46,6 +48,8 @@ export interface FastGuards {
   forcedDelegation: boolean;
   toolText: boolean;
   imitationsRemoved: number;
+  /** F-241 / SF-241-03 (D12 a) — phrases écartées par les interdits du portrait. */
+  portraitBlocked?: number;
 }
 
 /** F-235 / SF-235-07 (D14) — une parole qui corrige la réponse rapide précédente (dite il y a ≤ 30 s). */
@@ -80,6 +84,8 @@ export interface ConverseBody {
   heardBeforeCut?: string | null;
   /** F-237 / SF-237-08 — le bloc `## Écran` (ce que l'écran montre, numéroté). */
   screen?: string | null;
+  /** F-241 / SF-241-03 (D17) — l'écran est en présentation : aucun portrait, note figée. */
+  presentation?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -116,6 +122,7 @@ export class JarvisFastBrainClient {
           ...(body.chantier ? { chantier: body.chantier } : {}),
           ...(body.heardBeforeCut ? { heardBeforeCut: body.heardBeforeCut } : {}),
           ...(body.screen ? { screen: body.screen } : {}),
+          ...(body.presentation ? { presentation: true } : {}),
         }),
       });
       if (response.status === 503) {

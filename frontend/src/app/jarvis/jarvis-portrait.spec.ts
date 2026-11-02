@@ -5,7 +5,8 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { of, throwError } from 'rxjs';
 
 import {
-  JarvisPortraitClient, Portrait, PortraitSectionKey, counterLabel, draftChars, portraitErrorMessage, portraitTokens,
+  JarvisPortraitClient, Portrait, PortraitSectionKey, counterLabel, draftChars, portraitBlocks, portraitErrorMessage,
+  portraitSafe, portraitTokens,
 } from './jarvis-portrait';
 import { JarvisPortraitComponent } from './jarvis-portrait.component';
 
@@ -39,6 +40,17 @@ describe('jarvis-portrait (fonctions)', () => {
     expect(draftChars({ QUI: 'abcd', GOUTS: 'ef' }, [{ text: 'ghij' }])).toBe(10);
     expect(counterLabel(400)).toContain('100 / 1');
     expect(counterLabel(400)).toContain('jetons');
+  });
+
+  it('SF-241-03 — filet D12 (a) : une phrase d’Opus qui évoque un interdit non amené n’est pas dite', () => {
+    const terms = ['divorce', 'sandra'];
+    expect(portraitBlocks('Depuis votre divorce, le week-end est calme.', 'Mon week-end ?', terms)).toBeTrue();
+    expect(portraitBlocks('Les divorcés ont droit au repos.', 'Mon week-end ?', terms)).toBeTrue();
+    expect(portraitBlocks('Le divorce avance ?', 'Mon avocat parle du divorce.', terms)).toBeFalse();
+    expect(portraitBlocks('Un peu de jazz ?', 'Mon week-end ?', terms)).toBeFalse();
+    expect(portraitSafe('Rien à voir avec Sandra. Le déploiement est fini.', 'Le déploiement ?', terms))
+      .toBe('Le déploiement est fini.');
+    expect(portraitSafe('Tout va bien.', '', [])).toBe('Tout va bien.');
   });
 
   it('rend le message du refus de la passerelle, sinon un message neutre', () => {

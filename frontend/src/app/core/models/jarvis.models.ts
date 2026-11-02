@@ -57,6 +57,8 @@ export interface JarvisToSend {
   excerpt: string | null;
   chantierNumber: number | null;
   viaJarvis: boolean;
+  /** F-241 / SF-241-03 (D18) — l'encart reprend un élément du portrait : « élément personnel — à relire ». */
+  personal?: boolean;
 }
 
 /** L'encart « Pendant ton absence, via Jarvis ». `turns` vide : Jarvis n'a rien fait ici. */
@@ -141,6 +143,9 @@ export interface TurnTimingReport {
   forcedDelegation?: boolean;
   delegationReason?: string | null;
   correction?: boolean;
+  /** F-241 / SF-241-03 — le portrait servait à l'échange, et phrases écartées par ses interdits (jamais le texte). */
+  portraitOn?: boolean | null;
+  portraitBlocked?: number | null;
   /**
    * F-239 / SF-239-01 (D3b) — une parole refusée par la porte de parole réelle (aucun tour) : la raison et la longueur
    * du texte transcrit, **jamais le texte**.

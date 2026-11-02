@@ -92,7 +92,8 @@ public class JarvisPortraitService {
     }
 
     public record View(boolean exists, boolean enabled, long version, List<SectionView> sections,
-            List<SouvenirView> souvenirs, Size size, OffsetDateTime lastInterviewAt, int interviewOffers) {
+            List<SouvenirView> souvenirs, Size size, OffsetDateTime lastInterviewAt, int interviewOffers,
+            List<String> blockedTerms) {
     }
 
     private final JarvisPortraitRepository portraits;
@@ -154,7 +155,9 @@ public class JarvisPortraitService {
                 snap.map(Snapshot::version).orElse(0L), sectionViews, souvenirViews,
                 new Size(chars, JarvisPortraitRules.tokens(chars), JarvisPortraitRules.MAX_TOKENS,
                         JarvisPortraitRules.MAX_CHARS),
-                snap.map(Snapshot::lastInterviewAt).orElse(null), snap.map(Snapshot::interviewOffers).orElse(0));
+                snap.map(Snapshot::lastInterviewAt).orElse(null), snap.map(Snapshot::interviewOffers).orElse(0),
+                // F-241 / SF-241-03 (D12 a) — les termes « À ne pas aborder », pour le filet des lignes 🎙 sur l'écran.
+                snap.map(s -> List.copyOf(JarvisPortraitNote.forbiddenTerms(s))).orElse(List.of()));
     }
 
     // ---- Écriture du portrait ----

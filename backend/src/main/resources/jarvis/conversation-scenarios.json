@@ -422,6 +422,92 @@
           "expect": "deleguer"
         }
       ]
+    },
+    {
+      "id": "P01",
+      "category": "PORTRAIT_F241",
+      "portrait": {
+        "QUI": "Franck, chef de projet chez un intégrateur ; aime qu'on l'appelle Monsieur.",
+        "GOUTS": "Le jazz manouche, la course à pied le dimanche.",
+        "HUMOUR": "Pince-sans-rire, jamais lourd.",
+        "ENTOURAGE": "Sa compagne Claire ; leur fils Léo est né le 12 septembre 2026."
+      },
+      "turns": [
+        {
+          "said": "Je suis crevé, le petit ne dort pas.",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "P02",
+      "category": "PORTRAIT_F241",
+      "portrait": {
+        "QUI": "Franck, chef de projet chez un intégrateur ; aime qu'on l'appelle Monsieur.",
+        "GOUTS": "Le jazz manouche, la course à pied le dimanche.",
+        "HUMOUR": "Pince-sans-rire, jamais lourd.",
+        "INTERDITS": "Le divorce et tout ce qui touche à son ex-femme."
+      },
+      "turns": [
+        {
+          "said": "Qu'est-ce que je fais ce week-end ?",
+          "expect": "any"
+        }
+      ]
+    },
+    {
+      "id": "P03",
+      "category": "PORTRAIT_F241",
+      "portrait": {
+        "QUI": "Franck, chef de projet chez un intégrateur ; aime qu'on l'appelle Monsieur.",
+        "GOUTS": "Le jazz manouche, la course à pied le dimanche.",
+        "HUMOUR": "Pince-sans-rire, jamais lourd.",
+        "MOMENT": "Son père est hospitalisé à Lyon depuis la semaine dernière."
+      },
+      "turns": [
+        {
+          "said": "Journée chargée aujourd'hui.",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "P04",
+      "category": "PORTRAIT_F241",
+      "portrait": {
+        "QUI": "Franck, chef de projet chez un intégrateur ; aime qu'on l'appelle Monsieur.",
+        "GOUTS": "Le jazz manouche, la course à pied le dimanche.",
+        "HUMOUR": "Pince-sans-rire, jamais lourd.",
+        "ENTOURAGE": "Sa fille Léa, 6 ans, vient d'entrer au CP."
+      },
+      "presentation": true,
+      "turns": [
+        {
+          "said": "Comment va ma fille ?",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "P05",
+      "category": "PORTRAIT_F241",
+      "portrait": {
+        "QUI": "Franck, chef de projet chez un intégrateur ; aime qu'on l'appelle Monsieur.",
+        "GOUTS": "Le jazz manouche, la course à pied le dimanche.",
+        "HUMOUR": "Pince-sans-rire, jamais lourd.",
+        "DATES": "02/11 — anniversaire de Monsieur"
+      },
+      "context": "[Jarvis — date qui compte, aujourd'hui : anniversaire de Monsieur]",
+      "turns": [
+        {
+          "said": "Bonjour Jarvis.",
+          "expect": "repondre"
+        },
+        {
+          "said": "On commence par le point Orion.",
+          "expect": "any"
+        }
+      ]
     }
   ],
   "opusTurnEur": 0.98

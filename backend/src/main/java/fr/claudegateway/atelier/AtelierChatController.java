@@ -125,6 +125,9 @@ public class AtelierChatController {
         atelierAccess.requireTerminalAccess(id);
         atelierChatService.setLaneSplit(currentUser.requireId(), id, request.chantier(), request.splitOrDefault());
         if (request.viaJarvis()) {
+            // F-241 / SF-241-03 (D17) : le mode présentation suit la marque « né à la voix ».
+            atelierChatService.markPresentation(currentUser.requireId(), id, request.chantier(),
+                    request.presentationOrDefault());
             // F-231 / SF-231-06 : le tour qui s'ouvre est né à la voix.
             atelierChatService.markVoiceTurn(currentUser.requireId(), id, request.chantier(),
                     request.heardBeforeCutOrNull());
@@ -172,6 +175,10 @@ public class AtelierChatController {
         Integer chantier = request.chantier();
         // F-221 / SF-221-05 : ce fil est-il montré dans un volet du split ? (ses suites s'y limitent)
         atelierChatService.setLaneSplit(userId, id, chantier, request.splitOrDefault());
+        if (request.viaJarvis()) {
+            // F-241 / SF-241-03 (D17) : le mode présentation suit la marque « né à la voix ».
+            atelierChatService.markPresentation(userId, id, chantier, request.presentationOrDefault());
+        }
         SseEmitter emitter = newEmitter();
         fr.claudegateway.chat.SseStreamDispatch.submit(chatStreamExecutor, emitter,
                 () -> relay(emitter, userId, id, chantier, request.message(), mode, hasAccess, admin, force,

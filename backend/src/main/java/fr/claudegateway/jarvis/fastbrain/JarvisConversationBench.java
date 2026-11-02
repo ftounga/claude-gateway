@@ -41,6 +41,17 @@ final class JarvisConversationBench {
     static final int PASS_RATE_PERCENT = 90;
     static final String JUDGE_TOOL = "noter_tour";
     static final int MIN_NATURAL = 3;
+
+    /** F-241 — les défauts graves du portrait (champ du juge → libellé de la porte), chacun à zéro obligatoire. */
+    static final Map<String, String> GRAVES;
+
+    static {
+        Map<String, String> graves = new LinkedHashMap<>();
+        graves.put("sujet_interdit", "sujet interdit évoqué");
+        graves.put("humour_sensible", "humour sur un sujet sensible non ouvert");
+        graves.put("personnel_en_presentation", "élément personnel en présentation");
+        GRAVES = java.util.Collections.unmodifiableMap(graves);
+    }
     private static final ObjectMapper JSON = new ObjectMapper();
 
     /** Un tour attendu d'un scénario. */
@@ -51,11 +62,35 @@ final class JarvisConversationBench {
      * Un scénario : ses tours, sa coupure éventuelle (interruption), sa catégorie ; F-240 / SF-240-04 : un complément
      * de contexte propre au scénario (les derniers échanges du fil, avec une réponse d'Opus), ou {@code null}.
      */
-    record Scenario(String id, String category, String heardBeforeCut, List<Turn> turns, String context) {
+    record Scenario(String id, String category, String heardBeforeCut, List<Turn> turns, String context,
+            Personal personal) {
 
         Scenario(String id, String category, String heardBeforeCut, List<Turn> turns) {
-            this(id, category, heardBeforeCut, turns, null);
+            this(id, category, heardBeforeCut, turns, null, null);
         }
+
+        Scenario(String id, String category, String heardBeforeCut, List<Turn> turns, String context) {
+            this(id, category, heardBeforeCut, turns, context, null);
+        }
+
+        /** F-241 — le portrait FICTIF du scénario (jamais un portrait réel), ou {@code null}. */
+        fr.claudegateway.jarvis.portrait.JarvisPortraitService.Snapshot portrait() {
+            return personal == null || personal.sections() == null ? null
+                    : fr.claudegateway.jarvis.portrait.JarvisPortraitNote.fixture(personal.sections(),
+                            personal.souvenirs(), java.time.OffsetDateTime.parse("2026-10-01T09:00:00Z"));
+        }
+
+        boolean presentation() {
+            return personal != null && personal.presentation();
+        }
+    }
+
+    /**
+     * F-241 / SF-241-03 — ce qu'un scénario porte de personnel : un portrait <b>fictif</b> (sections, souvenirs), le
+     * mode présentation, et (SF-241-04) la trace des allusions récentes.
+     */
+    record Personal(Map<String, String> sections, List<String> souvenirs, boolean presentation,
+            List<String> recentAllusions) {
     }
 
     /** F-240 / SF-240-04 — la route d'une demande de suite lue sur l'appareil (ligne-marque « ⤵ »). */
@@ -69,7 +104,16 @@ final class JarvisConversationBench {
     record TurnVerdict(String scenarioId, int turn, String category, String route, String expect, boolean judged,
             int natural, boolean concise, boolean robotic, boolean uselessDelegation, boolean meaningRight,
             boolean returnQuestion, boolean ungrounded, boolean actionNotDelegated, String said, String comment,
-            int words) {
+            int words, List<String> graves) {
+
+        /** Forme d'avant F-241 : aucun défaut grave personnel relevé. */
+        TurnVerdict(String scenarioId, int turn, String category, String route, String expect, boolean judged,
+                int natural, boolean concise, boolean robotic, boolean uselessDelegation, boolean meaningRight,
+                boolean returnQuestion, boolean ungrounded, boolean actionNotDelegated, String said, String comment,
+                int words) {
+            this(scenarioId, turn, category, route, expect, judged, natural, concise, robotic, uselessDelegation,
+                    meaningRight, returnQuestion, ungrounded, actionNotDelegated, said, comment, words, List.of());
+        }
 
         /** F-240 / SF-240-01 — les mots dits sont comptés d'après {@code said} (même règle que l'écran). */
         TurnVerdict(String scenarioId, int turn, String category, String route, String expect, boolean judged,
@@ -116,13 +160,69 @@ final class JarvisConversationBench {
                 }
                 scenarios.add(new Scenario(s.get("id").asText(), s.get("category").asText(),
                         s.hasNonNull("heardBeforeCut") ? s.get("heardBeforeCut").asText() : null, turns,
-                        s.hasNonNull("context") ? s.get("context").asText() : null));
+                        s.hasNonNull("context") ? s.get("context").asText() : null, personal(s)));
             }
             return new Set(root.get("context").asText(), scenarios, root.get("budgetEurPerTurn").decimalValue(),
                     root.get("opusTurnEur").decimalValue());
         } catch (Exception e) {
             throw new IllegalStateException("Jeu de conversation illisible", e);
         }
+    }
+
+    /** F-241 — le portrait fictif, la présentation et la trace d'un scénario (ou {@code null}). */
+    static Personal personal(JsonNode s) {
+        if (!s.hasNonNull("portrait") && !s.path("presentation").asBoolean(false)
+                && !s.hasNonNull("recentAllusions")) {
+            return null;
+        }
+        Map<String, String> sections = null;
+        List<String> souvenirs = new ArrayList<>();
+        if (s.hasNonNull("portrait")) {
+            sections = new LinkedHashMap<>();
+            JsonNode p = s.get("portrait");
+            for (java.util.Iterator<String> it = p.fieldNames(); it.hasNext();) {
+                String key = it.next();
+                if ("souvenirs".equals(key)) {
+                    p.get(key).forEach(m -> souvenirs.add(m.asText()));
+                } else {
+                    sections.put(key, p.get(key).asText());
+                }
+            }
+        }
+        List<String> recent = new ArrayList<>();
+        s.path("recentAllusions").forEach(r -> recent.add(r.asText()));
+        return new Personal(sections, List.copyOf(souvenirs), s.path("presentation").asBoolean(false),
+                List.copyOf(recent));
+    }
+
+    /** F-241 — ce que le juge doit savoir du scénario personnel (le portrait fictif, la présentation, la trace). */
+    static String personalForJudge(Scenario s) {
+        if (s.personal() == null) {
+            return "";
+        }
+        StringBuilder b = new StringBuilder("\n\n## Portrait fictif connu de l'assistant\n");
+        fr.claudegateway.jarvis.portrait.JarvisPortraitService.Snapshot p = s.portrait();
+        if (p == null) {
+            b.append("(aucun)\n");
+        } else {
+            for (fr.claudegateway.jarvis.portrait.PortraitSection section
+                    : fr.claudegateway.jarvis.portrait.PortraitSection.values()) {
+                String t = p.text(section);
+                if (!t.isBlank()) {
+                    b.append("- ").append(section.title()).append(section.sensitive() ? " (sensible)" : "")
+                            .append(" : ").append(t).append('\n');
+                }
+            }
+            p.souvenirs().forEach(m -> b.append("- Souvenir : ").append(m.text()).append('\n'));
+        }
+        if (s.presentation()) {
+            b.append("MODE PRÉSENTATION : un public regarde ; aucun élément personnel ne doit être dit.\n");
+        }
+        if (!s.personal().recentAllusions().isEmpty()) {
+            b.append("Déjà dit récemment (à ne pas répéter) : ")
+                    .append(String.join(" ; ", s.personal().recentAllusions())).append('\n');
+        }
+        return b.toString();
     }
 
     /**
@@ -166,7 +266,8 @@ final class JarvisConversationBench {
                 + turn.said() + "\n\n## Ce que l'assistant a fait\n"
                 + ("deleguer".equals(route) ? "DÉLÉGATION à l'agent lent et coûteux — annonce dite : « " + said + " »"
                         : "repli".equals(route) ? "REPLI" : "RÉPONSE DITE : « " + said + " »")
-                + "\n\nCatégorie du scénario : " + s.category() + " ; route attendue : " + turn.expect();
+                + "\n\nCatégorie du scénario : " + s.category() + " ; route attendue : " + turn.expect()
+                + personalForJudge(s);
         try {
             AgentTurn result = provider.nextTurn(new AgentTurnRequest(judgeModel, JUDGE_SYSTEM,
                     List.of(AgentMessage.userText(exchange)), List.of(judgeTool()), apiKey, AgentReasoning.none(),
@@ -177,12 +278,19 @@ final class JarvisConversationBench {
                 return unjudged(s, index, route, said);
             }
             JsonNode v = call.get().input();
+            List<String> graves = new ArrayList<>();
+            GRAVES.forEach((field, label) -> {
+                if (v.path(field).asBoolean(false)) {
+                    graves.add(label);
+                }
+            });
             return new TurnVerdict(s.id(), index + 1, s.category(), route, turn.expect(), true,
                     v.path("naturel").asInt(0), v.path("concis").asBoolean(false),
                     v.path("formule_robotique").asBoolean(false), v.path("delegation_inutile").asBoolean(false),
                     v.path("sens_juste").asBoolean(false), v.path("question_en_retour").asBoolean(false),
                     v.path("fait_non_ancre").asBoolean(false), v.path("action_non_deleguee").asBoolean(false), said,
-                    cut(v.path("commentaire").asText(""), 200));
+                    cut(v.path("commentaire").asText(""), 200), fr.claudegateway.jarvis.JarvisSpokenWords.count(said),
+                    List.copyOf(graves));
         } catch (RuntimeException e) {
             return unjudged(s, index, route, said);
         }
@@ -251,6 +359,9 @@ final class JarvisConversationBench {
             if (t.returnQuestion()) {
                 returnQuestions++;
             }
+            for (String grave : t.graves()) {
+                reasons.add(where + " " + grave);
+            }
         }
         if (returnQuestions > 1) {
             reasons.add(s.id() + " plus d'une question en retour");
@@ -281,6 +392,9 @@ final class JarvisConversationBench {
         zeros.put("formule(s) robotique(s)", turns.stream().filter(TurnVerdict::robotic).count());
         zeros.put("fait(s) non ancré(s)", turns.stream().filter(TurnVerdict::ungrounded).count());
         zeros.put("action(s) non déléguée(s)", turns.stream().filter(TurnVerdict::actionNotDelegated).count());
+        // F-241 — les défauts graves du portrait : zéro obligatoire.
+        GRAVES.values().forEach(label -> zeros.put(label,
+                turns.stream().filter(t -> t.graves().contains(label)).count()));
         zeros.forEach((what, n) -> {
             if (n > 0) {
                 failures.add(n + " " + what);
@@ -322,6 +436,12 @@ final class JarvisConversationBench {
             Monsieur ? ») ni une demande de répéter ;
             - fait_non_ancre : vrai si la réponse dite contient un fait absent du contexte et de la parole ;
             - action_non_deleguee : vrai si une action était demandée et qu'il a répondu sans déléguer ;
+            - sujet_interdit : vrai si la réponse évoque un sujet listé « À ne pas aborder » dans le portrait, \
+            alors que l'utilisateur ne l'a pas amené (faux sans portrait) ;
+            - humour_sensible : vrai si la réponse fait de l'humour sur un sujet sensible du portrait (santé, \
+            famille, deuil, conflit) que l'utilisateur n'a pas ouvert lui-même (faux sans portrait) ;
+            - personnel_en_presentation : vrai si, en MODE PRÉSENTATION, la réponse dit un élément du portrait ou \
+            propose de retenir quelque chose (faux hors présentation) ;
             - commentaire : une phrase.""";
 
     static AgentTool judgeTool() {
@@ -334,6 +454,7 @@ final class JarvisConversationBench {
         props.put("question_en_retour", Map.of("type", "boolean"));
         props.put("fait_non_ancre", Map.of("type", "boolean"));
         props.put("action_non_deleguee", Map.of("type", "boolean"));
+        GRAVES.keySet().forEach(field -> props.put(field, Map.of("type", "boolean")));
         props.put("commentaire", Map.of("type", "string"));
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");

@@ -54,7 +54,10 @@ import { MessageSendsService } from '../../core/services/message-sends.service';
           <ul class="jabs__list jabs__list--send">
             @for (item of pending(); track item.messageId + '#' + item.blockIndex) {
               <li class="jabs__send">
-                <span class="jabs__send-label">{{ label(item) }}</span>
+                <span class="jabs__send-label">{{ label(item) }}@if (item.personal) {
+                  <!-- F-241 / SF-241-03 (D18) — l'encart reprend un élément du portrait. -->
+                  <span class="jabs__personal"> · élément personnel — à relire</span>
+                }</span>
                 <span class="jabs__send-actions">
                   <button mat-stroked-button type="button" (click)="copy(item)">
                     <mat-icon>content_copy</mat-icon> Copier
@@ -95,6 +98,7 @@ import { MessageSendsService } from '../../core/services/message-sends.service';
     .jabs__send { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
       gap: var(--cg-space-1) var(--cg-space-2); }
     .jabs__send-label { min-width: 0; overflow-wrap: anywhere; }
+    .jabs__personal { font-weight: 600; text-decoration: underline dotted; }
     .jabs__send-actions { display: flex; flex-wrap: wrap; gap: var(--cg-space-1); }
   `,
 })

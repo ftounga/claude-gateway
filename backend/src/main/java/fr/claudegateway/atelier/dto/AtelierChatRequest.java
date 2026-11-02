@@ -48,7 +48,20 @@ public record AtelierChatRequest(
         String via,
 
         @Size(max = 2000, message = "La part entendue est trop longue.")
-        String heardBeforeCut) {
+        String heardBeforeCut,
+
+        Boolean presentation) {
+
+    /** Forme d'avant F-241 / SF-241-03 : pas de mode présentation transmis. */
+    public AtelierChatRequest(String message, AgentTurnMode mode, Boolean force, List<UUID> attachedDepositIds,
+            Integer chantier, Boolean split, String via, String heardBeforeCut) {
+        this(message, mode, force, attachedDepositIds, chantier, split, via, heardBeforeCut, null);
+    }
+
+    /** F-241 / SF-241-03 (D17) — l'écran Jarvis est en mode présentation (un public regarde). */
+    public boolean presentationOrDefault() {
+        return viaJarvis() && Boolean.TRUE.equals(presentation);
+    }
 
     /** L'origine d'un message dit à la voix, en mode Jarvis (F-231 / SF-231-06). */
     public static final String VIA_JARVIS = "JARVIS";

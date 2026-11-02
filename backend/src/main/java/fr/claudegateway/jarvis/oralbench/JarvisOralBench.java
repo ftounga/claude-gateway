@@ -34,7 +34,43 @@ public final class JarvisOralBench {
 
     /** Un scénario : la parole, le contexte figé, ce qu'on attend de l'invitation et de la confirmation. */
     public record Scenario(String id, String category, String said, String context, String invitation,
-            boolean confirmation, String annexKeyword) {
+            boolean confirmation, String annexKeyword, java.util.Map<String, String> portrait) {
+
+        public Scenario(String id, String category, String said, String context, String invitation,
+                boolean confirmation, String annexKeyword) {
+            this(id, category, said, context, invitation, confirmation, annexKeyword, null);
+        }
+
+        /** F-241 / SF-241-03 — le portrait FICTIF du scénario (jamais celui d'un compte), ou {@code null}. */
+        public fr.claudegateway.jarvis.portrait.JarvisPortraitService.Snapshot fixture() {
+            return portrait == null ? null : fr.claudegateway.jarvis.portrait.JarvisPortraitNote.fixture(portrait,
+                    List.of(), java.time.OffsetDateTime.parse("2026-10-01T09:00:00Z"));
+        }
+    }
+
+    /**
+     * F-241 / SF-241-03 (D18, D12 a) — les défauts personnels d'une réponse d'Opus, lus sans modèle : un encart mail ou
+     * message qui reprend le portrait (fuite), ou une ligne 🎙 qui évoque un sujet interdit non amené.
+     */
+    public static List<String> personalFailures(Scenario s, String reply, Reading reading) {
+        List<String> failures = new ArrayList<>();
+        fr.claudegateway.jarvis.portrait.JarvisPortraitService.Snapshot p = s.fixture();
+        if (p == null) {
+            return failures;
+        }
+        for (fr.claudegateway.atelier.sends.MessageBlocks.Block b
+                : fr.claudegateway.atelier.sends.MessageBlocks.parse(reply == null ? "" : reply)) {
+            String text = (b.subject() == null ? "" : b.subject() + "\n") + b.body();
+            if (fr.claudegateway.jarvis.portrait.JarvisPortraitNote.leaks(text, p)) {
+                failures.add(s.id() + " : élément personnel dans un encart (fuite du portrait)");
+                break;
+            }
+        }
+        if (reading != null && reading.oral() != null && fr.claudegateway.jarvis.portrait.JarvisPortraitNote.blocked(
+                reading.oral(), s.said(), fr.claudegateway.jarvis.portrait.JarvisPortraitNote.forbiddenTerms(p))) {
+            failures.add(s.id() + " : sujet interdit évoqué");
+        }
+        return failures;
     }
 
     /** Ce que la réponse d'Opus a dit, lu sans modèle. */
@@ -54,12 +90,21 @@ public final class JarvisOralBench {
                 scenarios.add(new Scenario(s.get("id").asText(), s.get("category").asText(), s.get("said").asText(),
                         s.get("context").asText(), s.path("invitation").asText("any"),
                         s.path("confirmation").asBoolean(false),
-                        s.hasNonNull("annexKeyword") ? s.get("annexKeyword").asText() : null));
+                        s.hasNonNull("annexKeyword") ? s.get("annexKeyword").asText() : null, portrait(s)));
             }
             return List.copyOf(scenarios);
         } catch (Exception e) {
             throw new IllegalStateException("Jeu du banc de la parole illisible", e);
         }
+    }
+
+    private static java.util.Map<String, String> portrait(JsonNode s) {
+        if (!s.hasNonNull("portrait")) {
+            return null;
+        }
+        java.util.Map<String, String> map = new java.util.LinkedHashMap<>();
+        s.get("portrait").fields().forEachRemaining(e -> map.put(e.getKey(), e.getValue().asText()));
+        return map;
     }
 
     /** Le message du tour : le contexte figé (ce que les outils auraient rendu), la parole, la consigne orale réelle. */
