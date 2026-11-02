@@ -1,6 +1,7 @@
 import {
-  AdditiveBlending, BufferAttribute, BufferGeometry, Camera, EdgesGeometry, Group, LineBasicMaterial, LineLoop,
-  LineSegments, Mesh, MeshBasicMaterial, PlaneGeometry, Points, Scene, ShaderMaterial, Vector3,
+  AdditiveBlending, BufferAttribute, BufferGeometry, Camera, EdgesGeometry, Group, Line, LineBasicMaterial,
+  LineDashedMaterial, LineLoop, LineSegments, Mesh, MeshBasicMaterial, PlaneGeometry, Points, Scene, ShaderMaterial,
+  Vector3,
 } from 'three';
 
 import { HOLO_COLORS, MOTION_DURATIONS, ease, rgb } from '../jarvis-motion';
@@ -25,7 +26,15 @@ import { CloudPoint, Effect3d, SceneTone } from '../scenes3d/jarvis-scene3d.mode
 export type Locator = (key: string, out: Vector3) => boolean;
 
 /** Anneaux d'impulsion simultanés au plus. */
-const RING_POOL = 6;
+const RING_POOL = 16;
+/** S15 — écart de la vague entre deux nœuds (ms). */
+const WAVE_STAGGER = 80;
+/** S2 — une onde lente toutes les 2,4 s. */
+const WAIT_WAVE_MS = 2400;
+/** T-L4 — rupture d'une liaison (ms). */
+const RUPTURE_MS = 700;
+/** S2 — l'arc du compte à rebours (segments). */
+const ARC_SEGMENTS = 128;
 const RING_SEGMENTS = 64;
 /** Cartes (tickets, feuillets) au plus. */
 const CARD_POOL = 6;
@@ -63,6 +72,8 @@ interface Ring {
   material: LineBasicMaterial;
   start: number;
   anchor: string;
+  /** Taille de l'anneau (1 = impulsion du cœur ; plus petit autour d'un nœud). */
+  scale: number;
 }
 
 interface Card {
@@ -83,6 +94,9 @@ type FlowSpec = Extract<Effect3d, { kind: 'flow' }>;
 type CardsSpec = Extract<Effect3d, { kind: 'cards' }>;
 type ScanSpec = Extract<Effect3d, { kind: 'scan' }>;
 type CloudSpec = Extract<Effect3d, { kind: 'cloud' }>;
+type TetherSpec = Extract<Effect3d, { kind: 'tether' }>;
+type CountdownSpec = Extract<Effect3d, { kind: 'countdown' }>;
+type CrownSpec = Extract<Effect3d, { kind: 'crown' }>;
 
 export class Effects3d {
   readonly group = new Group();
@@ -107,6 +121,20 @@ export class Effects3d {
   private readonly card: Presence<CardsSpec> = { spec: null, on: false, since: -Infinity };
   private readonly scan: Presence<ScanSpec> = { spec: null, on: false, since: -Infinity };
   private readonly cloud: Presence<CloudSpec> = { spec: null, on: false, since: -Infinity };
+  private readonly tether: Presence<TetherSpec> = { spec: null, on: false, since: -Infinity };
+  private readonly countdown: Presence<CountdownSpec> = { spec: null, on: false, since: -Infinity };
+  private readonly crown: Presence<CrownSpec> = { spec: null, on: false, since: -Infinity };
+  /** T-L4 — l'instant de la rupture (attente levée), `null` sinon. */
+  private brokenAt: number | null = null;
+  private waveSeq = -1;
+  private lastWaitWave = -Infinity;
+  private readonly tetherLine: LineSegments;
+  private readonly tetherMaterial: LineDashedMaterial;
+  private readonly tetherPos = new Float32Array(12);
+  private readonly tetherDist = new Float32Array(4);
+  private readonly arc: Line;
+  private readonly arcMaterial: LineBasicMaterial;
+  private readonly mid = new Vector3();
 
   constructor(scene: Scene, narrow = false, pixelRatio = 1) {
     scene.add(this.group);
@@ -127,7 +155,7 @@ export class Effects3d {
       line.visible = false;
       line.frustumCulled = false;
       this.group.add(line);
-      this.rings.push({ line, material, start: -Infinity, anchor: CORE_KEY });
+      this.rings.push({ line, material, start: -Infinity, anchor: CORE_KEY, scale: 1 });
     }
     this.scanMaterial = this.lineMaterial();
     this.scanRing = new LineLoop(ring, this.scanMaterial);
@@ -166,13 +194,39 @@ export class Effects3d {
     this.particles = new Points(geometry, this.particleMaterial);
     this.particles.frustumCulled = false;
     this.group.add(this.particles);
+
+    // SF-236-10 — L-attente : deux segments pointillés (un seul tant que l'attente tient, deux fragments à la rupture).
+    const tether = new BufferGeometry();
+    tether.setAttribute('position', new BufferAttribute(this.tetherPos, 3));
+    tether.setAttribute('lineDistance', new BufferAttribute(this.tetherDist, 1));
+    this.tetherMaterial = new LineDashedMaterial({ dashSize: 0.08, gapSize: 0.06, transparent: true, opacity: 0,
+      blending: AdditiveBlending, depthWrite: false });
+    this.tetherLine = new LineSegments(tether, this.tetherMaterial);
+    this.tetherLine.visible = false;
+    this.tetherLine.frustumCulled = false;
+    this.group.add(this.tetherLine);
+    // SF-236-10 — S2 : l'arc du compte à rebours autour du cœur.
+    const arc = new BufferGeometry();
+    const arcPoints = new Float32Array((ARC_SEGMENTS + 1) * 3);
+    for (let i = 0; i <= ARC_SEGMENTS; i++) {
+      const a = Math.PI / 2 - (i / ARC_SEGMENTS) * Math.PI * 2;
+      arcPoints[i * 3] = Math.cos(a);
+      arcPoints[i * 3 + 1] = Math.sin(a);
+    }
+    arc.setAttribute('position', new BufferAttribute(arcPoints, 3));
+    this.arcMaterial = this.lineMaterial();
+    this.arc = new Line(arc, this.arcMaterial);
+    this.arc.visible = false;
+    this.arc.frustumCulled = false;
+    this.group.add(this.arc);
   }
 
   /** Les effets du plan ; `opening` (banc) : tout part de t = 0. */
   set(effects: readonly Effect3d[], now: number, opening: boolean): void {
     const at = opening ? 0 : now;
     const seen = { flow: null as FlowSpec | null, cards: null as CardsSpec | null, scan: null as ScanSpec | null,
-      cloud: null as CloudSpec | null };
+      cloud: null as CloudSpec | null, tether: null as TetherSpec | null, countdown: null as CountdownSpec | null,
+      crown: null as CrownSpec | null };
     for (const effect of effects) {
       switch (effect.kind) {
         case 'pulse':
@@ -193,12 +247,39 @@ export class Effects3d {
         case 'cloud':
           seen.cloud = effect;
           break;
+        case 'tether':
+          seen.tether = effect;
+          break;
+        case 'countdown':
+          seen.countdown = effect;
+          break;
+        case 'crown':
+          seen.crown = effect;
+          break;
+        case 'wave':
+          if (opening || effect.seq > this.waveSeq) {
+            effect.keys.forEach((key, i) => this.fireRing(key, effect.tone, at + i * WAVE_STAGGER, 0.5));
+          }
+          this.waveSeq = effect.seq;
+          break;
       }
+    }
+    // T-L4 : l'attente levée — la rupture part de l'instant où la liaison se rompt (une fois).
+    if (seen.tether?.broken && !this.tether.spec?.broken) {
+      this.brokenAt = at;
+    } else if (seen.tether && !seen.tether.broken) {
+      this.brokenAt = null;
+    }
+    if (seen.countdown && !this.countdown.on) {
+      this.lastWaitWave = -Infinity;
     }
     present(this.flow, seen.flow, at, (a, b) => a.from === b.from && a.to === b.to);
     present(this.card, seen.cards, at, (a, b) => a.anchor === b.anchor && a.layout === b.layout);
     present(this.scan, seen.scan, at, (a, b) => a.anchor === b.anchor);
     present(this.cloud, seen.cloud, at, (a, b) => a.anchor === b.anchor);
+    present(this.tether, seen.tether, at, (a, b) => a.from === b.from && a.to === b.to);
+    present(this.countdown, seen.countdown, at, () => true);
+    present(this.crown, seen.crown, at, (a, b) => a.done.length === b.done.length);
   }
 
   /** Une image. `camera` : anneaux, cartes et loupe lui font face. */
@@ -209,8 +290,11 @@ export class Effects3d {
     this.frameRings(now, camera, locate);
     this.frameCards(now, camera, locate);
     this.frameScan(now, camera, locate);
+    this.frameTether(now, locate);
+    this.frameCountdown(now, camera);
     let used = this.frameFlow(now, locate, 0);
     used = this.frameCloud(now, locate, used);
+    used = this.frameCrown(now, used);
     const geometry = this.particles.geometry;
     geometry.setDrawRange(0, used);
     if (used > 0) {
@@ -234,6 +318,10 @@ export class Effects3d {
     this.cards[0]?.edge.geometry.dispose();
     this.particles.geometry.dispose();
     this.particleMaterial.dispose();
+    this.tetherLine.geometry.dispose();
+    this.tetherMaterial.dispose();
+    this.arc.geometry.dispose();
+    this.arcMaterial.dispose();
     this.group.removeFromParent();
   }
 
@@ -259,7 +347,7 @@ export class Effects3d {
       ring.line.visible = true;
       ring.line.position.copy(this.anchor(ring.anchor, locate, this.at));
       ring.line.quaternion.copy(camera.quaternion);
-      ring.line.scale.setScalar(0.6 + 2.6 * ease('sortie', k));
+      ring.line.scale.setScalar((0.6 + 2.6 * ease('sortie', k)) * ring.scale);
       ring.material.opacity = 0.9 * (1 - ease('glisse', k));
     }
   }
@@ -387,7 +475,92 @@ export class Effects3d {
     return offset + n;
   }
 
-  private fireRing(anchor: string, tone: SceneTone, at: number): void {
+  /**
+   * S11 — L-attente : pointillé de la teinte d'attente du chantier à la personne (ou à un point flottant si elle
+   * n'est pas posée). Levée (T-L4, 0,7 s, `entree`) : le filament se scinde au milieu, chaque fragment se rétracte
+   * vers son bout et s'éteint.
+   */
+  private frameTether(now: number, locate: Locator): void {
+    const spec = this.tether.spec;
+    const presence = level(this.tether, now);
+    if (!spec || presence <= 0) {
+      this.tetherLine.visible = false;
+      return;
+    }
+    this.anchor(spec.from, locate, this.at);
+    if (!spec.to || !locate(spec.to, this.to)) {
+      this.to.copy(this.at).addScaledVector(this.right, 0.9).addScaledVector(this.up, 0.35);
+    }
+    const k = this.brokenAt === null ? 0 : ease('entree', clamp((now - this.brokenAt) / RUPTURE_MS));
+    // Rupture : un trou s'ouvre au milieu, chaque fragment se rétracte vers son bout.
+    const gap = this.brokenAt === null ? 0 : 0.08 + 0.42 * k;
+    this.mid.copy(this.at).lerp(this.to, 0.5 - gap);
+    write(this.tetherPos, 0, this.at);
+    write(this.tetherPos, 1, this.mid);
+    this.mid.copy(this.at).lerp(this.to, 0.5 + gap);
+    write(this.tetherPos, 2, this.mid);
+    write(this.tetherPos, 3, this.to);
+    const len = this.at.distanceTo(this.to);
+    this.tetherDist[0] = 0;
+    this.tetherDist[1] = len * (0.5 - gap);
+    this.tetherDist[2] = len * (0.5 + gap);
+    this.tetherDist[3] = len;
+    const geometry = this.tetherLine.geometry;
+    (geometry.getAttribute('position') as BufferAttribute).needsUpdate = true;
+    (geometry.getAttribute('lineDistance') as BufferAttribute).needsUpdate = true;
+    const c = this.palette.get(spec.tone)!;
+    this.tetherMaterial.color.setRGB(c[0], c[1], c[2]);
+    this.tetherMaterial.opacity = presence * (1 - k);
+    this.tetherLine.visible = true;
+  }
+
+  /** S2 — l'arc qui se vide autour du cœur (fraction restante) et une onde lente toutes les 2,4 s. */
+  private frameCountdown(now: number, camera: Camera): void {
+    const spec = this.countdown.spec;
+    const presence = level(this.countdown, now);
+    if (!spec || presence <= 0) {
+      this.arc.visible = false;
+      return;
+    }
+    this.arc.visible = true;
+    this.arc.position.set(0, 0, 0);
+    this.arc.quaternion.copy(camera.quaternion);
+    this.arc.scale.setScalar(1.25);
+    this.arc.geometry.setDrawRange(0, Math.max(2, Math.round(clamp(spec.fraction) * ARC_SEGMENTS) + 1));
+    const c = this.palette.get(spec.tone)!;
+    this.arcMaterial.color.setRGB(c[0], c[1], c[2]);
+    this.arcMaterial.opacity = presence;
+    if (this.countdown.on && now - this.lastWaitWave >= WAIT_WAVE_MS) {
+      this.lastWaitWave = now;
+      this.fireRing(CORE_KEY, spec.tone, now, 0.6);
+    }
+  }
+
+  /** S14 — la couronne de perles sous le cœur (arc de 120°), une par point de route ; traité = vert. */
+  private frameCrown(now: number, offset: number): number {
+    const spec = this.crown.spec;
+    const presence = level(this.crown, now);
+    if (!spec || presence <= 0) {
+      return offset;
+    }
+    const n = Math.min(this.poolSize - offset, spec.done.length);
+    for (let j = 0; j < n; j++) {
+      const a = n > 1 ? (-60 + (120 * j) / (n - 1)) * (Math.PI / 180) : 0;
+      const i = offset + j;
+      this.mid.set(0, 0, 0).addScaledVector(this.right, Math.sin(a) * 1.4)
+        .addScaledVector(this.up, -1.2 - (1 - Math.cos(a)) * 0.4);
+      write(this.pos, i, this.mid);
+      const c = this.palette.get(spec.done[j] ? 'green' : 'normal')!;
+      const glow = presence * (spec.done[j] ? 1 : 0.6);
+      this.col[i * 3] = c[0] * glow;
+      this.col[i * 3 + 1] = c[1] * glow;
+      this.col[i * 3 + 2] = c[2] * glow;
+      this.size[i] = 5;
+    }
+    return offset + n;
+  }
+
+  private fireRing(anchor: string, tone: SceneTone, at: number, scale = 1): void {
     // Le plus ancien anneau est réutilisé (pool fixe).
     let ring = this.rings[0];
     for (const r of this.rings) {
@@ -397,9 +570,16 @@ export class Effects3d {
     }
     ring.start = at;
     ring.anchor = anchor;
+    ring.scale = scale;
     const c = this.palette.get(tone)!;
     ring.material.color.setRGB(c[0], c[1], c[2]);
   }
+}
+
+function write(buffer: Float32Array, index: number, v: Vector3): void {
+  buffer[index * 3] = v.x;
+  buffer[index * 3 + 1] = v.y;
+  buffer[index * 3 + 2] = v.z;
 }
 
 function clamp(v: number): number {

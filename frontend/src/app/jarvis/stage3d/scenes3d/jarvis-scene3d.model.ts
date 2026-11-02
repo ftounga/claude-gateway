@@ -68,7 +68,18 @@ export type Effect3d =
   /** SF-236-09 — la loupe qui balaie (S5 recherche). */
   | { kind: 'scan'; anchor: string; tone: SceneTone }
   /** SF-236-09 (N9) — le nuage du dépôt près du sujet : un amas par dossier, lecture / écriture. */
-  | { kind: 'cloud'; anchor: string; points: readonly CloudPoint[] };
+  | { kind: 'cloud'; anchor: string; points: readonly CloudPoint[] }
+  /**
+   * SF-236-10 — une liaison d'attente (L-attente, pointillé, teinte d'attente) entre un chantier et une personne ;
+   * `broken` = l'attente est levée : le filament se scinde en deux fragments qui s'éteignent (T-L4, 0,7 s).
+   */
+  | { kind: 'tether'; from: string; to: string | null; tone: SceneTone; broken: boolean }
+  /** SF-236-10 — S2 : l'arc qui se vide autour du cœur au rythme des secondes restantes (0-1). */
+  | { kind: 'countdown'; fraction: number; tone: SceneTone }
+  /** SF-236-10 — S14 : la couronne de perles sous le cœur, une par point de route (traité = vert). */
+  | { kind: 'crown'; done: readonly boolean[] }
+  /** SF-236-10 — S15 : une vague sur les nœuds donnés (80 ms d'écart). */
+  | { kind: 'wave'; keys: readonly string[]; tone: SceneTone; seq: number };
 
 /** Le plan d'une scène 3D. */
 export interface ScenePlan3d {
@@ -79,6 +90,8 @@ export interface ScenePlan3d {
   effects: Effect3d[];
   /** Le nœud que la scène met en avant (allumé, cadré), s'il existe dans l'univers. */
   focus: string | null;
+  /** SF-236-10 — un travelling lent (S15 « le point » : 60°, S10 passation) ; joué une fois par `id`. */
+  travel?: { id: string; degrees: number };
 }
 
 /** Ce qu'une scène 3D sait en plus de la scène F-234 (lu, jamais écrit). */
@@ -95,6 +108,8 @@ export interface SceneContext {
   session: SessionSnapshot;
   /** SF-236-09 — les clés de tickets nommées dans la phrase dite (la carte s'illumine). */
   spokenTickets: readonly string[];
+  /** SF-236-10 — étapes faites pendant le tour, par chantier. */
+  stepsDone: Readonly<Record<string, number>>;
 }
 
 /** Une scène 3D : pure, déterministe. */

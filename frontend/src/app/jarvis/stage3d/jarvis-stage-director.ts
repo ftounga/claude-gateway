@@ -61,11 +61,14 @@ export interface ScreenSignals {
   pulses: number;
   /** SF-236-09 — les clés de tickets nommées dans la phrase dite par Jarvis (la carte s'illumine). */
   spokenTickets: readonly string[];
+  /** H2 — SF-236-10 : étapes faites pendant le tour, par chantier (`ReaderState.stepsDone`). */
+  stepsDone: Readonly<Record<string, number>>;
 }
 
 export const IDLE_SCREEN: ScreenSignals = { state: 'repos', frozen: false, waiting: false, conversing: false,
   wakeCalls: 0, delegations: 0, fastBrainOn: false, turnActive: false, brainEnd: 'normal', universe: null,
-  subjectId: null, lit: [], said: [], shown: null, scene: null, pulses: 0, spokenTickets: [] };
+  subjectId: null, lit: [], said: [], shown: null, scene: null, pulses: 0, spokenTickets: [],
+  stepsDone: {} };
 
 /** Deux relevés de l'écran identiques (évite de recalculer le plan pour rien). */
 export function sameScreen(a: ScreenSignals, b: ScreenSignals): boolean {
@@ -74,7 +77,8 @@ export function sameScreen(a: ScreenSignals, b: ScreenSignals): boolean {
     && a.turnActive === b.turnActive && a.brainEnd === b.brainEnd && a.universe === b.universe
     && a.subjectId === b.subjectId && sameKeys(a.lit, b.lit) && sameKeys(a.said, b.said)
     && (a.shown === b.shown || (!!a.shown && !!b.shown && sameKeys(a.shown, b.shown)))
-    && a.scene === b.scene && a.pulses === b.pulses && sameKeys(a.spokenTickets, b.spokenTickets);
+    && a.scene === b.scene && a.pulses === b.pulses && sameKeys(a.spokenTickets, b.spokenTickets)
+    && a.stepsDone === b.stepsDone;
 }
 
 function sameKeys(a: readonly string[], b: readonly string[]): boolean {
@@ -103,10 +107,11 @@ export function universeView(s: ScreenSignals, asleep: boolean, narrow: boolean)
   }
   // SF-236-08 — l'entité de la scène en cours est allumée elle aussi (S-GEN : la cible reconnue, D2 : ≤ 3).
   const cited = [...s.said, ...s.lit.filter((k) => !s.said.includes(k))];
-  const entity = s.scene?.entity?.key;
+  // SF-236-10 — le chantier d'une scène S9 / S11 prime sur l'entité : il est posé, allumé, son chapelet déployé.
+  const entity = s.scene?.data?.chantierKey ?? s.scene?.entity?.key;
   const lit = entity && !cited.includes(entity) && cited.length < MAX_LIT_NODES ? [...cited, entity] : cited;
   const layout = layoutUniverse3d(s.universe, { subjectId: s.subjectId, narrow,
-    shown: new Set([...lit, ...(s.shown ?? [])]) });
+    shown: new Set([...lit, ...(s.shown ?? [])]), stepsDone: s.stepsDone });
   const graph = linkGraph(layout, { subjectId: s.subjectId, lit, shown: s.shown, asleep });
   const focus = s.shown === null ? layout.nodes.find((n) => n.key === lit.find((k) => graph.nodes.get(k) === 'lit'))
     ?? null : null;
@@ -136,7 +141,8 @@ export interface StagePlan {
 export function stageScene(s: ScreenSignals, view: UniverseView, narrow: boolean,
     session: SessionSnapshot = EMPTY_SESSION): ScenePlan3d | null {
   const plan = directScene(s.scene, { universe: s.universe, subjectId: s.subjectId, pulses: s.pulses, narrow,
-    nodes: new Set(view.layout.nodes.map((n) => n.key)), session, spokenTickets: s.spokenTickets });
+    nodes: new Set(view.layout.nodes.map((n) => n.key)), session, spokenTickets: s.spokenTickets,
+    stepsDone: s.stepsDone });
   // T6 — pool borné (PC 8, téléphone 2) ; « devant tout » (S2) d'abord, jamais écarté.
   return plan ? { ...plan, panels: boundPanels(plan.panels, narrow) } : null;
 }

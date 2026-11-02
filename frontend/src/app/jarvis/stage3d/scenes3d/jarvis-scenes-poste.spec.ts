@@ -11,7 +11,7 @@ import {
 
 function ctx(extra: Partial<SceneContext> = {}): SceneContext {
   return { universe: testUniverse(), subjectId: 's-forge', nodes: new Set(['h-cagip', 's-forge', 's-forge#3', 'h-eden']),
-    pulses: 1, narrow: false, session: EMPTY_SESSION, spokenTickets: [], ...extra };
+    pulses: 1, narrow: false, session: EMPTY_SESSION, spokenTickets: [], stepsDone: {}, ...extra };
 }
 
 function effect<K extends Effect3d['kind']>(effects: readonly Effect3d[], kind: K): Extract<Effect3d, { kind: K }> {
