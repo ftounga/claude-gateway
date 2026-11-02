@@ -100,7 +100,8 @@ class JarvisFastBrainServiceTest {
         assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
         assertThat(outcome.spokenText()).isEqualTo("Le chantier 3 en est aux tests.");
         assertThat(heard.toString().strip()).isEqualTo("Le chantier 3 en est aux tests.");
-        verify(usage).addFastBrain(eq(alice), any());
+        // Le coût est compté à la fin de l’appel, en tâche de fond : on lui laisse le temps.
+        verify(usage, org.mockito.Mockito.timeout(2_000)).addFastBrain(eq(alice), any());
     }
 
     @Test

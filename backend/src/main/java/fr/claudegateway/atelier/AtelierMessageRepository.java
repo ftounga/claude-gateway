@@ -28,6 +28,10 @@ public interface AtelierMessageRepository extends JpaRepository<AtelierMessage, 
      */
     List<AtelierMessage> findTop60ByUserIdAndViaAndRoleOrderByCreatedAtDesc(UUID userId, String via, String role);
 
+    /** F-239 / SF-239-09 — les messages Jarvis du compte depuis un instant (la journée), du plus ancien au plus récent. */
+    List<AtelierMessage> findTop200ByUserIdAndViaAndCreatedAtGreaterThanEqualOrderByCreatedAtAsc(UUID userId, String via,
+            java.time.OffsetDateTime from);
+
     /**
      * Les douze derniers messages du fil, du plus récent au plus ancien (F-202 / SF-202-01) : la matière
      * de Plume, bornée par le nombre ici et par un budget de caractères au service. Filtrée
