@@ -3,6 +3,8 @@ import { JarvisPieceStore, refusalPhrase } from './pieces/jarvis-piece-store';
 import { pieceVoiceCommand } from './pieces/jarvis-piece-voice';
 import { screenBlock } from './pieces/jarvis-piece-screen';
 import { ShowCommand } from './pieces/jarvis-piece-show';
+import { StoryRunner } from './pieces/jarvis-piece-story';
+import { Piece } from './pieces/jarvis-piece.models';
 import {
   ClosedChantier, PROOF_OFFER_MS, closedChantiers, pieceShowCommand, proofDemand, proofOfferPhrase, proofPieces,
 } from './pieces/jarvis-piece-live';
@@ -1309,6 +1311,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
     // F-237 / SF-237-05 (§5.3) — navigation parmi les pièces sur l'appareil, sans IA : liste fermée, phrase entière.
     const pieceAction = pieceVoiceCommand(text, this.pieces.nav());
+    // F-237 / SF-237-10 — pendant un récit, « suivante », « pause », « reprends », « ferme » pilotent le récit.
+    if (pieceAction && this.story && this.storyDrives(pieceAction.type)) {
+      return;
+    }
     if (pieceAction) {
       const done = this.pieces.dispatch(pieceAction);
       if (!done.ok) {
@@ -2094,6 +2100,95 @@ export class JarvisComponent implements OnInit, OnDestroy {
       if (phrase) {
         await this.say(phrase);
       }
+      return;
+    }
+    if (command.action === 'raconter' && this.pieces.mode() === 'story') {
+      void this.startStory();
+    }
+  }
+
+  /** F-237 / SF-237-10 — le récit en cours (« raconte-moi le chantier 3 »), ou `null`. */
+  private story: StoryRunner | null = null;
+
+  /**
+   * Le diaporama narré : après la phrase du cerveau rapide, chaque pièce de la galerie est dite (description
+   * existante), la suivante arrive à la fin de la phrase ; une vidéo se lit sur son extrait.
+   */
+  private async startStory(): Promise<void> {
+    this.story?.stop();
+    const map = this.pieces.pieces();
+    const pieces = this.pieces.nav().items.map((i) => map.get(i.id)).filter((p): p is Piece => p != null);
+    if (!pieces.length) {
+      return;
+    }
+    let stopped = false;
+    const runner = new StoryRunner(pieces, {
+      select: (index) => {
+        if (!stopped) {
+          this.pieces.dispatch({ type: 'select', ref: index });
+        }
+      },
+      say: (phrase) => this.say(phrase),
+      excerpt: async (_index, from, seconds) => {
+        if (from > 0) {
+          this.pieces.dispatch({ type: 'seek', t: from });
+        }
+        this.pieces.dispatch({ type: 'play' });
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, seconds * 1000);
+          this.storyAbort = () => {
+            clearTimeout(timer);
+            resolve();
+          };
+        });
+        this.storyAbort = null;
+        this.pieces.dispatch({ type: 'pause' });
+      },
+      cut: () => {
+        this.voice.stop();
+        this.storyAbort?.();
+      },
+    });
+    this.story = runner;
+    await this.voice.idle();
+    if (this.story !== runner) {
+      return;
+    }
+    const end = await runner.run();
+    stopped = end === 'stopped';
+    if (this.story === runner) {
+      this.story = null;
+    }
+  }
+
+  private storyAbort: (() => void) | null = null;
+
+  /** Un ordre local pendant le récit : rend vrai s'il l'a piloté (sinon la navigation normale s'applique). */
+  private storyDrives(action: string): boolean {
+    const story = this.story;
+    if (!story || story.status === 'done' || story.status === 'stopped') {
+      this.story = null;
+      return false;
+    }
+    switch (action) {
+      case 'next':
+        story.next();
+        return true;
+      case 'pause':
+        story.pause();
+        this.pieces.dispatch({ type: 'pause' });
+        return true;
+      case 'play':
+        story.play();
+        return true;
+      case 'close':
+      case 'back':
+      case 'up':
+        story.stop();
+        this.story = null;
+        return false; // l'ordre s'applique aussi à la galerie
+      default:
+        return false;
     }
   }
 
