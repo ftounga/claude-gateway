@@ -110,7 +110,7 @@ class JarvisFastBrainServiceTest {
 
         AgentTurnRequest request = calls.get(0);
         assertThat(request.model()).isEqualTo("claude-haiku-5-5");
-        assertThat(request.tools()).extracting(t -> t.name()).containsExactly("deleguer");
+        assertThat(request.tools()).extracting(t -> t.name()).containsExactly("deleguer", "pieces", "afficher");
         assertThat(request.reasoning().disabled()).isTrue();
         assertThat(request.reasoning().effort()).isEqualTo("low");
         assertThat(request.shape().maxTokens()).isEqualTo(600);
@@ -725,5 +725,191 @@ class JarvisFastBrainServiceTest {
 
     private static String text(AgentTurnRequest request, int index) {
         return ((fr.claudegateway.agent.AgentContentBlock.Text) request.messages().get(index).content().get(0)).text();
+    }
+
+    // ------------------------------------------------------- F-237 / SF-237-08 : pieces + afficher
+
+    /** Un fournisseur scripté : un tour par appel, dans l'ordre. */
+    private AiAgentProvider scripted(AgentTurn... turns) {
+        java.util.concurrent.atomic.AtomicInteger n = new java.util.concurrent.atomic.AtomicInteger();
+        return new AiAgentProvider() {
+            @Override
+            public AgentTurn nextTurn(AgentTurnRequest request) {
+                return nextTurn(request, d -> { });
+            }
+
+            @Override
+            public AgentTurn nextTurn(AgentTurnRequest request, AgentTextListener listener) {
+                calls.add(request);
+                AgentTurn turn = turns[Math.min(n.getAndIncrement(), turns.length - 1)];
+                if (turn.text() != null && !turn.text().isEmpty()) {
+                    listener.onTextDelta(turn.text());
+                }
+                return turn;
+            }
+        };
+    }
+
+    private static AgentToolCall tool(String id, String name, String json) {
+        try {
+            return new AgentToolCall(id, name, JSON.readTree(json));
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static final String SHOW_PROOFS = """
+            {"action":"galerie","pieces":[],"portee":{"sujet":"","chantier":3,"categorie":"preuves","type":"",
+             "serie":"","depuis":""},"index":null,"temps":null,"chapitre":"","page":null,"zoom":"","cible":"",
+             "raison":"appui"}""";
+
+    /** Un écouteur qui retient le dit et les ordres d'écran. */
+    private static final class Screen implements JarvisFastBrainService.Sink {
+        final StringBuilder said = new StringBuilder();
+        final List<JarvisShowCommand> shows = new ArrayList<>();
+
+        @Override
+        public void text(String delta) {
+            said.append(delta);
+        }
+
+        @Override
+        public void show(JarvisShowCommand command) {
+            shows.add(command);
+        }
+    }
+
+    @Test
+    void threeFixedToolsIdenticalByteForByteAcrossCallsAndWarmUp() throws Exception {
+        JarvisFastBrainService service = service(answering("Oui."), null, null);
+        service.warm(alice, workspace);
+        service.converse(ask("Un"), null);
+        service.converse(ask("Deux"), null);
+
+        assertThat(calls).hasSize(3);
+        String first = JSON.writeValueAsString(calls.get(0).tools());
+        assertThat(JSON.writeValueAsString(calls.get(1).tools())).isEqualTo(first);
+        assertThat(JSON.writeValueAsString(calls.get(2).tools())).isEqualTo(first);
+        assertThat(calls.get(0).system()).isEqualTo(calls.get(2).system());
+        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("7");
+        assertThat(first).doesNotContain("Kestrel").doesNotContain(subject.toString());
+    }
+
+    @Test
+    void showIsRelayedWithTheSentenceInOneCall() {
+        Screen screen = new Screen();
+        JarvisFastBrainService.Outcome outcome = service(scripted(new AgentTurn("Oui, voici les preuves du chantier 3.",
+                List.of(tool("s1", "afficher", SHOW_PROOFS)), true, 100, 10)), null, null)
+                .converse(ask("Tu es sûr que le chantier 3 est terminé ?"), screen);
+
+        assertThat(calls).hasSize(1);
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(screen.shows).hasSize(1);
+        JarvisShowCommand cmd = screen.shows.get(0);
+        assertThat(cmd.action()).isEqualTo("galerie");
+        assertThat(cmd.reason()).isEqualTo("appui");
+        assertThat(cmd.scope().chantier()).isEqualTo(3);
+        assertThat(cmd.scope().category()).isEqualTo("preuves");
+        assertThat(outcome.shows()).containsExactly(cmd);
+        assertThat(screen.said.toString()).contains("voici les preuves");
+    }
+
+    @Test
+    void showWithoutSentenceAsksForThePhraseOnce() {
+        Screen screen = new Screen();
+        JarvisFastBrainService.Outcome outcome = service(scripted(
+                new AgentTurn("", List.of(tool("s1", "afficher", SHOW_PROOFS)), false, 100, 10),
+                new AgentTurn("Voici les preuves du chantier 3.", List.of(), true, 100, 10)), null, null)
+                .converse(ask("Montre-moi les preuves du chantier 3"), screen);
+
+        assertThat(calls).hasSize(2);
+        assertThat(screen.shows).hasSize(1);
+        assertThat(outcome.spokenText()).isEqualTo("Voici les preuves du chantier 3.");
+        // Le 2ᵉ appel rejoue le tour d'outil et son résultat ; même consigne, mêmes outils.
+        AgentTurnRequest second = calls.get(1);
+        assertThat(second.system()).isEqualTo(calls.get(0).system());
+        assertThat(second.tools()).isEqualTo(calls.get(0).tools());
+        assertThat(second.messages().get(second.messages().size() - 1).content().get(0))
+                .isInstanceOf(fr.claudegateway.agent.AgentContentBlock.ToolResult.class);
+    }
+
+    @Test
+    void piecesIsReadOnceByTheGatewayThenTheModelAnswersGroundedOnIt() {
+        JarvisFastPieces pieces = mock(JarvisFastPieces.class);
+        when(pieces.read(eq(alice), eq(subject), any())).thenReturn(
+                "1 pièce\nvideo:abc@v2 | vidéo | « Démo du déploiement » | Le déploiement sur EKS | chantier 3");
+        when(pieces.block(alice, subject)).thenReturn("## Pièces\nchantier 3 : besoin initial, 0 entrée, 0 preuve");
+        String pick = """
+                {"action":"piece","pieces":["video:abc@v2"],"portee":{"sujet":"","chantier":null,"categorie":"",
+                 "type":"","serie":"","depuis":""},"index":null,"temps":null,"chapitre":"","page":null,"zoom":"",
+                 "cible":"","raison":"demande"}""";
+        Screen screen = new Screen();
+        JarvisFastBrainService service = service(scripted(
+                new AgentTurn("", List.of(tool("p1", "pieces", """
+                        {"sujet":"","chantier":null,"categorie":"","type":"video","recherche":"deploiement"}""")),
+                        false, 100, 10),
+                new AgentTurn("Voici la démo du déploiement sur EKS.", List.of(tool("s1", "afficher", pick)), true,
+                        100, 10)), null, null);
+        service.setPieces(pieces);
+
+        JarvisFastBrainService.Outcome outcome = service.converse(ask("Montre celle sur le déploiement"), screen);
+
+        assertThat(calls).hasSize(2);
+        verify(pieces, org.mockito.Mockito.times(1)).read(eq(alice), eq(subject), any());
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        // « EKS » vient du résultat de pieces : la phrase est ancrée, pas déléguée d'office.
+        assertThat(outcome.spokenText()).contains("EKS");
+        assertThat(screen.shows).extracting(JarvisShowCommand::pieces).containsExactly(List.of("video:abc@v2"));
+        // Le bloc « ## Pièces » est dans le message, jamais dans la consigne.
+        String message = ((fr.claudegateway.agent.AgentContentBlock.Text) calls.get(0).messages()
+                .get(calls.get(0).messages().size() - 1).content().get(0)).text();
+        assertThat(message).contains("## Pièces").contains("chantier 3 : besoin initial");
+        assertThat(calls.get(0).system()).doesNotContain("## Pièces\nchantier");
+    }
+
+    @Test
+    void neverMoreThanThreeModelCallsAndASecondReadIsRefused() {
+        JarvisFastPieces pieces = mock(JarvisFastPieces.class);
+        when(pieces.read(any(), any(), any())).thenReturn("Aucune pièce.");
+        AgentTurn reading = new AgentTurn("", List.of(tool("p", "pieces", """
+                {"sujet":"","chantier":null,"categorie":"","type":"","recherche":""}"""),
+                tool("s", "afficher", SHOW_PROOFS)), false, 100, 10);
+        JarvisFastBrainService service = service(scripted(reading), null, null);
+        service.setPieces(pieces);
+
+        service.converse(ask("Montre les preuves"), new Screen());
+
+        assertThat(calls).hasSizeLessThanOrEqualTo(JarvisFastBrainService.MAX_CALLS);
+        verify(pieces, org.mockito.Mockito.times(1)).read(any(), any(), any());
+    }
+
+    @Test
+    void atMostThreeProactivePiecesPerAnswer() {
+        String many = """
+                {"action":"piece","pieces":["dep:1","dep:2","dep:3","dep:4","dep:5"],"portee":{"sujet":"",
+                 "chantier":null,"categorie":"","type":"","serie":"","depuis":""},"index":null,"temps":null,
+                 "chapitre":"","page":null,"zoom":"","cible":"","raison":"appui"}""";
+        Screen screen = new Screen();
+        service(scripted(new AgentTurn("Voici ce que vous m'aviez fourni.", List.of(tool("s1", "afficher", many),
+                tool("s2", "afficher", SHOW_PROOFS)), true, 100, 10)), null, null)
+                .converse(ask("Qu'est-ce que je t'avais donné ?"), screen);
+
+        // 3 pièces d'initiative au plus : la galerie suivante, d'initiative elle aussi, est refusée.
+        assertThat(screen.shows).hasSize(1);
+        assertThat(screen.shows.get(0).pieces()).containsExactly("dep:1", "dep:2", "dep:3");
+    }
+
+    @Test
+    void theScreenBlockTravelsInTheLastMessageClipped() {
+        String screenBlock = "## Écran\nGalerie : Entrées du chantier 3 (2 pièces) ; sélection : aucune\n"
+                + "x".repeat(3_000);
+        service(answering("D'accord."), null, null).converse(new JarvisFastBrainService.Request(alice, workspace, 3,
+                "La deuxième", null, screenBlock), null);
+
+        String message = ((fr.claudegateway.agent.AgentContentBlock.Text) calls.get(0).messages()
+                .get(calls.get(0).messages().size() - 1).content().get(0)).text();
+        assertThat(message).contains("## Écran\nGalerie : Entrées du chantier 3");
+        assertThat(message.length()).isLessThan(3_000);
+        assertThat(calls.get(0).system()).doesNotContain("Galerie : Entrées");
     }
 }

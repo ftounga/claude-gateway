@@ -26,7 +26,7 @@ import fr.claudegateway.chat.SseStreamDispatch;
  * <b>Converser avec Jarvis</b> (F-235 / SF-235-01, D4) — {@code POST /api/jarvis/converse}, en SSE.
  *
  * <p>Événements : {@code text} ({@code {delta}}) au fil de la réponse ; {@code delegated} quand la demande part à
- * Opus ; {@code fallback} quand le cerveau rapide s'efface (plafond, quota : l'écran garde le mode d'avant) ;
+ * Opus ; {@code show} (F-237 / SF-237-08) quand il montre une pièce ou navigue ; {@code fallback} quand le cerveau rapide s'efface (plafond, quota : l'écran garde le mode d'avant) ;
  * {@code done} à la fin ; {@code error} sur une panne de flux.</p>
  *
  * <p><b>Dormant</b> (D17) : coupe-circuit éteint ⇒ 503, l'écran retombe sur {@code streamChat}. Le sujet est cherché
@@ -59,7 +59,11 @@ public class JarvisFastBrainController {
 
     /** La demande de l'écran. */
     public record ConverseRequest(UUID subjectId, String text, Integer chantier, String heardBeforeCut,
-            Long turnSeq) {
+            Long turnSeq, String screen) {
+
+        public ConverseRequest(UUID subjectId, String text, Integer chantier, String heardBeforeCut, Long turnSeq) {
+            this(subjectId, text, chantier, heardBeforeCut, turnSeq, null);
+        }
     }
 
     @PostMapping(path = "/jarvis/converse", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -84,7 +88,7 @@ public class JarvisFastBrainController {
         }
         SseEmitter emitter = new SseEmitter(EMITTER_TIMEOUT_MS);
         JarvisFastBrainService.Request call = new JarvisFastBrainService.Request(userId, workspace.orElse(null),
-                request.chantier(), request.text(), request.heardBeforeCut());
+                request.chantier(), request.text(), request.heardBeforeCut(), request.screen());
         SseStreamDispatch.submit(executor, emitter, () -> relay(emitter, call, request.turnSeq()));
         return ResponseEntity.ok().contentType(MediaType.TEXT_EVENT_STREAM).body(emitter);
     }
@@ -115,6 +119,12 @@ public class JarvisFastBrainController {
                 @Override
                 public void text(String delta) {
                     send(emitter, "text", new TextEvent(delta));
+                }
+
+                @Override
+                public void show(JarvisShowCommand command) {
+                    // F-237 / SF-237-08 — un ordre d'écran validé : l'écran l'applique à son réducteur.
+                    send(emitter, "show", command);
                 }
 
                 @Override

@@ -1,6 +1,8 @@
 import { JarvisPieceGalleryComponent } from './pieces/jarvis-piece-gallery.component';
 import { JarvisPieceStore, refusalPhrase } from './pieces/jarvis-piece-store';
 import { pieceVoiceCommand } from './pieces/jarvis-piece-voice';
+import { screenBlock } from './pieces/jarvis-piece-screen';
+import { ShowCommand } from './pieces/jarvis-piece-show';
 import {
   Component, DestroyRef, InjectionToken, NgZone, OnDestroy, OnInit, ViewChild, computed, effect, inject, signal, viewChild,
   untracked,
@@ -1389,8 +1391,15 @@ export class JarvisComponent implements OnInit, OnDestroy {
     };
     // F-239 / SF-239-05 — ce que le cerveau rapide a compris (relu, garde passée) : affiché, et c'est lui qu'Opus reçoit.
     let understood: string | null = null;
-    const outcome = await this.fastBrain.converse({ subjectId, text, heardBeforeCut }, {
+    // F-237 / SF-237-08 — ce que l'écran montre, pour que « la deuxième » ait un sens (dans le message, jamais la consigne).
+    const screen = screenBlock(this.pieces.nav(), this.presentation());
+    const outcome = await this.fastBrain.converse({ subjectId, text, heardBeforeCut, screen }, {
       onText: (sentence) => this.zone.run(() => sayNow(sentence)),
+      onShow: (command) => this.zone.run(() => {
+        if (latest()) {
+          void this.applyShow(command);
+        }
+      }),
       onUnderstood: (read) => this.zone.run(() => {
         if (latest()) {
           understood = read;
@@ -2043,6 +2052,22 @@ export class JarvisComponent implements OnInit, OnDestroy {
       }
     });
   });
+
+  /**
+   * F-237 / SF-237-08 — un ordre d'écran du cerveau rapide : appliqué au réducteur des pièces ; un refus utile
+   * (pièce introuvable, index hors bornes) est dit, court ; un refus silencieux (déjà montrée) ne dit rien.
+   */
+  async applyShow(command: ShowCommand): Promise<void> {
+    const done = await this.pieces.applyShow(command, {
+      subjectId: this.subjectId(), subjectName: this.subject()?.name ?? null, sober: this.sober(),
+    });
+    if (!done.ok) {
+      const phrase = refusalPhrase(done.reason);
+      if (phrase) {
+        await this.say(phrase);
+      }
+    }
+  }
 
   /** F-237 / SF-237-05 — le bouton « pièces » : toutes les pièces du sujet engagé. */
   async showSubjectPieces(): Promise<void> {

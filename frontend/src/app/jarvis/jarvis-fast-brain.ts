@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 
 import { AuthService } from '../core/services/auth.service';
+import { ShowCommand } from './pieces/jarvis-piece-show';
 
 /**
  * **Le cerveau rapide de Jarvis, côté écran** (F-235 / SF-235-05).
@@ -65,6 +66,8 @@ export interface FastBrainHandlers {
   onDelegated(delegation: FastDelegation): void;
   onFallback(reason: string): void;
   onDone(done: FastDone): void;
+  /** F-237 / SF-237-08 — un ordre d'écran du cerveau rapide (outil `afficher`), déjà validé par la passerelle. */
+  onShow?(command: ShowCommand): void;
 }
 
 /** L'issue d'un appel : parti au bout, cerveau rapide éteint (503), ou en échec (jamais muet : l'écran se replie). */
@@ -75,6 +78,8 @@ export interface ConverseBody {
   text: string;
   chantier?: number | null;
   heardBeforeCut?: string | null;
+  /** F-237 / SF-237-08 — le bloc `## Écran` (ce que l'écran montre, numéroté). */
+  screen?: string | null;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -110,6 +115,7 @@ export class JarvisFastBrainClient {
           text: body.text,
           ...(body.chantier ? { chantier: body.chantier } : {}),
           ...(body.heardBeforeCut ? { heardBeforeCut: body.heardBeforeCut } : {}),
+          ...(body.screen ? { screen: body.screen } : {}),
         }),
       });
       if (response.status === 503) {
@@ -184,6 +190,11 @@ export function dispatch(raw: string, handlers: FastBrainHandlers): 'done' | 'er
       return null;
     case 'fallback':
       handlers.onFallback(String(payload['reason'] ?? ''));
+      return null;
+    case 'show':
+      if (typeof payload['action'] === 'string') {
+        handlers.onShow?.(payload as unknown as ShowCommand);
+      }
       return null;
     case 'done':
       handlers.onDone(payload as unknown as FastDone);

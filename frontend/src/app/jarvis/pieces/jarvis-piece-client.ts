@@ -10,6 +10,8 @@ export interface PieceQuery {
   category?: PieceCategory | null;
   kind?: PieceKind | null;
   series?: string | null;
+  /** F-237 / SF-237-08 — date (`AAAA-MM-JJ`, minuit local) ou instant ISO. */
+  since?: string | null;
   limit?: number;
 }
 
@@ -30,6 +32,13 @@ export function pieceQueryString(query: PieceQuery): string {
   }
   if (query.series) {
     params.set('series', query.series);
+  }
+  if (query.since) {
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(query.since);
+    const at = day ? new Date(`${query.since}T00:00:00`) : new Date(query.since);
+    if (!Number.isNaN(at.getTime())) {
+      params.set('since', at.toISOString());
+    }
   }
   params.set('limit', String(query.limit ?? 50));
   return params.toString();

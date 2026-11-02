@@ -70,7 +70,12 @@ public class JarvisFastBrainService {
             Locale.FRENCH);
 
     /** Ce que l'écran demande. */
-    public record Request(UUID userId, Workspace workspace, Integer chantier, String text, String heardBeforeCut) {
+    public record Request(UUID userId, Workspace workspace, Integer chantier, String text, String heardBeforeCut,
+            String screen) {
+
+        public Request(UUID userId, Workspace workspace, Integer chantier, String text, String heardBeforeCut) {
+            this(userId, workspace, chantier, text, heardBeforeCut, null);
+        }
     }
 
     /** Ce que le cerveau rapide a décidé. */
@@ -90,7 +95,22 @@ public class JarvisFastBrainService {
 
     /** Le résultat d'un échange. */
     public record Outcome(Kind kind, String spokenText, Delegation delegation, String reason, String model,
-            long firstTokenMs, BigDecimal costUsd, Guards guards, String understood) {
+            long firstTokenMs, BigDecimal costUsd, Guards guards, String understood, List<JarvisShowCommand> shows) {
+
+        public Outcome {
+            shows = shows == null ? List.of() : List.copyOf(shows);
+        }
+
+        public Outcome(Kind kind, String spokenText, Delegation delegation, String reason, String model,
+                long firstTokenMs, BigDecimal costUsd, Guards guards, String understood) {
+            this(kind, spokenText, delegation, reason, model, firstTokenMs, costUsd, guards, understood, List.of());
+        }
+
+        /** F-237 / SF-237-08 — la même issue, avec les ordres d'écran relayés pendant l'échange. */
+        public Outcome withShows(List<JarvisShowCommand> relayed) {
+            return new Outcome(kind, spokenText, delegation, reason, model, firstTokenMs, costUsd, guards, understood,
+                    relayed);
+        }
 
         public Outcome(Kind kind, String spokenText, Delegation delegation, String reason, String model,
                 long firstTokenMs, BigDecimal costUsd, Guards guards) {
@@ -104,7 +124,8 @@ public class JarvisFastBrainService {
 
         /** F-239 / SF-239-05 — la même issue, avec la parole relue (ou {@code null}). */
         public Outcome withUnderstood(String text) {
-            return new Outcome(kind, spokenText, delegation, reason, model, firstTokenMs, costUsd, guards, text);
+            return new Outcome(kind, spokenText, delegation, reason, model, firstTokenMs, costUsd, guards, text,
+                    shows);
         }
 
         /** Ce que l'utilisateur a voulu dire : la relecture acceptée, sinon {@code said}. */
@@ -129,6 +150,10 @@ public class JarvisFastBrainService {
 
         /** F-239 / SF-239-05 — la parole relue (ligne {@code compris:} acceptée par la garde), jamais dite. */
         default void understood(String text) {
+        }
+
+        /** F-237 / SF-237-08 — un ordre d'écran validé, à relayer au navigateur (événement {@code show}). */
+        default void show(JarvisShowCommand command) {
         }
     }
 
@@ -171,6 +196,7 @@ public class JarvisFastBrainService {
     private JarvisFastMemory memory;
     private JarvisDelegationRegistry delegations;
     private JarvisFastExchangeWriter exchanges;
+    private JarvisFastPieces fastPieces;
     private fr.claudegateway.jarvis.preferences.JarvisPreferenceService preferences;
     private fr.claudegateway.jarvis.preferences.JarvisSobriety sobriety;
     /** Dernier pré-chauffage par compte (D6) : au plus un toutes les {@link #WARM_EVERY}. */
@@ -302,6 +328,12 @@ public class JarvisFastBrainService {
                 outcome.firstTokenMs(), outcome.costUsd(), outcome.guards());
     }
 
+    /** F-237 / SF-237-08 — l'outil {@code pieces} et le bloc {@code ## Pièces}. */
+    @Autowired(required = false)
+    public void setPieces(JarvisFastPieces fastPieces) {
+        this.fastPieces = fastPieces;
+    }
+
     /** F-235 / SF-235-04 — la trace des échanges rapides dans le fil. */
     @Autowired(required = false)
     public void setExchanges(JarvisFastExchangeWriter exchanges) {
@@ -330,7 +362,7 @@ public class JarvisFastBrainService {
         try {
             String apiKey = byok == null ? null : byok.resolveActiveApiKey(userId).orElse(null);
             AgentTurn turn = provider.nextTurn(new AgentTurnRequest(properties.model(), systemFor(userId),
-                    List.of(AgentMessage.userText(WARM_TEXT)), List.of(JarvisFastBrainPrompt.delegateTool()), apiKey,
+                    List.of(AgentMessage.userText(WARM_TEXT)), JarvisFastBrainPrompt.tools(), apiKey,
                     AgentReasoning.off(properties.effort()), AgentContextPolicy.none(), AgentTurnMode.ACT,
                     AgentCallShape.compact(0)));
             if (turn != null) {
@@ -382,7 +414,7 @@ public class JarvisFastBrainService {
             outcome = new Outcome(outcome.kind(), outcome.spokenText(), new Delegation(d.delegationId(),
                     outcome.understood(), d.label(), d.annonce(), d.subjectId(), d.chantier(), d.automatic(),
                     d.reason()), outcome.reason(), outcome.model(), outcome.firstTokenMs(), outcome.costUsd(),
-                    outcome.guards(), outcome.understood());
+                    outcome.guards(), outcome.understood(), outcome.shows());
         }
         return JarvisFastGuards.isSmallTalk(request.text()) ? courteous(request, outcome, out) : outcome;
     }
@@ -466,6 +498,17 @@ public class JarvisFastBrainService {
         }
     }
 
+    /** F-237 / SF-237-08 — au plus autant d'appels au modèle par parole (lecture des pièces, phrase après l'écran). */
+    static final int MAX_CALLS = 3;
+    /** F-237 / SF-237-08 — la phrase dite quand l'écran a montré sans que le modèle ait rien dit. */
+    static final String SHOWN_REPLY = "Voici.";
+    /** F-237 / SF-237-08 — la réponse à une deuxième lecture des pièces dans la même réponse. */
+    static final String ALREADY_READ = "Lecture déjà faite pour cette réponse.";
+
+    /** Un appel au modèle : le tour, le délai du premier jeton, ou la raison de l'échec. */
+    private record Called(AgentTurn turn, long firstMs, String failure) {
+    }
+
     private Outcome decideCall(Request request, Sink out, String benchModel, String fixedContext,
             java.util.concurrent.atomic.AtomicReference<String> understood) {
         UUID userId = request.userId();
@@ -473,26 +516,122 @@ public class JarvisFastBrainService {
         String model = bench ? benchModel : properties.model();
         String apiKey = byok == null ? null : byok.resolveActiveApiKey(userId).orElse(null);
         // F-239 / SF-239-08 — l'état du jour (à blanc, le banc ne lit pas la mémoire : « première salutation »).
+        // F-237 / SF-237-08 — puis l'écran (« ## Écran ») et les pièces du sujet (« ## Pièces ») : volatils, dans le
+        // message, jamais dans la consigne.
         String context = fixedContext != null ? fixedContext : context(request) + "\n\n"
-                + (benchModel != null ? JarvisFastContextBuilder.dayState(true, false) : dayState(request));
+                + (benchModel != null ? JarvisFastContextBuilder.dayState(true, false) : dayState(request))
+                + screenAndPieces(request);
         // F-239 / SF-239-11 — l'univers de référence (préfixe relu du cache) ; les gardes voient tout le contexte.
         String reference = bench ? "" : reference(request);
         String grounding = reference.isEmpty() ? context : reference + "\n\n" + context;
         SentenceGate gate = new SentenceGate(grounding, request.text(), bench ? List.of() : recentSentences(userId),
                 out, JarvisFastGuards.isSmallTalk(request.text()));
-        AgentTurnRequest call = new AgentTurnRequest(model, systemFor(userId),
-                bench ? List.of(AgentMessage.userText(message(context, request.text())
+        List<AgentMessage> conversation = new ArrayList<>(bench
+                ? List.of(AgentMessage.userText(message(context, request.text())
                         + (sober(request, context) ? "\n\n" + fr.claudegateway.jarvis.preferences.JarvisSobriety.NOTE
-                                : ""))) : messages(request, context, reference),
-                List.of(JarvisFastBrainPrompt.delegateTool()), apiKey,
-                AgentReasoning.off(properties.effort()), AgentContextPolicy.none(), AgentTurnMode.ACT,
-                AgentCallShape.compact(properties.maxTokens()));
+                                : "")))
+                : messages(request, context, reference));
+        String system = systemFor(userId);
 
+        AgentTurn turn = null;
+        long firstMs = -1L;
+        boolean read = false;
+        int appuiLeft = JarvisShowCommand.MAX_APPUI;
+        List<JarvisShowCommand> shown = new ArrayList<>();
+        for (int n = 0; n < MAX_CALLS; n++) {
+            AgentTurnRequest call = new AgentTurnRequest(model, system, List.copyOf(conversation),
+                    JarvisFastBrainPrompt.tools(), apiKey, AgentReasoning.off(properties.effort()),
+                    AgentContextPolicy.none(), AgentTurnMode.ACT, AgentCallShape.compact(properties.maxTokens()));
+            Called called = call(call, gate, userId, request.workspace());
+            if (n == 0) {
+                firstMs = called.firstMs();
+            }
+            if (called.failure() != null) {
+                return auto(request, called.failure(), firstMs, gate.guards()).withShows(shown);
+            }
+            turn = called.turn();
+            if (gate.abortReason() != null) {
+                break;
+            }
+            // F-237 / SF-237-08 — la boucle d'outil : l'écran part tout de suite, la lecture des pièces relance.
+            List<fr.claudegateway.agent.AgentContentBlock> results = new ArrayList<>();
+            boolean delegates = false;
+            boolean freshRead = false;
+            for (AgentToolCall tc : turn.toolCalls()) {
+                if (JarvisFastBrainPrompt.TOOL_NAME.equals(tc.name())) {
+                    delegates = true;
+                } else if (JarvisFastBrainPrompt.SHOW_TOOL.equals(tc.name())) {
+                    JarvisShowCommand.Parsed parsed = JarvisShowCommand.parse(tc.input(), appuiLeft);
+                    if (parsed.command() != null) {
+                        out.show(parsed.command());
+                        shown.add(parsed.command());
+                        appuiLeft -= parsed.appuiUsed();
+                    }
+                    results.add(new fr.claudegateway.agent.AgentContentBlock.ToolResult(tc.id(), parsed.toolResult(),
+                            parsed.command() == null));
+                } else if (JarvisFastBrainPrompt.PIECES_TOOL.equals(tc.name())) {
+                    String text = ALREADY_READ;
+                    if (!read) {
+                        read = true;
+                        freshRead = true;
+                        text = readPieces(request, tc.input(), bench);
+                        gate.ground(text);
+                    }
+                    results.add(new fr.claudegateway.agent.AgentContentBlock.ToolResult(tc.id(), text, false));
+                } else {
+                    results.add(new fr.claudegateway.agent.AgentContentBlock.ToolResult(tc.id(), "Outil inconnu.",
+                            true));
+                }
+            }
+            boolean needPhrase = !shown.isEmpty() && gate.spoken().isEmpty();
+            if (delegates || results.isEmpty() || !(freshRead || needPhrase)) {
+                break;
+            }
+            List<fr.claudegateway.agent.AgentContentBlock> said = new ArrayList<>();
+            if (turn.text() != null && !turn.text().isBlank()) {
+                said.add(new fr.claudegateway.agent.AgentContentBlock.Text(turn.text()));
+            }
+            for (AgentToolCall tc : turn.toolCalls()) {
+                said.add(new fr.claudegateway.agent.AgentContentBlock.ToolUse(tc.id(), tc.name(), tc.input()));
+            }
+            conversation.add(AgentMessage.assistant(said));
+            conversation.add(AgentMessage.toolResults(results));
+            gate.nextCall();
+        }
+        understood.set(gate.understood());
+        if (gate.abortReason() != null) {
+            return auto(request, gate.abortReason(), firstMs, gate.guards()).withShows(shown);
+        }
+        Optional<AgentToolCall> delegate = turn.toolCalls().stream()
+                .filter(tc -> JarvisFastBrainPrompt.TOOL_NAME.equals(tc.name())).findFirst();
+        if (delegate.isPresent()) {
+            Delegation d = withSafeAnnounce(delegation(request, delegate.get().input()), gate);
+            return new Outcome(Kind.DELEGATE, gate.spoken(), d, null, properties.model(), firstMs, null,
+                    gate.guards()).withShows(shown);
+        }
+        String text = gate.spoken();
+        if (text.isEmpty() && !shown.isEmpty()) {
+            out.text(SHOWN_REPLY + " ");
+            text = SHOWN_REPLY;
+        }
+        if (text.isEmpty() || (turn.truncated() && shown.isEmpty())) {
+            return auto(request, REASON_EMPTY, firstMs, gate.guards()).withShows(shown);
+        }
+        return new Outcome(Kind.ANSWER, text, null, null, properties.model(), firstMs, null, gate.guards())
+                .withShows(shown);
+    }
+
+    /**
+     * Un appel au modèle, en flux, sous le délai du premier jeton (D9b) ; ses fragments passent la porte des phrases.
+     * Le coût est compté à la fin de l'appel, en tâche de fond.
+     */
+    private Called call(AgentTurnRequest call, SentenceGate gate, UUID userId, Workspace workspace) {
         long started = System.nanoTime();
         AtomicLong firstToken = new AtomicLong(-1L);
         CountDownLatch first = new CountDownLatch(1);
         Object lock = new Object();
         boolean[] abandoned = { false };
+        boolean[] streamed = { false };
         CompletableFuture<AgentTurn> pending = CompletableFuture.supplyAsync(() -> provider.nextTurn(call, delta -> {
             if (firstToken.compareAndSet(-1L, (System.nanoTime() - started) / 1_000_000L)) {
                 first.countDown();
@@ -503,6 +642,9 @@ public class JarvisFastBrainService {
                     probe.append(delta);
                 }
                 if (!abandoned[0]) {
+                    if (delta != null && !delta.isEmpty()) {
+                        streamed[0] = true;
+                    }
                     gate.accept(delta);
                 }
             }
@@ -510,7 +652,7 @@ public class JarvisFastBrainService {
         pending.whenComplete((turn, failure) -> {
             first.countDown();
             if (turn != null) {
-                account(userId, request.workspace(), turn);
+                account(userId, workspace, turn);
             }
         });
 
@@ -521,42 +663,65 @@ public class JarvisFastBrainService {
                 synchronized (lock) {
                     abandoned[0] = true;
                 }
-                return auto(request, REASON_TIMEOUT, -1L);
+                return new Called(null, -1L, REASON_TIMEOUT);
             }
             turn = pending.get(Math.max(1L, properties.firstTokenTimeout().toMillis()) * 20L, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return auto(request, REASON_ERROR, firstToken.get());
+            return new Called(null, firstToken.get(), REASON_ERROR);
         } catch (Exception e) {
             log.warn("Cerveau rapide : appel en échec ({})", e.getClass().getSimpleName());
-            return auto(request, REASON_ERROR, firstToken.get());
+            return new Called(null, firstToken.get(), REASON_ERROR);
         }
         long firstMs = firstToken.get() >= 0 ? firstToken.get() : (System.nanoTime() - started) / 1_000_000L;
         if (turn == null || turn.refused()) {
-            return auto(request, REASON_REFUSAL, firstMs, gate.guards());
+            return new Called(turn, firstMs, REASON_REFUSAL);
         }
-        Optional<AgentToolCall> delegate = turn.toolCalls().stream()
-                .filter(tc -> JarvisFastBrainPrompt.TOOL_NAME.equals(tc.name())).findFirst();
+        boolean delegates = turn.toolCalls().stream()
+                .anyMatch(tc -> JarvisFastBrainPrompt.TOOL_NAME.equals(tc.name()));
         synchronized (lock) {
-            if (delegate.isEmpty() && !gate.streamedAnything() && turn.text() != null) {
+            if (!delegates && !streamed[0] && turn.text() != null) {
                 gate.accept(turn.text()); // fournisseur sans flux : le texte entier passe la même porte
             }
             gate.finish();
         }
-        understood.set(gate.understood());
-        if (gate.abortReason() != null) {
-            return auto(request, gate.abortReason(), firstMs, gate.guards());
+        return new Called(turn, firstMs, null);
+    }
+
+    /** F-237 / SF-237-08 — le plafond du bloc « ## Écran » reçu de l'écran. */
+    static final int MAX_SCREEN = 1_500;
+    /** F-237 / SF-237-13 — la lecture des pièces au banc : fixe (aucune base lue). */
+    static final String BENCH_PIECES = JarvisFastPieces.NONE;
+
+    /** L'outil {@code pieces} : lu par la passerelle sous {@code user_id} (au banc : réponse fixe). */
+    String readPieces(Request request, JsonNode input, boolean bench) {
+        if (bench || fastPieces == null) {
+            return BENCH_PIECES;
         }
-        if (delegate.isPresent()) {
-            Delegation d = withSafeAnnounce(delegation(request, delegate.get().input()), gate);
-            return new Outcome(Kind.DELEGATE, gate.spoken(), d, null, properties.model(), firstMs, null,
-                    gate.guards());
+        return fastPieces.read(request.userId(), request.workspace() == null ? null : request.workspace().getId(),
+                input);
+    }
+
+    /** Les blocs « ## Écran » (de l'écran, coupé) et « ## Pièces » (du sujet courant), précédés d'une ligne vide. */
+    String screenAndPieces(Request request) {
+        StringBuilder out = new StringBuilder();
+        String screen = request.screen() == null ? "" : request.screen().strip();
+        if (!screen.isEmpty()) {
+            if (!screen.startsWith("## Écran")) {
+                screen = "## Écran\n" + screen;
+            }
+            if (screen.length() > MAX_SCREEN) {
+                screen = screen.substring(0, MAX_SCREEN) + "…";
+            }
+            out.append("\n\n").append(screen);
         }
-        String text = gate.spoken();
-        if (text.isEmpty() || turn.truncated()) {
-            return auto(request, REASON_EMPTY, firstMs, gate.guards());
+        if (fastPieces != null && request.workspace() != null) {
+            String block = fastPieces.block(request.userId(), request.workspace().getId());
+            if (block != null && !block.isBlank()) {
+                out.append("\n\n").append(block);
+            }
         }
-        return new Outcome(Kind.ANSWER, text, null, null, properties.model(), firstMs, null, gate.guards());
+        return out.toString();
     }
 
     /**
@@ -633,7 +798,7 @@ public class JarvisFastBrainService {
     static final class SentenceGate {
         private static final java.util.regex.Pattern MONSIEUR = java.util.regex.Pattern
                 .compile("(?i)(,\\s*)?\\bmonsieur\\b");
-        private final String context;
+        private String context;
         private final String said;
         private final List<String> recent;
         private final Sink out;
@@ -670,6 +835,7 @@ public class JarvisFastBrainService {
                 .compile("(?is)^\\s*compris\\s*:\\s*(.*)$");
         private final StringBuilder header = new StringBuilder();
         private boolean headerDone;
+        private boolean headerSeen;
         private String understood;
         private int understandingRejected;
 
@@ -708,6 +874,9 @@ public class JarvisFastBrainService {
             header.setLength(0);
             String line = newline < 0 ? text : text.substring(0, newline);
             java.util.regex.Matcher m = UNDERSTOOD.matcher(line);
+            if (m.matches() && headerSeen) {
+                return newline < 0 ? "" : text.substring(newline + 1);
+            }
             if (m.matches()) {
                 String read = m.group(1).strip().replaceAll("^[«\"]+|[»\"]+$", "").strip();
                 understood = JarvisUnderstanding.accept(said, read);
@@ -832,6 +1001,23 @@ public class JarvisFastBrainService {
 
         String ungrounded(String sentence) {
             return JarvisFastGuards.ungroundedFact(sentence, context, said);
+        }
+
+        /** F-237 / SF-237-08 — ce que la lecture des pièces a rendu ancre les phrases suivantes. */
+        void ground(String extra) {
+            if (extra != null && !extra.isBlank()) {
+                context = context + "\n" + extra;
+            }
+        }
+
+        /**
+         * F-237 / SF-237-08 — un appel de plus dans la même réponse : sa ligne {@code compris:} éventuelle est retirée
+         * (la relecture du premier appel reste celle de l'échange).
+         */
+        void nextCall() {
+            headerDone = false;
+            header.setLength(0);
+            headerSeen = true;
         }
 
         boolean repeats(String sentence) {
