@@ -1,3 +1,4 @@
+import { BrainsState, FOLDED } from './jarvis-brains';
 import { HeartMood } from './jarvis-heart';
 import { QualityLevel } from './jarvis-render-capability';
 import { StagePlan } from './jarvis-stage-director';
@@ -26,19 +27,37 @@ function levelOf(raw: string | null): QualityLevel | null {
 }
 
 /** Les scènes que le banc sait poser ; une scène inconnue retombe sur `coeur`. */
-export const BANC_SCENES = ['coeur', 'ecoute', 'reflexion', 'parole', 'oui', 'coupure', 'veille', 'reveil'] as const;
+export const BANC_SCENES = ['coeur', 'ecoute', 'reflexion', 'parole', 'oui', 'coupure', 'veille', 'reveil',
+  'cerveau-aller', 'cerveau', 'cerveau-retour', 'cerveau-annule'] as const;
 
 /** SF-236-02 — l'humeur du cœur posée par chaque scène du banc (transition rejouée depuis t = 0). */
 const BANC_MOODS: Readonly<Record<string, HeartMood>> = {
   coeur: 'repos', ecoute: 'ecoute', reflexion: 'reflexion', parole: 'parole', oui: 'oui', coupure: 'coupure',
-  veille: 'veille', reveil: 'repos',
+  veille: 'veille', reveil: 'repos', 'cerveau-aller': 'reflexion', cerveau: 'reflexion', 'cerveau-retour': 'repos',
+  'cerveau-annule': 'repos',
 };
+
+/** SF-236-03 — les cerveaux posés par chaque scène du banc. */
+function bancBrains(scene: string): { brains: BrainsState; fromDeployed: boolean } {
+  switch (scene) {
+    case 'cerveau-aller':
+    case 'cerveau':
+      return { brains: { target: 'deployed', variant: 'normal', pearls: 2 }, fromDeployed: false };
+    case 'cerveau-retour':
+      return { brains: { target: 'folded', variant: 'normal', pearls: 0 }, fromDeployed: true };
+    case 'cerveau-annule':
+      return { brains: { target: 'folded', variant: 'cancel', pearls: 0 }, fromDeployed: true };
+    default:
+      return { brains: FOLDED, fromDeployed: false };
+  }
+}
 
 /** Le plan que le banc pose, et le niveau de voix simulé (ondes ∝ niveau). */
 export function bancPlan(scene: string): { plan: StagePlan; voice: number } {
   const mood = Object.hasOwn(BANC_MOODS, scene) ? BANC_MOODS[scene] : 'repos';
   return {
-    plan: { mood, wakes: scene === 'reveil' ? 1 : 0 },
+    plan: { mood, wakes: scene === 'reveil' ? 1 : 0, brains: bancBrains(scene).brains,
+      brainsFromDeployed: bancBrains(scene).fromDeployed },
     voice: mood === 'ecoute' || mood === 'parole' ? 0.7 : 0,
   };
 }

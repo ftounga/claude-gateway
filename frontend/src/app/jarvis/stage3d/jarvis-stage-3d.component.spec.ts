@@ -301,4 +301,28 @@ describe('F-236 / SF-236-01 — JarvisStage3dComponent (socle, repli 2D, fondu)'
     expect(created[0].options.replayFromZero).toBeTrue();
     fixture.destroy();
   }));
+
+  it('SF-236-03 — les deux cerveaux : délégation ⇒ déployé ; la dernière finie ⇒ replié ; coupe-circuit ⇒ chaque tour', fakeAsync(() => {
+    configure(PC_PROBE);
+    const fixture = TestBed.createComponent(HostComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    const engine = created[0];
+    expect(engine.options.plan.brains.target).toBe('folded');
+    const on = { ...IDLE_SCREEN, fastBrainOn: true, conversing: true };
+    fixture.componentInstance.signals.set({ ...on, delegations: 1, turnActive: true });
+    fixture.detectChanges();
+    expect(engine.plans.at(-1)?.brains).toEqual({ target: 'deployed', variant: 'normal', pearls: 1 });
+    fixture.componentInstance.signals.set({ ...on, delegations: 0, brainEnd: 'cancel' });
+    fixture.detectChanges();
+    expect(engine.plans.at(-1)?.brains).toEqual({ target: 'folded', variant: 'cancel', pearls: 0 });
+    fixture.componentInstance.signals.set({ ...IDLE_SCREEN, conversing: true, turnActive: true });
+    fixture.detectChanges();
+    expect(engine.plans.at(-1)?.brains.target).toBe('deployed');
+    const count = engine.plans.length;
+    fixture.componentInstance.signals.set({ ...IDLE_SCREEN, conversing: true, turnActive: true });
+    fixture.detectChanges();
+    expect(engine.plans.length).withContext('plan identique : rien n’est renvoyé').toBe(count);
+    fixture.destroy();
+  }));
 });

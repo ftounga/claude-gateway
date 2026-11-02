@@ -8,7 +8,7 @@ import { JARVIS_3D_LOADER, JarvisEngine, JarvisEngineFactory } from './jarvis-en
 import { FrameHost, browserFrameHost } from './jarvis-frame-loop';
 import { MOTION_DURATIONS } from './jarvis-motion';
 import { SLEEP_AFTER_MS, SleepWatch } from './jarvis-heart';
-import { IDLE_SCREEN, ScreenSignals, StagePlan, directStage } from './jarvis-stage-director';
+import { IDLE_SCREEN, ScreenSignals, StagePlan, directStage, samePlan } from './jarvis-stage-director';
 import {
   ContextLossPolicy, JARVIS_RENDER_PROBE, QualityLevel, RenderDecision, SESSION_CONTEXT_LOSS, canOffer3d, decideRender,
   readManual2d, writeManual2d,
@@ -113,8 +113,9 @@ export class JarvisStage3dComponent implements OnDestroy {
     }
     const s = this.signals();
     return directStage({ state: s.state, frozen: s.frozen, waiting: s.waiting, asleep: this.asleep(),
-      wakes: this.wakes() });
-  });
+      wakes: this.wakes(), delegations: s.delegations, fastBrainOn: s.fastBrainOn, turnActive: s.turnActive,
+      brainEnd: s.brainEnd });
+  }, { equal: samePlan });
 
   readonly decision = computed<RenderDecision>(() => {
     const decision = decideRender(this.probe, {

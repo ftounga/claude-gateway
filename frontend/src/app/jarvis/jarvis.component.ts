@@ -61,6 +61,7 @@ import { JarvisSceneComponent } from './scenes/jarvis-scene.component';
 import { JarvisConstellationComponent } from './scenes/jarvis-constellation.component';
 import { JarvisStage3dComponent } from './stage3d/jarvis-stage-3d.component';
 import { holoCssVars } from './stage3d/jarvis-motion';
+import { BrainEnd } from './stage3d/jarvis-brains';
 import { ScreenSignals } from './stage3d/jarvis-stage-director';
 import { isShowDismiss, stripShowLines } from './scenes/jarvis-show';
 import {
@@ -956,10 +957,12 @@ export class JarvisComponent implements OnInit, OnDestroy {
       if (running.length > 0) {
         // F-235 / SF-235-05 (D8) — « annule » arrête la DERNIÈRE délégation vivante (chemin d'interruption existant).
         const last = running[running.length - 1];
+        this.brainEnd.set('cancel');
         this.delegations.set(running.slice(0, -1));
         this.atelier.interruptChat(last.subjectId).subscribe({ error: () => undefined });
         await this.say(`J’arrête la recherche sur ${last.label}.`);
       } else if (this.turnRunning && id) {
+        this.brainEnd.set('cancel');
         this.turnRunning = false;
         this.clearAck();
         this.atelier.interruptChat(id).subscribe({ error: () => undefined });
@@ -1129,6 +1132,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     // Le sélecteur indique le dernier sujet engagé (D19).
     this.subjectId.set(subjectId);
     this.scenes.setSubject(subjectId);
+    this.brainEnd.set('normal');
     this.scenes.turnStarted();
     let finished = false;
     const finish = (reply: string | null, failed: boolean) => this.zone.run(() => {
@@ -1136,6 +1140,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
         return;
       }
       finished = true;
+      // F-236 / SF-236-03 — la fin se voit au repli du grand cerveau : flash doux (prête) ou perle rouge (échec).
+      this.brainEnd.set(failed ? 'fail' : 'normal');
       this.delegations.update((list) => list.filter((d) => d.id !== entry.id));
       if (reply) {
         this.detail.set(stripShowLines(reply));
@@ -1239,6 +1245,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.turnRunning = true;
     this.armFiller(subjectId, latest);
     this.scenes.setSubject(subjectId);
+    this.brainEnd.set('normal');
     this.scenes.turnStarted();
     void this.atelier.streamChat(subjectId, text, {
       onAction: (action) => {
@@ -1273,6 +1280,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       }),
       onError: (code, reason) => this.zone.run(() => {
         if (latest()) {
+          this.brainEnd.set('fail');
           this.scenes.aborted(code);
           this.onTurnError(code, reason);
         }
@@ -1495,6 +1503,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   /** F-236 / SF-236-02 (N2) — appels du mot « Jarvis » depuis l'ouverture (onde de choc du cœur 3D). */
   readonly wakeCalls = signal(0);
+  /** F-236 / SF-236-03 — comment s'est terminé le dernier travail d'Opus (repli du grand cerveau). */
+  readonly brainEnd = signal<BrainEnd>('normal');
 
   /** F-236 / SF-236-02 — ce que la scène 3D lit de l'écran (H2, H6, H9, H10) ; rien n'est modifié. */
   readonly stageSignals = computed<ScreenSignals>(() => {
@@ -1505,9 +1515,14 @@ export class JarvisComponent implements OnInit, OnDestroy {
       waiting: reader.scene?.id === 'S2' && reader.scene.pinned,
       conversing: this.conversation.mode() === 'active',
       wakeCalls: this.wakeCalls(),
+      delegations: this.delegations().length,
+      fastBrainOn: this.fastBrainOn(),
+      turnActive: this.scenes.turnActive(),
+      brainEnd: this.brainEnd(),
     };
   }, { equal: (a, b) => a.state === b.state && a.frozen === b.frozen && a.waiting === b.waiting
-    && a.conversing === b.conversing && a.wakeCalls === b.wakeCalls });
+    && a.conversing === b.conversing && a.wakeCalls === b.wakeCalls && a.delegations === b.delegations
+    && a.fastBrainOn === b.fastBrainOn && a.turnActive === b.turnActive && a.brainEnd === b.brainEnd });
 
   toggleSober(): void {
     const on = !this.scenes.sober();

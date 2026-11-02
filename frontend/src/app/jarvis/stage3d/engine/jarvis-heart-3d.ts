@@ -146,6 +146,10 @@ export class Heart3d {
   readonly bloom = new Tween(1.1);
   /** La lumière du cœur (0-1), lue par le décor (la lueur du fond suit le cœur). */
   light = 0.8;
+  /** SF-236-03 — multiplicateur de lumière posé par les deux cerveaux (inspiration −20 %, dépôt). */
+  lightGain = 1;
+  /** SF-236-03 — flash au centre (étincelle, dépôt de la réponse), 0-1. */
+  flash = 0;
 
   private readonly rgbNow: number[] = [0, 0, 0];
   private mood: HeartMood = 'repos';
@@ -219,7 +223,7 @@ export class Heart3d {
     const target = waveAmplitude(this.mood, voiceLevel);
     this.waveLevel += (target - this.waveLevel) * (1 - Math.exp(-dt / 80));
     this.color.write(now, this.rgbNow);
-    const glow = this.glow.value(now);
+    const glow = this.glow.value(now) * this.lightGain;
     this.light = glow;
 
     const u = this.particles.uniforms;
@@ -236,7 +240,7 @@ export class Heart3d {
     put(u['uColor'].value as number[], this.rgbNow);
 
     const h = this.halo.uniforms;
-    h['uGlow'].value = glow * (1 + 0.08 * Math.sin(this.breathPhase));
+    h['uGlow'].value = glow * (1 + 0.08 * Math.sin(this.breathPhase)) + this.flash * 1.6;
     put(h['uColor'].value as number[], this.rgbNow);
 
     const r = this.rays.uniforms;
