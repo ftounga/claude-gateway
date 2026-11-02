@@ -5,6 +5,7 @@ import { JARVIS_BANC, JarvisStage3dComponent } from './jarvis-stage-3d.component
 import { holoCssVars } from './jarvis-motion';
 import { JarvisCockpitComponent } from './hud/jarvis-cockpit.component';
 import { OPEN_FOLDS, writeFolds } from './hud/jarvis-cockpit-layout';
+import { ShowFilter } from '../scenes/jarvis-show';
 
 /**
  * F-236 / SF-236-01 — **la page du banc de captures** (`/jarvis-banc?banc=<scène>&t=<ms>`), <b>développement
@@ -21,7 +22,7 @@ import { OPEN_FOLDS, writeFolds } from './hud/jarvis-cockpit-layout';
                          [labelLayer]="labels" [insets]="cockpit ? cockpitRef()?.insets() ?? noInsets : noInsets" />
     <div #labels class="jv3d-labels"></div>
     @if (cockpit) {
-      <app-jarvis-cockpit #cockpitRef [stage]="stage" [signals]="screen" />
+      <app-jarvis-cockpit #cockpitRef [stage]="stage" [signals]="screen" [shownFilter]="shownFilter" />
     }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -38,6 +39,7 @@ export class JarvisBancComponent {
   protected readonly cockpit = this.scene.startsWith('cockpit');
   protected readonly screen = bancScreen(this.scene);
   protected readonly noInsets = { left: 0, right: 0 };
+  protected readonly shownFilter: ShowFilter | null = this.scene === 'cockpit-journee' ? 'chantiers-bloques' : null;
   protected readonly cockpitRef = viewChild<JarvisCockpitComponent>('cockpitRef');
 
   constructor() {

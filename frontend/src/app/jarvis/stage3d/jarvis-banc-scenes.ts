@@ -1,4 +1,5 @@
 import { testUniverse } from '../scenes/jarvis-universe.fixture';
+import { JarvisUniverse, UniverseChantier } from '../scenes/jarvis-universe.models';
 import { BrainsState, FOLDED } from './jarvis-brains';
 import { HeartMood } from './jarvis-heart';
 import { EMPTY_VIEW, IDLE_SCREEN, ScreenSignals, StagePlan, UniverseView, stageScene, universeView,
@@ -44,6 +45,9 @@ export function bancPlan(scene: string, narrow: boolean): { plan: StagePlan; voi
   if (scene.startsWith('ambiance-')) {
     return { plan: bancAmbient(scene.slice('ambiance-'.length), narrow), voice: 0 };
   }
+  if (scene === 'cockpit-journee') {
+    return { plan: bancShow('chantiers-bloques', narrow), voice: 0 };
+  }
   if (scene.startsWith('montrer-')) {
     return { plan: bancShow(scene.slice('montrer-'.length) as ShowFilter, narrow), voice: 0 };
   }
@@ -66,8 +70,30 @@ export function bancScreen(scene: string): ScreenSignals {
   if (!scene.startsWith('cockpit')) {
     return IDLE_SCREEN;
   }
-  return { ...IDLE_SCREEN, universe: testUniverse(), subjectId: 's-forge', state: 'reflexion', turnActive: true,
+  const universe = scene === 'cockpit-meteo' ? bancWeatherUniverse() : testUniverse();
+  const base: ScreenSignals = { ...IDLE_SCREEN, universe, subjectId: 's-forge', state: 'reflexion', turnActive: true,
     pulses: 3, delegations: 1, scene: BANC_SCENE_VIEWS['commande'] ?? null };
+  if (scene === 'cockpit-journee') {
+    // Le chiffre « Attentes » touché : « Montrer » local des chantiers bloqués, au repos (aucun tour).
+    const focus = resolveShow(universe, { filter: 'chantiers-bloques', client: null });
+    return { ...base, state: 'repos', turnActive: false, pulses: 0, delegations: 0, scene: null, showFocus: focus,
+      shown: focus?.items.map((i) => i.node.key) ?? null };
+  }
+  return base;
+}
+
+/** SF-236-16 — un univers aux quatre temps : orage, nuage, brume, soleil (météo des chantiers). */
+export function bancWeatherUniverse(): JarvisUniverse {
+  const u = testUniverse();
+  const chantier = (number: number, title: string, over: Partial<UniverseChantier>): UniverseChantier => ({
+    number, title, phase: 'EXECUTION', phaseLabel: 'Exécution', done: 1, total: 4, step: null, focus: false,
+    live: false, waitingOn: [], ...over });
+  u.clients[1].subjects[0].chantiers = [
+    chantier(7, 'Paiement CB', { waitingOn: ['Paiement'] }),
+    chantier(8, 'Purge des journaux', {}),
+    chantier(9, 'Montée de version', { done: 4, total: 4 }),
+  ];
+  return u;
 }
 
 /** SF-236-13 — l'ambiance au banc (au repos, administrateur pour A4). */

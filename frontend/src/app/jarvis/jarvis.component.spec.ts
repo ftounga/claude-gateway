@@ -6,6 +6,7 @@ import { of, throwError } from 'rxjs';
 
 import { JARVIS_USER_AGENT, JarvisComponent, companionOffer } from './jarvis.component';
 import { JarvisSceneBus } from './scenes/jarvis-scene-bus.service';
+import { testUniverse } from './scenes/jarvis-universe.fixture';
 import { NotificationCenterService } from '../core/services/notification-center.service';
 import { LiveTerminalService } from '../core/services/live-terminal.service';
 import { signal as ngSignal } from '@angular/core';
@@ -164,6 +165,25 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(loader3d).not.toHaveBeenCalled();
     expect(el.style.getPropertyValue('--cg-holo')).toBe('#E07B39');
     fixture.componentInstance.ngOnDestroy();
+  }));
+
+  it('F-236 / SF-236-16 — « Montrer » local au toucher d’un chiffre : sans tour, retouché ⇒ effacé, tour ⇒ effacé', fakeAsync(() => {
+    configure({});
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    const jarvis = fixture.componentInstance;
+    TestBed.inject(JarvisSceneBus).setUniverse(testUniverse());
+    jarvis.showLocal('chantiers-bloques');
+    expect(jarvis.stageSignals().showFocus?.filter).toBe('chantiers-bloques');
+    expect(jarvis.stageSignals().shown).toEqual(['s-forge#3']);
+    expect(jarvis.localShowFilter()).toBe('chantiers-bloques');
+    expect(atelier.streamChat).not.toHaveBeenCalled();
+    jarvis.showLocal('chantiers-bloques');
+    expect(jarvis.stageSignals().showFocus).toBeNull();
+    jarvis.showLocal('connectes');
+    expect(jarvis.stageSignals().shown).toEqual(['h-cagip']);
+    jarvis.ngOnDestroy();
   }));
 
   it('F-236 / SF-236-01 — 3D possible : bouton « Vue 2D » proposé, masqué en mode sobre', fakeAsync(() => {

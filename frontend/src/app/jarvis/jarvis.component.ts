@@ -66,7 +66,7 @@ import { holoCssVars } from './stage3d/jarvis-motion';
 import { BrainEnd } from './stage3d/jarvis-brains';
 import { UniverseTouch } from './stage3d/jarvis-layout-3d';
 import { ScreenSignals, sameScreen } from './stage3d/jarvis-stage-director';
-import { isShowDismiss, stripShowLines } from './scenes/jarvis-show';
+import { ShowFilter, ShowFocus, isShowDismiss, resolveShow, stripShowLines } from './scenes/jarvis-show';
 import { ticketKeys } from './scenes/jarvis-scene-reader';
 import { arrivalDelay } from './stage3d/jarvis-panels';
 import { AuthService } from '../core/services/auth.service';
@@ -1147,6 +1147,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.subjectId.set(subjectId);
     this.scenes.setSubject(subjectId);
     this.brainEnd.set('normal');
+    this.clearLocalShow();
     this.scenes.turnStarted();
     let finished = false;
     const finish = (reply: string | null, failed: boolean) => this.zone.run(() => {
@@ -1260,6 +1261,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.armFiller(subjectId, latest);
     this.scenes.setSubject(subjectId);
     this.brainEnd.set('normal');
+    this.clearLocalShow();
     this.scenes.turnStarted();
     void this.atelier.streamChat(subjectId, text, {
       onAction: (action) => {
@@ -1537,7 +1539,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
       subjectId: this.scenes.subjectId(),
       lit: reader.lit.map((l) => l.node.key),
       said: reader.said,
-      shown: this.scenes.focus()?.items.map((i) => i.node.key) ?? null,
+      // SF-236-16 — « Montrer » demandé par l'agent, sinon celui posé localement au toucher d'un chiffre du cockpit.
+      shown: (this.scenes.focus() ?? this.localShow())?.items.map((i) => i.node.key) ?? null,
       // SF-236-08 — la scène en cours et les appels d'outil : panneaux holographiques et impulsions en 3D.
       scene: reader.scene,
       pulses: reader.pulses,
@@ -1546,12 +1549,36 @@ export class JarvisComponent implements OnInit, OnDestroy {
       // SF-236-10 — les étapes cochées pendant le tour : la perle du chapelet se remplit avant la relecture.
       stepsDone: reader.stepsDone,
       // SF-236-11 — « Montrer » résolu sur l'univers (même objet tant que la demande ne change pas).
-      showFocus: this.scenes.focus(),
+      showFocus: this.scenes.focus() ?? this.localShow(),
       // SF-236-13 — l'ambiance hors tour (A1-A5) et le rôle (A4 : coût en € pour l'administrateur seulement).
       ambient: this.scenes.ambient(),
       admin: this.admin(),
     };
   }, { equal: sameScreen });
+
+  /**
+   * F-236 / SF-236-16 (NF-1) — « Montrer » local : un chiffre du tableau de bord touché applique son filtre sur
+   * l'univers déjà lu — aucun tour, aucun appel. Le même chiffre retouché l'efface ; un tour qui démarre aussi.
+   */
+  readonly localShow = signal<ShowFocus | null>(null);
+  readonly localShowFilter = signal<ShowFilter | null>(null);
+  /** Messages finis pendant le tour (le compteur « À envoyer » du cockpit les compte, comme celui du HUD). */
+  readonly toSendAdded = computed(() => this.scenes.state().toSendAdded);
+
+  showLocal(filter: ShowFilter): void {
+    if (this.localShowFilter() === filter) {
+      this.clearLocalShow();
+      return;
+    }
+    const focus = resolveShow(this.scenes.universe(), { filter, client: null });
+    this.localShow.set(focus);
+    this.localShowFilter.set(focus ? filter : null);
+  }
+
+  private clearLocalShow(): void {
+    this.localShow.set(null);
+    this.localShowFilter.set(null);
+  }
 
   /** F-236 / SF-236-06 — le volet « Réglages » du HUD 3D (les commandes secondaires y sont regroupées). */
   readonly settingsOpen = signal(false);
