@@ -369,6 +369,19 @@ class ThreeJarvisEngine implements JarvisEngine {
     }
   }
 
+  /** SF-236-19 — regarder un nœud posé (recherche, inspecteur) : même plan qu'un toucher, tenu 8 s (T-Z4). */
+  look(key: string): void {
+    if (this.disposed || !this.universe) {
+      return;
+    }
+    const node = this.plan.universe.layout.nodes.find((n) => n.key === key);
+    if (!node) {
+      return;
+    }
+    const portrait = this.width < this.height * 0.8;
+    this.manual(() => this.placeCamera(nodeShot(node, portrait), false));
+  }
+
   /** Un geste : la caméra obéit au PO 8 s, puis revient d'elle-même (T-Z4). */
   private manual(apply: () => void): void {
     apply();

@@ -1565,19 +1565,25 @@ export class JarvisComponent implements OnInit, OnDestroy {
   /** Messages finis pendant le tour (le compteur « À envoyer » du cockpit les compte, comme celui du HUD). */
   readonly toSendAdded = computed(() => this.scenes.state().toSendAdded);
 
-  showLocal(filter: ShowFilter): void {
-    if (this.localShowFilter() === filter) {
+  showLocal(filter: ShowFilter, client: string | null = null): void {
+    const id = `${filter}|${client ?? ''}`;
+    if (this.localShowId === id) {
       this.clearLocalShow();
       return;
     }
-    const focus = resolveShow(this.scenes.universe(), { filter, client: null });
+    const focus = resolveShow(this.scenes.universe(), { filter, client });
     this.localShow.set(focus);
-    this.localShowFilter.set(focus ? filter : null);
+    this.localShowId = focus ? id : null;
+    // Le chiffre du tableau de bord n'est enfoncé que pour le filtre sans restriction de client.
+    this.localShowFilter.set(focus && client === null ? filter : null);
   }
+
+  private localShowId: string | null = null;
 
   private clearLocalShow(): void {
     this.localShow.set(null);
     this.localShowFilter.set(null);
+    this.localShowId = null;
   }
 
   /** F-236 / SF-236-06 — le volet « Réglages » du HUD 3D (les commandes secondaires y sont regroupées). */
@@ -1672,7 +1678,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
     if (touch.kind === 'subject' && touch.subjectId) {
       this.touchSubject(touch.subjectId);
     }
+    // F-236 / SF-236-19 (NF-7) — tout nœud touché ouvre sa fiche dans l'inspecteur du cockpit (PC).
+    this.cockpitRef?.inspectNode(touch.key, touch.kind);
   }
+
+  @ViewChild('cockpit') private cockpitRef?: JarvisCockpitComponent;
 
   toggleSober(): void {
     const on = !this.scenes.sober();

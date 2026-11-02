@@ -49,7 +49,9 @@ export const BANC_SCENES = ['coeur', 'ecoute', 'reflexion', 'parole', 'oui', 'co
   // SF-236-17 — chronologies (arc du tour, journée chargée, un tour touché).
   'cockpit-chronologies',
   // SF-236-18 — personnes et attentes, étagère « À envoyer », tableaux détachés (L4).
-  'cockpit-personnes'] as const;
+  'cockpit-personnes',
+  // SF-236-19 — inspecteur de nœud et recherche « montre-moi ».
+  'cockpit-inspecteur', 'cockpit-recherche'] as const;
 
 const SCENE_NAME = /^[a-z0-9-]{1,40}$/;
 

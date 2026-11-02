@@ -98,6 +98,12 @@ export class FakeEngine implements JarvisEngine {
     return this.positions.get(key) ?? null;
   }
 
+  looked: string[] = [];
+
+  look(key: string): void {
+    this.looked.push(key);
+  }
+
   skipEntry(): void {
     this.skipped++;
   }

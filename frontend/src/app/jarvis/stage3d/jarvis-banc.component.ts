@@ -65,6 +65,16 @@ export class JarvisBancComponent {
         this.cockpitRef()?.detach('personnes');
       }, 1500));
     }
+    if (this.scene === 'cockpit-inspecteur' || this.scene === 'cockpit-recherche') {
+      // SF-236-19 — la fiche du chantier 3 ; la recherche « forge » au clavier.
+      afterNextRender(() => setTimeout(() => {
+        const cockpit = this.cockpitRef();
+        cockpit?.inspectNode('s-forge#3', 'chantier');
+        if (this.scene === 'cockpit-recherche') {
+          cockpit?.setQuery('forge');
+        }
+      }, 1500));
+    }
     if (this.scene === 'cockpit-chronologies') {
       // SF-236-17 — la journée chargée (historique simulé, aucun appel) et un tour touché.
       afterNextRender(() => setTimeout(() => {
