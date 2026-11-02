@@ -27,9 +27,10 @@ MAX_NODES = 60
 # sous-réseaux. La borne d'avant (12) était taillée pour des cadres frères ; elle refusait désormais
 # des topologies légitimes. Elle monte à 24 — elle reste une borne, pas une permission d'étaler.
 MAX_GROUPS = 24
-# Au-delà, le schéma n'est plus lisible : VPC > zone > sous-réseau > ressource suffit à décrire un
-# réseau réel, et une profondeur non bornée ouvre la porte à une descente sans fin.
-MAX_GROUP_DEPTH = 4
+# Au-delà, le schéma n'est plus lisible, et une profondeur non bornée ouvre la porte à une descente sans
+# fin. F-238 (amendement de SF-142-15) : 4 refusait la topologie AWS CANONIQUE — AWS Cloud › Région › VPC
+# › Availability Zone › sous-réseau (5 niveaux), plus l'Auto Scaling group dans un sous-réseau (6).
+MAX_GROUP_DEPTH = 6
 MAX_EDGES = 120
 MAX_LABEL = 120
 
@@ -788,11 +789,158 @@ def density_notice(path):
     return ""
 
 
+# ---------------------------------------------------------------------------------------------------
+# LA DESCRIPTION PRÉPARÉE POUR LE MOTEUR « CADRE » (F-238 / SF-238-01)
+#
+# Le moteur cadré (`cadre.js`, ELK) dessine lui-même le SVG : graphviz ne trace plus rien. Mais la
+# RÉSOLUTION des icônes (plus de mille classes, alias SF-142-16, repli visible SF-142-12) et la
+# VALIDATION (bornes, imbrication, liens pendants) restent ICI, en un seul endroit : deux moteurs ne
+# doivent pas pouvoir être en désaccord sur ce qu'est « aws.mwaa » ni sur ce qui est refusé.
+#
+# `prepare` rend des DONNÉES : pour chaque nœud, le chemin du PNG officiel réellement utilisé (ou
+# `unknown`), et sa famille de service. Rien n'est dessiné ici.
+# ---------------------------------------------------------------------------------------------------
+
+# La famille d'un service se lit dans le dossier de son icône (`resources/aws/database/rds.png`).
+# Les dossiers « généraux » désignent des acteurs : le client, l'utilisateur, l'appareil.
+_CLIENT_CATEGORIES = {"general", "enduser", "client", "device"}
+
+
+def _icon_of(cls):
+    """(chemin absolu du PNG, chemin relatif « aws/database/rds ») d'une classe, ou (None, None)."""
+    icon_dir = getattr(cls, "_icon_dir", None)
+    icon = getattr(cls, "_icon", None)
+    if not icon_dir or not icon:
+        return None, None
+    import diagrams
+
+    base = os.path.dirname(os.path.dirname(os.path.abspath(diagrams.__file__)))
+    absolute = os.path.join(base, icon_dir, icon)
+    if not os.path.isfile(absolute):
+        return None, None
+    relative = os.path.join(icon_dir, os.path.splitext(icon)[0])
+    if relative.startswith("resources/"):
+        relative = relative[len("resources/"):]
+    return absolute, relative
+
+
+def _family_of(relative):
+    parts = (relative or "").split("/")
+    if len(parts) < 3:
+        return "generic"
+    return "client" if parts[1] in _CLIENT_CATEGORIES else parts[1]
+
+
+def prepare(spec):
+    """
+    Valide la description et la rend PRÊTE À DESSINER pour le moteur cadré (F-238 / SF-238-01).
+
+    Mêmes bornes, mêmes refus que `build` : un schéma refusé par graphviz l'est aussi ici. Rend un
+    dictionnaire JSON-sérialisable ; ne dessine rien.
+    """
+    nodes = spec.get("nodes") or []
+    groups = spec.get("groups") or []
+    edges = spec.get("edges") or []
+    if not nodes:
+        raise Refused("Aucun nœud : un schéma vide n'apprend rien.")
+    if len(nodes) > MAX_NODES:
+        raise Refused(f"Trop de nœuds ({len(nodes)}, maximum {MAX_NODES}).")
+    if len(groups) > MAX_GROUPS:
+        raise Refused(f"Trop de groupes ({len(groups)}, maximum {MAX_GROUPS}).")
+    if len(edges) > MAX_EDGES:
+        raise Refused(f"Trop de liens ({len(edges)}, maximum {MAX_EDGES}).")
+
+    strict = bool(spec.get("strict"))
+    title = label_of(spec.get("title"), "Le titre")
+    raw_direction = str(spec.get("direction") or "").upper()
+
+    by_group = {}
+    for node in nodes:
+        by_group.setdefault(str(node.get("group") or ""), []).append(node)
+    labels, _children, _roots, populated = group_plan(groups, by_group)
+    declared_parent = {}
+    for group in groups:
+        declared_parent[str(group.get("id") or "").strip()] = str(group.get("parent") or "").strip()
+
+    unknown = []
+    out_nodes = []
+    seen = set()
+    for node in nodes:
+        node_id = str(node.get("id") or "").strip()
+        if not node_id:
+            raise Refused("Un nœud sans identifiant : « id » est obligatoire sur chaque nœud.")
+        if node_id in seen:
+            raise Refused(f"Deux nœuds portent le même identifiant : « {node_id} ».")
+        seen.add(node_id)
+        kind = str(node.get("type") or "").strip().lower()
+        found = resolve(kind)
+        absolute, relative = _icon_of(found) if found is not None else (None, None)
+        if absolute is None:
+            if strict:
+                raise Refused(f"Type de nœud inconnu : « {kind} ». " + suggestions(kind))
+            if kind not in unknown:
+                unknown.append(kind)
+        text = label_of(node.get("label"), "Le nom d'un nœud")
+        shown = wrap_label(text) if text else wrap_label(kind)
+        out_nodes.append({
+            "id": node_id,
+            "type": kind,
+            "label": text,
+            "lines": shown.split("\n") if shown else [],
+            "group": str(node.get("group") or ""),
+            "icon": absolute,
+            "resolved": relative,
+            "family": _family_of(relative) if relative else "generic",
+            "unknown": absolute is None,
+        })
+
+    out_groups = []
+    for group_id in labels:
+        if group_id not in populated:
+            continue
+        out_groups.append({
+            "id": group_id,
+            "label": labels[group_id],
+            "parent": declared_parent.get(group_id, ""),
+        })
+
+    out_edges = []
+    for edge in edges:
+        source = str(edge.get("from") or "")
+        target = str(edge.get("to") or "")
+        if source not in seen or target not in seen:
+            missing = source if source not in seen else target
+            raise Refused(f"Lien vers un nœud non déclaré : « {missing} ». "
+                          "Un schéma faux est pire qu'un schéma absent.")
+        out_edges.append({
+            "from": source,
+            "to": target,
+            "label": label_of(edge.get("label"), "Le nom d'un lien"),
+            "bidirectional": edge.get("bidirectional") is True,
+        })
+
+    said = " ; ".join(kind + " (" + suggestions(kind) + ")" for kind in unknown)
+    return {
+        "title": title,
+        "direction": raw_direction,
+        "groups": out_groups,
+        "nodes": out_nodes,
+        "edges": out_edges,
+        "unknown": unknown,
+        "unknownSaid": said.encode("ascii", "replace").decode("ascii") if said else "",
+        "notices": [],
+    }
+
+
 def main():
     try:
         spec = json.loads(sys.stdin.read() or "{}")
         if not isinstance(spec, dict):
             raise Refused("La description doit être un objet.")
+        if "--prepare" in sys.argv[1:]:
+            # F-238 / SF-238-01 : le moteur cadré dessine lui-même ; on lui rend des données.
+            sys.stdout.write(json.dumps(prepare(spec), ensure_ascii=False))
+            return 0
         output = spec.get("output") or "/tmp/cloud-diagram"
         unknown = build(spec, output)
         # La première ligne est le fichier ; la seconde, s'il y en a une, nomme les types rendus SANS

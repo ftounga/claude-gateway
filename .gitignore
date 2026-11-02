@@ -4,6 +4,7 @@ contract-tests/target/
 backend/.idea/
 backend/*.iml
 frontend/node_modules/
+diagram-renderer/node_modules/
 frontend/dist/
 frontend/.angular/
 .idea/

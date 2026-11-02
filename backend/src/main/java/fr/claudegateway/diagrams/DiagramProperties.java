@@ -23,6 +23,12 @@ public class DiagramProperties {
     private int defaultWidth = 1600;
     /** Nombre maximal de diagrammes rendus par tour. */
     private int maxPerTurn = 6;
+    /**
+     * F-238 / SF-238-01 — la mise en page du moteur {@code cloud} : {@code graphviz} (historique, liaisons
+     * courbes) ou {@code elk} (le schéma cadré : liaisons orthogonales, zones aux conventions AWS). Toute
+     * autre valeur vaut {@code graphviz} : un réglage mal écrit ne doit jamais casser le rendu.
+     */
+    private String cloudLayout = "graphviz";
 
     public String getBaseUrl() {
         return baseUrl;
@@ -70,5 +76,19 @@ public class DiagramProperties {
 
     public void setMaxPerTurn(int maxPerTurn) {
         this.maxPerTurn = maxPerTurn;
+    }
+
+    public String getCloudLayout() {
+        return cloudLayout;
+    }
+
+    public void setCloudLayout(String cloudLayout) {
+        String value = cloudLayout == null ? "" : cloudLayout.strip().toLowerCase(java.util.Locale.ROOT);
+        this.cloudLayout = "elk".equals(value) ? "elk" : "graphviz";
+    }
+
+    /** Vrai si le schéma cadré (ELK) est la mise en page du moteur {@code cloud}. */
+    public boolean isCadre() {
+        return "elk".equals(cloudLayout);
     }
 }

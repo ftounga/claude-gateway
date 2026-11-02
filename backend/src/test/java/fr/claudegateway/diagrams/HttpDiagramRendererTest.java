@@ -146,6 +146,44 @@ class HttpDiagramRendererTest {
         assertThat(lastBody.get()).contains("\"engine\":\"cloud\"").contains("aws.s3");
     }
 
+    @Test
+    @DisplayName("SF-238-01 : par défaut graphviz — aucun champ « layout » n'est posté (rendu d'avant)")
+    void cloudDefaultsToGraphviz() {
+        serve(200, "image/svg+xml", "<svg/>".getBytes(StandardCharsets.UTF_8));
+        ObjectMapper mapper = new ObjectMapper();
+        com.fasterxml.jackson.databind.node.ObjectNode spec = mapper.createObjectNode();
+        spec.putArray("nodes").addObject().put("id", "a").put("type", "aws.s3").put("label", "Bucket");
+
+        renderer.renderCloud(spec);
+
+        assertThat(properties.isCadre()).isFalse();
+        assertThat(lastBody.get()).doesNotContain("\"layout\"");
+    }
+
+    @Test
+    @DisplayName("SF-238-01 : APP_DIAGRAM_CLOUD_LAYOUT=elk ⇒ layout=elk est posté au moteur cloud")
+    void cloudPostsElkLayoutWhenConfigured() {
+        serve(200, "image/svg+xml", "<svg/>".getBytes(StandardCharsets.UTF_8));
+        properties.setCloudLayout(" ELK ");
+        ObjectMapper mapper = new ObjectMapper();
+        com.fasterxml.jackson.databind.node.ObjectNode spec = mapper.createObjectNode();
+        spec.putArray("nodes").addObject().put("id", "a").put("type", "aws.s3").put("label", "Bucket");
+
+        renderer.renderCloud(spec);
+
+        assertThat(lastBody.get()).contains("\"engine\":\"cloud\"").contains("\"layout\":\"elk\"");
+    }
+
+    @Test
+    @DisplayName("SF-238-01 : une valeur inconnue retombe sur graphviz — un réglage mal écrit ne casse rien")
+    void unknownLayoutFallsBackToGraphviz() {
+        DiagramProperties p = new DiagramProperties();
+        p.setCloudLayout("dot");
+        assertThat(p.getCloudLayout()).isEqualTo("graphviz");
+        p.setCloudLayout(null);
+        assertThat(p.isCadre()).isFalse();
+    }
+
     // --- F-142 / SF-142-13 — le schéma réouvrable dans draw.io ---
 
     private static String base64(String value) {
