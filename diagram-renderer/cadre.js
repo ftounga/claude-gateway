@@ -133,7 +133,7 @@ async function layoutElk(prepared) {
       edges: [],
       layoutOptions: {
         "elk.padding": `[top=${ZONE_PAD.top},left=${ZONE_PAD.left},bottom=${ZONE_PAD.bottom},right=${ZONE_PAD.right}]`,
-        "elk.nodeSize.minimum": `(${snapUp(textWidth(g.label, 13) + 60)}, 64)`,
+        "elk.nodeSize.minimum": `(${snapUp(textWidth(g.label, ZONE_FONT) + GROUP_ICON + 32)}, 64)`,
         "elk.nodeSize.constraints": "[MINIMUM_SIZE]",
       },
     });
@@ -254,6 +254,7 @@ async function layoutElk(prepared) {
     nodes,
     edges,
     notices: [...(prepared.notices || [])],
+    resources: prepared.resources || "",
   };
 }
 
@@ -276,10 +277,53 @@ function simplify(points) {
 
 // ------------------------------------------------------------------------------------------------ SVG
 
-/** Le style d'une zone (SF-238-01 : style neutre ; les conventions AWS arrivent en SF-238-02). */
-function zoneStyle() {
-  return { stroke: "#7D8998", dash: "6 4", fill: "none", text: "#5A6B86", icon: null };
+/**
+ * Les conventions des groupes AWS (paquet officiel « AWS Architecture Icons », section Groups ; cadrage §4.3).
+ * `icon` : `png:<chemin sous resources/>` (icône officielle livrée par `diagrams`, jamais recolorée) ou
+ * `drawn:<nom>` (glyphe vectoriel blanc sur carré de la couleur de bordure, pour les icônes absentes de la lib).
+ * La garde G6 compare le SVG à CETTE table : une seule source.
+ */
+const ZONE_STYLES = {
+  cloud: { stroke: "#232F3E", dash: "", fill: "none", icon: "drawn:aws" },
+  account: { stroke: "#E7157B", dash: "", fill: "none", icon: "png:aws/management/organizations-account" },
+  region: { stroke: "#00A4A6", dash: "6 4", fill: "none", icon: "drawn:drapeau" },
+  vpc: { stroke: "#8C4FFF", dash: "", fill: "none", icon: "png:aws/network/vpc" },
+  az: { stroke: "#00A4A6", dash: "6 4", fill: "none", icon: null },
+  subnet_public: { stroke: "#7AA116", dash: "", fill: "#F2F6E8", icon: "png:aws/network/public-subnet" },
+  subnet_private: { stroke: "#00A4A6", dash: "", fill: "#E6F6F7", icon: "png:aws/network/private-subnet" },
+  asg: { stroke: "#ED7100", dash: "6 4", fill: "none", icon: "png:aws/compute/ec2-auto-scaling" },
+  security_group: { stroke: "#DD344C", dash: "", fill: "none", icon: null },
+  onprem: { stroke: "#7D8998", dash: "", fill: "none", icon: "png:aws/general/office-building" },
+  generic: { stroke: "#7D8998", dash: "6 4", fill: "none", icon: null },
+};
+
+const GROUP_ICON = 32;
+const ZONE_FONT = 13;
+
+/** Le style d'une zone selon son `kind` (inconnu ⇒ générique). */
+function zoneStyle(zone) {
+  return ZONE_STYLES[zone.kind] || ZONE_STYLES.generic;
 }
+
+/** Le bandeau d'une zone (icône de groupe + libellé, en haut à gauche) : rien ne doit le chevaucher. */
+function headerRect(zone) {
+  const s = zoneStyle(zone);
+  const textX = s.icon ? GROUP_ICON + 8 : 12;
+  return { x: zone.box.x, y: zone.box.y, w: textX + textWidth(zone.label, ZONE_FONT) + 4, h: GROUP_ICON };
+}
+
+/** Les glyphes dessinés (blancs) des icônes de groupe absentes de la lib. */
+function drawnGlyph(name, x, y) {
+  if (name === "aws") {
+    return `<text x="${x + 16}" y="${y + 19}" font-size="11" font-weight="bold" text-anchor="middle"`
+      + ` fill="#FFFFFF">aws</text><path d="M${x + 8},${y + 23} q8,4 16,0" stroke="#FF9900" stroke-width="1.6"`
+      + ` fill="none"/>`;
+  }
+  // Le drapeau de la Région.
+  return `<path d="M${x + 10},${y + 7} v19 M${x + 10},${y + 8} h12 l-3,4 l3,4 h-12" stroke="#FFFFFF"`
+    + ` stroke-width="1.8" fill="none"/>`;
+}
+
 
 const iconCache = new Map();
 
@@ -301,13 +345,26 @@ function dataUri(file) {
   return uri;
 }
 
-function drawZone(zone, parts) {
+function drawZone(zone, parts, resources) {
   const s = zoneStyle(zone);
   const b = zone.box;
   parts.push(`<g id="zone-${esc(zone.id)}" class="zone" data-kind="${esc(zone.kind)}">`);
   parts.push(`<rect class="zone-cadre" x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="${s.fill}"`
     + ` stroke="${s.stroke}" stroke-width="1.5"${s.dash ? ` stroke-dasharray="${s.dash}"` : ""}/>`);
-  parts.push(`<text class="zone-libelle" x="${b.x + 12}" y="${b.y + 21}" font-size="13" fill="${s.text}">`
+  let textX = b.x + 12;
+  if (s.icon) {
+    const [how, name] = s.icon.split(":");
+    const uri = how === "png" && resources ? dataUri(`${resources}/${name}.png`) : null;
+    if (uri) {
+      parts.push(`<image class="zone-icone" x="${b.x}" y="${b.y}" width="${GROUP_ICON}" height="${GROUP_ICON}"`
+        + ` href="${uri}"/>`);
+    } else {
+      parts.push(`<rect class="zone-icone" x="${b.x}" y="${b.y}" width="${GROUP_ICON}" height="${GROUP_ICON}"`
+        + ` fill="${s.stroke}"/>` + (how === "drawn" ? drawnGlyph(name, b.x, b.y) : ""));
+    }
+    textX = b.x + GROUP_ICON + 8;
+  }
+  parts.push(`<text class="zone-libelle" x="${textX}" y="${b.y + 21}" font-size="${ZONE_FONT}" fill="${s.stroke}">`
     + `${esc(zone.label)}</text>`);
   parts.push("</g>");
 }
@@ -368,7 +425,7 @@ function toSvg(model) {
   }
   const zones = [...model.zones].sort((a, b) => a.depth - b.depth);
   for (const zone of zones) {
-    drawZone(zone, parts);
+    drawZone(zone, parts, model.resources);
   }
   for (const edge of model.edges) {
     drawEdge(edge, parts);
@@ -434,4 +491,6 @@ async function build(prepared) {
   return { svg: toSvg(model), graph: toGraph(model), model };
 }
 
-module.exports = { build, toSvg, toGraph, shapeOf, textWidth, densityNotice, GRID, esc };
+module.exports = {
+  build, toSvg, toGraph, shapeOf, headerRect, textWidth, densityNotice, ZONE_STYLES, GRID, esc,
+};

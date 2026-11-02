@@ -831,6 +831,137 @@ def _family_of(relative):
     return "client" if parts[1] in _CLIENT_CATEGORIES else parts[1]
 
 
+# ---------------------------------------------------------------------------------------------------
+# LES ZONES AWS (F-238 / SF-238-02)
+#
+# Exigence du PO : « de la précision dans les zones : délimitation des zones, des Availability Zones, des
+# régions ». Chaque groupe porte un `kind` (convention « Groups » du paquet AWS Architecture Icons) ; à
+# défaut, il est INFÉRÉ du libellé, et l'inférence est DITE à l'agent.
+#
+# L'imbrication est STRICTE pour un `kind` explicite : un parent non autorisé est refusé avec la raison,
+# comme un cycle. Un `kind` INFÉRÉ n'est pas tenu à cette règle : une description d'avant F-238 (cadres à
+# plat) doit toujours donner un schéma valide (garde G7).
+# ---------------------------------------------------------------------------------------------------
+GROUP_KINDS = ("cloud", "account", "region", "vpc", "az", "subnet_public", "subnet_private", "asg",
+               "security_group", "onprem", "generic")
+
+_KIND_NAMES = {
+    "cloud": "AWS Cloud",
+    "account": "un compte",
+    "region": "une Région",
+    "vpc": "un VPC",
+    "az": "une Availability Zone",
+    "subnet_public": "un sous-réseau public",
+    "subnet_private": "un sous-réseau privé",
+    "asg": "un Auto Scaling group",
+    "security_group": "un security group",
+    "onprem": "un centre de données",
+    "generic": "une zone",
+}
+
+# Parents autorisés ("" = racine). `security_group` : dans un VPC ou l'un de ses descendants (vérifié à part).
+_ALLOWED_PARENTS = {
+    "cloud": ({""}, "AWS Cloud se place à la racine du schéma"),
+    "account": ({"", "cloud"}, "un compte se place à la racine ou dans AWS Cloud"),
+    "region": ({"cloud", "account"}, "une Région se place dans AWS Cloud ou dans un compte"),
+    "vpc": ({"region"}, "un VPC se place dans une Région"),
+    "az": ({"vpc"}, "une Availability Zone se place dans un VPC"),
+    "subnet_public": ({"az", "vpc"}, "un sous-réseau se place dans une Availability Zone ou un VPC"),
+    "subnet_private": ({"az", "vpc"}, "un sous-réseau se place dans une Availability Zone ou un VPC"),
+    "asg": ({"subnet_public", "subnet_private", "az", "vpc"},
+            "un Auto Scaling group se place dans un sous-réseau, une Availability Zone ou un VPC"),
+    "onprem": ({""}, "un centre de données se place à la racine du schéma, hors d'AWS Cloud"),
+}
+
+
+def _plain(text):
+    """Minuscules sans accents : « Région » et « region » se lisent pareil."""
+    import unicodedata
+
+    decomposed = unicodedata.normalize("NFD", str(text or "").lower())
+    return "".join(c for c in decomposed if unicodedata.category(c) != "Mn")
+
+
+def infer_kind(label):
+    """Le `kind` qu'un libellé désigne sans ambiguïté, sinon « generic » (jamais une devinette risquée)."""
+    text = _plain(label).strip()
+    subnet = "subnet" in text or "sous-reseau" in text or "sous reseau" in text
+    if "aws cloud" in text or text == "aws":
+        return "cloud"
+    if text.startswith(("compte", "account")):
+        return "account"
+    if text.startswith(("region", "aws region")):
+        return "region"
+    if text.startswith("vpc"):
+        return "vpc"
+    if "availability zone" in text or "zone de disponibilite" in text or re.match(r"^az\b", text):
+        return "az"
+    if "auto scaling" in text or "autoscaling" in text:
+        return "asg"
+    if "security group" in text or "groupe de securite" in text:
+        return "security_group"
+    if subnet and ("public" in text):
+        return "subnet_public"
+    if subnet and ("prive" in text or "private" in text):
+        return "subnet_private"
+    if "on-prem" in text or "on prem" in text or "centre de donnees" in text or "datacenter" in text \
+            or "data center" in text:
+        return "onprem"
+    return "generic"
+
+
+def zone_kinds(groups, labels, parent_of):
+    """
+    {id: (kind, inféré)} pour chaque groupe, et les notes d'inférence. Refuse un `kind` inconnu, et un
+    `kind` explicite placé dans un parent qu'il n'admet pas (« une Availability Zone se place dans un VPC »).
+    """
+    explicit = {}
+    for group in groups:
+        group_id = str(group.get("id") or "").strip()
+        raw = group.get("kind")
+        if raw is None or str(raw).strip() == "":
+            continue
+        kind = str(raw).strip().lower()
+        if kind not in GROUP_KINDS:
+            raise Refused(f"Type de zone inconnu pour « {group_id} » : « {kind} ». Valeurs : "
+                          + ", ".join(GROUP_KINDS) + ".")
+        explicit[group_id] = kind
+    kinds = {}
+    supposed = []
+    for group_id in labels:
+        if group_id in explicit:
+            kinds[group_id] = (explicit[group_id], False)
+            continue
+        kind = infer_kind(labels[group_id])
+        kinds[group_id] = (kind, True)
+        if kind != "generic":
+            supposed.append(f"« {labels[group_id]} » = {kind}")
+    # Une seule note, qui finit en en-tête : elle dit QUOI préciser, sans noyer l'agent.
+    notices = ["NOTE DU RENDU : zones supposées d'après leur libellé (précise « kind ») : "
+               + ", ".join(supposed)] if supposed else []
+    for group_id, (kind, inferred) in kinds.items():
+        if inferred or kind == "generic":
+            continue
+        parent = parent_of.get(group_id, "")
+        parent_kind = kinds[parent][0] if parent else ""
+        if kind == "security_group":
+            ancestor = parent
+            while ancestor and kinds[ancestor][0] != "vpc":
+                ancestor = parent_of.get(ancestor, "")
+            if not ancestor:
+                raise Refused(f"Zone « {labels[group_id]} » mal placée : un security group se place dans un "
+                              "VPC ou dans l'une de ses zones.")
+            continue
+        allowed, reason = _ALLOWED_PARENTS[kind]
+        if parent_kind not in allowed:
+            where = f"dans « {labels[parent]} » ({_KIND_NAMES.get(parent_kind, parent_kind)})" if parent \
+                else "à la racine"
+            raise Refused(f"Zone « {labels[group_id]} » mal placée {where} : {reason}. Corrige "
+                          "« parent » (ou le « kind » du parent) — un schéma faux est pire qu'un schéma "
+                          "absent.")
+    return kinds, notices
+
+
 def prepare(spec):
     """
     Valide la description et la rend PRÊTE À DESSINER pour le moteur cadré (F-238 / SF-238-01).
@@ -894,14 +1025,18 @@ def prepare(spec):
             "unknown": absolute is None,
         })
 
+    # F-238 / SF-238-02 : la nature de chaque zone dessinée (explicite, ou inférée et signalée).
+    drawn = {group_id: labels[group_id] for group_id in labels if group_id in populated}
+    kinds, notices = zone_kinds(groups, drawn, declared_parent)
     out_groups = []
-    for group_id in labels:
-        if group_id not in populated:
-            continue
+    for group_id in drawn:
+        kind, inferred = kinds[group_id]
         out_groups.append({
             "id": group_id,
             "label": labels[group_id],
             "parent": declared_parent.get(group_id, ""),
+            "kind": kind,
+            "inferred": inferred,
         })
 
     out_edges = []
@@ -928,8 +1063,16 @@ def prepare(spec):
         "edges": out_edges,
         "unknown": unknown,
         "unknownSaid": said.encode("ascii", "replace").decode("ascii") if said else "",
-        "notices": [],
+        "notices": notices,
+        "resources": _resources_dir(),
     }
+
+
+def _resources_dir():
+    """Le dossier `resources/` de la lib (icônes de groupe officielles : VPC, sous-réseaux, ASG…)."""
+    import diagrams
+
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(diagrams.__file__))), "resources")
 
 
 def main():

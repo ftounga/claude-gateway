@@ -84,4 +84,69 @@ function g2Extremites(graph, nodesWithLines) {
   return { defects };
 }
 
-module.exports = { g1Orthogonalite, g2Extremites, distanceToBorder, pointsOf };
+const MIN_MARGIN = 24;
+
+function inside(inner, outer, margin) {
+  return inner.x - outer.x >= margin && inner.y - outer.y >= margin
+    && outer.x + outer.w - (inner.x + inner.w) >= margin && outer.y + outer.h - (inner.y + inner.h) >= margin;
+}
+
+/** G4 — Imbrication : un nœud ou une zone tient dans sa zone parente, à 24 px au moins de chaque bord. */
+function g4Imbrication(svg, graph) {
+  const defects = [];
+  const zones = new Map(graph.zones.map((z) => [z.id, z]));
+  for (const z of graph.zones) {
+    const parent = z.parent ? zones.get(z.parent) : null;
+    if (parent && !inside(z.box, parent.box, MIN_MARGIN)) {
+      defects.push(`zone « ${z.id} » déborde de « ${parent.id} » ou marge < ${MIN_MARGIN} px`);
+    }
+  }
+  for (const n of graph.nodes) {
+    const parent = n.zone ? zones.get(n.zone) : null;
+    if (parent && !inside(n.box, parent.box, MIN_MARGIN)) {
+      defects.push(`nœud « ${n.id} » déborde de « ${parent.id} » ou marge < ${MIN_MARGIN} px`);
+    }
+  }
+  return { defects };
+}
+
+function attr(tag, name) {
+  const m = tag.match(new RegExp(`\\s${name}="([^"]*)"`));
+  return m ? m[1] : null;
+}
+
+/** G6 — Conventions : chaque `kind` est rendu avec la bordure, le trait, le fond et la couleur de libellé de §4.3. */
+function g6Conventions(svg) {
+  const { ZONE_STYLES } = require("./cadre.js");
+  const defects = [];
+  const blocks = svg.split('<g id="zone-').slice(1);
+  for (const block of blocks) {
+    const head = block.slice(0, block.indexOf("</g>"));
+    const kind = (head.match(/data-kind="([^"]+)"/) || [])[1];
+    const expected = ZONE_STYLES[kind];
+    const rect = (head.match(/<rect class="zone-cadre"[^>]*>/) || [])[0] || "";
+    const text = (head.match(/<text class="zone-libelle"[^>]*>/) || [])[0] || "";
+    if (!expected || !rect) {
+      defects.push(`zone sans convention (${kind})`);
+      continue;
+    }
+    if (attr(rect, "stroke") !== expected.stroke) {
+      defects.push(`${kind} : bordure ${attr(rect, "stroke")} au lieu de ${expected.stroke}`);
+    }
+    if ((attr(rect, "stroke-dasharray") || "") !== expected.dash) {
+      defects.push(`${kind} : trait « ${attr(rect, "stroke-dasharray") || "continu"} »`);
+    }
+    if (attr(rect, "fill") !== expected.fill) {
+      defects.push(`${kind} : fond ${attr(rect, "fill")} au lieu de ${expected.fill}`);
+    }
+    if (attr(text, "fill") !== expected.stroke) {
+      defects.push(`${kind} : libellé ${attr(text, "fill")} au lieu de ${expected.stroke}`);
+    }
+    if (Boolean(expected.icon) !== /class="zone-icone"/.test(head)) {
+      defects.push(`${kind} : icône de groupe ${expected.icon ? "absente" : "en trop"}`);
+    }
+  }
+  return { defects };
+}
+
+module.exports = { g1Orthogonalite, g2Extremites, g4Imbrication, g6Conventions, distanceToBorder, pointsOf };
