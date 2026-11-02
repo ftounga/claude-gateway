@@ -332,6 +332,13 @@ async function realtimeOnce(s, { strategy, silence = 0.7, keyterms = null }) {
 
 // ------------------------------------------------------------------ campagne
 
+const RESULTS = path.join(OUT, `results-${Date.now()}.json`);
+
+/** Écrit les résultats au fil de l'eau : un passage interrompu garde ce qui est mesuré. */
+function save(results) {
+  fs.writeFileSync(RESULTS, JSON.stringify(results, null, 2));
+}
+
 function pct(values, p) {
   const v = values.filter((x) => x !== null && Number.isFinite(x)).sort((a, b) => a - b);
   if (v.length === 0) return null;
@@ -375,6 +382,7 @@ async function main() {
       process.stdout.write('.');
     }
     results.options[id] = summarize(id, opt.label, rows, opt.usdMin);
+    save(results);
     console.log(`\n${id} ${opt.label}: WER ${results.options[id].werPct} % ${JSON.stringify(results.options[id].byVariant)}, noms manqués ${results.options[id].missedNames}, `
       + `latence p50 ${results.options[id].p50Ms} ms / p90 ${results.options[id].p90Ms} ms`);
   }
@@ -393,6 +401,7 @@ async function main() {
         process.stdout.write('.');
       }
       results.options[id] = summarize(id, cfg.label, rows, 0.39 / 60 * (cfg.keyterms ? 1.2 : 1));
+      save(results);
       console.log(`\n${id}: WER ${results.options[id].werPct} % ${JSON.stringify(results.options[id].byVariant)}, noms manqués ${results.options[id].missedNames}, `
         + `commit→texte p50 ${results.options[id].p50Ms} ms`);
     }
@@ -418,14 +427,14 @@ async function main() {
           / rows.reduce((n, r) => n + r.firstWer.words, 0)).toFixed(1),
         endToCommitP50Ms: pct(rows.map((r) => r.endToCommitMs), 0.5), rows,
       };
+      save(results);
       console.log(`\nVAD ${silence}s : ${cutCount}/${rows.length} phrases coupées, fin→commit p50 `
         + `${results.vad[silence].endToCommitP50Ms} ms`);
     }
   }
 
-  const file = path.join(OUT, `results-${Date.now()}.json`);
-  fs.writeFileSync(file, JSON.stringify(results, null, 2));
-  console.log(`\nRésultats : ${file}`);
+  save(results);
+  console.log(`\nRésultats : ${RESULTS}`);
 }
 
 function summarize(id, label, rows, usdMin) {
@@ -449,7 +458,10 @@ function summarize(id, label, rows, usdMin) {
   };
 }
 
-main().catch((e) => {
-  console.error(e.message);
-  process.exit(1);
-});
+// Lancé directement (pas importé par relecture.mjs).
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().catch((e) => {
+    console.error(e.message);
+    process.exit(1);
+  });
+}
