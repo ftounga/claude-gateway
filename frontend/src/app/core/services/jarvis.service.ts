@@ -20,6 +20,18 @@ export const JARVIS_COMPANION_DOWNLOAD_PATH = '/api/runner/download/android';
 export class JarvisService {
   private readonly http = inject(HttpClient);
 
+  /**
+   * F-236 / SF-236-26 — la carte d'activité : tours par sujet et par jour sur `days` jours (≤ 7), dans le fuseau
+   * de l'appareil. Agrégat en lecture seule, filtré `user_id` côté passerelle, sans contenu.
+   */
+  activity(days = 7, tz: string | null = null): Observable<unknown> {
+    let params = new HttpParams().set('days', String(days));
+    if (tz) {
+      params = params.set('tz', tz);
+    }
+    return this.http.get<unknown>('/api/jarvis/activity', { params });
+  }
+
   /** Ce que Jarvis a fait sur ce terminal depuis `since` (dernière visite de l'appareil), sinon les dernières 24 h. */
   absence(workspaceId: string, since: string | null): Observable<JarvisAbsence> {
     const params = since ? new HttpParams().set('since', since) : undefined;

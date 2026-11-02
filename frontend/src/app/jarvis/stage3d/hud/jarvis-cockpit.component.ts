@@ -9,6 +9,9 @@ import { AtelierMessage } from '../../../core/models/atelier.models';
 import { AtelierService } from '../../../core/services/atelier.service';
 import { ReplayTrack, trackOf } from './jarvis-replay';
 import { WatchClock, clockX, watchClock } from './jarvis-watch-clock';
+import { ActivityRing, JarvisActivity, activityRings, dayLabels } from './jarvis-activity';
+import { RenderView } from '../jarvis-render-stats';
+import { JarvisService } from '../../../core/services/jarvis.service';
 import { VeilleService } from '../../../core/services/veille.service';
 import { DayTurn, FAMILY_TONE, FAMILY_WORD, Pearl, TurnTimeline, dayAxis, dayTurns } from './jarvis-timelines';
 
@@ -35,6 +38,10 @@ export interface CockpitStage {
   session?: () => SessionSnapshot;
   /** SF-236-19 — regarder un nœud (la caméra le cadre). */
   look?: (key: string) => void;
+  /** SF-236-26 — poser (ou retirer) les anneaux de la carte d'activité. */
+  setActivity?: (rings: ActivityRing[] | null) => void;
+  /** SF-236-26 — compter une vue ouverte dans la mesure du rendu. */
+  countView?: (key: RenderView) => void;
 }
 
 /** Une ligne de liste reliée à un nœud de l'univers (filament au survol). */
@@ -72,6 +79,26 @@ export const JARVIS_WATCHES = new InjectionToken<() => Observable<unknown>>('JAR
   factory: () => {
     const veilles = inject(VeilleService);
     return () => veilles.listForAccount();
+  },
+});
+
+/**
+ * SF-236-26 — la carte d'activité 7 jours (`GET /api/jarvis/activity`, filtrée `user_id`), lue à la demande hors
+ * tour, dans le fuseau de l'appareil ; injectable pour les tests et le banc.
+ */
+export const JARVIS_ACTIVITY = new InjectionToken<() => Observable<unknown>>('JARVIS_ACTIVITY', {
+  providedIn: 'root',
+  factory: () => {
+    const jarvis = inject(JarvisService);
+    return () => {
+      let tz: string | null = null;
+      try {
+        tz = Intl.DateTimeFormat().resolvedOptions().timeZone ?? null;
+      } catch {
+        tz = null;
+      }
+      return jarvis.activity(7, tz);
+    };
   },
 });
 
@@ -254,6 +281,49 @@ export class JarvisCockpitComponent implements OnDestroy {
       }
     });
   });
+
+  /** SF-236-26 (NF-16) — la carte d'activité : lue à la demande, hors tour ; anneaux posés dans l'univers. */
+  readonly activity = signal<{ rings: ActivityRing[]; labels: string[] } | null>(null);
+  readonly activityState = signal<'idle' | 'loading' | 'error'>('idle');
+
+  /** Affiche (ou retire) la carte d'activité ; refusé pendant un tour (aucun appel pendant un tour). */
+  toggleActivity(): void {
+    if (this.activity()) {
+      this.activity.set(null);
+      this.stage()?.setActivity?.(null);
+      return;
+    }
+    if (this.signals().turnActive || this.activityState() === 'loading') {
+      return;
+    }
+    this.activityState.set('loading');
+    let source;
+    try {
+      source = this.injector.get(JARVIS_ACTIVITY)();
+    } catch {
+      this.activityState.set('error');
+      return;
+    }
+    source.subscribe({
+      next: (raw) => {
+        const rings = activityRings(raw, this.signals().universe);
+        this.activity.set({ rings, labels: dayLabels(Array.isArray((raw as JarvisActivity | null)?.days) ? raw as JarvisActivity : null) });
+        this.activityState.set('idle');
+        this.stage()?.setActivity?.(rings);
+        this.stage()?.countView?.('activity');
+      },
+      error: () => this.activityState.set('error'),
+    });
+  }
+
+  hasActivity(rings: readonly ActivityRing[]): boolean {
+    return rings.some((r) => r.total > 0);
+  }
+
+  /** Lecture accessible d'un anneau : « CAGIP : lun. 3, mar. 0… ». */
+  activityLabel(ring: ActivityRing, labels: readonly string[]): string {
+    return `${ring.name} : ${ring.turns.map((t, i) => `${labels[i] ?? ''} ${t}`).join(', ')} tour(s)`;
+  }
 
   private loadWatches(): void {
     try {

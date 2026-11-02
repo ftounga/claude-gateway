@@ -105,6 +105,15 @@ type GlobeSpec = Extract<Effect3d, { kind: 'globe' }>;
 type SwarmSpec = Extract<Effect3d, { kind: 'swarm' }>;
 type DialSpec = Extract<Effect3d, { kind: 'dial' }>;
 type RadarSpec = Extract<Effect3d, { kind: 'radar' }>;
+type ActivitySpec = Extract<Effect3d, { kind: 'activity' }>;
+
+/** SF-236-26 — la carte d'activité : 12 clients au plus, 7 segments, 6 traits par segment, un anneau de 0,62. */
+const ACTIVITY_RINGS = 12;
+const ACTIVITY_DAYS = 7;
+const ACTIVITY_STEPS = 6;
+const ACTIVITY_RADIUS = 0.62;
+/** Un segment éteint (aucun tour) reste à peine visible : l'anneau se lit en entier. */
+const ACTIVITY_FLOOR = 0.08;
 
 /** SF-236-25 — le radar : son rayon (au-delà de l'orbite des postes), un balayage en 4 s, un écho pulse en 1,2 s. */
 const RADAR_MARGIN = 1.4;
@@ -168,6 +177,11 @@ export class Effects3d {
   private readonly radarRing: LineSegments;
   private readonly radarMaterial: LineBasicMaterial;
   private readonly radarRadius: number;
+  private readonly activity: Presence<ActivitySpec> = { spec: null, on: false, since: -Infinity };
+  private readonly activityLines: LineSegments;
+  private readonly activityMaterial: LineBasicMaterial;
+  private readonly activityPos = new Float32Array(ACTIVITY_RINGS * ACTIVITY_DAYS * ACTIVITY_STEPS * 6);
+  private readonly activityCol = new Float32Array(ACTIVITY_RINGS * ACTIVITY_DAYS * ACTIVITY_STEPS * 6);
 
   constructor(scene: Scene, narrow = false, pixelRatio = 1) {
     scene.add(this.group);
@@ -308,6 +322,17 @@ export class Effects3d {
     this.radarRing.visible = false;
     this.radarRing.frustumCulled = false;
     this.group.add(this.radarRing);
+    // SF-236-26 — la carte d'activité : des arcs colorés par sommet (éclat du jour), tampons préalloués.
+    const activity = new BufferGeometry();
+    activity.setAttribute('position', new BufferAttribute(this.activityPos, 3));
+    activity.setAttribute('color', new BufferAttribute(this.activityCol, 3));
+    activity.setDrawRange(0, 0);
+    this.activityMaterial = new LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0,
+      blending: AdditiveBlending, depthWrite: false });
+    this.activityLines = new LineSegments(activity, this.activityMaterial);
+    this.activityLines.visible = false;
+    this.activityLines.frustumCulled = false;
+    this.group.add(this.activityLines);
   }
 
   /** Les effets du plan ; `opening` (banc) : tout part de t = 0. */
@@ -316,7 +341,7 @@ export class Effects3d {
     const seen = { flow: null as FlowSpec | null, cards: null as CardsSpec | null, scan: null as ScanSpec | null,
       cloud: null as CloudSpec | null, tether: null as TetherSpec | null, countdown: null as CountdownSpec | null,
       crown: null as CrownSpec | null, globe: null as GlobeSpec | null, swarm: null as SwarmSpec | null,
-      dial: null as DialSpec | null, radar: null as RadarSpec | null };
+      dial: null as DialSpec | null, radar: null as RadarSpec | null, activity: null as ActivitySpec | null };
     for (const effect of effects) {
       switch (effect.kind) {
         case 'pulse':
@@ -358,6 +383,9 @@ export class Effects3d {
         case 'radar':
           seen.radar = effect;
           break;
+        case 'activity':
+          seen.activity = effect;
+          break;
         case 'wave':
           if (opening || effect.seq > this.waveSeq) {
             effect.keys.forEach((key, i) => this.fireRing(key, effect.tone, at + i * WAVE_STAGGER, 0.5));
@@ -386,6 +414,7 @@ export class Effects3d {
     present(this.swarm, seen.swarm, at, () => true);
     present(this.dial, seen.dial, at, (a, b) => a.anchor === b.anchor);
     present(this.radar, seen.radar, at, (a, b) => a.echoes.length === b.echoes.length);
+    present(this.activity, seen.activity, at, (a, b) => a.rings.length === b.rings.length);
   }
 
   /** Une image. `camera` : anneaux, cartes et loupe lui font face. */
@@ -401,6 +430,7 @@ export class Effects3d {
     this.frameCountdown(now, camera);
     this.frameGlobe(now, locate);
     this.frameDial(now, camera, locate);
+    this.frameActivity(now, locate);
     let used = this.frameFlow(now, locate, 0);
     used = this.frameCloud(now, locate, used);
     used = this.frameCrown(now, used);
@@ -441,6 +471,8 @@ export class Effects3d {
     this.dialMaterial.dispose();
     this.radarRing.geometry.dispose();
     this.radarMaterial.dispose();
+    this.activityLines.geometry.dispose();
+    this.activityMaterial.dispose();
     this.group.removeFromParent();
   }
 
@@ -816,6 +848,57 @@ export class Effects3d {
       used++;
     }
     return used;
+  }
+
+  /**
+   * SF-236-26 (NF-16) — la carte d'activité : autour de chaque client, un anneau face à la caméra en 7 arcs (le plus
+   * ancien en haut, puis dans le sens des aiguilles), chacun éclairé selon les tours du jour. 0 allocation.
+   */
+  private frameActivity(now: number, locate: Locator): void {
+    const spec = this.activity.spec;
+    const presence = level(this.activity, now);
+    if (!spec || presence <= 0) {
+      this.activityLines.visible = false;
+      return;
+    }
+    const c = this.palette.get('normal')!;
+    const gap = 0.12;
+    const span = (Math.PI * 2) / ACTIVITY_DAYS;
+    let v = 0;
+    const rings = Math.min(ACTIVITY_RINGS, spec.rings.length);
+    for (let r = 0; r < rings; r++) {
+      const ring = spec.rings[r];
+      this.anchor(ring.anchor, locate, this.at);
+      const days = Math.min(ACTIVITY_DAYS, ring.levels.length);
+      for (let d = 0; d < days; d++) {
+        const glow = ACTIVITY_FLOOR + (1 - ACTIVITY_FLOOR) * clamp(ring.levels[d]);
+        const start = Math.PI / 2 - d * span - gap / 2;
+        for (let k = 0; k < ACTIVITY_STEPS; k++) {
+          const a0 = start - (k / ACTIVITY_STEPS) * (span - gap);
+          const a1 = start - ((k + 1) / ACTIVITY_STEPS) * (span - gap);
+          this.to.copy(this.at).addScaledVector(this.right, Math.cos(a0) * ACTIVITY_RADIUS)
+            .addScaledVector(this.up, Math.sin(a0) * ACTIVITY_RADIUS);
+          write(this.activityPos, v, this.to);
+          this.activityCol[v * 3] = c[0] * glow;
+          this.activityCol[v * 3 + 1] = c[1] * glow;
+          this.activityCol[v * 3 + 2] = c[2] * glow;
+          v++;
+          this.to.copy(this.at).addScaledVector(this.right, Math.cos(a1) * ACTIVITY_RADIUS)
+            .addScaledVector(this.up, Math.sin(a1) * ACTIVITY_RADIUS);
+          write(this.activityPos, v, this.to);
+          this.activityCol[v * 3] = c[0] * glow;
+          this.activityCol[v * 3 + 1] = c[1] * glow;
+          this.activityCol[v * 3 + 2] = c[2] * glow;
+          v++;
+        }
+      }
+    }
+    const geometry = this.activityLines.geometry;
+    geometry.setDrawRange(0, v);
+    (geometry.getAttribute('position') as BufferAttribute).needsUpdate = true;
+    (geometry.getAttribute('color') as BufferAttribute).needsUpdate = true;
+    this.activityLines.visible = v > 0;
+    this.activityMaterial.opacity = 0.9 * presence;
   }
 
   private fireRing(anchor: string, tone: SceneTone, at: number, scale = 1): void {

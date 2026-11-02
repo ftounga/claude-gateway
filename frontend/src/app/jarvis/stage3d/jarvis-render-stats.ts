@@ -39,6 +39,9 @@ export function medianClass(histogram: ArrayLike<number>): number {
   return histogram.length - 1;
 }
 
+/** SF-236-26 — les vues comptées (clés fermées, les mêmes que `RenderCounts.KEYS` côté passerelle). */
+export type RenderView = 'replays' | 'presentations' | 'cockpits' | 'nights' | 'activity';
+
 export interface RenderReport {
   mode: '3d' | '2d';
   render: Record<string, number>;
@@ -86,6 +89,11 @@ export class RenderStats {
 
   brainPass(): void {
     this.add('brains');
+  }
+
+  /** SF-236-26 — une vue de l'itération 4 ouverte (replay, présentation, cockpit externe, veilleur, activité). */
+  view(key: RenderView): void {
+    this.add(key);
   }
 
   entry(skipped: boolean): void {

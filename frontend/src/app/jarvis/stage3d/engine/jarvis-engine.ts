@@ -492,7 +492,8 @@ class ThreeJarvisEngine implements JarvisEngine {
     const panels = [...(plan.scene?.panels ?? []), ...(plan.show?.panels ?? []), ...(plan.ambient?.panels ?? [])];
     this.panels?.set(boundPanels(panels, this.width < 768, plan.scene?.id), replay ? 0 : now,
       replay && plan.bancPanelsOut === true);
-    this.effects?.set([...(plan.ambient?.effects ?? []), ...(plan.scene?.effects ?? [])], replay ? 0 : now, replay);
+    this.effects?.set([...(plan.ambient?.effects ?? []), ...(plan.scene?.effects ?? []),
+      ...(plan.activity ? [plan.activity] : [])], replay ? 0 : now, replay);
     const travel = plan.scene?.travel;
     if (travel && travel.id !== this.travelId) {
       this.travelId = travel.id;

@@ -26,6 +26,7 @@
       <ng-container *ngTemplateOutlet="boardsTpl" />
       <ng-container *ngTemplateOutlet="dayTpl" />
       <ng-container *ngTemplateOutlet="watchClockTpl" />
+      <ng-container *ngTemplateOutlet="activityTpl" />
     </div>
   </aside>
 
@@ -73,6 +74,7 @@
             <ng-container *ngTemplateOutlet="boardTpl" />
             <ng-container *ngTemplateOutlet="boardsTpl" />
             <ng-container *ngTemplateOutlet="watchClockTpl" />
+            <ng-container *ngTemplateOutlet="activityTpl" />
           }
           @case ('meteo') {
             <ng-container *ngTemplateOutlet="weatherTpl" />
@@ -450,4 +452,36 @@
       </ul>
     </section>
   }
+</ng-template>
+
+<!-- SF-236-26 (NF-16) — la carte d'activité 7 jours : à la demande, hors tour ; anneaux autour des clients en 3D. -->
+<ng-template #activityTpl>
+  <section class="ck__section ck__activity" aria-labelledby="ck-activite">
+    <h2 id="ck-activite" class="ck__title">Activité · 7 jours</h2>
+    @if (activity(); as a) {
+      @if (a.rings.length === 0 || !hasActivity(a.rings)) {
+        <p class="ck__empty">Aucun tour ces 7 derniers jours.</p>
+      } @else {
+        <ul class="ck__list">
+          @for (r of a.rings; track r.clientKey) {
+            <li class="ck__activity-row" [attr.aria-label]="activityLabel(r, a.labels)">
+              <span class="ck__label">{{ r.name }}</span>
+              <span class="ck__activity-days" aria-hidden="true">
+                @for (l of r.levels; track $index) {
+                  <i class="ck__activity-day" [style.opacity]="0.12 + 0.88 * l" [attr.title]="a.labels[$index] + ' : ' + r.turns[$index]"></i>
+                }
+              </span>
+              <span class="ck__note">{{ r.total }}</span>
+            </li>
+          }
+        </ul>
+      }
+    } @else if (activityState() === 'error') {
+      <p class="ck__empty">L'activité n'a pas pu être lue.</p>
+    }
+    <button type="button" class="ck__load ck__activity-toggle" [attr.aria-pressed]="activity() !== null"
+            [disabled]="(turn().active && !activity()) || activityState() === 'loading'" (click)="toggleActivity()">
+      {{ activityState() === 'loading' ? 'Lecture…' : activity() ? 'Masquer l’activité' : 'Voir l’activité de la semaine' }}
+    </button>
+  </section>
 </ng-template>

@@ -606,3 +606,32 @@
     box-shadow: 0 0 8px var(--cg-holo, #E07B39);
   }
 }
+
+// SF-236-26 (NF-16) — la carte d'activité : sept pastilles par client, l'éclat suit les tours du jour.
+.ck__activity-row {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  padding: 2px 0;
+  font-size: 12px;
+
+  .ck__label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+}
+
+.ck__activity-days {
+  display: flex;
+  gap: 3px;
+}
+
+.ck__activity-day {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--cg-holo, #E07B39);
+}
