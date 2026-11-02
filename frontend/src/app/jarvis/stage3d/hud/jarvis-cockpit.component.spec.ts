@@ -183,6 +183,32 @@ describe('F-236 / SF-236-15 — JarvisCockpitComponent (panneaux latéraux, repl
     expect(fixture.nativeElement.querySelector('.ck__summary')?.textContent).toContain('Tout va bien.');
   });
 
+  it('SF-236-22 — « Rejouer ce tour » : le tour déjà lu est émis (aucun nouvel appel), refusé pendant un tour', () => {
+    const history = jasmine.createSpy('history').and.returnValue(of([
+      { id: 'u1', role: 'USER', content: 'Vérifie les pods', createdAt: new Date().toISOString() },
+      { id: 'a1', role: 'ASSISTANT', content: 'Tout va bien.', createdAt: new Date().toISOString(),
+        terminal: { blocks: [{ tool: 'bash', command: 'kubectl get pods', output: '', hasOutput: false }],
+          omittedBlocks: 0 } },
+    ]));
+    TestBed.overrideProvider(JARVIS_DAY_HISTORY, { useValue: history });
+    mount({ ...screen, turnActive: false });
+    const emitted: unknown[] = [];
+    cockpit.replay.subscribe((t) => emitted.push(t));
+    cockpit.loadDay();
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('.ck__turn') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const button = fixture.nativeElement.querySelector('.ck__replay') as HTMLButtonElement;
+    expect(button.textContent).toContain('Rejouer ce tour');
+    button.click();
+    expect(emitted.length).toBe(1);
+    expect((emitted[0] as { id: string }).id).toBe('u1');
+    expect(history).toHaveBeenCalledTimes(1);
+    fixture.componentRef.setInput('signals', { ...screen, turnActive: true });
+    cockpit.replayTurn(cockpit.day()!.turns[0]);
+    expect(emitted.length).toBe(1);
+  });
+
   it('SF-236-17 — journée illisible ⇒ message, aucune erreur', () => {
     TestBed.overrideProvider(JARVIS_DAY_HISTORY, { useValue: () => throwError(() => new Error('500')) });
     mount({ ...screen, turnActive: false });

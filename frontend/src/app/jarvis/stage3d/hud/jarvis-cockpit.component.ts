@@ -7,6 +7,7 @@ import { Observable } from 'rxjs';
 
 import { AtelierMessage } from '../../../core/models/atelier.models';
 import { AtelierService } from '../../../core/services/atelier.service';
+import { ReplayTrack, trackOf } from './jarvis-replay';
 import { DayTurn, FAMILY_TONE, FAMILY_WORD, Pearl, TurnTimeline, dayAxis, dayTurns } from './jarvis-timelines';
 
 import { JarvisUniverse, clientKey } from '../../scenes/jarvis-universe.models';
@@ -136,6 +137,8 @@ export class JarvisCockpitComponent implements OnDestroy {
   readonly shownFilter = input<ShowFilter | null>(null);
   /** SF-236-16 — un chiffre touché : « Montrer » local, sans tour. */
   readonly show = output<ShowFilter>();
+  /** SF-236-22 (NF-9) — un tour de la journée à rejouer (lecteur privé : le bus vivant n'est jamais alimenté). */
+  readonly replay = output<ReplayTrack>();
 
   private readonly zone = inject(NgZone);
   private readonly filament = viewChild<ElementRef<SVGLineElement>>('filament');
@@ -213,11 +216,23 @@ export class JarvisCockpitComponent implements OnDestroy {
       next: (messages) => {
         const now = new Date();
         const turns = dayTurns(messages ?? [], now);
+        this.dayMessages = messages ?? [];
         this.day.set({ subjectId, turns, axis: dayAxis(turns, now) });
         this.dayState.set('idle');
       },
       error: () => this.dayState.set('error'),
     });
+  }
+
+  private dayMessages: readonly AtelierMessage[] = [];
+
+  /** SF-236-22 — rejoue le tour choisi (déjà lu : aucun appel). Refusé pendant un tour vivant. */
+  replayTurn(turn: DayTurn): void {
+    const s = this.signals();
+    const track = s.turnActive ? null : trackOf(this.dayMessages, turn.id, s.universe, this.day()?.subjectId ?? null);
+    if (track) {
+      this.replay.emit(track);
+    }
   }
 
   /** Position d'un tour sur l'axe de la journée (0-100 %). */

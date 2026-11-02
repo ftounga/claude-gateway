@@ -73,6 +73,10 @@ export function bancScreen(scene: string): ScreenSignals {
   const universe = scene === 'cockpit-meteo' ? bancWeatherUniverse() : testUniverse();
   const base: ScreenSignals = { ...IDLE_SCREEN, universe, subjectId: 's-forge', state: 'reflexion', turnActive: true,
     pulses: 3, delegations: 1, scene: BANC_SCENE_VIEWS['commande'] ?? null };
+  if (scene === 'cockpit-replay') {
+    // SF-236-22 — un tour rejoué : la scène S3 du lecteur privé, au repos côté bus.
+    return { ...base, state: 'reflexion', turnActive: true, pulses: 4 };
+  }
   if (scene === 'cockpit-chronologies') {
     // Fin de tour : l'arc du tour reste lisible, la journée se charge (hors tour).
     return { ...base, state: 'repos', turnActive: false, pulses: 6 };

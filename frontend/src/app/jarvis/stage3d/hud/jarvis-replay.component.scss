@@ -1,0 +1,104 @@
+// F-236 / SF-236-22 — la barre du replay (T-R) : verre holographique (§7.2), jetons --cg-holo-* (DESIGN_SYSTEM §23),
+// polices de la charte. Au-dessus du cockpit (z 3) ; visible en 3D comme en 2D (vue simplifiée).
+:host {
+  display: contents;
+}
+
+.rp {
+  position: fixed;
+  left: 50%;
+  bottom: 96px;
+  z-index: 4;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--cg-space-2);
+  max-width: min(760px, calc(100vw - 32px));
+  padding: var(--cg-space-2) var(--cg-space-3);
+  transform: translateX(-50%);
+  border: 1px solid color-mix(in srgb, var(--cg-holo, #E07B39) 55%, transparent);
+  background: color-mix(in srgb, var(--cg-navy, #0B1020) 78%, transparent);
+  backdrop-filter: blur(10px);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  color: var(--cg-cream, #F5EFE3);
+  font-size: 13px;
+  animation: rp-in var(--jv-dur-panelIn, 420ms) var(--jv-ease-sortie, ease-out);
+}
+
+.rp__tag {
+  color: var(--cg-holo-text, #F0954F);
+  font: 600 12px var(--cg-font-heading);
+  letter-spacing: 0.18em;
+}
+
+.rp__what {
+  flex: 1 1 220px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.rp__num {
+  margin-right: 6px;
+  font-family: var(--cg-font-mono);
+  color: var(--cg-holo-text, #F0954F);
+}
+
+.rp__scene {
+  opacity: 0.85;
+}
+
+.rp__track {
+  flex: 1 1 100%;
+  height: 2px;
+  background: color-mix(in srgb, var(--cg-holo, #E07B39) 20%, transparent);
+
+  i {
+    display: block;
+    height: 100%;
+    background: var(--cg-holo, #E07B39);
+  }
+}
+
+.rp__btn {
+  min-width: 44px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--cg-holo, #E07B39) 40%, transparent);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+
+  &[aria-pressed='true'],
+  &--main {
+    background: color-mix(in srgb, var(--cg-holo, #E07B39) 22%, transparent);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--cg-holo, #E07B39);
+    outline-offset: 2px;
+  }
+}
+
+@media (max-width: 599px) {
+  .rp {
+    bottom: 88px;
+    font-size: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rp {
+    animation: none;
+  }
+}
+
+@keyframes rp-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 12px);
+  }
+}
