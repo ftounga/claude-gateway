@@ -89,6 +89,10 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     interviewClient.offered.and.returnValue(of({ offer: false, offers: 1 }));
     portraitClient = jasmine.createSpyObj<JarvisPortraitClient>('JarvisPortraitClient',
       ['get', 'update', 'eraseAll', 'addSouvenir', 'patchSouvenir', 'deleteSouvenir', 'integrate']);
+    // F-241 / SF-241-03 — le portrait lu à l'ouverture (termes « À ne pas aborder » du filet des lignes 🎙).
+    portraitClient.get.and.returnValue(of({ exists: false, enabled: true, version: 0, sections: [], souvenirs: [],
+      size: { chars: 0, tokens: 0, maxTokens: 1500, maxChars: 6000 }, lastInterviewAt: null, interviewOffers: 0,
+      blockedTerms: [] }));
     fastBrain.warm.and.resolveTo(false);
     fastBrain.converse.and.callFake((_body, h) => {
       fast = h;
@@ -596,7 +600,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     void jarvis.talk();
     flushMicrotasks();
     expect(atelier.streamChat).toHaveBeenCalledWith('w-2', 'Où en est la migration ?', jasmine.any(Object), 'ACT',
-      false, [], null, false, 'JARVIS', null);
+      false, [], null, false, 'JARVIS', null, false);
     expect(jarvis.state()).toBe('reflexion');
 
     handlers!.onText('🎙 La migration');
@@ -721,7 +725,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     flushMicrotasks();
     expect(jarvis.said()).toBe('Où en est CAGIP ?');
     expect(atelier.streamChat).toHaveBeenCalledWith('w-2', 'Où en est CAGIP ?', jasmine.any(Object), 'ACT', false, [],
-      null, false, 'JARVIS', null);
+      null, false, 'JARVIS', null, false);
     expect(jarvisApi.correctCapture).not.toHaveBeenCalled(); // capture éteinte
     jarvis.ngOnDestroy();
   }));
@@ -740,7 +744,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       void jarvis.handle('Non, j’ai dit CAGIP.');
       flushMicrotasks();
       expect(atelier.streamChat).toHaveBeenCalledWith('w-2', 'Où en est CAGIP ?', jasmine.any(Object), 'ACT', false,
-        [], null, false, 'JARVIS', null);
+        [], null, false, 'JARVIS', null, false);
       expect(jarvis.said()).toBe('Où en est CAGIP ?');
       jarvis.ngOnDestroy();
     }));
@@ -1145,6 +1149,26 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(jarvis.state()).toBe('repos');
   }));
 
+  it('F-241 / SF-241-03 — une ligne 🎙 d’Opus qui évoque un sujet « à ne pas aborder » non amené n’est jamais dite', fakeAsync(() => {
+    portraitClient.get.and.returnValue(of({ exists: true, enabled: true, version: 2, sections: [], souvenirs: [],
+      size: { chars: 10, tokens: 3, maxTokens: 1500, maxChars: 6000 }, lastInterviewAt: null, interviewOffers: 0,
+      blockedTerms: ['divorce'] }));
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    const jarvis = fixture.componentInstance;
+
+    jarvis.send('w-2', 'Regarde les logs du build');
+    handlers!.onText('🎙 Rien à voir avec votre divorce, Monsieur.\n');
+    expect(voice.enqueue).not.toHaveBeenCalled();
+    handlers!.onText('🎙 Le build est vert. ');
+    expect(voice.enqueue).toHaveBeenCalledTimes(1);
+    expect(voice.enqueue.calls.argsFor(0)[0]).toBe('Le build est vert.');
+    // Le tour part avec le drapeau de présentation de l'écran (ici : non).
+    expect(atelier.streamChat.calls.mostRecent().args[10]).toBeFalse();
+    jarvis.ngOnDestroy();
+  }));
+
   it('F-233 / SF-233-03 — sans ligne 🎙 écrite au fil de l’eau, la phrase finale est dite à la fin (repli)', fakeAsync(() => {
     const fixture = TestBed.createComponent(JarvisComponent);
     fixture.detectChanges();
@@ -1186,7 +1210,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       stt!.onCommitted('Où en est la migration ?');
       flushMicrotasks();
       expect(atelier.streamChat).toHaveBeenCalledWith('w-2', 'Où en est la migration ?', jasmine.any(Object), 'ACT',
-        false, [], null, false, 'JARVIS', null);
+        false, [], null, false, 'JARVIS', null, false);
       expect(jarvisApi.closeSttSession).toHaveBeenCalledWith('s-1', 4);
       handlers!.onDone({ reply: '🎙 Étape 4.', actions: [], messageId: 'm-1' });
       flushMicrotasks();
@@ -1228,7 +1252,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       flushMicrotasks();
       expect(jarvisApi.utterance).toHaveBeenCalledWith(jasmine.any(Blob), 2);
       expect(atelier.streamChat).toHaveBeenCalledWith('w-2', 'Où en est CAGIP ?', jasmine.any(Object), 'ACT', false,
-        [], null, false, 'JARVIS', null);
+        [], null, false, 'JARVIS', null, false);
       expect(dictation.transcribe).not.toHaveBeenCalled();
       handlers!.onDone({ reply: '🎙 Étape 4.', actions: [], messageId: 'm-1' });
       flushMicrotasks();
@@ -1300,7 +1324,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       ready.stt().onCommitted('moi l’état des tickets.');
       flushMicrotasks();
       expect(atelier.streamChat).toHaveBeenCalledWith('w-2', 'Allons chez le client et donnez- moi l’état des tickets.',
-        jasmine.any(Object), 'ACT', false, [], null, false, 'JARVIS', null);
+        jasmine.any(Object), 'ACT', false, [], null, false, 'JARVIS', null, false);
     }));
 
   it('F-239 / SF-239-10 — phrase en suspens puis silence : la fin vient 1,5 s plus tard', fakeAsync(() => {
@@ -1318,7 +1342,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     tick(1);
     flushMicrotasks();
     expect(atelier.streamChat).toHaveBeenCalledWith('w-2', 'Fais le point sur', jasmine.any(Object), 'ACT', false, [],
-      null, false, 'JARVIS', null);
+      null, false, 'JARVIS', null, false);
   }));
 
   it('F-239 / SF-239-04 — flux : retranscription trop lente (> 2,5 s) ⇒ le texte du flux part', fakeAsync(() => {
@@ -1335,7 +1359,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     tick(2_500);
     flushMicrotasks();
     expect(atelier.streamChat).toHaveBeenCalledWith('w-2', 'Où en est la migration ?', jasmine.any(Object), 'ACT',
-      false, [], null, false, 'JARVIS', null);
+      false, [], null, false, 'JARVIS', null, false);
   }));
 
   it('F-239 / SF-239-04 — dictée et interruption passent par la retranscription, jamais par la dictée (whisper)',
@@ -1352,7 +1376,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       expect(dictation.transcribe).not.toHaveBeenCalled();
       expect(dictation.stop).not.toHaveBeenCalled();
       expect(atelier.streamChat).toHaveBeenCalledWith('w-2', 'Regarde LDIC-223.', jasmine.any(Object), 'ACT', false,
-        [], null, false, 'JARVIS', null);
+        [], null, false, 'JARVIS', null, false);
       jarvis.ngOnDestroy();
     }));
 
@@ -1386,7 +1410,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(jarvisApi.utterance).toHaveBeenCalledWith(jasmine.any(Blob), 1);
     expect(dictation.transcribe).not.toHaveBeenCalled();
     expect(atelier.streamChat).toHaveBeenCalledWith('w-2', 'Et les tests de CAGIP ?', jasmine.any(Object), 'ACT',
-      false, [], null, false, 'JARVIS', 'La migration est');
+      false, [], null, false, 'JARVIS', 'La migration est', false);
     jarvis.ngOnDestroy();
   }));
 
@@ -1415,7 +1439,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       expect(dictation.transcribe).toHaveBeenCalled();
       expect(vadStop).toHaveBeenCalled();
       expect(atelier.streamChat).toHaveBeenCalledWith('w-2', 'Et les tests ?', jasmine.any(Object), 'ACT', false, [],
-        null, false, 'JARVIS', 'La migration est');
+        null, false, 'JARVIS', 'La migration est', false);
       jarvis.ngOnDestroy();
     }));
 
@@ -1678,7 +1702,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     fastDone!('ok');
     flushMicrotasks();
     expect(atelier.streamChat).toHaveBeenCalledWith('w-2', 'Regarde les tickets bloqués de CAGIP.',
-      jasmine.any(Object), 'ACT', false, [], null, false, 'JARVIS', null);
+      jasmine.any(Object), 'ACT', false, [], null, false, 'JARVIS', null, false);
     jarvis.ngOnDestroy();
   }));
 
@@ -1697,7 +1721,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       expect(voice.enqueue.calls.mostRecent().args.slice(0, 2))
         .toEqual(['Je regarde les tickets bloqués d’AGENOR, Monsieur.', 'w-2']);
       expect(atelier.streamChat).toHaveBeenCalledWith('w-1', 'Regarde les tickets bloqués d’AGENOR',
-        jasmine.any(Object), 'ACT', false, [], null, false, 'JARVIS', null);
+        jasmine.any(Object), 'ACT', false, [], null, false, 'JARVIS', null, false);
       expect(jarvis.delegations().map((d) => d.label)).toEqual(['tickets bloqués d’AGENOR']);
 
       voice.enqueue.calls.reset();
@@ -1751,7 +1775,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     flushMicrotasks();
     expect(jarvis.fastBrainOn()).toBeFalse();
     expect(atelier.streamChat).toHaveBeenCalledWith('w-2', 'Bonjour', jasmine.any(Object), 'ACT', false, [], null,
-      false, 'JARVIS', null);
+      false, 'JARVIS', null, false);
     jarvis.ngOnDestroy();
   }));
 
@@ -1772,7 +1796,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     flushMicrotasks();
     expect(fastBrain.converse).not.toHaveBeenCalled();
     expect(atelier.streamChat).toHaveBeenCalledWith('w-1', 'oui', jasmine.any(Object), 'ACT', false, [], null, false,
-      'JARVIS', null);
+      'JARVIS', null, false);
     jarvis.ngOnDestroy();
   }));
 

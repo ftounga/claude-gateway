@@ -27,7 +27,7 @@ import { JarvisService } from '../../core/services/jarvis.service';
               <li class="cbs__item">
                 <a class="cbs__link" [routerLink]="['/atelier', item.workspaceId]">
                   <span class="cbs__name">{{ label(item) }}</span>
-                  <span class="cbs__meta">{{ item.workspaceName }} · {{ when(item.proposedAt) }}@if (item.viaJarvis) { · 🎙 via Jarvis}</span>
+                  <span class="cbs__meta">{{ item.workspaceName }} · {{ when(item.proposedAt) }}@if (item.viaJarvis) { · 🎙 via Jarvis}@if (item.personal) {<span class="cbs__personal"> · élément personnel — à relire</span>}</span>
                 </a>
               </li>
             }
@@ -54,6 +54,7 @@ import { JarvisService } from '../../core/services/jarvis.service';
     .cbs__link:hover .cbs__name, .cbs__link:focus-visible .cbs__name { text-decoration: underline; }
     .cbs__name { font-weight: 600; overflow-wrap: anywhere; }
     .cbs__meta { opacity: 0.8; overflow-wrap: anywhere; }
+    .cbs__personal { font-weight: 600; text-decoration: underline dotted; }
   `,
 })
 export class ClientBoardToSendComponent {

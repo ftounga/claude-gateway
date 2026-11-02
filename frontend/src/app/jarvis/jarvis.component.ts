@@ -92,7 +92,7 @@ import {
   INTERVIEW_END, INTERVIEW_INTRO, INTERVIEW_NOTHING, INTERVIEW_OFFER, INTERVIEW_QUESTIONS, INTERVIEW_UPDATE_INTRO,
   InterviewDraft, JarvisInterview, JarvisInterviewClient, isInterviewCommand, updateQuestions,
 } from './jarvis-interview';
-import { JarvisPortraitClient } from './jarvis-portrait';
+import { JarvisPortraitClient, portraitBlocks, portraitSafe } from './jarvis-portrait';
 import { JarvisSceneBus } from './scenes/jarvis-scene-bus.service';
 import { JarvisSceneComponent } from './scenes/jarvis-scene.component';
 import { JarvisConstellationComponent } from './scenes/jarvis-constellation.component';
@@ -363,11 +363,28 @@ export class JarvisComponent implements OnInit, OnDestroy {
     return this.interview !== null;
   }
 
+  /** F-241 / SF-241-03 (D12 a) — les termes « À ne pas aborder » : filet des lignes 🎙 d'Opus avant de les dire. */
+  private portraitTerms: string[] = [];
+
+  /** Ce que le PO vient de dire (le sujet qu'il ouvre lui-même n'est jamais filtré). */
+  private portraitSaid(): string {
+    return this.lastHeard?.text ?? '';
+  }
+
+  /** D12 (a) — la phrase d'Opus sans ses phrases interdites. */
+  private portraitSafe(text: string): string {
+    return portraitSafe(text, this.portraitSaid(), this.portraitTerms);
+  }
+
   /** D13 — la cadence est tenue par la passerelle ; ni en présentation, ni pendant une tâche. */
   private loadInterviewOffer(): void {
     if (this.presentation()) {
       return;
     }
+    this.portraitClient.get().subscribe({
+      next: (p) => (this.portraitTerms = p.enabled ? (p.blockedTerms ?? []) : []),
+      error: () => undefined,
+    });
     this.interviewClient.offer().subscribe({
       next: (o) => this.interviewOffer.set(o.offer && !this.presentation()),
       error: () => undefined,
@@ -1708,7 +1725,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const screen = screenBlock(this.pieces.nav(), this.presentation());
     const heardAt = Date.now();
     let measuredLatency = false;
-    const outcome = await this.fastBrain.converse({ subjectId, text, heardBeforeCut, screen }, {
+    const outcome = await this.fastBrain.converse({ subjectId, text, heardBeforeCut, screen,
+      presentation: this.presentation() }, {
       onText: (sentence) => this.zone.run(() => sayNow(sentence)),
       onShow: (command) => this.zone.run(() => {
         if (latest()) {
@@ -1783,6 +1801,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
           fillersRemoved: guards?.fillersRemoved ?? 0,
           repeatsRemoved: guards?.repeatsRemoved ?? 0,
           imitationsRemoved: guards?.imitationsRemoved ?? 0,
+          portraitOn: done.portrait ?? false,
+          portraitBlocked: guards?.portraitBlocked ?? 0,
           forcedDelegation: guards?.forcedDelegation ?? false,
           delegationReason,
         };
@@ -1860,7 +1880,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       // F-240 / SF-240-02 — la phrase dite (garde des 35 mots) et l'invitation ciblée éventuelle.
       const line = failed ? { phrase: '', cut: false } : oralLine(reply);
       const phrase = failed ? 'La recherche n’a pas abouti ; le détail est au terminal.'
-        : line.phrase || 'C’est fait. Le détail est à l’écran.';
+        : this.portraitSafe(line.phrase) || 'C’est fait. Le détail est à l’écran.';
       this.announcements.push({ label, phrase, subjectId, confirm: !failed && asksConfirmation(phrase),
         delegationId: delegation.delegationId, cut: line.cut, invitation: failed ? null : invitationOf(reply) });
       this.flushAnnouncements();
@@ -1902,7 +1922,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
         this.scenes.aborted();
         finish(null, true);
       },
-    }, 'ACT', false, [], delegation.chantier ?? null, false, 'JARVIS', heardBeforeCut);
+    }, 'ACT', false, [], delegation.chantier ?? null, false, 'JARVIS', heardBeforeCut, this.presentation());
   }
 
   /**
@@ -2097,7 +2117,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
           this.notice.set('La réponse n’est pas arrivée ici : elle sera dans le terminal.');
         }
       }),
-    }, 'ACT', false, [], null, false, 'JARVIS', heardBeforeCut);
+    }, 'ACT', false, [], null, false, 'JARVIS', heardBeforeCut, this.presentation());
   }
 
   private sendSeq = 0;
@@ -2302,6 +2322,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.filler.answered();
     const starts = this.lineStarts;
     for (const { sentence, line } of lines) {
+      // F-241 / SF-241-03 (D12 a) — une phrase d'Opus qui évoque un sujet interdit non amené n'est jamais dite.
+      if (portraitBlocks(sentence, this.portraitSaid(), this.portraitTerms)) {
+        continue;
+      }
       const first = this.streamedText === '';
       this.clearAck();
       this.streamedText = first ? sentence : `${this.streamedText} ${sentence}`;
@@ -2936,7 +2960,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.showAnswer(done.reply, this.clock);
     // F-240 / SF-240-02 (D5) — la phrase dite, coupée à sa première phrase au-delà de 35 mots.
     const line = oralLine(done.reply);
-    const phrase = line.phrase || 'C’est fait. Le détail est à l’écran.';
+    const phrase = this.portraitSafe(line.phrase) || 'C’est fait. Le détail est à l’écran.';
     this.pendingConfirm = null;
     const oral = this.oral;
     const streamed = this.streamedText;

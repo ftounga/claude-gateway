@@ -61,6 +61,29 @@ public class JarvisReturnService {
     private final TerminalActionService actions;
     private final Clock clock;
 
+    /** F-241 / SF-241-03 (D18) — le portrait, lu pour signaler un élément personnel dans un encart (jamais écrit). */
+    private fr.claudegateway.jarvis.portrait.JarvisPortraitService portraits;
+    /** Les messages déjà comptés {@code portrait_leak} (une fois par message, sans le texte). */
+    private final java.util.Set<UUID> leakCounted = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(JarvisReturnService.class);
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setPortraits(fr.claudegateway.jarvis.portrait.JarvisPortraitService portraits) {
+        this.portraits = portraits;
+    }
+
+    /** Le portrait du compte s'il sert au détecteur, sinon {@code null} (best-effort). */
+    private fr.claudegateway.jarvis.portrait.JarvisPortraitService.Snapshot portraitOf(UUID userId) {
+        if (portraits == null) {
+            return null;
+        }
+        try {
+            return portraits.snapshot(userId).filter(s -> s.hasContent()).orElse(null);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
     public JarvisReturnService(WorkspaceService workspaces, WorkspaceRepository workspaceRepository,
             AtelierMessageRepository messages, MessageBlockSendRepository sends, TerminalActionService actions,
             Clock clock) {
@@ -87,6 +110,7 @@ public class JarvisReturnService {
         List<Turn> turns = new ArrayList<>();
         List<ToSend> toSend = new ArrayList<>();
         Map<String, MessageBlockSend> marked = activeSends(userId, List.of(workspace.getId()));
+        fr.claudegateway.jarvis.portrait.JarvisPortraitService.Snapshot portrait = portraitOf(userId);
         OffsetDateTime firstVoice = null;
         for (int i = 0; i < recent.size(); i++) {
             AtelierMessage m = recent.get(i);
@@ -107,7 +131,7 @@ public class JarvisReturnService {
                             reply == null ? null : reply.getId(), line, m.getBrain()));
                 }
             } else if ("ASSISTANT".equals(m.getRole())) {
-                toSend.addAll(blocksOf(m, workspace, marked, MAX_BODY));
+                toSend.addAll(blocksOf(m, workspace, marked, MAX_BODY, portrait));
             }
         }
         if (turns.isEmpty()) {
@@ -135,11 +159,12 @@ public class JarvisReturnService {
         }
         Map<UUID, Workspace> byId = subjects.stream().collect(Collectors.toMap(Workspace::getId, Function.identity()));
         Map<String, MessageBlockSend> marked = activeSends(userId, byId.keySet());
+        fr.claudegateway.jarvis.portrait.JarvisPortraitService.Snapshot portrait = portraitOf(userId);
         OffsetDateTime from = OffsetDateTime.now(clock).minusDays(TO_SEND_DAYS);
         List<ToSend> pending = new ArrayList<>();
         for (AtelierMessage m : messages.findByUserIdAndWorkspaceIdInAndRoleAndCreatedAtGreaterThanEqualOrderByCreatedAtAsc(
                 userId, byId.keySet(), "ASSISTANT", from)) {
-            for (ToSend item : blocksOf(m, byId.get(m.getWorkspaceId()), marked, MAX_TEXT)) {
+            for (ToSend item : blocksOf(m, byId.get(m.getWorkspaceId()), marked, MAX_TEXT, portrait)) {
                 if (item.sentAt() == null) {
                     pending.add(item);
                 }
@@ -157,15 +182,22 @@ public class JarvisReturnService {
         return marked;
     }
 
-    private static List<ToSend> blocksOf(AtelierMessage m, Workspace workspace, Map<String, MessageBlockSend> marked,
-            int maxBody) {
+    private List<ToSend> blocksOf(AtelierMessage m, Workspace workspace, Map<String, MessageBlockSend> marked,
+            int maxBody, fr.claudegateway.jarvis.portrait.JarvisPortraitService.Snapshot portrait) {
         List<ToSend> list = new ArrayList<>();
         for (MessageBlocks.Block block : MessageBlocks.parse(m.getContent())) {
             MessageBlockSend sent = marked.get(m.getId() + "#" + block.index());
+            // F-241 / SF-241-03 (D18) — un encart préparé dans un tour Jarvis qui reprend le portrait : « à relire ».
+            boolean personal = m.isViaJarvis() && portrait != null
+                    && fr.claudegateway.jarvis.portrait.JarvisPortraitNote.leaks(
+                            (block.subject() == null ? "" : block.subject() + "\n") + block.body(), portrait);
+            if (personal && leakCounted.add(m.getId())) {
+                log.info("Jarvis portrait_leak=1 (encart à relire, sans contenu)");
+            }
             list.add(new ToSend(m.getWorkspaceId(), workspace == null ? null : workspace.getName(), m.getId(),
                     block.index(), block.kind().name(), block.subject(), block.recipient(), m.getCreatedAt(),
                     sent == null ? null : sent.getSentAt(), body(block.body(), maxBody), m.getChantierNumber(),
-                    m.isViaJarvis()));
+                    m.isViaJarvis(), personal));
         }
         return list;
     }
@@ -242,7 +274,15 @@ public class JarvisReturnService {
      */
     public record ToSend(UUID workspaceId, String workspaceName, UUID messageId, int blockIndex, String kind,
             String subject, String recipient, OffsetDateTime proposedAt, OffsetDateTime sentAt, String excerpt,
-            Integer chantierNumber, boolean viaJarvis) {
+            Integer chantierNumber, boolean viaJarvis, boolean personal) {
+
+        /** Forme d'avant F-241 / SF-241-03 : aucun élément personnel signalé. */
+        public ToSend(UUID workspaceId, String workspaceName, UUID messageId, int blockIndex, String kind,
+                String subject, String recipient, OffsetDateTime proposedAt, OffsetDateTime sentAt, String excerpt,
+                Integer chantierNumber, boolean viaJarvis) {
+            this(workspaceId, workspaceName, messageId, blockIndex, kind, subject, recipient, proposedAt, sentAt,
+                    excerpt, chantierNumber, viaJarvis, false);
+        }
     }
 
     /** Le compteur « À envoyer (n) » et ses encarts (au plus 30, le plus récent d'abord). */

@@ -284,8 +284,10 @@ public class JarvisFastBrainBenchService {
                 String context = JarvisConversationBench.contextFor(
                         s.context() == null ? set.context() : set.context() + "\n\n" + s.context(), previous,
                         i == 0 ? s.heardBeforeCut() : null);
-                JarvisFastBrainService.Outcome outcome = fastBrain.bench(new JarvisFastBrainService.Request(userId,
-                        null, null, s.turns().get(i).said(), null), model, context);
+                // F-241 / SF-241-03 — un portrait FICTIF (jamais celui du compte) et le mode présentation du scénario.
+                JarvisFastBrainService.Outcome outcome = fastBrain.benchWithPortrait(new JarvisFastBrainService
+                        .Request(userId, null, null, s.turns().get(i).said(), null, null, s.presentation()), model,
+                        context, s.portrait());
                 String[] routeAndSaid = JarvisConversationBench.routeAndSaid(outcome);
                 costs.add(JarvisConversationBench.fastCostEur(outcome, USD_TO_EUR));
                 turns.add(JarvisConversationBench.ROUTE_MORE.equals(routeAndSaid[0])

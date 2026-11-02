@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-241 / SF-241-03 - LE PORTRAIT DANS LA MESURE DES TOURS.
+
+      jarvis_turn_timings + portrait_on (le portrait servait a l'echange) et portrait_blocked (phrases ecartees par le
+      filet des sujets « a ne pas aborder »). JAMAIS le texte du portrait. Colonnes additives, NULL pour les lignes
+      existantes. Purge 90 j existante inchangee.
+
+      Numero 241 = numero de la feature. Rollback : les colonnes se retirent.
+    -->
+
+    <changeSet id="241-jarvis-turn-timings-portrait" author="claude-gateway">
+        <addColumn tableName="jarvis_turn_timings">
+            <column name="portrait_on" type="boolean"/>
+            <column name="portrait_blocked" type="int"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="jarvis_turn_timings" columnName="portrait_blocked"/>
+            <dropColumn tableName="jarvis_turn_timings" columnName="portrait_on"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

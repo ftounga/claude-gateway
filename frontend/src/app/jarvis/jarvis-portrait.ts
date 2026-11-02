@@ -47,6 +47,35 @@ export interface Portrait {
   size: PortraitSize;
   lastInterviewAt: string | null;
   interviewOffers: number;
+  /** F-241 / SF-241-03 (D12 a) — les termes « À ne pas aborder » (normalisés), pour le filet des lignes 🎙. */
+  blockedTerms?: string[];
+}
+
+function words(text: string): string[] {
+  return (text ?? '').toLowerCase().normalize('NFD').replace(/\p{M}+/gu, '').replace(/[^a-z0-9]+/g, ' ').trim()
+    .split(' ').filter((w) => w.length > 0);
+}
+
+function touches(ws: string[], term: string): boolean {
+  return ws.some((w) => w === term || (term.length >= 5 && w.startsWith(term)));
+}
+
+/** D12 (a) — vrai si la phrase évoque un terme interdit que la parole du PO ne contient pas (même règle que le serveur). */
+export function portraitBlocks(sentence: string, said: string, terms: readonly string[]): boolean {
+  if (!terms.length || !sentence) {
+    return false;
+  }
+  const spoken = words(sentence);
+  const heard = words(said);
+  return terms.some((t) => touches(spoken, t) && !touches(heard, t));
+}
+
+/** D12 (a) — la phrase dite sans ses phrases interdites (découpe aux fins de phrase). */
+export function portraitSafe(text: string, said: string, terms: readonly string[]): string {
+  if (!terms.length || !text) {
+    return text;
+  }
+  return text.split(/(?<=[.!?…])\s+/u).filter((s) => !portraitBlocks(s, said, terms)).join(' ').trim();
 }
 
 /** Ce que dit la passerelle d'un refus (400 trop long, 409 mémoire pleine). */

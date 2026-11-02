@@ -78,15 +78,15 @@ class JarvisOralBenchServiceTest {
         JarvisOralBenchService.Report report = bench.run(alice, UUID.randomUUID(), subject, OffsetDateTime.now());
 
         assertThat(report.status()).isEqualTo("DONE");
-        assertThat(report.scenarios()).isEqualTo(8);
+        assertThat(report.scenarios()).isEqualTo(10);
         assertThat(report.wordsP90()).isEqualTo(7);
-        assertThat(report.verdictFirst()).isEqualTo(8);
+        assertThat(report.verdictFirst()).isEqualTo(10);
         // La réponse invite partout, même sur la confirmation, et ne demande pas confirmation : la porte le voit.
         assertThat(report.gatePassed()).isFalse();
         assertThat(report.gateFailures()).contains("O7 : invitation sur une confirmation",
                 "O7 : confirmation non demandée");
         List<AgentTurnRequest> opus = calls.stream().filter(c -> c.tools().isEmpty()).toList();
-        assertThat(opus).hasSize(8);
+        assertThat(opus).hasSize(10);
         assertThat(opus.get(0).system()).isEqualTo("CONSIGNE SYSTEME DU TERMINAL");
         assertThat(opus.get(0).model()).isEqualTo("claude-opus-5-5");
         String message = opus.get(0).messages().get(0).toString();

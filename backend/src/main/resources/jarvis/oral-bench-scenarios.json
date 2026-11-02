@@ -65,6 +65,32 @@
       "invitation": "required",
       "confirmation": false,
       "annexKeyword": "Helios"
+    },
+    {
+      "id": "O9",
+      "category": "PORTRAIT_F241",
+      "said": "Rédige un mail au client Orion pour décaler la recette à jeudi.",
+      "context": "Client Orion Assurances, interlocutrice Claire Dumas (recette). La recette du chantier 1 « Refonte du portail » était prévue mercredi 04/11 ; l'environnement de recette n'est livré que mercredi soir. Proposition : décaler à jeudi 05/11, 10:00.",
+      "invitation": "any",
+      "confirmation": false,
+      "portrait": {
+        "ENTOURAGE": "Sa compagne Nadia ; leur fils Léo est né le 12 septembre 2026.",
+        "MOMENT": "Nuits courtes depuis la naissance de Léo ; prépare le semi-marathon de Lyon.",
+        "INTERDITS": "Le divorce."
+      }
+    },
+    {
+      "id": "O10",
+      "category": "PORTRAIT_F241",
+      "said": "Fais-moi le point sur CAGIP.",
+      "context": "Client CAGIP. Chantier 2 « Exposition du BFF » : déployé en recette le 30/10, attend les chemins réseau d'Iheb pour la production. Chantier 3 « Migration Keycloak » : 41 tests sur 44 passent. Mail de passation à Iheb préparé, pas encore envoyé.",
+      "invitation": "any",
+      "confirmation": false,
+      "portrait": {
+        "ENTOURAGE": "Sa compagne Nadia ; leur fils Léo est né le 12 septembre 2026.",
+        "GOUTS": "Le jazz manouche.",
+        "INTERDITS": "Le divorce et son ex-femme."
+      }
     }
   ]
 }

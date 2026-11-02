@@ -191,6 +191,7 @@ public class JarvisOralBenchService {
         List<ScenarioVerdict> verdicts = new ArrayList<>();
         List<JarvisOralBench.Reading> readings = new ArrayList<>();
         List<String> stops = new ArrayList<>();
+        List<String> personal = new ArrayList<>();
         BigDecimal spent = BigDecimal.ZERO;
         BigDecimal last = BigDecimal.ZERO;
         int judged = 0;
@@ -201,8 +202,9 @@ public class JarvisOralBenchService {
                 stops.add("plafond de " + capEur + " € atteint avant " + s.id());
                 break;
             }
-            String message = JarvisOralBench.message(s,
-                    JarvisOralNote.appendTo(s.said(), JarvisHumour.LIGHT, false));
+            // F-241 / SF-241-03 (D6) — un scénario personnel reçoit son portrait FICTIF, comme un tour Jarvis réel.
+            String message = JarvisOralBench.message(s, fr.claudegateway.jarvis.portrait.JarvisPortraitNote
+                    .appendForOpus(JarvisOralNote.appendTo(s.said(), JarvisHumour.LIGHT, false), s.fixture()));
             AgentTurn turn = provider.nextTurn(new AgentTurnRequest(model, system,
                     List.of(AgentMessage.userText(message)), List.of(), apiKey, AgentReasoning.none(),
                     AgentContextPolicy.none(), AgentTurnMode.ACT, new AgentCallShape(MAX_OUTPUT_TOKENS, false, false)));
@@ -210,6 +212,7 @@ public class JarvisOralBenchService {
             String reply = turn == null || turn.text() == null ? "" : turn.text();
             JarvisOralBench.Reading reading = JarvisOralBench.read(reply);
             readings.add(reading);
+            personal.addAll(JarvisOralBench.personalFailures(s, reply, reading));
             Judgement judgement0 = judge(userId, apiKey, s, reading);
             JsonNode judgement = judgement0.note();
             cost = cost.add(judgement0.costEur());
@@ -227,6 +230,7 @@ public class JarvisOralBenchService {
                     cost.setScale(4, RoundingMode.HALF_UP)));
         }
         List<String> failures = new ArrayList<>(stops);
+        failures.addAll(personal);
         failures.addAll(JarvisOralBench.gate(scenarios, readings, judged, verdictFirst));
         List<Integer> words = readings.stream().filter(r -> r.oral() != null).map(JarvisOralBench.Reading::words)
                 .toList();

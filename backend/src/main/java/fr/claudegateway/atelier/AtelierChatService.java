@@ -1869,6 +1869,32 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
     }
 
+    /** F-241 / SF-241-03 — le portrait de Jarvis (lu, jamais écrit par Opus). */
+    private fr.claudegateway.jarvis.portrait.JarvisPortraitService jarvisPortraits;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJarvisPortraits(fr.claudegateway.jarvis.portrait.JarvisPortraitService jarvisPortraits) {
+        this.jarvisPortraits = jarvisPortraits;
+    }
+
+    /** F-241 / SF-241-03 (D6, D17) — le message d'un tour vocal reçoit le portrait, ou la note de présentation. */
+    String withPortrait(UUID userId, String consigne, boolean presentation) {
+        if (presentation) {
+            return consigne + "\n\n" + fr.claudegateway.jarvis.portrait.JarvisPortraitNote.PRESENTATION_NOTE;
+        }
+        if (jarvisPortraits == null) {
+            return consigne;
+        }
+        try {
+            return jarvisPortraits.snapshot(userId)
+                    .map(s -> fr.claudegateway.jarvis.portrait.JarvisPortraitNote.appendForOpus(consigne, s))
+                    .orElse(consigne);
+        } catch (RuntimeException e) {
+            log.debug("Portrait non joint (best-effort) : {}", e.getClass().getSimpleName());
+            return consigne;
+        }
+    }
+
     /** F-235 / SF-235-09 (D18) — la personnalité de Jarvis (réglage d'humour) et le ton sobre forcé. */
     private fr.claudegateway.jarvis.preferences.JarvisPreferenceService jarvisPreferences;
     private fr.claudegateway.jarvis.preferences.JarvisSobriety jarvisSobriety;
@@ -3185,7 +3211,24 @@ public class AtelierChatService implements RelayInterruptTarget {
     private final java.util.Map<String, VoiceMark> voiceTurns = new java.util.concurrent.ConcurrentHashMap<>();
 
     /** F-233 / SF-233-09 — une marque « né à la voix » : son instant, et la part entendue d'une réponse coupée. */
-    record VoiceMark(long at, String heardBeforeCut) {
+    record VoiceMark(long at, String heardBeforeCut, boolean presentation) {
+
+        VoiceMark(long at, String heardBeforeCut) {
+            this(at, heardBeforeCut, false);
+        }
+    }
+
+    /** F-241 / SF-241-03 (D17) — les fils dont le prochain tour vocal part d'un écran en présentation. */
+    private final java.util.Map<String, Boolean> presentationTurns = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** F-241 / SF-241-03 (D17) — l'écran Jarvis qui ouvre ce tour est (ou non) en mode présentation. */
+    public void markPresentation(UUID userId, UUID workspaceId, Integer chantier, boolean on) {
+        String key = turnKey(userId, workspaceId, chantier);
+        if (on) {
+            presentationTurns.put(key, Boolean.TRUE);
+        } else {
+            presentationTurns.remove(key);
+        }
     }
 
     /** Au-delà, une marque non consommée ne vaut plus : elle ne doit pas déteindre sur un tour tapé plus tard. */
@@ -3201,8 +3244,9 @@ public class AtelierChatService implements RelayInterruptTarget {
      * (ou {@code null}) : elle sera signalée dans le message du tour (D10), jamais dans la consigne système.
      */
     public void markVoiceTurn(UUID userId, UUID workspaceId, Integer chantier, String heardBeforeCut) {
-        voiceTurns.put(turnKey(userId, workspaceId, chantier), new VoiceMark(System.currentTimeMillis(),
-                heardBeforeCut));
+        String key = turnKey(userId, workspaceId, chantier);
+        voiceTurns.put(key, new VoiceMark(System.currentTimeMillis(), heardBeforeCut,
+                Boolean.TRUE.equals(presentationTurns.remove(key))));
     }
 
     /** Consomme la marque « né à la voix » de ce fil : vrai une seule fois, et seulement si elle est fraîche. */
@@ -3454,6 +3498,10 @@ public class AtelierChatService implements RelayInterruptTarget {
             // F-233 / SF-233-09 (D10) — la réponse orale précédente a été coupée : seule la part entendue est
             // signalée, DANS LE MESSAGE (préfixe intact). Le texte écrit du tour précédent reste intact dans le fil.
             consigne = fr.claudegateway.jarvis.JarvisOralNote.appendCut(consigne, voiceMark.heardBeforeCut());
+            // F-241 / SF-241-03 (D6, D17) — le portrait, ENTIER, joint au message APRÈS la consigne orale (bloc à part,
+            // propre au compte ; bornes figées `RULES`) ; en présentation, la note figée et aucun portrait. La consigne
+            // système du terminal reste identique à l'octet près.
+            consigne = withPortrait(userId, consigne, voiceMark.presentation());
         }
         // F-235 / SF-235-04 (D10) — une délégation du cerveau rapide : sa demande reformulée attend ce fil ; elle est
         // jointe AU MESSAGE (la parole du PO reste mot pour mot dans le fil, la consigne système est intouchée).

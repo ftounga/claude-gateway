@@ -189,4 +189,12 @@ public class JarvisTurnTiming {
     /** Comment l'étage a été atteint : {@code voix} ou {@code toucher}. */
     @Column(name = "depth_via", length = 8)
     private String depthVia;
+
+    /** F-241 / SF-241-03 — le portrait servait à l'échange (jamais son texte). */
+    @Column(name = "portrait_on")
+    private Boolean portraitOn;
+
+    /** F-241 / SF-241-03 (D12 a) — phrases écartées par le filet « À ne pas aborder ». */
+    @Column(name = "portrait_blocked")
+    private Integer portraitBlocked;
 }
