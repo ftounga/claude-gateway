@@ -62,6 +62,28 @@ public class JarvisPieceContentController {
                 .body(service.mailText(currentUser.requireId(), pieceId));
     }
 
+    /** L'image d'un schéma : SVG servi comme image, sans script possible (CSP fermée), jamais comme page. */
+    @GetMapping("/jarvis/pieces/{pieceId}/image")
+    public ResponseEntity<byte[]> diagramImage(@PathVariable String pieceId) {
+        atelierAccess.requireAccess();
+        JarvisPieceContentService.Content content = service.diagramImage(currentUser.requireId(), pieceId);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(content.contentType()))
+                .header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src data:")
+                .header("X-Content-Type-Options", "nosniff")
+                .cacheControl(CacheControl.noCache().cachePrivate())
+                .body(content.bytes());
+    }
+
+    @GetMapping("/jarvis/pieces/{pieceId}/spec")
+    public ResponseEntity<String> diagramSpec(@PathVariable String pieceId) {
+        atelierAccess.requireAccess();
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("X-Content-Type-Options", "nosniff")
+                .body(service.diagramSpec(currentUser.requireId(), pieceId));
+    }
+
     @GetMapping("/jarvis/pieces/{pieceId}/attachments/{position}")
     public ResponseEntity<byte[]> attachment(@PathVariable String pieceId, @PathVariable int position) {
         atelierAccess.requireAccess();

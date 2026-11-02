@@ -38,6 +38,8 @@ import fr.claudegateway.atelier.proof.ProofCapture;
 import fr.claudegateway.atelier.proof.ProofCaptureRepository;
 import fr.claudegateway.atelier.sends.MessageBlockSend;
 import fr.claudegateway.atelier.sends.MessageBlockSendRepository;
+import fr.claudegateway.diagrams.DiagramRender;
+import fr.claudegateway.diagrams.DiagramRenderService;
 import fr.claudegateway.images.GeneratedImage;
 import fr.claudegateway.images.GeneratedImageRepository;
 import fr.claudegateway.images.GeneratedImageStatus;
@@ -137,6 +139,7 @@ public class JarvisPieceService {
     private final VideoVersionRepository videoVersions;
     private final VideoSeriesRepository videoSeries;
     private final RunnerRegistry runners;
+    private final DiagramRenderService diagrams;
     private final Clock clock;
     private final ObjectMapper mapper = new ObjectMapper();
     private final Map<Key, Cached> cache = new LinkedHashMap<>(16, 0.75f, true) {
@@ -152,7 +155,7 @@ public class JarvisPieceService {
             AppRequestAttachmentRepository attachments, ProofCaptureRepository proofs, MessageBlockSendRepository sends, ClientEmailRepository emails,
             PageRepository pages, GeneratedImageRepository images, PresentationRepository presentations,
             VideoRepository videos, VideoVersionRepository videoVersions, VideoSeriesRepository videoSeries,
-            RunnerRegistry runners, Clock clock) {
+            RunnerRegistry runners, DiagramRenderService diagrams, Clock clock) {
         this.workspaces = workspaces;
         this.messages = messages;
         this.journeys = journeys;
@@ -169,6 +172,7 @@ public class JarvisPieceService {
         this.videoVersions = videoVersions;
         this.videoSeries = videoSeries;
         this.runners = runners;
+        this.diagrams = diagrams;
         this.clock = clock;
     }
 
@@ -246,6 +250,7 @@ public class JarvisPieceService {
         images(userId, ws, index, out);
         presentations(userId, ws, index, out);
         videos(userId, ws, index, out);
+        diagrams(userId, ws, index, out);
         return out;
     }
 
@@ -492,6 +497,64 @@ public class JarvisPieceService {
                     thumb, "/videos/" + v.getId() + "/versions/" + v.getCurrentVersion() + "/media", meta,
                     Piece.Availability.ONLINE));
         }
+    }
+
+    /**
+     * R3 — les schémas conservés (SF-237-03) : ARCHITECTURE (icônes cloud, draw.io) ou DIAGRAM (Mermaid), décrits par
+     * le titre de la spec et ses groupes de premier niveau.
+     */
+    private void diagrams(UUID userId, UUID ws, PieceChantierIndex index, List<Piece> out) {
+        for (DiagramRender d : diagrams.list(userId, ws)) {
+            String pieceId = "diag:" + d.getId();
+            PieceChantierIndex.Link link = index.link(null, d.getCreatedAt(), d.getCallId(), d.getId().toString());
+            if (link.chantier() == null && d.getChantierNumber() != null) {
+                link = new PieceChantierIndex.Link(d.getChantierNumber(), Piece.ChantierLink.WINDOW);
+            }
+            List<String> groups = topGroups(d.getSpecJson());
+            PieceCaptions.Caption caption = PieceCaptions.first(
+                    PieceCaptions.of(groups.isEmpty() ? null
+                            : d.getTitle() + " — " + String.join(", ", groups), Piece.CaptionSource.SPEC),
+                    PieceCaptions.of(d.getTitle(), Piece.CaptionSource.TITLE));
+            Map<String, Object> meta = new LinkedHashMap<>();
+            meta.put("engine", d.getEngine());
+            if (!groups.isEmpty()) {
+                meta.put("groups", groups);
+            }
+            if (d.getSpecJson() != null) {
+                meta.put("spec", "/jarvis/pieces/" + pieceId + "/spec");
+            }
+            String image = d.getSvgKey() != null || d.getPngKey() != null ? "/jarvis/pieces/" + pieceId + "/image"
+                    : null;
+            out.add(new Piece(pieceId, Piece.Category.PRODUCTION,
+                    d.isArchitecture() ? Piece.Kind.ARCHITECTURE : Piece.Kind.DIAGRAM,
+                    PieceCaptions.clip(d.getTitle() == null ? "Schéma" : d.getTitle(), PieceCaptions.MAX_TITLE),
+                    caption == null ? null : caption.text(), caption == null ? null : caption.source(),
+                    d.getCreatedAt(), ws, link.chantier(), link.link(),
+                    d.getPngKey() != null ? thumbOf(pieceId) : null, image, meta, Piece.Availability.ONLINE));
+        }
+    }
+
+    /** Les libellés des groupes de premier niveau (sans parent) d'une spec — au plus 6. */
+    List<String> topGroups(String specJson) {
+        List<String> labels = new ArrayList<>();
+        if (specJson == null || specJson.isBlank()) {
+            return labels;
+        }
+        try {
+            JsonNode groups = mapper.readTree(specJson).path("groups");
+            if (groups.isArray()) {
+                for (JsonNode g : groups) {
+                    String parent = g.path("parent").asText("");
+                    String label = g.path("label").asText("");
+                    if (parent.isBlank() && !label.isBlank() && labels.size() < 6) {
+                        labels.add(label.strip());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            labels.clear(); // spec illisible : le titre suffit
+        }
+        return labels;
     }
 
     /** Le chemin passerelle de la vignette réduite (SF-237-02). */

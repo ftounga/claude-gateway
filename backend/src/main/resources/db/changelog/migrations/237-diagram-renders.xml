@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-237 / SF-237-03 - CONSERVER LES SCHEMAS.
+
+      Un schema rendu par render_diagram n'etait conserve nulle part cote passerelle (depose dans le projet, sa spec
+      perdue dans tool_trace). diagram_renders garde, APRES un rendu reussi, la description recue (spec_json, ou le
+      code Mermaid) et les cles des fichiers rendus en S3 (diagrams/{u}/{ws}/{id}.svg|png|drawio). Lu uniquement par
+      son proprietaire (user_id). La colonne graph_json de F-238 sera AJOUTEE par sa propre migration (238-...).
+      Rollback : la table se retire. Les lignes suivent le compte et le sujet (cascade).
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="237-diagram-renders-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="diagram_renders">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_diagram_renders_user"
+                             references="users(id)" deleteCascade="true"/>
+            </column>
+            <column name="workspace_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_diagram_renders_workspace"
+                             references="workspaces(id)" deleteCascade="true"/>
+            </column>
+            <column name="call_id" type="varchar(120)"/>
+            <column name="chantier_number" type="int"/>
+            <column name="engine" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="title" type="varchar(200)"/>
+            <column name="spec_json" type="text"/>
+            <column name="code" type="text"/>
+            <column name="svg_key" type="varchar(300)"/>
+            <column name="png_key" type="varchar(300)"/>
+            <column name="drawio_key" type="varchar(300)"/>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="diagram_renders" indexName="idx_diagram_renders_user_ws_created">
+            <column name="user_id"/>
+            <column name="workspace_id"/>
+            <column name="created_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="diagram_renders"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <!-- H2 mappe `text` sur CLOB, que la validation de schéma refuse : varchar(1000000), comme 050. -->
+    <changeSet id="237-diagram-renders-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="diagram_renders">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_diagram_renders_user"
+                             references="users(id)" deleteCascade="true"/>
+            </column>
+            <column name="workspace_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_diagram_renders_workspace"
+                             references="workspaces(id)" deleteCascade="true"/>
+            </column>
+            <column name="call_id" type="varchar(120)"/>
+            <column name="chantier_number" type="int"/>
+            <column name="engine" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="title" type="varchar(200)"/>
+            <column name="spec_json" type="varchar(1000000)"/>
+            <column name="code" type="varchar(1000000)"/>
+            <column name="svg_key" type="varchar(300)"/>
+            <column name="png_key" type="varchar(300)"/>
+            <column name="drawio_key" type="varchar(300)"/>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="diagram_renders" indexName="idx_diagram_renders_user_ws_created">
+            <column name="user_id"/>
+            <column name="workspace_id"/>
+            <column name="created_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="diagram_renders"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

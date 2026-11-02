@@ -1425,6 +1425,13 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   `239-jarvis-bench-runs`) : `user_id`, `started_at`, `status`, `report_json` (rapport sans parole du compte). Avant,
   l'état vivait dans la mémoire d'un pod (404 une fois sur deux avec deux replicas). ≤ 20 par compte. Lu par
   `GET /api/admin/jarvis/fast-brain/bench/{id}` sous `user_id`.
+- **diagram_renders** — **les schémas conservés** (F-237 / SF-237-03, migration `237-diagram-renders`) : `id`,
+  `user_id` (FK `users`, cascade), `workspace_id` (FK `workspaces`, cascade), `call_id` (appel `render_diagram`),
+  `chantier_number` (chantier courant au rendu), `engine` (`mermaid|cloud|drawio`), `title`, `spec_json` (la `spec`
+  telle que reçue), `code` (Mermaid), `svg_key` / `png_key` / `drawio_key` (S3 `diagrams/{u}/{ws}/{id}.*`, effacés
+  avec le sujet), `created_at`. Écrit **après** un rendu réussi, au mieux (jamais une cause d'échec) ; outil et
+  description inchangés. Lu par l'index des pièces (`diag:<id>`) et `GET /api/jarvis/pieces/diag:<id>/image|spec`
+  sous `user_id`. F-238 y **ajoute** `graph_json` (migration `238-…`).
 - **jarvis_voice_choices** — **la voix de Jarvis choisie à l'audition** (F-233 / SF-233-07, migration `198`) :
   `user_id`, `provider` (`openai|elevenlabs`), `voice` (nom ou identifiant), `label` (lettre entendue), `chosen_at`.
   Le plus récent du compte fait foi (`JarvisVoiceService.current(userId)`), sinon la configuration. Purgé à la
