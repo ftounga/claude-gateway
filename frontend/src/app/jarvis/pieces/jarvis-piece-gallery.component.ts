@@ -4,6 +4,7 @@ import { ChangeDetectionStrategy, Component, OnDestroy, computed, effect, inject
 import { JarvisState } from '../jarvis-orb.component';
 import { JarvisPieceClient } from './jarvis-piece-client';
 import { JarvisPieceViewerComponent } from './jarvis-piece-viewer.component';
+import { JarvisPieceCompareComponent } from './jarvis-piece-compare.component';
 import { fanLayout } from './jarvis-piece-fan';
 import { NavAction, NavItem } from './jarvis-piece-nav';
 import { JarvisPieceStore, PieceStoreResult } from './jarvis-piece-store';
@@ -13,10 +14,13 @@ import { PieceCategory, PieceKind } from './jarvis-piece.models';
 export type GalleryLayout = 'fan' | 'grid' | 'phone';
 
 /** Choix de la disposition (pur, exporté pour les tests). */
-export function galleryLayout(opts: { threeD: boolean; sober: boolean; reducedMotion: boolean; phone: boolean }):
-  GalleryLayout {
+export function galleryLayout(opts: { threeD: boolean; sober: boolean; reducedMotion: boolean; phone: boolean;
+  contact?: boolean }): GalleryLayout {
   if (opts.phone) {
     return 'phone';
+  }
+  if (opts.contact) {
+    return 'grid'; // F-237 / SF-237-11 — la planche contact : tout d'un coup d'œil, en grille
   }
   return opts.threeD && !opts.sober && !opts.reducedMotion ? 'fan' : 'grid';
 }
@@ -33,6 +37,10 @@ const KIND_WORDS: Record<PieceKind, string> = {
 
 const CATEGORY_WORDS: Record<PieceCategory, string> = { ENTREE: 'Entrée', PREUVE: 'Preuve', PRODUCTION: 'Production' };
 
+const WHEN = new Intl.DateTimeFormat('fr-FR', {
+  weekday: 'long', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris',
+});
+
 /** Seuil d'un balayage (px). */
 const SWIPE_PX = 60;
 
@@ -45,12 +53,13 @@ const SWIPE_PX = 60;
 @Component({
   selector: 'app-jarvis-piece-gallery',
   standalone: true,
-  imports: [JarvisPieceViewerComponent],
+  imports: [JarvisPieceViewerComponent, JarvisPieceCompareComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (store.open() && !store.presentation()) {
       <section class="pg" [class.pg--fan]="layout() === 'fan'" [class.pg--grid]="layout() === 'grid'"
                [class.pg--phone]="layout() === 'phone'" [class.pg--hero]="nav().selected != null"
+               [class.pg--contact]="store.mode() === 'contact'"
                role="region" aria-label="Pièces montrées par Jarvis">
         <header class="pg__bar">
           <nav class="pg__crumbs" aria-label="Fil d'Ariane">{{ crumbs() }}</nav>
@@ -82,6 +91,9 @@ const SWIPE_PX = 60;
                 }
                 <span class="pg__title">{{ item.title }}</span>
                 <span class="pg__meta">{{ categoryWord(item) }} · {{ kindWord(item.kind) }}</span>
+                @if (store.mode() === 'contact' && item.at) {
+                  <span class="pg__meta">{{ when(item.at) }}</span>
+                }
               </button>
             }
             @if (nav().more > 0) {
@@ -90,7 +102,14 @@ const SWIPE_PX = 60;
           </div>
         }
 
-        @if (store.selected(); as piece) {
+        @if (store.comparePair(); as pair) {
+          <article class="pg__panel">
+            <h2 class="pg__panel-title">Avant / après</h2>
+            <!-- SF-237-11 — rideau glissant (deux images) ou deux visionneuses côte à côte. -->
+            <app-jarvis-piece-compare [before]="pair[0]" [after]="pair[1]" [nav]="nav()" [jarvisState]="jarvisState()" />
+          </article>
+        } @else if (store.selected()) {
+          @let piece = store.selected()!;
           <article class="pg__panel" (pointerdown)="swipeStart($event)" (pointerup)="swipeEnd($event)">
             <h2 class="pg__panel-title">{{ nav().selected }}. {{ piece.title }}</h2>
             <!-- SF-237-06 — le contenu réel, par la visionneuse de son type. -->
@@ -150,6 +169,8 @@ const SWIPE_PX = 60;
     .pg__caption { margin: 8px 0 0; font-size: 14px; line-height: 20px; color: var(--cg-holo-core, #FFF3E4); }
     .pg__hint { margin: 8px 0 0; font-size: 12px; opacity: .8; }
     .pg--phone .pg__cards { grid-template-columns: repeat(2, 1fr); }
+    .pg--contact .pg__cards { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+    .pg--contact .pg__thumb, .pg--contact .pg__glyph { height: 120px; }
     .pg--phone.pg--hero .pg__panel { flex: 1; max-height: none; margin: 0; width: 100%; border-radius: 0; }
     @media (prefers-reduced-motion: reduce) { .pg__cards--fan .pg__card { transition: opacity 400ms linear; } }
   `],
@@ -173,7 +194,7 @@ export class JarvisPieceGalleryComponent implements OnDestroy {
 
   readonly nav = this.store.nav;
   readonly layout = computed(() => galleryLayout({ threeD: this.threeD(), sober: this.sober(),
-    reducedMotion: this.reducedMotion(), phone: this.phone() }));
+    reducedMotion: this.reducedMotion(), phone: this.phone(), contact: this.store.mode() === 'contact' }));
   private readonly slots = computed(() => fanLayout(this.nav().items.length, this.nav().selected));
   readonly thumbs = signal<Record<string, string>>({});
   private loading: AbortController | null = null;
@@ -246,6 +267,12 @@ export class JarvisPieceGalleryComponent implements OnDestroy {
   categoryWord(item: NavItem): string {
     const category = this.category(item);
     return category ? CATEGORY_WORDS[category] : '';
+  }
+
+  /** « mardi 3 nov., 10:42 » (heure de Paris). */
+  when(at: string): string {
+    const date = new Date(at);
+    return Number.isNaN(date.getTime()) ? '' : WHEN.format(date);
   }
 
   icon(kind: PieceKind): string {

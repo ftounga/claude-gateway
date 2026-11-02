@@ -3,6 +3,7 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { JarvisPieceClient, PieceQuery } from './jarvis-piece-client';
 import { GalleryMode, ShowCommand, ShowContext, ShowRefusal, showPlan } from './jarvis-piece-show';
 import { storyOrder } from './jarvis-piece-story';
+import { versionPiece } from './jarvis-piece-versions';
 import { NavAction, NavOrigin, NavReason, NavScope, PieceNav, initialNav, reduceNav, selectedItem } from './jarvis-piece-nav';
 import { Piece } from './jarvis-piece.models';
 
@@ -35,6 +36,16 @@ export class JarvisPieceStore {
   readonly open = computed(() => {
     const level = this.nav().level;
     return level !== 'UNIVERS' && level !== 'CHANTIER';
+  });
+  /** F-237 / SF-237-11 — l'avant / après : les deux premières cartes, en mode comparaison. */
+  readonly comparePair = computed<[Piece, Piece] | null>(() => {
+    if (this.mode() !== 'compare') {
+      return null;
+    }
+    const items = this.nav().items;
+    const a = items[0] ? this.pieces().get(items[0].id) : undefined;
+    const b = items[1] ? this.pieces().get(items[1].id) : undefined;
+    return a && b ? [a, b] : null;
   });
   /** La pièce héros, avec ses métadonnées complètes. */
   readonly selected = computed<Piece | null>(() => {
@@ -115,7 +126,12 @@ export class JarvisPieceStore {
     let pieces = response.pieces;
     if (plan.ids.length) {
       const byId = new Map(pieces.map((p) => [p.id, p]));
-      pieces = plan.ids.map((id) => byId.get(id)).filter((p): p is Piece => p != null);
+      // F-237 / SF-237-11 — une version antérieure (page v1 ↔ v3) : l'index ne tient que la courante.
+      const version = (id: string): Piece | null => {
+        const base = pieces.find((p) => p.id.split('@')[0] === id.split('@')[0]);
+        return base ? versionPiece(base, id) : null;
+      };
+      pieces = plan.ids.map((id) => byId.get(id) ?? version(id)).filter((p): p is Piece => p != null);
     }
     if (!pieces.length) {
       return { ok: false, reason: 'NOT_FOUND' };
