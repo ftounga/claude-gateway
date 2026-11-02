@@ -58,6 +58,13 @@ export class JarvisBancComponent {
         item?.dispatchEvent(new MouseEvent('mouseenter'));
       }, 1500));
     }
+    if (this.scene === 'cockpit-personnes') {
+      // SF-236-18 — deux tableaux détachés, posés dans l'univers à côté de CAGIP.
+      afterNextRender(() => setTimeout(() => {
+        this.cockpitRef()?.detach('envoyer');
+        this.cockpitRef()?.detach('personnes');
+      }, 1500));
+    }
     if (this.scene === 'cockpit-chronologies') {
       // SF-236-17 — la journée chargée (historique simulé, aucun appel) et un tour touché.
       afterNextRender(() => setTimeout(() => {
