@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-239 / SF-239-12 - LE COMPTEUR VISIBLE DE JARVIS.
+
+      jarvis_usage_days + opus_turns et opus_cost_usd : les tours Opus nes de Jarvis (via = JARVIS), comptes au moment
+      ou le tour est range, en DOLLARS (la conversion en euros se fait a la lecture). Colonnes additives, 0 par defaut.
+
+      Numero 239 = numero de la feature. Rollback : les colonnes se retirent.
+    -->
+
+    <changeSet id="239-jarvis-usage-opus" author="claude-gateway">
+        <addColumn tableName="jarvis_usage_days">
+            <column name="opus_turns" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="opus_cost_usd" type="numeric(12,6)" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="jarvis_usage_days" columnName="opus_cost_usd"/>
+            <dropColumn tableName="jarvis_usage_days" columnName="opus_turns"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

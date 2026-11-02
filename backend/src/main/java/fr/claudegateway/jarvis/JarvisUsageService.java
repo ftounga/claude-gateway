@@ -64,6 +64,14 @@ public class JarvisUsageService {
         });
     }
 
+    /** F-239 / SF-239-12 — un tour Opus né de Jarvis et son coût en dollars. */
+    public void addOpus(UUID userId, BigDecimal costUsd) {
+        bump(userId, day -> {
+            day.setOpusTurns(day.getOpusTurns() + 1);
+            day.setOpusCostUsd(day.getOpusCostUsd().add(costUsd == null ? BigDecimal.ZERO : costUsd));
+        });
+    }
+
     /** F-235 / SF-235-01 (D15) — le dollar dépensé par le cerveau rapide depuis le premier jour du mois. */
     public BigDecimal monthFastBrainCostUsd(UUID userId) {
         BigDecimal sum = repository.sumFastBrainCostUsdSince(userId, today().withDayOfMonth(1));
