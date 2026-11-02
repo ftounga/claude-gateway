@@ -92,4 +92,50 @@ class JarvisFastGuardsTest {
         assertThat(split.sentences()).containsExactly("Bonjour, Monsieur.");
         assertThat(split.rest()).isEqualTo(" Le chantier 3 en est");
     }
+
+    // ---------------------------------------------------------------- F-239 / SF-239-02
+
+    @Test
+    void f239InvitationsToSpeakAreRecognisedAloneOrAsAConclusion() {
+        assertThat(JarvisFastGuards.isListeningInvitation(
+                "Je vous écoute pour la suite de la journée.")).isTrue();
+        assertThat(JarvisFastGuards.isListeningInvitation("Je vous écoute, Monsieur."))
+                .isTrue();
+        assertThat(JarvisFastGuards.isListeningInvitation(
+                "Je reste à votre disposition si besoin.")).isTrue();
+        assertThat(JarvisFastGuards.isListeningInvitation("N'hésitez pas.")).isTrue();
+        assertThat(JarvisFastGuards.isListeningInvitation(
+                "Paul vous écoute demain à 10 h.")).isFalse();
+        assertThat(JarvisFastGuards.isListeningInvitation(
+                "Le chantier en est aux tests.")).isFalse();
+    }
+
+    @Test
+    void f239GreetingsAndCourtesiesAreSmallTalkRequestsAreNot() {
+        for (String said : List.of("Bonjour Jarvis.", "Bonjour, Monsieur", "Merci beaucoup !", "Bonjour Jarvis, ça va ?",
+                "Salut", "Au revoir, à demain", "Ok Jarvis", "Bonsoir", "Jarvis")) {
+            assertThat(JarvisFastGuards.isSmallTalk(said)).as(said).isTrue();
+        }
+        for (String said : List.of("Bonjour, regarde les tickets d'Edenred", "Où en est CAGIP ?",
+                "Merci de lancer les tests", "")) {
+            assertThat(JarvisFastGuards.isSmallTalk(said)).as(said).isFalse();
+        }
+    }
+
+    @Test
+    void f239CourtesyRepliesAreShortAndFitTheGreeting() {
+        assertThat(JarvisFastGuards.courtesyReply("Bonjour Jarvis"))
+                .isEqualTo("Bonjour, Monsieur.");
+        assertThat(JarvisFastGuards.courtesyReply("Bonsoir"))
+                .isEqualTo("Bonsoir, Monsieur.");
+        assertThat(JarvisFastGuards.courtesyReply("Merci Jarvis"))
+                .isEqualTo("Avec plaisir, Monsieur.");
+        assertThat(JarvisFastGuards.courtesyReply("Au revoir"))
+                .isEqualTo("Bonne journée, Monsieur.");
+        assertThat(JarvisFastGuards.courtesyReply("Jarvis ?")).isEqualTo("Oui, Monsieur ?");
+        assertThat(JarvisFastGuards.courtesyReply("Ça va ?"))
+                .isEqualTo("Fort bien, merci, Monsieur.");
+        assertThat(JarvisFastGuards.isListeningInvitation(
+                JarvisFastGuards.courtesyReply("Bonjour"))).isFalse();
+    }
 }

@@ -85,6 +85,67 @@ public final class JarvisFastGuards {
         return !n.isEmpty() && FILLERS.contains(n);
     }
 
+    /**
+     * F-239 / SF-239-02 (D3) — les invitations à parler (« Je vous écoute… », « Je reste à votre disposition… »),
+     * normalisées : une phrase qui <b>commence</b> par l'une d'elles est retirée, seule ou en conclusion.
+     */
+    static final List<String> INVITATIONS = List.of("je vous ecoute", "je t ecoute", "a votre ecoute",
+            "je reste a votre ecoute", "je suis a votre ecoute", "je reste a l ecoute", "je suis a l ecoute",
+            "je reste a votre disposition", "je suis a votre disposition", "a votre disposition", "n hesitez pas");
+
+    /** F-239 / SF-239-02 (D3) — vrai si la phrase n'est qu'une invitation à parler (« Je vous écoute pour la suite »). */
+    public static boolean isListeningInvitation(String sentence) {
+        String n = normalize(sentence).replaceAll("\\bmonsieur\\b", "").replaceAll("\\s+", " ").strip();
+        n = n.replaceFirst("^(et|alors|bien|bon|oui|bien sur|sinon)\\s+", "");
+        for (String invitation : INVITATIONS) {
+            if (n.equals(invitation) || n.startsWith(invitation + " ")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static final String SMALL_TALK_UNIT = "(?:bonjour|bonsoir|salut|hello|coucou|merci|merci beaucoup|"
+            + "merci bien|ca va|comment ca va|comment allez vous|comment vas tu|vous allez bien|bonne journee|"
+            + "bonne soiree|bonne nuit|au revoir|a plus|a bientot|a demain|ok|d accord|parfait|tres bien|super|"
+            + "genial|c est bon|c est tout|ce sera tout|a vous|a toi|aussi|monsieur|et vous|et toi|oui|bien)";
+    private static final Pattern SMALL_TALK = Pattern.compile("^" + SMALL_TALK_UNIT + "(?: " + SMALL_TALK_UNIT + ")*$");
+
+    /**
+     * F-239 / SF-239-02 (D3) — une salutation ou une politesse (« Bonjour Jarvis », « Merci », « Ça va ? ») : jamais
+     * un travail, donc <b>jamais déléguée</b>. Liste fermée, normalisée ; « Jarvis » est ignoré.
+     */
+    public static boolean isSmallTalk(String said) {
+        String original = normalize(said);
+        String n = original.replaceAll("\\bjarvis\\b", " ").replaceAll("\\s+", " ").strip();
+        return n.isEmpty() ? !original.isEmpty() : SMALL_TALK.matcher(n).matches();
+    }
+
+    /** F-239 / SF-239-02 (D3) — la réponse courtoise fixe d'une salutation, quand le modèle n'en a pas donné de sûre. */
+    public static String courtesyReply(String said) {
+        String n = " " + normalize(said) + " ";
+        if (n.replace(" jarvis ", " ").isBlank()) {
+            return "Oui, Monsieur ?"; // « Jarvis » seul : il est appelé
+        }
+        if (n.contains(" bonsoir ") || n.contains(" bonne soiree ") || n.contains(" bonne nuit ")) {
+            return n.contains(" bonsoir ") ? "Bonsoir, Monsieur." : "Bonne soirée, Monsieur.";
+        }
+        if (n.contains(" au revoir ") || n.contains(" bonne journee ") || n.contains(" a demain ")
+                || n.contains(" a plus ") || n.contains(" a bientot ")) {
+            return "Bonne journée, Monsieur.";
+        }
+        if (n.contains(" bonjour ") || n.contains(" salut ") || n.contains(" hello ") || n.contains(" coucou ")) {
+            return "Bonjour, Monsieur.";
+        }
+        if (n.contains(" merci ")) {
+            return "Avec plaisir, Monsieur.";
+        }
+        if (n.contains(" ca va ") || n.contains(" allez vous ") || n.contains(" vas tu ") || n.contains(" allez bien ")) {
+            return "Fort bien, merci, Monsieur.";
+        }
+        return "Parfait.";
+    }
+
     /** F-235 / SF-235-09 (D18) — les noms de l'œuvre que Jarvis n'imite jamais (normalisés). */
     static final List<String> WORK_NAMES = List.of("stark", "tony stark", "iron man", "ironman", "marvel",
             "avengers");

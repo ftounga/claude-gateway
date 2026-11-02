@@ -161,6 +161,30 @@ class JarvisLatencyApiIntegrationTest {
     }
 
     @Test
+    @DisplayName("F-239 / SF-239-02 — une parole refusée : raison (liste fermée) et longueur gardées, jamais le texte")
+    void rejectedSpeechIsTracedWithoutText() throws Exception {
+        report(adminToken, "{\"listenMode\":\"CONV_STREAM\",\"falseTriggers\":1,\"rejectedKind\":\"hallucination\","
+                + "\"rejectedChars\":49}").andExpect(status().isNoContent());
+        report(adminToken, "{\"listenMode\":\"CONV_STREAM\",\"rejectedChars\":12}").andExpect(status().isNoContent());
+        report(adminToken, "{\"rejectedKind\":\"bavardage\"}").andExpect(status().isBadRequest());
+
+        var rows = timings.findByUserIdAndCreatedAtGreaterThanEqual(admin.getId(), OffsetDateTime.now().minusDays(1));
+        assertThat(rows).hasSize(2);
+        assertThat(rows).anySatisfy(r -> {
+            assertThat(r.getRejectedKind()).isEqualTo("hallucination");
+            assertThat(r.getRejectedChars()).isEqualTo(49);
+            assertThat(r.getFalseTriggers()).isEqualTo(1);
+        });
+        // Sans raison, la longueur n'est pas gardée.
+        assertThat(rows).anySatisfy(r -> {
+            assertThat(r.getRejectedKind()).isNull();
+            assertThat(r.getRejectedChars()).isNull();
+        });
+        assertThat(timings.findByUserIdAndCreatedAtGreaterThanEqual(otherAdmin.getId(),
+                OffsetDateTime.now().minusDays(1))).isEmpty();
+    }
+
+    @Test
     @DisplayName("400 marque hors bornes, compteur négatif, fournisseur illisible, mode inconnu ; 403 non-ADMIN ; 401")
     void errors() throws Exception {
         report(adminToken, "{\"doneMs\":-1}").andExpect(status().isBadRequest())

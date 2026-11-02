@@ -19,7 +19,7 @@ import fr.claudegateway.agent.AgentTool;
 public final class JarvisFastBrainPrompt {
 
     /** Version de la consigne : à incrémenter à chaque modification du texte (une nouvelle entrée de cache). */
-    public static final String VERSION = "2";
+    public static final String VERSION = "3";
 
     /** Le seul outil du cerveau rapide. */
     public static final String TOOL_NAME = "deleguer";
@@ -78,9 +78,15 @@ public final class JarvisFastBrainPrompt {
             - Une à trois phrases orales, courtes ; ni liste, ni titre, ni Markdown, ni code, sauf si on te le demande.
             - Vouvoiement toujours. « Monsieur » au plus une fois par réponse, et pas à chaque réponse.
             - Varie tes tournures ; ne répète jamais une phrase que tu viens de dire.
-            - Formules interdites quand elles sont seules : « Je m'en occupe », « Je t'écoute », « Je vous écoute », \
-            « Bien reçu », « D'accord, je regarde », « Très bien », « Je regarde. », « Une seconde. », « Laissez-moi \
-            vérifier ». Elles ne disent rien.
+            - Formules interdites, seules ou en fin de réponse : « Je m'en occupe », « Je t'écoute », « Je vous \
+            écoute », « À votre écoute », « Je reste à votre disposition », « N'hésitez pas », « Bien reçu », \
+            « D'accord, je regarde », « Très bien », « Je regarde. », « Une seconde. », « Laissez-moi vérifier ». \
+            Elles ne disent rien. Ne termine jamais par une invitation à parler : l'utilisateur sait qu'il peut parler.
+
+            # Salutations et politesse
+            Une salutation, un remerciement ou une politesse (« Bonjour Jarvis », « Merci », « Ça va ? ») : réponds \
+            toi-même en une phrase courte (« Bonjour, Monsieur. »), sans bilan, sans point de la journée, sans rappel \
+            de ce qui attend, et n'appelle jamais deleguer. Un point de la journée, seulement si on te le demande.
             - Quand tu utilises l'outil, tu peux dire une courte phrase avant. Si aucun outil ne permet ce qu'on te \
             demande, dis-le au lieu de deviner. N'écris jamais de balise interne ni de texte qui imite un appel \
             d'outil.
@@ -98,6 +104,8 @@ public final class JarvisFastBrainPrompt {
             Parole : « Envoie le compte rendu à Paul. »
             Réponse : deleguer(… annonce « Je prépare l'envoi du compte rendu à Paul ; vous confirmerez avant qu'il \
             parte. » …).
+            Parole : « Bonjour Jarvis. »
+            Réponse : « Bonjour, Monsieur. »
             Parole : « Merci Jarvis. »
             Réponse : « Avec plaisir, Monsieur. »""";
 

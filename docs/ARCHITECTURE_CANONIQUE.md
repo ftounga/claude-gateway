@@ -1410,6 +1410,9 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   `fast_model`, `fast_first_token_ms`, `grounding_trips`, `fillers_removed`, `repeats_removed`,
   `imitations_removed`, `forced_delegation`, `delegation_reason` (liste fermée), `correction` — lus par
   `GET /api/admin/jarvis/fast-brain/measure` (ADMIN, ses propres tours). Toujours **sans contenu**.
+  F-239 / SF-239-02 (migration `239-jarvis-turn-timings-rejected`) : `rejected_kind` (liste fermée `empty|noise|
+  hallucination|no_voice|implausible`) et `rejected_chars` (longueur) — une parole refusée par la porte de parole
+  réelle de l'écran, aucun tour lancé. **Jamais le texte.**
 - **jarvis_voice_choices** — **la voix de Jarvis choisie à l'audition** (F-233 / SF-233-07, migration `198`) :
   `user_id`, `provider` (`openai|elevenlabs`), `voice` (nom ou identifiant), `label` (lettre entendue), `chosen_at`.
   Le plus récent du compte fait foi (`JarvisVoiceService.current(userId)`), sinon la configuration. Purgé à la
