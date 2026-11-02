@@ -371,6 +371,29 @@ class JarvisFastBrainServiceTest {
     }
 
     @Test
+    void f239TheDayStateRidesInTheLastMessageNeverInTheSystemPrompt() {
+        JarvisFastBrainService service = service(answering("Bonjour, Monsieur. La journée commence bien ?"), null,
+                null);
+        service.setContext(null, new JarvisFastMemory(Clock.systemUTC()), null);
+
+        service.converse(ask("Bonjour Jarvis."), null);
+        service.converse(ask("Oui, merci."), null);
+
+        String first = text(calls.get(0), calls.get(0).messages().size() - 1);
+        String second = text(calls.get(1), calls.get(1).messages().size() - 1);
+        assertThat(first).contains("Première salutation du jour : oui").contains("Question de politesse déjà posée : non");
+        assertThat(second).contains("Première salutation du jour : non")
+                .contains("Question de politesse déjà posée : oui");
+        assertThat(calls.get(0).system()).isEqualTo(calls.get(1).system()).doesNotContain("## Conversation du jour");
+    }
+
+    @Test
+    void f239MoreInvitationsAreRemoved() {
+        assertThat(JarvisFastGuards.isListeningInvitation("Je reste prêt à dérouler le programme.")).isTrue();
+        assertThat(JarvisFastGuards.isListeningInvitation("Que puis-je faire pour vous, Monsieur ?")).isTrue();
+    }
+
+    @Test
     void warmsAtMostEveryFourMinutesWithZeroOutput() {
         JarvisFastBrainService service = service(answering(""), null, null);
 

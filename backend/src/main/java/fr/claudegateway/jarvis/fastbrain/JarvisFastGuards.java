@@ -91,7 +91,10 @@ public final class JarvisFastGuards {
      */
     static final List<String> INVITATIONS = List.of("je vous ecoute", "je t ecoute", "a votre ecoute",
             "je reste a votre ecoute", "je suis a votre ecoute", "je reste a l ecoute", "je suis a l ecoute",
-            "je reste a votre disposition", "je suis a votre disposition", "a votre disposition", "n hesitez pas");
+            "je reste a votre disposition", "je suis a votre disposition", "a votre disposition", "n hesitez pas",
+            // F-239 / SF-239-08 — relevées au banc de conversation.
+            "je reste pret", "je suis pret", "je reste a l affut", "que puis je faire pour vous",
+            "que puis je pour vous");
 
     /** F-239 / SF-239-02 (D3) — vrai si la phrase n'est qu'une invitation à parler (« Je vous écoute pour la suite »). */
     public static boolean isListeningInvitation(String sentence) {

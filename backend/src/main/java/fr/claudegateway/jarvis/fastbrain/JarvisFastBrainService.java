@@ -459,7 +459,9 @@ public class JarvisFastBrainService {
         boolean bench = benchModel != null;
         String model = bench ? benchModel : properties.model();
         String apiKey = byok == null ? null : byok.resolveActiveApiKey(userId).orElse(null);
-        String context = fixedContext != null ? fixedContext : context(request);
+        // F-239 / SF-239-08 — l'état du jour (à blanc, le banc ne lit pas la mémoire : « première salutation »).
+        String context = fixedContext != null ? fixedContext : context(request) + "\n\n"
+                + (benchModel != null ? JarvisFastContextBuilder.dayState(true, false) : dayState(request));
         // F-239 / SF-239-11 — l'univers de référence (préfixe relu du cache) ; les gardes voient tout le contexte.
         String reference = bench ? "" : reference(request);
         String grounding = reference.isEmpty() ? context : reference + "\n\n" + context;
@@ -844,6 +846,17 @@ public class JarvisFastBrainService {
     /** F-239 / SF-239-11 — le message d'ouverture qui porte l'univers de référence, et la réponse fixe qui le suit. */
     static final String REFERENCE_HEADER = "[Référence — univers]\n";
     static final String REFERENCE_ACK = "Noté.";
+
+    /**
+     * F-239 / SF-239-08 — l'état de la conversation du jour : aucune trace de la journée ⇒ première salutation ; une des
+     * trois dernières réponses porte une question ⇒ question de politesse déjà posée. Lu dans la mémoire du compte.
+     */
+    String dayState(Request request) {
+        List<JarvisFastMemory.Exchange> recalled = memory == null ? List.of() : memory.recall(request.userId());
+        boolean asked = recalled.stream().skip(Math.max(0, recalled.size() - 3))
+                .anyMatch(e -> e.answered() != null && e.answered().contains("?"));
+        return JarvisFastContextBuilder.dayState(recalled.isEmpty(), asked);
+    }
 
     /** F-239 / SF-239-11 — l'univers de référence du compte (vide sans constructeur de contexte, ou illisible). */
     String reference(Request request) {
