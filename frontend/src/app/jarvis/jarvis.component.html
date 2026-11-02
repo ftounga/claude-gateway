@@ -27,7 +27,7 @@
     <!-- F-236 / SF-236-06 — HUD 3D : compteur « À envoyer », plein écran (PC), volet « Réglages ». -->
     @if (stage3d.rendering() === '3d') {
       @if (toSendCount() > 0) {
-        <span class="jv__count" role="status">À envoyer ({{ toSendCount() }})</span>
+        <span class="jv__count" [class.jv__count--bump]="toSendBump()" role="status">À envoyer ({{ toSendShown() }})</span>
       }
       @if (canFullscreen) {
         <button mat-icon-button type="button" class="jv__fullscreen" (click)="toggleFullscreen()"

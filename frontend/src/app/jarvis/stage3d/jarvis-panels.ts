@@ -206,6 +206,24 @@ export function panelLook(phase: 'in' | 'out', elapsedMs: number, rank = 0): Pan
   return { opacity: 1 - e, scale: 1 - 0.04 * e, sweep: k < 1 ? 1 - k : null, filament: 1 - e };
 }
 
+/** T-P3 — un panneau qui vole vers « À envoyer » (ms). */
+export const PANEL_FLY_MS = 1100;
+
+/** T-P3 à `elapsed` : avancement (`glisse`), réduction 1 → 0,25, arc (levée), opacité qui s'éteint à l'arrivée. */
+export function flyLook(elapsedMs: number): { k: number; scale: number; lift: number; opacity: number } {
+  const t = Math.max(0, Math.min(1, elapsedMs / PANEL_FLY_MS));
+  const k = ease('glisse', t);
+  return { k, scale: 1 - 0.75 * k, lift: Math.sin(Math.PI * k), opacity: t < 0.85 ? 1 : (1 - t) / 0.15 };
+}
+
+/**
+ * T-P3 — le compteur ne prend +1 qu'à l'arrivée de l'enveloppe : délai avant d'afficher la nouvelle valeur. Aucun
+ * délai en 2D, ni quand le compteur baisse (relecture de l'univers).
+ */
+export function arrivalDelay(shown: number, next: number, flying3d: boolean): number {
+  return flying3d && next > shown ? PANEL_FLY_MS : 0;
+}
+
 /** Le rectangle touche-t-il le disque du cœur ? */
 export function circleHits(rect: Rect, c: { x: number; y: number; r: number }): boolean {
   const nx = Math.max(rect.x, Math.min(c.x, rect.x + rect.w));

@@ -43,6 +43,8 @@ export interface Panel3d {
   front?: boolean;
   /** SF-236-09 (N11) — les lignes défilent lentement (pages qui défilent : un document lu). */
   scroll?: boolean;
+  /** SF-236-11 (T-P3) — le panneau vole vers le compteur « À envoyer » (1,1 s), puis s'efface. */
+  fly?: 'to-send';
 }
 
 /** SF-236-09 — un point du nuage du dépôt (N9) : un amas par dossier, lecture ou écriture. */

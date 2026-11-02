@@ -1,4 +1,6 @@
-import { PanelLook, PanelViewport, PanelRequest, panelLook, placePanels } from '../jarvis-panels';
+import {
+  PANEL_FLY_MS, PanelLook, PanelViewport, PanelRequest, flyLook, panelLook, placePanels,
+} from '../jarvis-panels';
 import { MOTION_DURATIONS } from '../jarvis-motion';
 import { CORE_KEY } from '../jarvis-link-graph';
 import { Panel3d } from '../scenes3d/jarvis-scene3d.model';
@@ -29,6 +31,9 @@ interface LivePanel {
   y: number;
   placed: boolean;
   signature: string;
+  /** T-P3 — le vol vers « À envoyer » : début, départ, arrivée. */
+  fly: { start: number; fromX: number; fromY: number; toX: number; toY: number } | null;
+  bornFlying: boolean;
 }
 
 /** Suivi de la position visée (ms) : un panneau glisse vers sa place, jamais de saut. */
@@ -111,8 +116,15 @@ export class Panels3d {
         p.x += (spot.x - p.x) * k;
         p.y += (spot.y - p.y) * k;
       }
-      const look = panelLook(p.phase, now - p.start, p.phase === 'in' ? p.rank : 0);
-      this.apply(p, look, anchors.get(p.spec.id) ?? viewport.core);
+      if (p.spec.fly && p.placed && !p.fly && p.phase === 'in') {
+        this.takeOff(p, now, viewport);
+      }
+      if (p.fly) {
+        this.applyFly(p, now);
+      } else {
+        const look = panelLook(p.phase, now - p.start, p.phase === 'in' ? p.rank : 0);
+        this.apply(p, look, anchors.get(p.spec.id) ?? viewport.core);
+      }
       if (p.phase === 'out' && now - p.start >= MOTION_DURATIONS.panelOut) {
         p.el.remove();
         p.filament.remove();
@@ -145,7 +157,7 @@ export class Panels3d {
     this.layer!.appendChild(filament);
     this.layer!.appendChild(el);
     const live: LivePanel = { spec, el, sweep, bar: null, filament, phase: 'in', start: now, rank, w: 0, h: 0, x: 0,
-      y: 0, placed: false, signature: '' };
+      y: 0, placed: false, signature: '', fly: null, bornFlying: !!spec.fly };
     this.write(live, spec);
     this.live.set(spec.id, live);
     return live;
@@ -202,6 +214,35 @@ export class Panels3d {
     // Une seule lecture de mise en page par changement de contenu (jamais à chaque image).
     live.w = el.offsetWidth || 240;
     live.h = el.offsetHeight || 64;
+  }
+
+  /** T-P3 — départ du vol : la cible est le compteur « À envoyer » du HUD, sinon le coin haut droit. */
+  private takeOff(p: LivePanel, now: number, viewport: PanelViewport): void {
+    // Une seule lecture de mise en page, au départ du vol.
+    const counter = typeof document === 'undefined' ? null : document.querySelector('.jv__count');
+    const rect = counter?.getBoundingClientRect();
+    const toX = rect && rect.width > 0 ? rect.left + rect.width / 2 : viewport.width - 120;
+    const toY = rect && rect.height > 0 ? rect.top + rect.height / 2 : 32;
+    // Un panneau né en partance (bloc fini d'un coup, ou banc) part dès son apparition.
+    p.fly = { start: p.bornFlying ? p.start : now, fromX: p.x + p.w / 2, fromY: p.y + p.h / 2, toX, toY };
+    p.el.classList.add('is-flying');
+  }
+
+  /** T-P3 — arc (levée vers le haut), réduction 1 → 0,25 ; le filament (L-message) suit, la traînée s'éteint. */
+  private applyFly(p: LivePanel, now: number): void {
+    const f = p.fly!;
+    const look = flyLook(now - f.start);
+    const cx = f.fromX + (f.toX - f.fromX) * look.k;
+    const cy = f.fromY + (f.toY - f.fromY) * look.k - 80 * look.lift;
+    const style = p.el.style;
+    style.opacity = look.opacity.toFixed(3);
+    style.transform = `translate3d(${Math.round(cx - p.w / 2)}px, ${Math.round(cy - p.h / 2)}px, 0) scale(${look.scale
+      .toFixed(4)})`;
+    p.el.classList.toggle('is-sweeping', false);
+    p.filament.style.opacity = (0.6 * (1 - look.k)).toFixed(3);
+    if (now - f.start >= PANEL_FLY_MS) {
+      style.opacity = '0';
+    }
   }
 
   private apply(p: LivePanel, look: PanelLook, anchor: { x: number; y: number }): void {
