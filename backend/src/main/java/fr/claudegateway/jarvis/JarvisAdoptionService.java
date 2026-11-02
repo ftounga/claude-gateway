@@ -45,7 +45,9 @@ public class JarvisAdoptionService {
     public enum Event {
         SESSION, SPOKEN, WAKE, IDLE_END,
         /** F-234 / SF-234-11 — les scènes d'un tour, un toucher de nœud, le mode sobre activé. */
-        SCENES, TOUCH, SOBER;
+        SCENES, TOUCH, SOBER,
+        /** F-236 / SF-236-06 — une session vue par le rendu (3D ou 2D) et ses compteurs. */
+        RENDER;
 
         static Event parse(String raw) {
             if (raw == null) {
@@ -79,7 +81,19 @@ public class JarvisAdoptionService {
      */
     public void record(UUID userId, String event, Long seconds, java.util.Map<String, Integer> scenes, Integer lit,
             Integer shows) {
+        record(userId, event, seconds, scenes, lit, shows, null, null);
+    }
+
+    /**
+     * Inscrit un événement, dont {@code RENDER} (F-236 / SF-236-06) : {@code mode} = {@code 3d} ou {@code 2d},
+     * {@code render} = compteurs du vocabulaire fermé de {@link RenderCounts}. Aucun contenu.
+     *
+     * @throws IllegalArgumentException événement inconnu, mode ou compteur hors vocabulaire / bornes
+     */
+    public void record(UUID userId, String event, Long seconds, java.util.Map<String, Integer> scenes, Integer lit,
+            Integer shows, String mode, java.util.Map<String, Integer> render) {
         switch (Event.parse(event)) {
+            case RENDER -> usage.addRender(userId, parseMode(mode), RenderCounts.validate(render));
             case SCENES -> usage.addScenes(userId, SceneCounts.validate(scenes), bounded(lit), bounded(shows));
             case TOUCH -> usage.addNodeTouch(userId);
             case SOBER -> usage.addSoberOn(userId);
@@ -89,6 +103,16 @@ public class JarvisAdoptionService {
             case SPOKEN -> usage.addSpoken(userId,
                     Math.min(MAX_SPOKEN_SECONDS, Math.max(0L, seconds == null ? 0L : seconds)));
         }
+    }
+
+    private static boolean parseMode(String mode) {
+        if ("3d".equalsIgnoreCase(mode == null ? null : mode.strip())) {
+            return true;
+        }
+        if ("2d".equalsIgnoreCase(mode == null ? null : mode.strip())) {
+            return false;
+        }
+        throw new IllegalArgumentException("Mode de rendu inconnu.");
     }
 
     private static int bounded(Integer n) {
@@ -118,7 +142,13 @@ public class JarvisAdoptionService {
         int soberOn = 0;
         int showRequests = 0;
         java.util.Map<String, Integer> families = new java.util.TreeMap<>();
+        int render3d = 0;
+        int render2d = 0;
+        java.util.Map<String, Integer> renderCounts = new java.util.TreeMap<>();
         for (JarvisUsageDay d : usage.lastDays(userId, window)) {
+            render3d += d.getRender3d();
+            render2d += d.getRender2d();
+            RenderCounts.parse(d.getRenderCounts()).forEach((k, v) -> renderCounts.merge(k, v, Integer::sum));
             scenesShown += d.getScenesShown();
             scenesGeneric += d.getScenesGeneric();
             nodesLit += d.getNodesLit();
@@ -138,8 +168,12 @@ public class JarvisAdoptionService {
         int activeDays = (int) rows.stream().filter(r -> r.sessions() > 0).count();
         BigDecimal genericShare = scenesShown == 0 ? BigDecimal.ZERO
                 : BigDecimal.valueOf(100L * scenesGeneric).divide(BigDecimal.valueOf(scenesShown), 1, RoundingMode.HALF_UP);
+        int renderSessions = render3d + render2d;
+        BigDecimal share3d = renderSessions == 0 ? BigDecimal.ZERO
+                : BigDecimal.valueOf(100L * render3d).divide(BigDecimal.valueOf(renderSessions), 1, RoundingMode.HALF_UP);
         return new Measure(window, activeDays, sessions, minutes(spoken), wakes, chars, eur(usd), rows, idleEnds,
-                new SceneMeasure(scenesShown, genericShare, families, nodesLit, nodeTouches, soberOn, showRequests));
+                new SceneMeasure(scenesShown, genericShare, families, nodesLit, nodeTouches, soberOn, showRequests),
+                new RenderMeasure(render3d, render2d, share3d, renderCounts));
     }
 
     private BigDecimal eur(BigDecimal usd) {
@@ -157,7 +191,17 @@ public class JarvisAdoptionService {
 
     /** La mesure d'adoption : totaux de la fenêtre et détail par jour. */
     public record Measure(int days, int activeDays, int sessions, BigDecimal spokenMinutes, int wakes,
-            long charsSpoken, BigDecimal voiceCostEur, List<Day> perDay, int idleEnds, SceneMeasure scenes) {
+            long charsSpoken, BigDecimal voiceCostEur, List<Day> perDay, int idleEnds, SceneMeasure scenes,
+            RenderMeasure render) {
+    }
+
+    /**
+     * F-236 / SF-236-06 (cadrage §18) — le rendu : sessions en 3D / en 2D, part de la 3D (%), et le détail (raisons du
+     * repli, secondes par niveau, classes d'i/s p50, gestes, touchers par type, passages de cerveau, entrées sautées,
+     * bascules 3D → 2D). Aucun contenu.
+     */
+    public record RenderMeasure(int sessions3d, int sessions2d, BigDecimal share3dPct,
+            java.util.Map<String, Integer> counts) {
     }
 
     /**

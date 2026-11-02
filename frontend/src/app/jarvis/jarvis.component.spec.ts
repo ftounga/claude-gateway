@@ -106,7 +106,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     voice.playClip.and.resolveTo(false);
     voice.hasClip.and.returnValue(false);
     voice.level.and.returnValue(0);
-    jarvisApi = jasmine.createSpyObj<JarvisService>('JarvisService', ['usage', 'companion', 'companions', 'timings', 'sttSession', 'closeSttSession', 'preferences', 'setHumour', 'scenes']);
+    jarvisApi = jasmine.createSpyObj<JarvisService>('JarvisService', ['usage', 'companion', 'companions', 'timings', 'sttSession', 'closeSttSession', 'preferences', 'setHumour', 'scenes', 'render']);
     jarvisApi.sttSession.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
     jarvisApi.preferences.and.returnValue(of({ humour: 'LIGHT' as const }));
     jarvisApi.setHumour.and.callFake((humour) => of({ humour }));
@@ -199,6 +199,44 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(el.querySelector('.jv__orb-button')).not.toBeNull();
     expect(engines[0].options.voiceLevel()).toBe(0);
     fixture.componentInstance.ngOnDestroy();
+    fixture.destroy();
+  }));
+
+  it('F-236 / SF-236-06 — à la fermeture, la mesure du rendu part une fois (2D : la raison, aucun contenu)', fakeAsync(() => {
+    configure({});
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    fixture.componentInstance.ngOnDestroy();
+    expect(jarvisApi.render).toHaveBeenCalledOnceWith({ mode: '2d', render: { r_no_webgl: 1 } });
+    fixture.destroy();
+    expect(jarvisApi.render).toHaveBeenCalledTimes(1);
+  }));
+
+  it('F-236 / SF-236-06 — HUD 3D : volet « Réglages » (mêmes commandes), compteur « À envoyer » ; rien de tout ça en 2D', fakeAsync(() => {
+    renderProbe = { ...PC_PROBE };
+    const engines: FakeEngine[] = [];
+    loader3d.and.callFake(() => Promise.resolve(fakeEngineFactory(engines)));
+    configure({});
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.jv__settings-toggle')).toBeNull();
+    engines[0].firstFrame();
+    fixture.detectChanges();
+    const toggle = el.querySelector('.jv__settings-toggle') as HTMLButtonElement;
+    expect(toggle).not.toBeNull();
+    expect(el.querySelector('.jv__settings')).toBeNull();
+    toggle.click();
+    fixture.detectChanges();
+    const panel = el.querySelector('.jv__settings') as HTMLElement;
+    expect(panel.textContent).toContain('Mode sobre');
+    expect(panel.textContent).toContain('Vue 2D');
+    expect(panel.textContent).toContain('Humour');
+    expect(panel.textContent).toContain('« Jarvis »');
+    fixture.componentInstance.ngOnDestroy();
+    expect(jarvisApi.render).toHaveBeenCalledWith(jasmine.objectContaining({ mode: '3d' }));
     fixture.destroy();
   }));
 

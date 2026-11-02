@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-236 / SF-236-06 - LA MESURE DU RENDU DE JARVIS EN 3D (cadrage par. 18), SANS CONTENU.
+
+      jarvis_usage_days + compteurs du jour : sessions dessinees en 3D, sessions restees en 2D, et le detail
+      "render_counts" ("r_manual=2;sec_high=640;fps_50_60=3;t_subject=4;brains=6"), vocabulaire ferme de cles
+      (raisons du repli 2D, secondes par niveau, classe d'i/s p50 par session, gestes, touchers par type de
+      noeud, passages de cerveau, entrees sautees, bascules 3D vers 2D). Aucun nom, aucun texte.
+      Colonnes additives avec defaut : les lignes existantes valent 0 / chaine vide.
+
+      Numero 236 = numero de la feature (evite toute collision avec les vagues paralleles).
+      Rollback : les colonnes se retirent.
+    -->
+
+    <changeSet id="236-jarvis-usage-render" author="claude-gateway">
+        <addColumn tableName="jarvis_usage_days">
+            <column name="render_3d" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="render_2d" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="render_counts" type="varchar(1000)" defaultValue="">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="jarvis_usage_days" columnName="render_counts"/>
+            <dropColumn tableName="jarvis_usage_days" columnName="render_2d"/>
+            <dropColumn tableName="jarvis_usage_days" columnName="render_3d"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

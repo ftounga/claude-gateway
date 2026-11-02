@@ -95,6 +95,23 @@ public class JarvisUsageService {
         });
     }
 
+    /**
+     * F-236 / SF-236-06 — une session de l'écran Jarvis vue par le rendu : 3D ou 2D, et ses compteurs (clés du
+     * vocabulaire fermé de {@link RenderCounts}, déjà validées). Aucun contenu.
+     */
+    public void addRender(UUID userId, boolean threeD, java.util.Map<String, Integer> counts) {
+        bump(userId, day -> {
+            if (threeD) {
+                day.setRender3d(day.getRender3d() + 1);
+            } else {
+                day.setRender2d(day.getRender2d() + 1);
+            }
+            java.util.Map<String, Integer> merged = RenderCounts.parse(day.getRenderCounts());
+            counts.forEach((k, v) -> merged.merge(k, Math.max(0, v), Integer::sum));
+            day.setRenderCounts(RenderCounts.format(merged));
+        });
+    }
+
     /** F-234 / SF-234-11 — un toucher de nœud de la constellation (« passe sur X »). */
     public void addNodeTouch(UUID userId) {
         bump(userId, day -> day.setNodeTouches(day.getNodeTouches() + 1));

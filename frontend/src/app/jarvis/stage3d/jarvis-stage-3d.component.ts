@@ -7,6 +7,7 @@ import { BancParams, frozenClock, readBanc, realClock, seededRandom } from './ja
 import { JARVIS_3D_LOADER, JarvisEngine, JarvisEngineFactory } from './jarvis-engine.contract';
 import { FrameHost, browserFrameHost } from './jarvis-frame-loop';
 import { EXIT_MS, EntryKind, entryKindToday } from './jarvis-camera-rules';
+import { RenderReport, RenderStats } from './jarvis-render-stats';
 import { MOTION_DURATIONS } from './jarvis-motion';
 import { UniverseTouch } from './jarvis-layout-3d';
 import { SLEEP_AFTER_MS, SleepWatch } from './jarvis-heart';
@@ -197,9 +198,35 @@ export class JarvisStage3dComponent implements OnDestroy {
   /** Bascule « Vue 3D / 2D », retenue par appareil. */
   /** SF-236-05 — saute l'entrée (premier toucher, n'importe où sur l'écran). */
   skipEntry(): void {
+    if (this.entry() !== 'none') {
+      this.stats.entry(true);
+    }
     this.entry.set('none');
     this.engine?.skipEntry();
   }
+
+  /** SF-236-06 — la mesure du rendu de cette ouverture (une fois ; sans contenu), lue par l'écran à la fermeture. */
+  report(): RenderReport | null {
+    const stats = this.engine?.stats() ?? this.lastStats;
+    return this.stats.report(performance.now(), stats?.fps ?? null, stats?.gestures ?? 0);
+  }
+
+  private readonly stats = new RenderStats();
+  private lastStats: { fps: ArrayLike<number>; gestures: number } | null = null;
+  private brainsDeployed = false;
+
+  /** SF-236-06 — la décision de rendu et les passages de cerveau, comptés. */
+  private readonly measureFollow = effect(() => {
+    const decision = this.decision();
+    const deployed = this.plan().brains.target === 'deployed';
+    untracked(() => {
+      this.stats.decided(decision.mode, decision.mode === '2d' ? decision.reason : null, performance.now());
+      if (deployed && !this.brainsDeployed && this.shown()) {
+        this.stats.brainPass();
+      }
+      this.brainsDeployed = deployed;
+    });
+  });
 
   /**
    * SF-236-05 — T-S : joue la sortie (0,5 s) si la 3D est affichée, puis appelle `then` ; sinon `then` tout de suite.
@@ -281,14 +308,24 @@ export class JarvisStage3dComponent implements OnDestroy {
         adaptive: this.banc === null,
         replayFromZero: this.banc !== null,
         entry: this.entryFor(),
-        onTalk: () => this.zone.run(() => this.talk.emit()),
-        onQualityChange: (next) => this.zone.run(() => this.level.set(next)),
+        onTalk: () => this.zone.run(() => {
+          this.stats.touch('core');
+          this.talk.emit();
+        }),
+        onQualityChange: (next) => this.zone.run(() => {
+          this.level.set(next);
+          this.stats.levelAt(next, performance.now());
+        }),
         onLowPerf: () => this.zone.run(() => this.lowPerf.set(true)),
         labelHost: untracked(() => this.labelLayer()),
-        onTouch: (touch) => this.zone.run(() => this.touched.emit(touch)),
+        onTouch: (touch) => this.zone.run(() => {
+          this.stats.touch(touch.kind);
+          this.touched.emit(touch);
+        }),
         onFirstFrame: () => this.zone.run(() => {
           if (untracked(() => this.decision()).mode === '3d') {
             this.shown.set(true);
+            this.stats.shown(untracked(() => this.level()) ?? level, performance.now());
           }
         }),
         onContextLost: () => this.zone.run(() => this.contextLostNow()),
@@ -373,11 +410,18 @@ export class JarvisStage3dComponent implements OnDestroy {
       ? (this.banc.scene === 'entree' ? 'full' : this.banc.scene === 'entree-courte' ? 'short' : 'none')
       : entryKindToday(new Date().toISOString().slice(0, 10));
     this.entry.set(kind);
+    if (kind !== 'none') {
+      this.stats.entry(false);
+    }
     return kind;
   }
 
   private release(): void {
     this.clearSleepTimer();
+    if (this.engine) {
+      const stats = this.engine.stats();
+      this.lastStats = { fps: Array.from(stats.fps), gestures: stats.gestures };
+    }
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     this.engine?.dispose();
