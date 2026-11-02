@@ -238,11 +238,12 @@ class JarvisFastBrainServiceTest {
     }
 
     @Test
-    void aGreetingStillStepsAsideWhenTheBudgetIsSpent() {
+    void aGreetingAtTheHardCapGetsTheFixedReplyNeverOpus() {
         when(usage.monthFastBrainCostUsd(any())).thenReturn(new BigDecimal("1000"));
         JarvisFastBrainService.Outcome outcome = service(answering("Bonjour."), "1", null)
                 .converse(ask("Bonjour Jarvis"), null);
-        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.FALLBACK);
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(calls).isEmpty();
     }
 
     @Test
@@ -294,28 +295,45 @@ class JarvisFastBrainServiceTest {
     }
 
     @Test
-    void stepsAsideWhenTheMonthlyBudgetIsSpent() {
+    void f239OverTheBudgetTheFastBrainCarriesOnNeverOpus() {
+        // 25 € dépensés (0,92 €/$) pour un budget de 20 € : plafond doux — le cerveau rapide répond, signalé.
         when(usage.monthFastBrainCostUsd(alice)).thenReturn(new BigDecimal("25"));
 
-        JarvisFastBrainService.Outcome outcome = service(answering("Oui."), "20", null).converse(ask("Bonjour"),
-                null);
+        JarvisFastBrainService.Outcome outcome = service(answering("Kestrel avance bien."), "20", null)
+                .converse(ask("Où en est Kestrel ?"), null);
 
-        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.FALLBACK);
-        assertThat(outcome.reason()).isEqualTo("budget");
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(outcome.reason()).isEqualTo("budget_soft");
+        assertThat(calls).hasSize(1);
+    }
+
+    @Test
+    void f239AtTwiceTheBudgetAFixedReplyNoCallNeverOpus() {
+        when(usage.monthFastBrainCostUsd(alice)).thenReturn(new BigDecimal("50"));
+        StringBuilder heard = new StringBuilder();
+
+        JarvisFastBrainService.Outcome outcome = service(answering("Oui."), "20", null)
+                .converse(ask("Où en est Kestrel ?"), heard::append);
+
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(outcome.reason()).isEqualTo("budget_hard");
+        assertThat(heard.toString().strip()).isEqualTo(JarvisFastBrainService.BUDGET_HARD_REPLY);
         assertThat(calls).isEmpty();
     }
 
     @Test
-    void stepsAsideWhenTheAccountQuotaIsReached() {
+    void f239TheAccountQuotaReachedIsSaidNeverEscalated() {
         JarvisFastBrainService service = service(answering("Oui."), null, null);
         QuotaService quota = mock(QuotaService.class);
         org.mockito.Mockito.doThrow(new QuotaExceededException("quota")).when(quota).assertWithinQuota(alice);
         service.setAccounting(null, null, null, quota);
 
-        JarvisFastBrainService.Outcome outcome = service.converse(ask("Bonjour"), null);
+        JarvisFastBrainService.Outcome outcome = service.converse(ask("Où en est Kestrel ?"), null);
 
-        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.FALLBACK);
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
         assertThat(outcome.reason()).isEqualTo("quota");
+        assertThat(outcome.spokenText()).isEqualTo(JarvisFastBrainService.QUOTA_REPLY);
+        assertThat(calls).isEmpty();
     }
 
     // ------------------------------------------------------------- SF-235-02 : mémoire, contexte, pré-chauffage
@@ -325,19 +343,31 @@ class JarvisFastBrainServiceTest {
         JarvisFastBrainService service = service(answering("Oui, Monsieur."), null, null);
         JarvisFastMemory memory = new JarvisFastMemory(Clock.systemUTC());
         JarvisFastContextBuilder builder = mock(JarvisFastContextBuilder.class);
-        when(builder.build(any(), any(), any(), any())).thenReturn("CONTEXTE-1").thenReturn("CONTEXTE-2");
+        when(builder.build(any(), any(), any(), any(), org.mockito.ArgumentMatchers.eq(false)))
+                .thenReturn("CONTEXTE-1").thenReturn("CONTEXTE-2");
+        when(builder.reference(any())).thenReturn("## Univers\nKestrel, Zahi");
         service.setContext(builder, memory, null);
 
         service.converse(ask("Première"), null);
         service.converse(ask("Deuxième"), null);
 
+        AgentTurnRequest first = calls.get(0);
         AgentTurnRequest second = calls.get(1);
-        assertThat(second.messages()).hasSize(3);
-        assertThat(text(second, 0)).isEqualTo("Première");
-        assertThat(text(second, 1)).isEqualTo("Oui, Monsieur.");
-        assertThat(text(second, 2)).contains("CONTEXTE-2").contains("Deuxième").doesNotContain("CONTEXTE-1");
+        // F-239 / SF-239-11 — [univers de référence] → [« Noté. »] → échanges → [volatil + parole].
+        assertThat(second.messages()).hasSize(5);
+        assertThat(text(second, 0)).startsWith("[Référence — univers]").contains("Kestrel, Zahi");
+        assertThat(text(second, 1)).isEqualTo("Noté.");
+        assertThat(text(second, 2)).isEqualTo("Première");
+        assertThat(text(second, 3)).isEqualTo("Oui, Monsieur.");
+        assertThat(text(second, 4)).contains("CONTEXTE-2").contains("Deuxième").doesNotContain("CONTEXTE-1")
+                .doesNotContain("Kestrel, Zahi");
+        // Le préfixe du second appel prolonge celui du premier, octet pour octet (relu en cache).
+        assertThat(text(first, 0)).isEqualTo(text(second, 0));
+        assertThat(text(first, 1)).isEqualTo(text(second, 1));
+        // Le dernier message n'est pas écrit en cache (forme compacte).
+        assertThat(second.shape().cacheLastMessage()).isFalse();
         // Deux contextes différents, une seule consigne système.
-        assertThat(calls.get(0).system()).isEqualTo(second.system());
+        assertThat(first.system()).isEqualTo(second.system());
     }
 
     @Test

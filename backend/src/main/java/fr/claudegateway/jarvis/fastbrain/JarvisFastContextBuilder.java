@@ -77,8 +77,27 @@ public class JarvisFastContextBuilder {
         this.messages = messages;
     }
 
-    /** Le contexte d'un échange. */
+    /** Le contexte d'un échange (univers compris — forme d'avant F-239, gardée pour le banc et les tests). */
     public String build(UUID userId, Workspace workspace, Integer chantier, String heardBeforeCut) {
+        return build(userId, workspace, chantier, heardBeforeCut, true);
+    }
+
+    /**
+     * F-239 / SF-239-11 — <b>l'univers de référence</b>, sans heure : il ne change que si l'univers change, et peut donc
+     * former le préfixe relu du cache (en tête de conversation, jamais dans la consigne système). Vide si illisible.
+     */
+    public String reference(UUID userId) {
+        StringBuilder out = new StringBuilder();
+        block(out, "Univers", MAX_UNIVERSE, () -> universe(userId));
+        return out.toString().strip();
+    }
+
+    /**
+     * Le contexte d'un échange ; {@code withUniverse} faux (F-239 / SF-239-11) : l'univers est donné à part
+     * ({@link #reference}), seule son heure d'état figure ici.
+     */
+    public String build(UUID userId, Workspace workspace, Integer chantier, String heardBeforeCut,
+            boolean withUniverse) {
         String at = stamp(HOUR);
         StringBuilder out = new StringBuilder();
         out.append("## Maintenant\n").append(stamp(NOW)).append('\n');
@@ -89,7 +108,11 @@ public class JarvisFastContextBuilder {
         if (chantier != null) {
             out.append("Chantier courant : ").append(chantier).append('\n');
         }
-        block(out, "Univers (état à " + at + ")", MAX_UNIVERSE, () -> universe(userId));
+        if (withUniverse) {
+            block(out, "Univers (état à " + at + ")", MAX_UNIVERSE, () -> universe(userId));
+        } else {
+            out.append("Univers : celui de la référence en tête de conversation, état à ").append(at).append('\n');
+        }
         if (workspace != null) {
             block(out, "Attentes ouvertes du sujet courant (état à " + at + ")", MAX_BLOCK,
                     () -> attentes(userId, workspace.getId()));

@@ -4,7 +4,7 @@ import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angul
 import { HttpErrorResponse } from '@angular/common/http';
 import { Subject, of, throwError } from 'rxjs';
 
-import { JARVIS_USER_AGENT, JarvisComponent, companionOffer } from './jarvis.component';
+import { BUDGET_SOFT_NOTICE, JARVIS_USER_AGENT, JarvisComponent, companionOffer } from './jarvis.component';
 import { JarvisSceneBus } from './scenes/jarvis-scene-bus.service';
 import { testUniverse } from './scenes/jarvis-universe.fixture';
 import { NotificationCenterService } from '../core/services/notification-center.service';
@@ -1346,6 +1346,23 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       expect(atelier.streamChat).toHaveBeenCalled();
       jarvis.ngOnDestroy();
     }));
+
+  it('F-239 / SF-239-11 — budget de conversation dépassé : signalé une fois, jamais d’envoi à Opus', fakeAsync(() => {
+    const jarvis = fastOn();
+    for (let i = 0; i < 2; i++) {
+      void jarvis.handle('Où en est le chantier 3 ?');
+      flushMicrotasks();
+      fast!.onText('Le chantier 3 en est aux tests.');
+      fast!.onDone({ brain: 'FAST', spokenText: 'Le chantier 3 en est aux tests.', firstTokenMs: 300, model: 'm',
+        budget: 'soft' });
+      fastDone!('ok');
+      flushMicrotasks();
+      expect(jarvis.notice()).toBe(i === 0 ? BUDGET_SOFT_NOTICE : null);
+      jarvis.notice.set(null);
+    }
+    expect(atelier.streamChat).not.toHaveBeenCalled();
+    jarvis.ngOnDestroy();
+  }));
 
   /** Une écoute en flux prête : le ticket, et ce que l'écran a donné à l'ouverture. */
   function streamReady(): { stt: () => StreamHandlers; preRoll: () => (() => Float32Array | null) | null | undefined } {
