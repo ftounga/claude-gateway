@@ -238,7 +238,36 @@ export class JarvisComponent implements OnInit, OnDestroy {
   }
 
   private loadPreferences(): void {
-    this.jarvis.preferences().subscribe({ next: (prefs) => this.humour.set(prefs.humour), error: () => undefined });
+    this.jarvis.preferences().subscribe({
+      next: (prefs) => {
+        this.humour.set(prefs.humour);
+        this.captureAudio.set(prefs.captureAudio === true);
+      },
+      error: () => undefined,
+    });
+  }
+
+  /** F-239 / SF-239-03 — garder mes énoncés pour le banc d'écoute (ADMIN seulement, 7 jours, effacés à l'extinction). */
+  readonly captureAudio = signal(false);
+  /** F-239 / SF-239-03 — l'interrupteur n'existe que pour l'administrateur. */
+  readonly canCapture = computed(() => this.admin());
+
+  toggleCapture(): void {
+    const previous = this.captureAudio();
+    this.captureAudio.set(!previous);
+    this.jarvis.setCaptureAudio(!previous).subscribe({
+      next: (prefs) => this.captureAudio.set(prefs.captureAudio === true),
+      error: () => this.captureAudio.set(previous),
+    });
+  }
+
+  /** F-239 / SF-239-03 — garde l'énoncé pour le banc si l'interrupteur est allumé (WAV seulement). */
+  private keepForBench(audio: Blob | null, seconds: number | null, mode: string, provider: string | null,
+                       streamText: string, finalText: string): void {
+    if (!this.captureAudio() || !this.admin() || !audio || audio.size === 0 || !audio.type.includes('wav')) {
+      return;
+    }
+    this.jarvis.capture(audio, { seconds, listenMode: mode, provider, streamText, finalText });
   }
 
   constructor() {
@@ -932,7 +961,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
     let text = '';
     try {
       // F-239 / SF-239-04 — l'interruption passe aussi par la retranscription de Jarvis.
-      text = (await this.transcribeClip(encodeWav(audio), audio.length / 16_000, 'coupure.wav', clock)).trim();
+      const clip = encodeWav(audio);
+      text = (await this.transcribeClip(clip, audio.length / 16_000, 'coupure.wav', clock)).trim();
+      this.keepForBench(clip, audio.length / 16_000, 'BARGE_IN', clock.sttProvider, '', text);
     } catch {
       text = '';
     }
@@ -1047,6 +1078,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       if (final?.text.trim()) {
         clock.sttProvider = final.provider;
       }
+      this.keepForBench(audio, seconds, clock.listenMode, final?.provider ?? null, streamed, text);
     } else {
       // F-239 / SF-239-04 — la dictée (repli sans flux) passe aussi par la retranscription de Jarvis.
       try {

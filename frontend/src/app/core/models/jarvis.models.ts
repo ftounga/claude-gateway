@@ -10,6 +10,17 @@ export type JarvisHumour = 'NONE' | 'LIGHT';
 /** F-235 / SF-235-09 (D18) — les préférences de Jarvis du compte. */
 export interface JarvisPreferences {
   humour: JarvisHumour;
+  /** F-239 / SF-239-03 — garder mes énoncés pour le banc d'écoute (ADMIN, 7 jours) ; absent = non. */
+  captureAudio?: boolean;
+}
+
+/** F-239 / SF-239-03 — ce qui accompagne un énoncé gardé pour le banc (jamais pour un autre compte). */
+export interface JarvisCaptureMeta {
+  seconds: number | null;
+  listenMode: string;
+  provider: string | null;
+  streamText: string;
+  finalText: string;
 }
 
 /** Une demande dite à la voix, et la phrase de sa réponse. */
