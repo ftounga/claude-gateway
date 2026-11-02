@@ -79,7 +79,9 @@ export type NavAction =
   | { type: 'page'; n?: number; delta?: number }
   | { type: 'zoom'; step?: '+' | '-' | 'reset'; value?: number; target?: string }
   | { type: 'pan'; dx: number; dy: number }
-  | { type: 'fullscreen' };
+  | { type: 'fullscreen' }
+  /** F-237 / SF-237-09 — des cartes rejoignent la galerie ouverte (preuve produite en direct, T-G7). */
+  | { type: 'append'; pieces: readonly Piece[] };
 
 export interface NavResult {
   state: PieceNav;
@@ -302,6 +304,16 @@ export function reduceNav(state: PieceNav, action: NavAction): NavResult {
         return refuse(state, 'NOT_APPLICABLE');
       }
       return ok({ ...state, fullscreen: !state.fullscreen });
+    case 'append': {
+      if (!state.scope || state.level === 'UNIVERS' || state.level === 'CHANTIER') {
+        return refuse(state, 'NO_GALLERY');
+      }
+      const known = new Set(state.items.map((i) => i.id));
+      const fresh = action.pieces.filter((p) => !known.has(p.id));
+      const room = Math.max(0, MAX_NAV_ITEMS - state.items.length);
+      const added = fresh.slice(0, room).map((p, i) => toNavItem(p, state.items.length + i + 1));
+      return ok({ ...state, items: [...state.items, ...added], more: state.more + fresh.length - added.length });
+    }
   }
 }
 

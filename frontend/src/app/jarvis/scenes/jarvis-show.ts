@@ -28,11 +28,47 @@ const FILTERS: Record<string, ShowFilter> = {
 /** Au plus autant d'éléments montrés (lisibilité sur téléphone). */
 export const MAX_SHOWN = 8;
 
+/** F-237 / SF-237-09 — les formes « pièces » de la ligne : résolues par l'index des pièces, pas par l'univers. */
+export type PieceShowFilter = 'pieces' | 'preuves' | 'entrees';
+
 /** Ce que l'agent a demandé de montrer. */
 export interface ShowRequest {
-  filter: ShowFilter;
+  filter: ShowFilter | PieceShowFilter;
   /** Le nom du client qui restreint, tel qu'écrit. */
   client: string | null;
+  /** F-237 / SF-237-09 — `preuves chantier 3`. */
+  chantier?: number | null;
+  /** F-237 / SF-237-09 — `pieces proof:ab12,page:…` (≤ 8). */
+  ids?: string[];
+}
+
+/** F-237 / SF-237-09 — au plus autant d'identifiants dans `🖥 montrer: pieces …`. */
+export const MAX_SHOW_IDS = 8;
+const PIECE_ID = /^(dep|proof|page|video|img|slides|send|mail|moment|need|diag):[A-Za-z0-9@/_.:-]{1,120}$/;
+
+/** Vrai si la demande vise les pièces (galerie) plutôt que l'univers. */
+export function isPieceShow(request: ShowRequest | null | undefined): boolean {
+  return request?.filter === 'pieces' || request?.filter === 'preuves' || request?.filter === 'entrees';
+}
+
+/** F-237 / SF-237-09 — `preuves [chantier N]`, `entrees [chantier N]`, `pieces <id>,<id>` ; `null` sinon. */
+export function parsePieceShow(rest: string): ShowRequest | null {
+  const raw = rest.trim();
+  const ids = /^pi[eè]ces?\s*:?\s+(.+)$/i.exec(raw);
+  if (ids) {
+    const list = ids[1].split(/[\s,;]+/).map((id) => id.trim()).filter((id) => PIECE_ID.test(id));
+    const unique = [...new Set(list)].slice(0, MAX_SHOW_IDS);
+    return unique.length ? { filter: 'pieces', client: null, ids: unique } : null;
+  }
+  const words = normalizeName(raw);
+  const kind = /^(preuves?|entrees?)(?:\s+(?:du\s+)?chantier\s+(\d{1,4}))?$/.exec(words);
+  if (!kind) {
+    return null;
+  }
+  return {
+    filter: kind[1].startsWith('preuve') ? 'preuves' : 'entrees', client: null,
+    chantier: kind[2] ? Number(kind[2]) : null,
+  };
 }
 
 /** Un élément montré. */
@@ -69,6 +105,10 @@ export function parseShowLine(line: string): ShowRequest | null {
   if (!match) {
     return null;
   }
+  const pieces = parsePieceShow(match[1]);
+  if (pieces) {
+    return pieces;
+  }
   const words = normalizeName(match[1]);
   for (const [name, filter] of Object.entries(FILTERS)) {
     if (words === name || words.startsWith(`${name} `)) {
@@ -89,6 +129,10 @@ export function resolveShow(universe: JarvisUniverse | null, request: ShowReques
   if (!universe || !request) {
     return null;
   }
+  const filter = request.filter;
+  if (filter === 'pieces' || filter === 'preuves' || filter === 'entrees') {
+    return null; // F-237 / SF-237-09 — les pièces s'affichent dans la galerie, pas sur l'univers
+  }
   let clients = universe.clients;
   if (request.client) {
     const wanted = request.client;
@@ -101,7 +145,7 @@ export function resolveShow(universe: JarvisUniverse | null, request: ShowReques
   const clientNode = (c: (typeof clients)[number]): NodeRef =>
     ({ kind: 'client', key: clientKey(c), label: c.name, clientKey: clientKey(c) });
   let title: string;
-  switch (request.filter) {
+  switch (filter) {
     case 'clients':
     case 'connectes':
     case 'deconnectes': {
@@ -163,7 +207,7 @@ export function resolveShow(universe: JarvisUniverse | null, request: ShowReques
       break;
     }
   }
-  return { filter: request.filter, title, items: items.slice(0, MAX_SHOWN), more: Math.max(0, items.length - MAX_SHOWN) };
+  return { filter, title, items: items.slice(0, MAX_SHOWN), more: Math.max(0, items.length - MAX_SHOWN) };
 }
 
 function plural(n: number, noun: string): string {

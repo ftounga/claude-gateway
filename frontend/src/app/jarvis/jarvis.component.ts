@@ -4,6 +4,12 @@ import { pieceVoiceCommand } from './pieces/jarvis-piece-voice';
 import { screenBlock } from './pieces/jarvis-piece-screen';
 import { ShowCommand } from './pieces/jarvis-piece-show';
 import {
+  ClosedChantier, PROOF_OFFER_MS, closedChantiers, pieceShowCommand, proofDemand, proofOfferPhrase, proofPieces,
+} from './pieces/jarvis-piece-live';
+import { isPieceShow } from './scenes/jarvis-show';
+import { JarvisPieceClient } from './pieces/jarvis-piece-client';
+import { JarvisUniverse } from './scenes/jarvis-universe.models';
+import {
   Component, DestroyRef, InjectionToken, NgZone, OnDestroy, OnInit, ViewChild, computed, effect, inject, signal, viewChild,
   untracked,
 } from '@angular/core';
@@ -12,7 +18,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { ActivatedRoute, Router } from '@angular/router';
 
-import { AtelierConfirmRequest, AtelierStreamDone, WorkspaceSummary } from '../core/models/atelier.models';
+import { AtelierConfirmRequest, AtelierProofEvent, AtelierStreamDone, WorkspaceSummary } from '../core/models/atelier.models';
 import { AtelierService } from '../core/services/atelier.service';
 import { LiveTerminalService } from '../core/services/live-terminal.service';
 import { NotificationCenterService } from '../core/services/notification-center.service';
@@ -1248,6 +1254,21 @@ export class JarvisComponent implements OnInit, OnDestroy {
       await this.answerToolConfirmation(this.pendingConfirm, text);
       return;
     }
+    // F-237 / SF-237-09 (§6.4, §14 idée 6) — « Voulez-vous que je génère la preuve ? » : un « oui » net délègue
+    // capturer_preuves à Opus ; « non » clôt ; une phrase ambiguë repart au cerveau comme toute parole.
+    const offer = this.proofOffer;
+    this.proofOffer = null;
+    if (offer && Date.now() - offer.at <= PROOF_OFFER_MS) {
+      const answer = classifyConfirmation(text);
+      if (answer === 'oui') {
+        this.acceptProofOffer(offer.closed);
+        return;
+      }
+      if (answer === 'non') {
+        await this.say('Entendu.');
+        return;
+      }
+    }
     // F-239 / SF-239-06 — « non, j'ai dit … » peu après une demande : la demande précédente, corrigée.
     const fix = parseVoiceCorrection(text);
     const previous = this.lastHeard;
@@ -1519,6 +1540,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     void this.atelier.streamChat(subjectId, text, {
       onAction: (action) => this.scenes.action(action),
       onOutput: (chunk) => this.scenes.output(chunk),
+      onProof: (event) => this.zone.run(() => this.liveProof(event, subjectId, delegation.chantier ?? null)),
       // Lignes 🎙 intermédiaires muettes en délégation (D13) : seulement la scène.
       onText: (delta) => this.scenes.text(delta),
       onDone: (done) => {
@@ -1632,6 +1654,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
           this.scenes.output(chunk);
         }
       },
+      onProof: (event) => this.zone.run(() => {
+        if (latest()) {
+          this.liveProof(event, subjectId, null);
+        }
+      }),
       onText: (delta) => this.zone.run(() => {
         if (latest()) {
           this.scenes.text(delta);
@@ -2041,6 +2068,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   /** F-237 / SF-237-05 — les pièces à l'écran (état de navigation + pièces chargées). */
   readonly pieces = inject(JarvisPieceStore);
+  private readonly pieceClient = inject(JarvisPieceClient);
 
   /** F-237 / SF-237-05 (D11) — en présentation, aucune pièce : la galerie se ferme et toute ouverture est refusée. */
   private readonly piecesPresentation = effect(() => {
@@ -2067,6 +2095,70 @@ export class JarvisComponent implements OnInit, OnDestroy {
         await this.say(phrase);
       }
     }
+  }
+
+  /**
+   * F-237 / SF-237-09 — la ligne `🖥 montrer: preuves chantier N` (ou `entrees`, `pieces <ids>`) d'une réponse
+   * d'Opus : la galerie s'ouvre sur l'index des pièces. Une même demande n'est appliquée qu'une fois.
+   */
+  private lastPieceShow: unknown = null;
+  private readonly opusPieceShow = effect(() => {
+    const request = this.scenes.state().show;
+    untracked(() => {
+      if (!request || request === this.lastPieceShow || !isPieceShow(request)) {
+        return;
+      }
+      this.lastPieceShow = request;
+      const command = pieceShowCommand(request);
+      if (command) {
+        void this.applyShow(command);
+      }
+    });
+  });
+
+  /** F-237 / SF-237-09 (T-G7) — une capture de preuve publiée pendant le tour rejoint la galerie, au fil de l'eau. */
+  private liveProof(event: AtelierProofEvent, subjectId: string, chantier: number | null): void {
+    const name = this.subjects().find((s) => s.id === subjectId)?.name ?? null;
+    const label = `Preuves${chantier != null ? ` du chantier ${chantier}` : ''}${name ? ` — ${name}` : ''}`;
+    this.pieces.addLive({ subjectId, chantier, category: 'PREUVE', label }, proofPieces(event, subjectId, chantier));
+  }
+
+  /** F-237 / SF-237-09 (§14 idée 6) — la proposition de preuve en attente d'un « oui ». */
+  private proofOffer: { closed: ClosedChantier; at: number } | null = null;
+  private previousUniverse: JarvisUniverse | null = null;
+  private readonly missingProofAtClosure = effect(() => {
+    const universe = this.scenes.universe();
+    untracked(() => {
+      const closed = closedChantiers(this.previousUniverse, universe);
+      this.previousUniverse = universe;
+      if (closed.length && !this.presentation()) {
+        void this.offerProofIfMissing(closed[0]);
+      }
+    });
+  });
+
+  /** Un chantier vient d'être clos : sans aucune preuve dans l'index, Jarvis propose de la générer. */
+  private async offerProofIfMissing(closed: ClosedChantier): Promise<void> {
+    const found = await this.pieceClient.list({ subjectId: closed.subjectId, chantier: closed.number,
+      category: 'PREUVE', limit: 1 });
+    if (!found || found.total > 0) {
+      return;
+    }
+    this.proofOffer = { closed, at: Date.now() };
+    this.announcements.push({ label: '', phrase: proofOfferPhrase(closed), subjectId: closed.subjectId,
+      confirm: false });
+    this.flushAnnouncements();
+  }
+
+  /** « Oui » : la délégation existante, outil existant `capturer_preuves` ; les captures arrivent au fil de l'eau. */
+  private acceptProofOffer(closed: ClosedChantier): void {
+    const delegation: FastDelegation = {
+      delegationId: crypto.randomUUID(), subjectId: closed.subjectId, chantier: closed.number,
+      label: `preuve du chantier ${closed.number}`, announce: 'Je génère la preuve.', demande: proofDemand(closed.number),
+      automatic: false, reason: null,
+    };
+    void this.say(delegation.announce);
+    this.startDelegation(delegation, delegation.demande, null);
   }
 
   /** F-237 / SF-237-05 — le bouton « pièces » : toutes les pièces du sujet engagé. */
