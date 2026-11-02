@@ -7,7 +7,9 @@ import { COCKPIT_FOLDS_KEY } from './jarvis-cockpit-layout';
 import { SessionSnapshot } from '../scenes3d/jarvis-session-memory';
 import { of, throwError } from 'rxjs';
 
-import { CockpitStage, JARVIS_DAY_HISTORY, JarvisCockpitComponent, universeItems } from './jarvis-cockpit.component';
+import {
+  CockpitStage, JARVIS_DAY_HISTORY, JARVIS_WATCHES, JarvisCockpitComponent, universeItems,
+} from './jarvis-cockpit.component';
 
 /** Une scène 3D simulée : affichée ou non, téléphone ou PC, positions des nœuds à l'écran. */
 export class FakeCockpitStage implements CockpitStage {
@@ -207,6 +209,31 @@ describe('F-236 / SF-236-15 — JarvisCockpitComponent (panneaux latéraux, repl
     fixture.componentRef.setInput('signals', { ...screen, turnActive: true });
     cockpit.replayTurn(cockpit.day()!.turns[0]);
     expect(emitted.length).toBe(1);
+  });
+
+  it('SF-236-25 — horloge des veilles : lue une fois hors tour, la prochaine en surbrillance ; illisible ⇒ rien', () => {
+    const watches = jasmine.createSpy('watches').and.returnValue(of([{ workspaceName: 'Migration Forge',
+      watch: { id: 'w1', name: 'Tickets FORGE', active: true, proposed: false, runTimes: ['07:30', '13:30'] } }]));
+    TestBed.overrideProvider(JARVIS_WATCHES, { useValue: watches });
+    mount(); // un tour tourne : rien n'est lu
+    expect(watches).not.toHaveBeenCalled();
+    fixture.componentRef.setInput('signals', { ...screen, turnActive: false });
+    fixture.detectChanges();
+    expect(watches).toHaveBeenCalledTimes(1);
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('.ck__clock .ck__title')?.textContent).toContain('Horloge des veilles');
+    expect(el.querySelectorAll('.ck__clock-day').length).toBe(5);
+    expect(el.querySelectorAll('.ck__clock-mark--next').length).toBe(1);
+    expect(el.querySelector('.ck__clock-next')?.textContent).toContain('Tickets FORGE');
+    fixture.componentRef.setInput('signals', { ...screen, turnActive: false, pulses: 9 });
+    fixture.detectChanges();
+    expect(watches).toHaveBeenCalledTimes(1);
+  });
+
+  it('SF-236-25 — veilles illisibles ⇒ aucune section, aucune erreur', () => {
+    TestBed.overrideProvider(JARVIS_WATCHES, { useValue: () => of({ pas: 'une liste' }) });
+    mount({ ...screen, turnActive: false });
+    expect(fixture.nativeElement.querySelector('.ck__clock')).toBeNull();
   });
 
   it('SF-236-17 — journée illisible ⇒ message, aucune erreur', () => {

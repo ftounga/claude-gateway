@@ -97,7 +97,9 @@ export type Effect3d =
   /** SF-236-12 — S13 + N8 : l'essaim des sous-agents, petits cœurs satellites reliés au cœur (L-essaim). */
   | { kind: 'swarm'; count: number; tone: SceneTone }
   /** SF-236-12 — S17 : le cadran d'une veille, attaché à son nœud. */
-  | { kind: 'dial'; anchor: string; tone: SceneTone };
+  | { kind: 'dial'; anchor: string; tone: SceneTone }
+  /** SF-236-25 (NF-15) — le radar des alertes : un anneau autour de l'univers, un écho par alerte réelle. */
+  | { kind: 'radar'; echoes: readonly { anchor: string; tone: SceneTone }[] };
 
 /** Le plan d'une scène 3D. */
 export interface ScenePlan3d {

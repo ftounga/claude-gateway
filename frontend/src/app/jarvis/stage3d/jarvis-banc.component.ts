@@ -7,14 +7,14 @@ import { JarvisCockpitComponent } from './hud/jarvis-cockpit.component';
 import { JarvisReplayComponent } from './hud/jarvis-replay.component';
 import { JarvisNightComponent } from './hud/jarvis-night.component';
 import { VeilleService } from '../../core/services/veille.service';
-import { JarvisWatchSummary } from '../../core/models/veille.models';
+import { JarvisWatch, JarvisWatchSummary } from '../../core/models/veille.models';
 import { trackOf } from './hud/jarvis-replay';
 import { testUniverse } from '../scenes/jarvis-universe.fixture';
 import { OPEN_FOLDS, writeFolds } from './hud/jarvis-cockpit-layout';
 import { ShowFilter } from '../scenes/jarvis-show';
 import { Observable, of } from 'rxjs';
 import { AtelierMessage } from '../../core/models/atelier.models';
-import { JARVIS_DAY_HISTORY } from './hud/jarvis-cockpit.component';
+import { JARVIS_DAY_HISTORY, JARVIS_WATCHES } from './hud/jarvis-cockpit.component';
 
 /**
  * F-236 / SF-236-01 — **la page du banc de captures** (`/jarvis-banc?banc=<scène>&t=<ms>`), <b>développement
@@ -44,7 +44,9 @@ import { JARVIS_DAY_HISTORY } from './hud/jarvis-cockpit.component';
   // SF-236-17 — le banc ne lit jamais le réseau : la journée vient d'un historique simulé.
   providers: [{ provide: JARVIS_DAY_HISTORY, useValue: () => bancHistory() },
     // SF-236-24 — le veilleur du banc : trois veilles simulées, aucun appel.
-    { provide: VeilleService, useValue: { listForAccount: () => bancWatches() } }],
+    { provide: VeilleService, useValue: { listForAccount: () => bancWatches() } },
+    // SF-236-25 — l'horloge des veilles du cockpit : les mêmes veilles simulées.
+    { provide: JARVIS_WATCHES, useValue: () => bancWatches() }],
   host: { '[style]': 'vars' },
   styleUrls: ['./jarvis-labels.scss'],
   styles: [':host { display: block; min-height: 100dvh; background: #0B1020; }'],
@@ -167,8 +169,10 @@ export function bancWatches(): Observable<JarvisWatchSummary[]> {
     d.setHours(h, m, 0, 0);
     return d.toISOString();
   };
-  const w = (id: string, name: string, subject: string, next: string) => ({ workspaceName: subject,
-    watch: { id, name, active: true, proposed: false, nextRunAt: next } }) as unknown as JarvisWatchSummary;
-  return of([w('w1', 'Tickets FORGE', 'Migration Forge', at(7, 30)), w('w2', 'Incidents', 'Runner', at(9, 0)),
-    w('w3', 'Revue des PR', 'Doc archi', at(12, 0))]);
+  const w = (id: string, name: string, subject: string, next: string, runTimes: string[]): JarvisWatchSummary => ({
+    workspaceName: subject,
+    watch: { id, name, active: true, proposed: false, nextRunAt: next, runTimes } as unknown as JarvisWatch });
+  return of([w('w1', 'Tickets FORGE', 'Migration Forge', at(7, 30), ['07:30', '13:30']),
+    w('w2', 'Incidents', 'Runner', at(9, 0), ['09:00', '17:00']), w('w3', 'Revue des PR', 'Doc archi', at(12, 0),
+      ['12:00'])]);
 }

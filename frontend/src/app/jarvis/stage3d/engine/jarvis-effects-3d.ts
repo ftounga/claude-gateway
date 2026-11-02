@@ -7,6 +7,7 @@ import {
 
 import { HOLO_COLORS, MOTION_DURATIONS, ease, rgb } from '../jarvis-motion';
 import { CORE_KEY } from '../jarvis-link-graph';
+import { CLIENT_ORBIT } from '../jarvis-layout-3d';
 import {
   ANCHOR_ABOVE, ANCHOR_BELOW, ANCHOR_GLOBE, ANCHOR_SIDE, CloudPoint, Effect3d, SceneTone,
 } from '../scenes3d/jarvis-scene3d.model';
@@ -103,6 +104,12 @@ type CrownSpec = Extract<Effect3d, { kind: 'crown' }>;
 type GlobeSpec = Extract<Effect3d, { kind: 'globe' }>;
 type SwarmSpec = Extract<Effect3d, { kind: 'swarm' }>;
 type DialSpec = Extract<Effect3d, { kind: 'dial' }>;
+type RadarSpec = Extract<Effect3d, { kind: 'radar' }>;
+
+/** SF-236-25 — le radar : son rayon (au-delà de l'orbite des postes), un balayage en 4 s, un écho pulse en 1,2 s. */
+const RADAR_MARGIN = 1.4;
+const RADAR_SWEEP_MS = 4000;
+const RADAR_ECHO_MS = 1200;
 
 /** S13 — satellites (petits cœurs) au plus. */
 const SWARM_POOL = 4;
@@ -157,6 +164,10 @@ export class Effects3d {
   private readonly swarmPos = new Float32Array(SWARM_POOL * 6);
   private readonly dialMesh: LineSegments;
   private readonly dialMaterial: LineBasicMaterial;
+  private readonly radar: Presence<RadarSpec> = { spec: null, on: false, since: -Infinity };
+  private readonly radarRing: LineSegments;
+  private readonly radarMaterial: LineBasicMaterial;
+  private readonly radarRadius: number;
 
   constructor(scene: Scene, narrow = false, pixelRatio = 1) {
     scene.add(this.group);
@@ -277,6 +288,26 @@ export class Effects3d {
     this.dialMesh.visible = false;
     this.dialMesh.frustumCulled = false;
     this.group.add(this.dialMesh);
+    // SF-236-25 — le radar : un anneau horizontal autour de l'univers, 4 graduations, et le rayon qui balaie.
+    this.radarRadius = (narrow ? CLIENT_ORBIT.narrow : CLIENT_ORBIT.wide) + RADAR_MARGIN;
+    const radarPoints: number[] = [];
+    for (let i = 0; i < RING_SEGMENTS; i++) {
+      const a0 = (i / RING_SEGMENTS) * Math.PI * 2;
+      const a1 = ((i + 1) / RING_SEGMENTS) * Math.PI * 2;
+      radarPoints.push(Math.cos(a0), 0, Math.sin(a0), Math.cos(a1), 0, Math.sin(a1));
+    }
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2;
+      radarPoints.push(Math.cos(a) * 0.94, 0, Math.sin(a) * 0.94, Math.cos(a) * 1.06, 0, Math.sin(a) * 1.06);
+    }
+    radarPoints.push(0, 0, 0, 1, 0, 0); // le rayon du balayage (tourné à chaque image)
+    const radar = new BufferGeometry();
+    radar.setAttribute('position', new BufferAttribute(new Float32Array(radarPoints), 3));
+    this.radarMaterial = this.lineMaterial();
+    this.radarRing = new LineSegments(radar, this.radarMaterial);
+    this.radarRing.visible = false;
+    this.radarRing.frustumCulled = false;
+    this.group.add(this.radarRing);
   }
 
   /** Les effets du plan ; `opening` (banc) : tout part de t = 0. */
@@ -285,7 +316,7 @@ export class Effects3d {
     const seen = { flow: null as FlowSpec | null, cards: null as CardsSpec | null, scan: null as ScanSpec | null,
       cloud: null as CloudSpec | null, tether: null as TetherSpec | null, countdown: null as CountdownSpec | null,
       crown: null as CrownSpec | null, globe: null as GlobeSpec | null, swarm: null as SwarmSpec | null,
-      dial: null as DialSpec | null };
+      dial: null as DialSpec | null, radar: null as RadarSpec | null };
     for (const effect of effects) {
       switch (effect.kind) {
         case 'pulse':
@@ -324,6 +355,9 @@ export class Effects3d {
         case 'dial':
           seen.dial = effect;
           break;
+        case 'radar':
+          seen.radar = effect;
+          break;
         case 'wave':
           if (opening || effect.seq > this.waveSeq) {
             effect.keys.forEach((key, i) => this.fireRing(key, effect.tone, at + i * WAVE_STAGGER, 0.5));
@@ -351,6 +385,7 @@ export class Effects3d {
     present(this.globe, seen.globe, at, () => true);
     present(this.swarm, seen.swarm, at, () => true);
     present(this.dial, seen.dial, at, (a, b) => a.anchor === b.anchor);
+    present(this.radar, seen.radar, at, (a, b) => a.echoes.length === b.echoes.length);
   }
 
   /** Une image. `camera` : anneaux, cartes et loupe lui font face. */
@@ -370,6 +405,7 @@ export class Effects3d {
     used = this.frameCloud(now, locate, used);
     used = this.frameCrown(now, used);
     used = this.frameSwarm(now, used);
+    used = this.frameRadar(now, locate, used);
     const geometry = this.particles.geometry;
     geometry.setDrawRange(0, used);
     if (used > 0) {
@@ -403,6 +439,8 @@ export class Effects3d {
     this.swarmMaterial.dispose();
     this.dialMesh.geometry.dispose();
     this.dialMaterial.dispose();
+    this.radarRing.geometry.dispose();
+    this.radarMaterial.dispose();
     this.group.removeFromParent();
   }
 
@@ -733,6 +771,50 @@ export class Effects3d {
     this.swarmLines.visible = true;
     this.swarmMaterial.color.setRGB(c[0], c[1], c[2]);
     this.swarmMaterial.opacity = 0.55 * presence;
+    return used;
+  }
+
+  /**
+   * SF-236-25 (NF-15) — le radar : l'anneau autour de l'univers et son balayage ; un écho par alerte, à l'azimut de
+   * son client sur l'anneau, qui pulse (taille et éclat) ; teinte de l'alerte. 0 allocation : tampons préalloués.
+   */
+  private frameRadar(now: number, locate: Locator, offset: number): number {
+    const spec = this.radar.spec;
+    const presence = level(this.radar, now);
+    if (!spec || presence <= 0) {
+      this.radarRing.visible = false;
+      return offset;
+    }
+    const r = this.radarRadius;
+    this.radarRing.visible = true;
+    this.radarRing.position.set(0, -0.2, 0);
+    this.radarRing.scale.setScalar(r);
+    const hot = spec.echoes.some((e) => e.tone === 'alert');
+    const c = this.palette.get(hot ? 'alert' : 'wait')!;
+    this.radarMaterial.color.setRGB(c[0], c[1], c[2]);
+    this.radarMaterial.opacity = 0.35 * presence;
+    // Le rayon : le dernier segment de la géométrie, tourné autour de l'axe vertical.
+    const sweep = (now / RADAR_SWEEP_MS) * Math.PI * 2;
+    const position = this.radarRing.geometry.getAttribute('position') as BufferAttribute;
+    position.setXYZ(position.count - 1, Math.cos(sweep), 0, Math.sin(sweep));
+    position.needsUpdate = true;
+    let used = offset;
+    for (let i = 0; i < spec.echoes.length && used < this.poolSize; i++) {
+      const echo = spec.echoes[i];
+      this.anchor(echo.anchor, locate, this.at);
+      const a = this.at.x === 0 && this.at.z === 0 ? (i / Math.max(1, spec.echoes.length)) * Math.PI * 2
+        : Math.atan2(this.at.z, this.at.x);
+      this.to.set(Math.cos(a) * r, -0.2, Math.sin(a) * r);
+      write(this.pos, used, this.to);
+      const k = ((now + i * 300) % RADAR_ECHO_MS) / RADAR_ECHO_MS;
+      const glow = presence * (1 - 0.6 * ease('sortie', k));
+      const tone = this.palette.get(echo.tone)!;
+      this.col[used * 3] = tone[0] * glow;
+      this.col[used * 3 + 1] = tone[1] * glow;
+      this.col[used * 3 + 2] = tone[2] * glow;
+      this.size[used] = 8 + 14 * ease('sortie', k);
+      used++;
+    }
     return used;
   }
 

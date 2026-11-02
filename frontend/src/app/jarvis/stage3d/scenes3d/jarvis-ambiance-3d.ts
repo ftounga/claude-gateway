@@ -1,3 +1,4 @@
+import { radarEchoes } from './jarvis-radar';
 import type { Ambient } from '../../scenes/jarvis-scene-bus.service';
 import { JarvisUniverse, clientKey } from '../../scenes/jarvis-universe.models';
 import { CORE_KEY } from '../jarvis-link-graph';
@@ -109,6 +110,12 @@ export function directAmbient(ambient: Ambient | null, ctx: AmbientContext): Amb
       panels.push({ id: 'ambient:cost', anchor: CORE_KEY, tone: 'normal', kind: 'cost', title: 'Coût du tour',
         lines: [{ text: safeLine(ambient.cost, 24), hot: true }], mono: true });
     }
+  }
+  // SF-236-25 (NF-15) — le radar : un écho par alerte réelle, à l'azimut de son client. Comme l'ambiance, au repos
+  // seulement — sauf l'écho de la veille qui sonne (A5), montré même pendant un tour.
+  const echoes = radarEchoes(ambient, ctx.universe, ctx.nodes).filter((e) => !ctx.busy || e.kind === 'veille');
+  if (echoes.length > 0) {
+    effects.push({ kind: 'radar', echoes: echoes.map((e) => ({ anchor: e.anchor, tone: e.tone })) });
   }
   const empty = !panels.length && !effects.length && !breathe.length && !Object.keys(tones).length;
   return empty ? null : { tones, breathe, flicker, panels, effects, focus };
