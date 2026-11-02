@@ -87,7 +87,7 @@ class JarvisSttSessionServiceTest {
         assertThat(ticket.url()).doesNotContain("tok");
         assertThat(ticket.token()).isEqualTo("tok");
         assertThat(ticket.maxSeconds()).isEqualTo(120);
-        verify(provider).openStreamingSession(eq("fr"), eq(0.7), any());
+        verify(provider).openStreamingSession(eq("fr"), eq(1.2), any());
 
         clock.now = clock.now.plusSeconds(20);
         service.close(alice, ticket.sessionId(), 999L);

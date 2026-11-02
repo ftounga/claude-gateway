@@ -4,10 +4,11 @@ import { rmsLevel } from '../core/services/jarvis-voice.service';
 export const SPEECH_LEVEL = 0.12;
 export const SILENCE_LEVEL = 0.06;
 /**
- * Après avoir parlé, autant de silence clôt la phrase. F-233 / SF-233-02 (D6) : 1,4 s → 0,7 s ; une fin prématurée
- * n'est pas grave (la suite dite dans la seconde part en précision).
+ * Après avoir parlé, autant de silence clôt la phrase. F-233 / SF-233-02 (D6) : 1,4 s → 0,7 s ; F-239 / SF-239-10 :
+ * 0,7 s coupait le PO quand il réfléchit (banc `--vad` : 50/52 phrases à pause coupées) ⇒ 1,2 s, et une phrase en
+ * suspens attend encore 1,5 s (`jarvis-turn-end.ts`).
  */
-export const END_OF_SPEECH_MS = 700;
+export const END_OF_SPEECH_MS = 1_200;
 /** SF-233-02 — le réglage local du silence de fin de phrase (ms), borné. */
 export const SILENCE_MS_KEY = 'cg.jarvis.silenceMs';
 export const MIN_SILENCE_MS = 300;
