@@ -242,6 +242,16 @@ public class JarvisPortraitService {
         cache.remove(userId);
     }
 
+    /** F-241 / SF-241-05 (D15) — la relance « Du nouveau ? » vient d'être posée : la suivante attend 90 jours. */
+    @Transactional
+    public void markCheckin(UUID userId) {
+        portraits.findById(userId).ifPresent(row -> {
+            row.setLastCheckinAt(OffsetDateTime.now(clock));
+            portraits.save(row);
+            cache.remove(userId);
+        });
+    }
+
     /** Oublie le portrait déchiffré gardé en mémoire (une colonne hors sections a changé). */
     public void invalidate(UUID userId) {
         cache.remove(userId);

@@ -21,7 +21,7 @@ import { AtelierService } from '../core/services/atelier.service';
 import { DictationService } from '../core/services/dictation.service';
 import { JarvisVoiceService } from '../core/services/jarvis-voice.service';
 import { JarvisService } from '../core/services/jarvis.service';
-import { ASK_SUBJECT, FastBrainHandlers, FastBrainOutcome, JarvisFastBrainClient } from './jarvis-fast-brain';
+import { ASK_SUBJECT, FastBrainHandlers, FastBrainOutcome, JarvisFastBrainClient, PortraitPin } from './jarvis-fast-brain';
 import { VeilleService } from '../core/services/veille.service';
 import { JarvisStreamOpener, StreamHandlers } from './jarvis-stream-listener';
 import { WakeEvent } from './jarvis-wake';
@@ -1547,6 +1547,70 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(voice.enqueue).toHaveBeenCalledTimes(1);
     expect(voice.enqueue.calls.mostRecent().args[0]).toBe('Bonjour, Monsieur.');
     expect(jarvis.spoken()).toBe('Bonjour, Monsieur.');
+    jarvis.ngOnDestroy();
+  }));
+
+  function fastAnswer(jarvis: JarvisComponent, said: string, spoken: string, pins: PortraitPin[]): void {
+    void jarvis.handle(said);
+    flushMicrotasks();
+    fast!.onText(spoken);
+    fast!.onDone({ brain: 'FAST', spokenText: spoken, firstTokenMs: 300, model: 'm',
+      guards: { groundingTrips: 0, fillersRemoved: 0, repeatsRemoved: 0, forcedDelegation: false, toolText: false,
+        imitationsRemoved: 0, pins } });
+    fastDone!('ok');
+    flushMicrotasks();
+  }
+
+  it('F-241 / SF-241-05 — proposition : rien sans « oui » ; « oui » enregistre (voix) et le dit', fakeAsync(() => {
+    const jarvis = fastOn();
+    portraitClient.addSouvenir.and.returnValue(of({ id: 's-9', number: 3, text: 'Sa compagne accouche en mars',
+      sensitive: false, notedOn: '2026-11-02', source: 'VOIX', stale: false }));
+    const said: string[] = [];
+    spyOn(jarvis, 'say').and.callFake(async (p: string) => { said.push(p); });
+    fastAnswer(jarvis, 'Ma femme accouche en mars.', 'Voulez-vous que je retienne que votre compagne accouche en mars ?',
+      [{ action: 'retenir', text: 'Sa compagne accouche en mars', number: null }]);
+    expect(portraitClient.addSouvenir).not.toHaveBeenCalled();
+    const conversed = fastBrain.converse.calls.count();
+    void jarvis.handle('oui');
+    flushMicrotasks();
+    expect(portraitClient.addSouvenir).toHaveBeenCalledWith('Sa compagne accouche en mars', false, 'VOIX');
+    expect(said).toContain('C’est noté.');
+    expect(fastBrain.converse.calls.count()).toBe(conversed); // le « oui » ne repart pas au cerveau
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-241 / SF-241-05 — « retiens que… » enregistre aussitôt ; « non, oublie ça » l’annule ; « oublie que… » efface le bon', fakeAsync(() => {
+    const jarvis = fastOn();
+    portraitClient.addSouvenir.and.returnValue(of({ id: 's-7', number: 2, text: 'Vacances le 20 décembre',
+      sensitive: false, notedOn: '2026-11-02', source: 'VOIX', stale: false }));
+    portraitClient.deleteSouvenir.and.returnValue(of(undefined));
+    spyOn(jarvis, 'say').and.callFake(async () => undefined);
+    fastAnswer(jarvis, 'Retiens que je pars en vacances le 20 décembre.', 'C’est noté, Monsieur.',
+      [{ action: 'noter', text: 'Vacances le 20 décembre', number: null }]);
+    expect(portraitClient.addSouvenir).toHaveBeenCalledWith('Vacances le 20 décembre', false, 'VOIX');
+    void jarvis.handle('Non, oublie ça.');
+    flushMicrotasks();
+    expect(portraitClient.deleteSouvenir).toHaveBeenCalledWith('s-7');
+
+    portraitClient.get.and.returnValue(of({ exists: true, enabled: true, version: 4, sections: [],
+      souvenirs: [{ id: 's-1', number: 1, text: 'Café serré', sensitive: false, notedOn: '2026-10-01', source: 'ECRAN', stale: false },
+        { id: 's-2', number: 2, text: 'Semi-marathon de Lyon', sensitive: false, notedOn: '2026-10-01', source: 'ECRAN', stale: false }],
+      size: { chars: 30, tokens: 8, maxTokens: 1500, maxChars: 6000 }, lastInterviewAt: null, interviewOffers: 0,
+      blockedTerms: [] }));
+    fastAnswer(jarvis, 'Oublie que je prépare le semi-marathon.', 'C’est oublié.',
+      [{ action: 'oublier', text: null, number: 2 }]);
+    expect(portraitClient.deleteSouvenir).toHaveBeenCalledWith('s-2');
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-241 / SF-241-05 — mémoire pleine : dite, rien enregistré', fakeAsync(() => {
+    const jarvis = fastOn();
+    portraitClient.addSouvenir.and.returnValue(throwError(() => ({ status: 409 })));
+    const said: string[] = [];
+    spyOn(jarvis, 'say').and.callFake(async (p: string) => { said.push(p); });
+    fastAnswer(jarvis, 'Retiens que j’aime le thé.', 'C’est noté, Monsieur.',
+      [{ action: 'noter', text: 'Aime le thé', number: null }]);
+    expect(said).toContain('Ma mémoire est pleine, faites le tri dans les réglages.');
     jarvis.ngOnDestroy();
   }));
 

@@ -145,8 +145,25 @@ public class JarvisFastBrainService {
      */
     public record Guards(int groundingTrips, int fillersRemoved, int repeatsRemoved, boolean forcedDelegation,
             boolean toolText, int imitationsRemoved, int portraitBlocked, String personalAllusion,
-            int allusionsBlocked) {
-        public static final Guards NONE = new Guards(0, 0, 0, false, false, 0, 0, null, 0);
+            int allusionsBlocked, List<fr.claudegateway.jarvis.portrait.JarvisPortraitNote.Pin> pins) {
+        public static final Guards NONE = new Guards(0, 0, 0, false, false, 0, 0, null, 0, List.of());
+
+        public Guards {
+            pins = pins == null ? List.of() : List.copyOf(pins);
+        }
+
+        public Guards(int groundingTrips, int fillersRemoved, int repeatsRemoved, boolean forcedDelegation,
+                boolean toolText, int imitationsRemoved, int portraitBlocked, String personalAllusion,
+                int allusionsBlocked) {
+            this(groundingTrips, fillersRemoved, repeatsRemoved, forcedDelegation, toolText, imitationsRemoved,
+                    portraitBlocked, personalAllusion, allusionsBlocked, List.of());
+        }
+
+        /** F-241 / SF-241-05 — les mêmes gardes, avec ces lignes 📌 (relayées à l'écran par {@code done}). */
+        public Guards withPins(List<fr.claudegateway.jarvis.portrait.JarvisPortraitNote.Pin> relayed) {
+            return new Guards(groundingTrips, fillersRemoved, repeatsRemoved, forcedDelegation, toolText,
+                    imitationsRemoved, portraitBlocked, personalAllusion, allusionsBlocked, relayed);
+        }
 
         public Guards(int groundingTrips, int fillersRemoved, int repeatsRemoved, boolean forcedDelegation,
                 boolean toolText, int imitationsRemoved) {
@@ -336,6 +353,42 @@ public class JarvisFastBrainService {
     /** F-241 / SF-241-03 — vrai si le portrait sert à cet échange (mesure {@code portrait_on}, jamais le texte). */
     public boolean portraitInUse(UUID userId, boolean presentation) {
         return portraitFor(userId, presentation, false) != null;
+    }
+
+    /**
+     * F-241 / SF-241-05 (D15) — la relance est permise : due (90 jours), petite conversation (pas de tâche dans la
+     * parole), pas la première salutation du jour, aucune délégation en cours, aucune alerte depuis 24 h.
+     */
+    boolean checkinEligible(Request request, fr.claudegateway.jarvis.portrait.JarvisPortraitService.Snapshot portrait,
+            java.time.OffsetDateTime now) {
+        if (portrait == null || !fr.claudegateway.jarvis.portrait.JarvisPortraitNote.checkinDue(portrait, now)) {
+            return false;
+        }
+        if (!calmTalk(request.text()) || JarvisFastGuards.forcesDelegation(request.text())) {
+            return false;
+        }
+        if (memory == null || memory.recall(request.userId()).isEmpty()) {
+            return false;
+        }
+        if (delegations != null && !delegations.running(request.userId()).isEmpty()) {
+            return false;
+        }
+        return sobriety == null || !sobriety.alertWithin(request.userId(), java.time.Duration.ofHours(24));
+    }
+
+    /**
+     * F-241 / SF-241-05 (D15) — une parole de petite conversation calme : une politesse reconnue, ou une phrase courte
+     * (8 mots au plus) sans question ni chiffre — aucune tâche dedans.
+     */
+    static boolean calmTalk(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        if (JarvisFastGuards.isSmallTalk(text)) {
+            return true;
+        }
+        String t = text.strip();
+        return !t.contains("?") && !t.matches(".*\\d.*") && t.split("\\s+").length <= 8;
     }
 
     /** F-241 / SF-241-03 — les notes volatiles du message : présentation (D17), date qui compte (D3). */
@@ -546,7 +599,67 @@ public class JarvisFastBrainService {
                     outcome.guards(), outcome.understood(), outcome.shows());
         }
         outcome = JarvisFastGuards.isSmallTalk(request.text()) ? courteous(request, outcome, out) : outcome;
-        return moreWithoutDelegation(request, outcome, out, fixedContext);
+        outcome = moreWithoutDelegation(request, outcome, out, fixedContext);
+        return rememberWithoutDelegation(request, outcome, out, benchModel != null);
+    }
+
+    /** F-241 / SF-241-05 — la raison (comptée, jamais dite) d'un « retiens / oublie » tenu par la garde. */
+    static final String REASON_REMEMBER = "remember";
+
+    /**
+     * F-241 / SF-241-05 (D7, D8) — <b>retenir ou oublier ne délègue jamais</b> : « retiens que X » donne la ligne
+     * 📌 noter (l'écran enregistre) ; « oublie que X » donne 📌 oublier du souvenir visé. Si le modèle a déjà posé la
+     * bonne marque, rien ne change ; s'il a délégué ou oublié la marque, la garde la pose. En présentation : « Nous en
+     * parlerons en privé », aucune marque.
+     */
+    Outcome rememberWithoutDelegation(Request request, Outcome outcome, Sink out, boolean bench) {
+        String fact = fr.claudegateway.jarvis.portrait.JarvisPortraitNote.rememberedFact(request.text());
+        String target = fact == null ? fr.claudegateway.jarvis.portrait.JarvisPortraitNote.forgetTarget(request.text()) : null;
+        if (fact == null && target == null || outcome.kind() == Kind.FALLBACK) {
+            return outcome;
+        }
+        Guards guards = outcome.guards() == null ? Guards.NONE : outcome.guards();
+        String already = outcome.kind() == Kind.ANSWER && outcome.spokenText() != null
+                ? outcome.spokenText().strip() : "";
+        if (request.presentation()) {
+            if (already.contains("privé")) {
+                return outcome;
+            }
+            out.text(fr.claudegateway.jarvis.portrait.JarvisPortraitNote.PRIVATE + " ");
+            return new Outcome(Kind.ANSWER, fr.claudegateway.jarvis.portrait.JarvisPortraitNote.PRIVATE, null, REASON_REMEMBER,
+                    outcome.model(), outcome.firstTokenMs(), outcome.costUsd(), guards.withPins(List.of()),
+                    outcome.understood(), outcome.shows());
+        }
+        String action = fact != null ? "noter" : "oublier";
+        if (outcome.kind() == Kind.ANSWER && guards.pins().stream().anyMatch(p -> action.equals(p.action()))) {
+            return outcome;
+        }
+        List<fr.claudegateway.jarvis.portrait.JarvisPortraitNote.Pin> pins = new ArrayList<>(guards.pins().stream()
+                .filter(p -> !"retenir".equals(p.action())).toList());
+        String said;
+        if (fact != null) {
+            fr.claudegateway.jarvis.portrait.JarvisPortraitNote.Pin pin = fr.claudegateway.jarvis.portrait.JarvisPortraitNote.pin("\uD83D\uDCCC noter: " + fact);
+            if (pin != null) {
+                pins.add(pin);
+            }
+            said = "C'est noté, Monsieur.";
+        } else {
+            fr.claudegateway.jarvis.portrait.JarvisPortraitService.Souvenir target0 = fr.claudegateway.jarvis.portrait.JarvisPortraitNote.souvenirFor(target,
+                    portraitFor(request.userId(), false, bench));
+            if (target0 == null) {
+                said = fr.claudegateway.jarvis.portrait.JarvisPortraitNote.NOTHING_TO_FORGET;
+            } else {
+                pins.add(new fr.claudegateway.jarvis.portrait.JarvisPortraitNote.Pin("oublier", null, target0.number()));
+                said = fr.claudegateway.jarvis.portrait.JarvisPortraitNote.FORGOTTEN;
+            }
+        }
+        if (already.isEmpty()) {
+            out.text(said + " ");
+        } else {
+            said = already;
+        }
+        return new Outcome(Kind.ANSWER, said, null, REASON_REMEMBER, outcome.model(), outcome.firstTokenMs(),
+                outcome.costUsd(), guards.withPins(pins), outcome.understood(), outcome.shows());
     }
 
     /** F-240 / SF-240-04 — la raison (comptée, jamais dite) d'une demande de suite lue sur l'appareil. */
@@ -766,7 +879,13 @@ public class JarvisFastBrainService {
                     : fr.claudegateway.jarvis.portrait.JarvisAllusionService.topicsWithin(recent, now);
             gate.allusions(fr.claudegateway.jarvis.portrait.JarvisPortraitNote.allusionTerms(portrait),
                     fr.claudegateway.jarvis.portrait.JarvisPortraitNote.personalSaid(request.text(), portrait), spontaneousToday, topics);
+            // F-241 / SF-241-05 (D15) — la relance « Du nouveau ? » : cadence bornée ici, moment choisi par Jarvis.
+            if (!bench && checkinEligible(request, portrait, now)) {
+                notes = notes + "\n\n" + fr.claudegateway.jarvis.portrait.JarvisPortraitNote.CHECKIN_NOTE;
+            }
         }
+        // F-241 / SF-241-05 (D17) — en présentation, aucune ligne 📌 n'est relayée.
+        gate.pinsAllowed(!request.presentation());
         List<AgentMessage> conversation = new ArrayList<>(bench
                 ? List.of(AgentMessage.userText(message(context, request.text())
                         + (sober(request, context) ? "\n\n" + fr.claudegateway.jarvis.preferences.JarvisSobriety.NOTE
@@ -854,6 +973,15 @@ public class JarvisFastBrainService {
             gate.nextCall();
         }
         understood.set(gate.understood());
+        // F-241 / SF-241-05 (D15) — la relance a été posée : la suivante attend 90 jours.
+        if (!bench && portrait != null && portraits != null && gate.abortReason() == null
+                && fr.claudegateway.jarvis.portrait.JarvisPortraitNote.isCheckin(gate.spoken())) {
+            try {
+                portraits.markCheckin(userId);
+            } catch (RuntimeException e) {
+                log.debug("Relance du portrait non datée ({})", e.getClass().getSimpleName());
+            }
+        }
         // F-241 / SF-241-04 (D11) — chaque allusion dite est journalisée, déclarée (✦) ou rattrapée ; pas au banc.
         if (!bench && portrait != null && allusions != null && gate.abortReason() == null) {
             gate.journal((kind, topic, phrase, spontaneous) -> allusions.record(userId, kind, topic, phrase,
@@ -1135,6 +1263,41 @@ public class JarvisFastBrainService {
 
         List<String> pins() {
             return List.copyOf(pins);
+        }
+
+        private boolean pinsAllowed = true;
+
+        void pinsAllowed(boolean allowed) {
+            this.pinsAllowed = allowed;
+        }
+
+        /**
+         * F-241 / SF-241-05 (D8, D9) — les lignes 📌 relayées : aucune en présentation ; une seule proposition, et
+         * jamais dans la même réponse qu'une confirmation ou une invitation ↪.
+         */
+        List<fr.claudegateway.jarvis.portrait.JarvisPortraitNote.Pin> relayedPins() {
+            if (!pinsAllowed) {
+                return List.of();
+            }
+            String said = spoken();
+            boolean question = said.contains("Vous confirmez") || said.contains("↪");
+            List<fr.claudegateway.jarvis.portrait.JarvisPortraitNote.Pin> out = new ArrayList<>();
+            boolean proposed = false;
+            for (String line : pins) {
+                fr.claudegateway.jarvis.portrait.JarvisPortraitNote.Pin pin =
+                        fr.claudegateway.jarvis.portrait.JarvisPortraitNote.pin(line);
+                if (pin == null) {
+                    continue;
+                }
+                if ("retenir".equals(pin.action())) {
+                    if (proposed || question) {
+                        continue;
+                    }
+                    proposed = true;
+                }
+                out.add(pin);
+            }
+            return out;
         }
 
         /** Une ligne-marque : jamais dite. ✦ ⇒ déclaration ; 📌 ⇒ relevée (SF-241-05). */
@@ -1473,7 +1636,7 @@ public class JarvisFastBrainService {
 
         Guards guards() {
             return new Guards(groundingTrips, fillersRemoved, repeatsRemoved, false, toolText, imitationsRemoved,
-                    portraitBlocked, personalAllusion(), allusionsBlocked);
+                    portraitBlocked, personalAllusion(), allusionsBlocked, relayedPins());
         }
     }
 

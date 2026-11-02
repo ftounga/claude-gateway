@@ -627,6 +627,152 @@
           "expect": "repondre"
         }
       ]
+    },
+    {
+      "id": "P11",
+      "category": "PORTRAIT_F241",
+      "portrait": {
+        "QUI": "Franck, chef de projet chez un intégrateur.",
+        "ENTOURAGE": "Sa compagne Nadia ; leur fille Léa, 2 ans.",
+        "GOUTS": "Le jazz manouche.",
+        "souvenirs": [
+          "Prépare le semi-marathon de Lyon en avril",
+          "Aime le café serré le matin"
+        ]
+      },
+      "turns": [
+        {
+          "said": "Retiens que je pars en vacances le 20 décembre.",
+          "expect": "repondre",
+          "expectMark": "noter"
+        }
+      ]
+    },
+    {
+      "id": "P12",
+      "category": "PORTRAIT_F241",
+      "portrait": {
+        "QUI": "Franck, chef de projet chez un intégrateur.",
+        "ENTOURAGE": "Sa compagne Nadia ; leur fille Léa, 2 ans.",
+        "GOUTS": "Le jazz manouche.",
+        "souvenirs": [
+          "Prépare le semi-marathon de Lyon en avril",
+          "Aime le café serré le matin"
+        ]
+      },
+      "turns": [
+        {
+          "said": "Ma femme accouche en mars, on attend un garçon.",
+          "expect": "repondre",
+          "expectMark": "retenir"
+        }
+      ]
+    },
+    {
+      "id": "P13",
+      "category": "PORTRAIT_F241",
+      "portrait": {
+        "QUI": "Franck, chef de projet chez un intégrateur.",
+        "ENTOURAGE": "Sa compagne Nadia ; leur fille Léa, 2 ans.",
+        "GOUTS": "Le jazz manouche.",
+        "souvenirs": [
+          "Prépare le semi-marathon de Lyon en avril",
+          "Aime le café serré le matin"
+        ]
+      },
+      "turns": [
+        {
+          "said": "N'oublie pas que je dois relancer Claire demain.",
+          "expect": "any",
+          "expectMark": "aucune"
+        }
+      ]
+    },
+    {
+      "id": "P14",
+      "category": "PORTRAIT_F241",
+      "portrait": {
+        "QUI": "Franck, chef de projet chez un intégrateur.",
+        "ENTOURAGE": "Sa compagne Nadia ; leur fille Léa, 2 ans.",
+        "GOUTS": "Le jazz manouche.",
+        "souvenirs": [
+          "Prépare le semi-marathon de Lyon en avril",
+          "Aime le café serré le matin"
+        ]
+      },
+      "turns": [
+        {
+          "said": "Oublie que je prépare le semi-marathon.",
+          "expect": "repondre",
+          "expectMark": "oublier"
+        }
+      ]
+    },
+    {
+      "id": "P15",
+      "category": "PORTRAIT_F241",
+      "portrait": {
+        "QUI": "Franck, chef de projet chez un intégrateur.",
+        "ENTOURAGE": "Sa compagne Nadia ; leur fille Léa, 2 ans.",
+        "GOUTS": "Le jazz manouche.",
+        "souvenirs": [
+          "Prépare le semi-marathon de Lyon en avril",
+          "Aime le café serré le matin"
+        ]
+      },
+      "context": "[Jarvis — relance du portrait possible : si le moment s'y prête, une seule question, « Du nouveau depuis notre dernier entretien ? » ; rien ne t'y oblige]",
+      "turns": [
+        {
+          "said": "Où en est le chantier 1 d'Orion ?",
+          "expect": "any",
+          "expectMark": "sans_relance"
+        }
+      ]
+    },
+    {
+      "id": "P16",
+      "category": "PORTRAIT_F241",
+      "portrait": {
+        "QUI": "Franck, chef de projet chez un intégrateur.",
+        "ENTOURAGE": "Sa compagne Nadia ; leur fille Léa, 2 ans.",
+        "GOUTS": "Le jazz manouche.",
+        "souvenirs": [
+          "Prépare le semi-marathon de Lyon en avril",
+          "Aime le café serré le matin"
+        ]
+      },
+      "context": "[Jarvis — relance du portrait possible : si le moment s'y prête, une seule question, « Du nouveau depuis notre dernier entretien ? » ; rien ne t'y oblige]",
+      "turns": [
+        {
+          "said": "Bonjour Jarvis.",
+          "expect": "repondre"
+        },
+        {
+          "said": "Calme, la matinée.",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "P17",
+      "category": "PORTRAIT_F241",
+      "portrait": {
+        "QUI": "Franck, chef de projet chez un intégrateur.",
+        "ENTOURAGE": "Sa compagne Nadia ; leur fille Léa, 2 ans.",
+        "GOUTS": "Le jazz manouche.",
+        "souvenirs": [
+          "Prépare le semi-marathon de Lyon en avril",
+          "Aime le café serré le matin"
+        ]
+      },
+      "presentation": true,
+      "turns": [
+        {
+          "said": "Retiens que ma fille entre à la crèche lundi.",
+          "expect": "repondre",
+          "expectMark": "aucune"
+        }
+      ]
     }
   ],
   "opusTurnEur": 0.98

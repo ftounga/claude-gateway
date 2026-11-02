@@ -44,6 +44,22 @@ public class JarvisSobriety {
         this.alerts = alerts;
     }
 
+    /**
+     * F-241 / SF-241-05 (D15) — vrai si une alerte de veille du compte est survenue depuis {@code window}. Best-effort :
+     * en panne ⇒ vrai (dans le doute, pas de relance du portrait).
+     */
+    public boolean alertWithin(UUID userId, Duration window) {
+        if (alerts == null || userId == null) {
+            return false;
+        }
+        try {
+            return !alerts.findByUserIdAndCreatedAtGreaterThanEqual(userId, OffsetDateTime.now(clock).minus(window))
+                    .isEmpty();
+        } catch (RuntimeException e) {
+            return true;
+        }
+    }
+
     /** Vrai si le ton doit être sobre pour ce compte et cette parole. Best-effort : en panne ⇒ faux. */
     public boolean sober(UUID userId, String said) {
         if (mentionsTrouble(said)) {

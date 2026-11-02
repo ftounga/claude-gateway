@@ -53,6 +53,15 @@ export interface FastGuards {
   /** F-241 / SF-241-04 — l'allusion personnelle de l'échange, et les allusions écartées (rareté, variété). */
   personalAllusion?: 'SPONTANEE' | 'REPONSE' | 'AUCUNE' | null;
   allusionsBlocked?: number;
+  /** F-241 / SF-241-05 — les lignes 📌 relayées (jamais dites) : retenir, noter, oublier, entretien. */
+  pins?: PortraitPin[];
+}
+
+/** F-241 / SF-241-05 — une ligne 📌 du cerveau rapide. */
+export interface PortraitPin {
+  action: 'retenir' | 'noter' | 'oublier' | 'entretien';
+  text: string | null;
+  number: number | null;
 }
 
 /** F-235 / SF-235-07 (D14) — une parole qui corrige la réponse rapide précédente (dite il y a ≤ 30 s). */

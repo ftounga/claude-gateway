@@ -70,6 +70,18 @@ export function portraitBlocks(sentence: string, said: string, terms: readonly s
   return terms.some((t) => touches(spoken, t) && !touches(heard, t));
 }
 
+/** F-241 / SF-241-05 (D8) — la fenêtre du « oui » à une proposition, et de « non, oublie ça » après une note. */
+export const PORTRAIT_ANSWER_WINDOW_MS = 30_000;
+export const MEMORY_FULL_PHRASE = 'Ma mémoire est pleine, faites le tri dans les réglages.';
+
+/** « Non, oublie ça », « annule », « laisse tomber » (liste fermée) : annule la note des 30 dernières secondes. */
+export function isUndoNote(text: string): boolean {
+  const n = (text ?? '').toLowerCase().normalize('NFD').replace(/\p{M}+/gu, '').replace(/[^a-z ]+/g, ' ')
+    .replace(/\s+/g, ' ').trim().replace(/^(jarvis|monsieur) /, '');
+  return ['non oublie ca', 'oublie ca', 'non oublie', 'annule', 'non annule', 'laisse tomber', 'non laisse tomber',
+    'ne retiens pas ca', 'non ne retiens pas ca'].includes(n);
+}
+
 /** F-241 / SF-241-04 — une ligne-marque du cerveau rapide (✦ allusion, 📌 souvenir) : jamais dite, jamais affichée. */
 export function isPortraitMark(sentence: string): boolean {
   return /^\s*(✦|📌)/u.test(sentence ?? '');
