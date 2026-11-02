@@ -17,6 +17,8 @@ const drawio = require("./drawio.js");
 const pdf = require("./pdf.js");
 const terminal = require("./terminal.js");
 const icons = require("./icons.js");
+const cadre = require("./cadre.js");
+const gardes = require("./gardes.js");
 
 /** Bornes — les mêmes que celles annoncées côté gateway, pour que le refus soit cohérent des deux côtés. */
 const MAX_CODE_CHARS = 20000;
@@ -58,6 +60,7 @@ const CHROME = process.env.CHROME_BIN || "chromium";
 const PYTHON = process.env.PYTHON_BIN || "python3";
 const DECK_SCRIPT = process.env.DECK_SCRIPT || "/app/deck.py";
 const OFFICE_SCRIPT = process.env.OFFICE_SCRIPT || "/app/office.py";
+const CLOUD_SCRIPT = process.env.CLOUD_SCRIPT || "/app/cloud.py";
 
 /**
  * Le document Word et le classeur Excel (F-129 / SF-129-07) : même moteur que le deck, même refus.
@@ -128,6 +131,86 @@ function renderCloud(spec, outputBase) {
       });
     child.stdin.end(JSON.stringify({ ...spec, output: outputBase }), "utf-8");
   });
+}
+
+/**
+ * F-238 / SF-238-01 — la description PRÉPARÉE pour le moteur cadré : `cloud.py --prepare` valide et
+ * résout les icônes (même code, mêmes refus que graphviz), et rend des données. Rien n'est dessiné là-bas.
+ */
+function prepareCloud(spec) {
+  return new Promise((resolve, reject) => {
+    const child = execFile(PYTHON, [CLOUD_SCRIPT, "--prepare"],
+      { timeout: RENDER_TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024 },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(new Error((stderr || error.message || "").toString().slice(0, 500)));
+          return;
+        }
+        try {
+          resolve(JSON.parse(stdout));
+        } catch (e) {
+          reject(new Error("Description préparée illisible."));
+        }
+      });
+    child.stdin.end(JSON.stringify(spec), "utf-8");
+  });
+}
+
+/** Compteurs des gardes G1/G2 en production (cadrage §4.6) : un échec est compté et journalisé, jamais bloquant. */
+const guardCounters = { renders: 0, g1: 0, g2: 0 };
+
+/**
+ * Le rendu cadré (F-238) : description préparée ⇒ mise en page ⇒ SVG maison, et le graphe d'architecture.
+ * G1/G2 sont vérifiées à chaque rendu ; un défaut part dans le journal (CloudWatch), le SVG part quand même.
+ */
+async function renderCadre(spec) {
+  const prepared = await prepareCloud(spec);
+  const built = await cadre.build(prepared);
+  guardCounters.renders += 1;
+  const g1 = gardes.g1Orthogonalite(built.svg).defects;
+  const g2 = gardes.g2Extremites(built.graph, built.model.nodes).defects;
+  if (g1.length || g2.length) {
+    guardCounters.g1 += g1.length ? 1 : 0;
+    guardCounters.g2 += g2.length ? 1 : 0;
+    console.log("CADRE_GARDE echec G1=" + g1.length + " G2=" + g2.length + " cumul="
+      + JSON.stringify(guardCounters) + " premier=" + JSON.stringify(String(g1[0] || g2[0]).slice(0, 120)));
+  }
+  return { prepared, built };
+}
+
+/** Un en-tête HTTP n'accepte que l'ASCII : les accents sont retirés, le reste remplacé. */
+function asciiHeader(text) {
+  return String(text).normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\x20-\x7E]/g, "?")
+    .slice(0, 900);
+}
+
+/**
+ * La branche cadrée du moteur cloud (F-238 / SF-238-01), choisie par la gateway (`layout: "elk"`, réglage
+ * APP_DIAGRAM_CLOUD_LAYOUT). Même contrat que graphviz : un SVG auto-contenu et les mêmes en-têtes
+ * d'avertissement.
+ */
+async function renderCadreRequest(payload, res) {
+  let rendered;
+  try {
+    rendered = await renderCadre(payload.spec);
+  } catch (e) {
+    return fail(res, 422, (e.message || "Le schema n'a pas pu etre rendu.").slice(0, 500));
+  }
+  const { prepared, built } = rendered;
+  const image = Buffer.from(built.svg, "utf-8");
+  if (image.length > MAX_IMAGE_BYTES) {
+    return fail(res, 413, "Image rendue trop lourde : " + image.length + " octets.");
+  }
+  const headers = { "Content-Type": "image/svg+xml", "Content-Length": image.length };
+  if (prepared.unknownSaid) {
+    headers["X-Cg-Unknown-Types"] = prepared.unknownSaid;
+  }
+  const notices = built.graph.notices.concat(cadre.densityNotice(built.graph.bounds) || []);
+  if (notices.length) {
+    headers["X-Cg-Diagram-Notice"] = asciiHeader(notices.join(" | "));
+  }
+  res.writeHead(200, headers);
+  return res.end(image);
 }
 
 function renderWithMermaid(input, output, format, width, scale) {
@@ -446,6 +529,10 @@ async function renderCloudRequest(payload, res) {
   const spec = payload.spec;
   if (!spec || typeof spec !== "object" || Array.isArray(spec)) {
     return fail(res, 400, "La description du schema est manquante (champ « spec »).");
+  }
+  if (payload.layout === "elk") {
+    // F-238 / SF-238-01 : le moteur cadré, choisi par la gateway. Sans ce champ, graphviz comme avant.
+    return renderCadreRequest(payload, res);
   }
   const dir = await mkdtemp(path.join(tmpdir(), "cg-cloud-"));
   try {

@@ -723,6 +723,9 @@ app:
     max-image-bytes: ${APP_DIAGRAMS_MAX_IMAGE_BYTES:8388608}
     default-width: ${APP_DIAGRAMS_DEFAULT_WIDTH:1600}
     max-per-turn: ${APP_DIAGRAMS_MAX_PER_TURN:6}
+    # F-238 / SF-238-01 — mise en page du moteur cloud : graphviz (historique) ou elk (schéma cadré :
+    # liaisons orthogonales, zones AWS). Retour arrière = APP_DIAGRAM_CLOUD_LAYOUT=graphviz.
+    cloud-layout: ${APP_DIAGRAM_CLOUD_LAYOUT:graphviz}
   # F-174 — L'INDEX DE LA CARTE (« la carte qui répond »). Le texte Markdown reste la référence (D1) :
   # l'index en est une lecture dérivée, reconstructible. Coupe-circuit unique (D4) : `false` rend le
   # comportement d'avant F-174 à l'identique (rappel lexical F-137, pas d'outil carte_chercher).

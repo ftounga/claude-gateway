@@ -1,0 +1,12 @@
+{"title":"Application 3-tiers multi-AZ","direction":"LR",
+"groups":[{"id":"cloud","label":"AWS Cloud"},{"id":"region","label":"Région eu-west-3","parent":"cloud"},{"id":"vpc","label":"VPC 10.0.0.0/16","parent":"region"},
+{"id":"aza","label":"Availability Zone A","parent":"vpc"},{"id":"azb","label":"Availability Zone B","parent":"vpc"},
+{"id":"puba","label":"Sous-réseau public A","parent":"aza"},{"id":"priva","label":"Sous-réseau privé A","parent":"aza"},
+{"id":"pubb","label":"Sous-réseau public B","parent":"azb"},{"id":"privb","label":"Sous-réseau privé B","parent":"azb"}],
+"nodes":[{"id":"users","type":"aws.users","label":"Utilisateurs"},{"id":"r53","type":"aws.route53","label":"Route 53","group":"cloud"},
+{"id":"alb","type":"aws.alb","label":"ALB","group":"vpc"},
+{"id":"nata","type":"aws.natgateway","label":"NAT A","group":"puba"},{"id":"ec2a","type":"aws.ec2","label":"Web A","group":"priva"},{"id":"rdsa","type":"aws.rds","label":"RDS primaire","group":"priva"},
+{"id":"natb","type":"aws.natgateway","label":"NAT B","group":"pubb"},{"id":"ec2b","type":"aws.ec2","label":"Web B","group":"privb"},{"id":"rdsb","type":"aws.rds","label":"RDS secours","group":"privb"},
+{"id":"s3","type":"aws.s3","label":"S3 statiques","group":"region"}],
+"edges":[{"from":"users","to":"r53","label":"DNS"},{"from":"users","to":"alb","label":"HTTPS"},{"from":"alb","to":"ec2a"},{"from":"alb","to":"ec2b"},
+{"from":"ec2a","to":"rdsa","label":"SQL"},{"from":"ec2b","to":"rdsa","label":"SQL"},{"from":"rdsa","to":"rdsb","label":"réplication"},{"from":"ec2a","to":"s3"},{"from":"ec2a","to":"nata"},{"from":"ec2b","to":"natb"}]}

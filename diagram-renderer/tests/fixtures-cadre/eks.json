@@ -1,0 +1,9 @@
+{"title":"Plateforme EKS","direction":"LR",
+"groups":[{"id":"cloud","label":"AWS Cloud"},{"id":"region","label":"Région eu-west-3","parent":"cloud"},{"id":"vpc","label":"VPC","parent":"region"},
+{"id":"pub","label":"Sous-réseaux publics","parent":"vpc"},{"id":"priv","label":"Sous-réseaux privés","parent":"vpc"},{"id":"eks","label":"Cluster EKS","parent":"priv"}],
+"nodes":[{"id":"dev","type":"onprem.users","label":"Développeurs"},{"id":"ecr","type":"aws.ecr","label":"ECR","group":"region"},
+{"id":"nlb","type":"aws.nlb","label":"NLB","group":"pub"},{"id":"igw","type":"aws.igw","label":"Internet Gateway","group":"vpc"},
+{"id":"ctl","type":"aws.eks","label":"Plan de contrôle","group":"eks"},{"id":"ng1","type":"aws.ec2","label":"Nœuds 1","group":"eks"},{"id":"ng2","type":"aws.ec2","label":"Nœuds 2","group":"eks"},
+{"id":"rds","type":"aws.rds","label":"Aurora","group":"priv"},{"id":"cw","type":"aws.cloudwatch","label":"CloudWatch","group":"region"},{"id":"sm","type":"aws.sm","label":"Secrets Manager","group":"region"}],
+"edges":[{"from":"dev","to":"igw","label":"kubectl"},{"from":"igw","to":"nlb"},{"from":"nlb","to":"ng1","label":"trafic"},{"from":"nlb","to":"ng2"},{"from":"ctl","to":"ng1"},{"from":"ctl","to":"ng2"},
+{"from":"ng1","to":"rds","label":"SQL"},{"from":"ng2","to":"rds"},{"from":"ng1","to":"ecr","label":"images"},{"from":"ng1","to":"cw","label":"journaux"},{"from":"ng2","to":"sm"}]}

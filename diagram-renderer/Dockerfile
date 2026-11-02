@@ -34,8 +34,10 @@ RUN apk add --no-cache fontconfig font-ubuntu-mono-nerd font-cascadia-code-nerd 
 WORKDIR /app
 # F-184 / SF-184-01 : puppeteer-core (sans navigateur téléchargé) pilote le chromium du système pour
 # imprimer une page en PDF en interceptant chaque requête — le service reste hors ligne.
-RUN npm install --omit=dev --no-audit --no-fund puppeteer-core@25.13.0
-COPY server.js drawio.js pdf.js terminal.js icons.js puppeteer.json cloud.py deck.py office.py check_catalog.py ./
+# F-238 / SF-238-01 : elkjs (EPL-2.0, licence jointe dans node_modules/elkjs) — mise en page du schéma cadré,
+# version épinglée : la même entrée doit rendre le même SVG, octet pour octet.
+RUN npm install --omit=dev --no-audit --no-fund puppeteer-core@25.13.0 elkjs@0.9.3
+COPY server.js drawio.js pdf.js terminal.js icons.js cadre.js gardes.js puppeteer.json cloud.py deck.py office.py check_catalog.py ./
 # Le catalogue d'icônes est vérifié AU BUILD : une entrée qui ne désigne aucune classe réelle ferait
 # échouer le premier schéma d'un client, et pas la construction de l'image. On le refuse ici.
 # F-215 / SF-215-03 : la route /icons (cours vidéo) lit les PNG de la même lib — vérifiée elle aussi au build.
