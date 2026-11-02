@@ -1133,6 +1133,46 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
         finalText: 'Où en est CAGIP ?', seconds: 2 }));
     }));
 
+  it('F-239 / SF-239-10 — phrase en suspens : pas de fin de tour au premier segment, la suite est jointe',
+    fakeAsync(() => {
+      const ready = streamWithAudio();
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      const jarvis = fixture.componentInstance;
+      void jarvis.talk();
+      flushMicrotasks();
+
+      ready.stt().onCommitted('Allons chez le client et donnez-');
+      flushMicrotasks();
+      tick(1_400);
+      expect(jarvis.state()).toBe('ecoute');
+      expect(atelier.streamChat).not.toHaveBeenCalled();
+
+      ready.stt().onPartial('moi l’état');
+      ready.stt().onCommitted('moi l’état des tickets.');
+      flushMicrotasks();
+      expect(atelier.streamChat).toHaveBeenCalledWith('w-2', 'Allons chez le client et donnez- moi l’état des tickets.',
+        jasmine.any(Object), 'ACT', false, [], null, false, 'JARVIS', null);
+    }));
+
+  it('F-239 / SF-239-10 — phrase en suspens puis silence : la fin vient 1,5 s plus tard', fakeAsync(() => {
+    const ready = streamWithAudio();
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    void jarvis.talk();
+    flushMicrotasks();
+
+    ready.stt().onCommitted('Fais le point sur');
+    flushMicrotasks();
+    tick(1_499);
+    expect(atelier.streamChat).not.toHaveBeenCalled();
+    tick(1);
+    flushMicrotasks();
+    expect(atelier.streamChat).toHaveBeenCalledWith('w-2', 'Fais le point sur', jasmine.any(Object), 'ACT', false, [],
+      null, false, 'JARVIS', null);
+  }));
+
   it('F-239 / SF-239-04 — flux : retranscription trop lente (> 2,5 s) ⇒ le texte du flux part', fakeAsync(() => {
     const ready = streamWithAudio();
     jarvisApi.utterance.and.returnValue(new Subject<never>());

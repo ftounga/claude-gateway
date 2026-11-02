@@ -56,6 +56,7 @@ import {
 } from './jarvis-conversation';
 import { ExchangeFiller, FORMULA_CLIPS, FormulaPicker, LINKED_FILLER_DELAY_MS, linkedFiller } from './jarvis-phrases';
 import { MAX_LISTEN_MS, SpeechRejection, speechGate } from './jarvis-speech-gate';
+import { STREAM_FALLBACK_MS, SUSPENDED_EXTRA_MS, isSuspended } from './jarvis-turn-end';
 import { JarvisOrbComponent, JarvisState } from './jarvis-orb.component';
 import { JarvisAppUpdate } from './jarvis-app-update';
 import { JarvisCompanionsComponent } from './jarvis-companions.component';
@@ -705,7 +706,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
     if (stream) {
       this.meter = new MicMeter(stream);
       this.voicedMs = this.meter.available ? 0 : null;
-      let end = new EndOfSpeech(performance.now(), silenceMs());
+      // F-239 / SF-239-10 — en flux, le fournisseur décide de la fin ; le silence mesuré par l'écran n'est qu'un filet.
+      const endMs = () => (this.live ? silenceMs() + STREAM_FALLBACK_MS : silenceMs());
+      let end = new EndOfSpeech(performance.now(), endMs());
       let lastFrame = performance.now();
       this.zone.runOutsideAngular(() => {
         const tick = () => {
@@ -734,10 +737,13 @@ export class JarvisComponent implements OnInit, OnDestroy {
                 this.zone.run(() => this.cancelListening());
                 return;
               }
-              end = new EndOfSpeech(performance.now(), silenceMs());
+              end = new EndOfSpeech(performance.now(), endMs());
               // Les secondes parlées et la durée de parole ne comptent pas le silence.
               this.listenStartedAt = performance.now();
               this.voicedMs = this.voicedMs === null ? null : 0;
+            } else if (this.zone.run(() => this.holdIfSuspended())) {
+              // F-239 / SF-239-10 — phrase en suspens : on laisse le PO finir.
+              end = new EndOfSpeech(performance.now(), endMs());
             } else {
               this.zone.run(() => void this.finishListening());
               return;
@@ -794,6 +800,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
     try {
       live.listening = await this.streamOpener.open(ticket, {
         onPartial: (text) => this.zone.run(() => {
+          // F-239 / SF-239-10 — la parole reprend : l'attente d'une phrase en suspens est relancée par le commit suivant.
+          if (text.trim()) {
+            this.clearSuspendTimer();
+          }
           live.lastPartial = text;
           this.partial.set([...live.committed, text].join(' ').trim() || null);
         }),
@@ -804,8 +814,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
           live.lastPartial = '';
           this.partial.set(live.committed.join(' ') || null);
           live.onCommit?.();
-          // D6 — la fin de tour du fournisseur clôt la phrase.
-          if (this.live === live && this.state() === 'ecoute' && live.committed.length > 0) {
+          // D6 — la fin de tour du fournisseur clôt la phrase ; F-239 / SF-239-10 — sauf si elle est restée en suspens.
+          if (this.live === live && this.state() === 'ecoute' && live.committed.length > 0
+              && !this.holdIfSuspended()) {
             void this.finishListening();
           }
         }),
@@ -877,6 +888,40 @@ export class JarvisComponent implements OnInit, OnDestroy {
     return this.dictation.transcribe(clip, filename);
   }
 
+  // ---- F-239 / SF-239-10 : laisser finir la phrase ----
+  private suspendTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Phrase en suspens (validée ou provisoire) : l'écoute continue, et la fin du tour n'arrive qu'après
+   * {@link SUSPENDED_EXTRA_MS} sans reprise. Rend vrai si la fin est retenue.
+   */
+  private holdIfSuspended(): boolean {
+    const live = this.live;
+    if (!live) {
+      return false;
+    }
+    const text = [...live.committed, live.lastPartial].join(' ').trim();
+    if (!isSuspended(text)) {
+      return false;
+    }
+    if (!this.suspendTimer) {
+      this.suspendTimer = setTimeout(() => {
+        this.suspendTimer = null;
+        if (this.live === live && this.state() === 'ecoute') {
+          void this.finishListening();
+        }
+      }, SUSPENDED_EXTRA_MS);
+    }
+    return true;
+  }
+
+  private clearSuspendTimer(): void {
+    if (this.suspendTimer) {
+      clearTimeout(this.suspendTimer);
+      this.suspendTimer = null;
+    }
+  }
+
   /** Clôt l'écoute en flux et rend ce qui a été dit (validé, sinon le dernier provisoire). */
   private async finishStreaming(): Promise<string> {
     const live = this.live!;
@@ -895,6 +940,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
   }
 
   private closeStreaming(): void {
+    this.clearSuspendTimer();
     const live = this.live;
     this.live = null;
     this.partial.set(null);

@@ -658,7 +658,7 @@ app:
       model: ${APP_JARVIS_STT_STREAM_MODEL:scribe_v2_realtime}
       language: ${APP_JARVIS_STT_STREAM_LANGUAGE:fr}
       # Fin de tour du fournisseur (D6) : silence de VAD en secondes.
-      vad-silence-seconds: ${APP_JARVIS_STT_STREAM_VAD_SILENCE_SECONDS:0.7}
+      vad-silence-seconds: ${APP_JARVIS_STT_STREAM_VAD_SILENCE_SECONDS:1.2}
       max-session-seconds: ${APP_JARVIS_STT_STREAM_MAX_SESSION_SECONDS:120}
       # 0,39 $/h (Scribe v2 Realtime) ; compte a la duree de session (D13).
       cost-usd-per-minute: ${APP_JARVIS_STT_STREAM_COST_USD_PER_MIN:0.0065}
