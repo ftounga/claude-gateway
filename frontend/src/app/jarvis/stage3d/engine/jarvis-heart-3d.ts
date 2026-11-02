@@ -240,7 +240,8 @@ export class Heart3d {
     put(u['uColor'].value as number[], this.rgbNow);
 
     const h = this.halo.uniforms;
-    h['uGlow'].value = glow * (1 + 0.08 * Math.sin(this.breathPhase)) + this.flash * 1.6;
+    // SF-236-07 — halo plus discret (le centre saturait en blanc sous le bloom, surtout au téléphone).
+    h['uGlow'].value = glow * 0.6 * (1 + 0.08 * Math.sin(this.breathPhase)) + this.flash * 1.6;
     put(h['uColor'].value as number[], this.rgbNow);
 
     const r = this.rays.uniforms;
@@ -313,7 +314,7 @@ export class Heart3d {
       pos[i * 3 + 2] = Math.sin(a) * ring * r;
       phase[i] = random() * 10;
       size[i] = 1.5 + random() * 2.4;
-      heat[i] = Math.pow(1 - depth, 1.6) * 1.3;
+      heat[i] = Math.pow(1 - depth, 1.8) * 1.0;
       rank[i] = random();
     }
     const geometry = new BufferGeometry();
