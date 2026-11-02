@@ -1,9 +1,11 @@
 <!-- F-236 / SF-236-01 — la scène 3D, en calque plein écran DERRIÈRE l'écran F-234 (qui reste la référence et le repli).
      SF-236-02 — elle dessine le cœur : l'orbe 2D s'efface quand la 3D est affichée (son bouton reste pour parler). -->
 <app-jarvis-stage-3d #stage3d [sober]="sober()" [withCore]="true" [signals]="stageSignals()" [voiceLevel]="orbLevel"
-                     [labelLayer]="labels3d" (touched)="touched3d($event)" (talk)="talk()" />
+                     [labelLayer]="labels3d" [insets]="cockpit.insets()" (touched)="touched3d($event)"
+                     (talk)="talk()" />
 <main class="jv" [attr.data-state]="state()" [class.jv--3d]="stage3d.rendering() === '3d'"
-      [class.jv--entry]="stage3d.entry() === 'full' && stage3d.shown()" [class.jv--exiting]="leaving()">
+      [class.jv--entry]="stage3d.entry() === 'full' && stage3d.shown()" [class.jv--exiting]="leaving()"
+      [class.jv--cockpit]="cockpit.mode() === 'cockpit'">
   <header class="jv__top">
     <!-- F-236 / SF-236-05 — T-S : en 3D, la sortie se joue (0,5 s) avant de quitter. -->
     <a mat-icon-button class="jv__back" href="/atelier" (click)="leave($event)" aria-label="Quitter Jarvis">
@@ -193,3 +195,6 @@
 </main>
 <!-- F-236 / SF-236-04 — les étiquettes de l'univers 3D (DOM) : au-dessus de l'écran, un sujet se touche comme dans la constellation. -->
 <div #labels3d class="jv3d-labels" [style.opacity]="stage3d.shown() ? 1 : 0" [attr.aria-hidden]="!stage3d.shown()"></div>
+<!-- F-236 / SF-236-15 — le cockpit PC (panneaux latéraux en verre, filaments liste ↔ nœud) : rien hors PC large en 3D. -->
+<app-jarvis-cockpit #cockpit [stage]="stage3d" [signals]="stageSignals()" [sober]="sober()"
+                    (choose)="touchSubject($event)" />

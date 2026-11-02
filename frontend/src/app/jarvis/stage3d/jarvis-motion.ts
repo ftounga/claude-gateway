@@ -102,6 +102,9 @@ export const MOTION_DURATIONS = {
   panelOut: 280,
   /** S-GEN — un anneau d'impulsion par appel. */
   pulse: 900,
+  /** SF-236-15 — T-P4 repli / dépli d'un panneau latéral du cockpit (`glisse`), et apparition d'un filament. */
+  sidePanel: 320,
+  sideFilament: 180,
 } as const;
 
 /** Lit une courbe en `cubic-bezier(...)`. */

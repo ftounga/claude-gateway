@@ -41,7 +41,9 @@ export const BANC_SCENES = ['coeur', 'ecoute', 'reflexion', 'parole', 'oui', 'co
   'scene-web', 'scene-page', 'scene-montage', 'scene-video', 'scene-passation', 'scene-souvenir', 'scene-carte',
   'scene-essaim', 'scene-veille',
   // SF-236-13 — ambiance et alertes (A1-A5).
-  'ambiance-poste-muet', 'ambiance-vivants', 'ambiance-cloche', 'ambiance-cout', 'ambiance-veille'] as const;
+  'ambiance-poste-muet', 'ambiance-vivants', 'ambiance-cloche', 'ambiance-cout', 'ambiance-veille',
+  // SF-236-15 — le cockpit PC : panneaux ouverts, repliés, filament liste ↔ nœud.
+  'cockpit', 'cockpit-replie', 'cockpit-filament'] as const;
 
 const SCENE_NAME = /^[a-z0-9-]{1,40}$/;
 

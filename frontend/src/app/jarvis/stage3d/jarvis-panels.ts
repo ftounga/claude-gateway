@@ -42,12 +42,18 @@ const SUBTITLES_SHARE = { narrow: 0.34, wide: 0.24 } as const;
 
 /** L'écran par défaut : cœur au centre (rayon apparent donné), barre du haut et bande des sous-titres réservées. */
 export function panelViewport(width: number, height: number, narrow: boolean,
-    core: { x: number; y: number; r: number }): PanelViewport {
+    core: { x: number; y: number; r: number }, sides: { left: number; right: number } = { left: 0, right: 0 },
+): PanelViewport {
   const band = Math.round(height * (narrow ? SUBTITLES_SHARE.narrow : SUBTITLES_SHARE.wide));
-  return {
-    width, height, narrow, core,
-    reserved: [{ x: 0, y: 0, w: width, h: TOP_BAR }, { x: 0, y: height - band, w: width, h: band }],
-  };
+  const reserved: Rect[] = [{ x: 0, y: 0, w: width, h: TOP_BAR }, { x: 0, y: height - band, w: width, h: band }];
+  // SF-236-15 — les panneaux latéraux du cockpit (ouverts) : aucun hologramme ne se pose dessous.
+  if (sides.left > 0) {
+    reserved.push({ x: 0, y: 0, w: sides.left, h: height });
+  }
+  if (sides.right > 0) {
+    reserved.push({ x: width - sides.right, y: 0, w: sides.right, h: height });
+  }
+  return { width, height, narrow, core, reserved };
 }
 
 /** Ce que le moteur demande de placer : l'ancre projetée et la taille mesurée du panneau. */

@@ -989,6 +989,12 @@ valeur en dur ailleurs.
   s'allège avec la qualité (une profondeur d'étoiles, pas de poussière ni de nébuleuse au niveau Bas) sans jamais
   disparaître d'un coup.
 - **Jamais de noir** : la 3D apparaît et disparaît en fondu au-dessus du fond navy de §22 ; le 2D est toujours dessous.
+- **Cockpit PC (SF-236-15)** — dès 1280 px en 3D : panneaux latéraux en **verre holographique** (navy 72 %, liseré
+  `--cg-holo` à 55 %, coins chanfreinés 12 px, flou d'arrière-plan 10 px), gauche 300 px / droite 320 px, repliables
+  (T-P4, 320 ms `glisse`, poignée visible) ; titres de section Space Grotesk 600 capitales `.18em`, lignes Inter 13 px,
+  nombres JetBrains Mono. Une ligne qui désigne un nœud tend au survol un **filament** `--cg-holo` pointillé jusqu'à
+  lui. Calques du PC : profondeur de champ des particules du fond, SMAA, finition (vignette, grain, aberration
+  légère sur les bords) ; **jamais au téléphone**.
 
 ## Logo & marque (ajout 2026-07-03)
 

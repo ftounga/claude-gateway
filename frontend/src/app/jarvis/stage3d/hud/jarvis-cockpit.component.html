@@ -1,0 +1,58 @@
+@if (mode() === 'cockpit') {
+  <!-- F-236 / SF-236-15 — panneau gauche : l'univers en liste (postes, sujets), filament vers le nœud au survol. -->
+  <aside class="ck ck--left" [class.ck--folded]="folds().left" aria-label="Cockpit — univers">
+    <button type="button" class="ck__fold" (click)="toggle('left')" [attr.aria-expanded]="!folds().left"
+            [attr.aria-label]="folds().left ? 'Déplier le panneau gauche' : 'Replier le panneau gauche'">
+      <span aria-hidden="true">{{ folds().left ? '›' : '‹' }}</span>
+    </button>
+    <div class="ck__body" [attr.inert]="folds().left ? '' : null">
+      <section class="ck__section" aria-labelledby="ck-univers">
+        <h2 id="ck-univers" class="ck__title">Univers</h2>
+        <ul class="ck__list">
+          @for (item of universeList(); track item.key) {
+            <li>
+              <button type="button" class="ck__item" [class.ck__item--sub]="item.depth === 1"
+                      [class.ck__item--current]="item.current" [attr.data-tone]="item.tone"
+                      [attr.data-key]="item.key" [attr.aria-current]="item.current ? 'true' : null"
+                      (mouseenter)="link(item.key, $event, 'left')" (focus)="link(item.key, $event, 'left')"
+                      (mouseleave)="unlink()" (blur)="unlink()" (click)="pick(item)">
+                <span class="ck__dot" aria-hidden="true"></span>
+                <span class="ck__label">{{ item.label }}</span>
+                @if (item.note) {
+                  <span class="ck__note">{{ item.note }}</span>
+                }
+              </button>
+            </li>
+          } @empty {
+            <li class="ck__empty">Aucun poste lu pour l'instant.</li>
+          }
+        </ul>
+      </section>
+    </div>
+  </aside>
+
+  <!-- Panneau droit : le tour en cours. -->
+  <aside class="ck ck--right" [class.ck--folded]="folds().right" aria-label="Cockpit — tour en cours">
+    <button type="button" class="ck__fold" (click)="toggle('right')" [attr.aria-expanded]="!folds().right"
+            [attr.aria-label]="folds().right ? 'Déplier le panneau droit' : 'Replier le panneau droit'">
+      <span aria-hidden="true">{{ folds().right ? '‹' : '›' }}</span>
+    </button>
+    <div class="ck__body" [attr.inert]="folds().right ? '' : null">
+      <section class="ck__section" aria-labelledby="ck-tour">
+        <h2 id="ck-tour" class="ck__title">Tour en cours</h2>
+        <dl class="ck__facts">
+          <div><dt>État</dt><dd>{{ turn().state }}</dd></div>
+          <div><dt>Action</dt><dd>{{ turn().scene ?? (turn().active ? '—' : 'aucune') }}</dd></div>
+          <div><dt>Appels d'outil</dt><dd class="ck__num">{{ turn().actions }}</dd></div>
+          <div><dt>Délégations</dt><dd class="ck__num">{{ turn().delegations }}</dd></div>
+        </dl>
+      </section>
+    </div>
+  </aside>
+
+  <!-- Le filament liste ↔ nœud (calque L5 → L2), posé image par image hors zone. -->
+  <svg class="ck__filaments" aria-hidden="true">
+    <line #filament class="ck__filament" data-on="0" x1="0" y1="0" x2="0" y2="0" />
+    <circle #filamentEnd class="ck__filament-end" data-on="0" r="5" cx="0" cy="0" />
+  </svg>
+}

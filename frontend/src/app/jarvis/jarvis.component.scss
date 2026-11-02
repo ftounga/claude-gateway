@@ -430,3 +430,9 @@
   pointer-events: none;
   font-variant-numeric: tabular-nums;
 }
+
+/* F-236 / SF-236-15 — cockpit PC : les sous-titres et commandes restent dans la zone libre entre les panneaux. */
+.jv--cockpit .jv__exchange,
+.jv--cockpit .jv__controls {
+  margin-inline: 344px;
+}
