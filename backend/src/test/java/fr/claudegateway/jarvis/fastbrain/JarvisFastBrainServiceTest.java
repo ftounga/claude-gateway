@@ -791,7 +791,7 @@ class JarvisFastBrainServiceTest {
         assertThat(JSON.writeValueAsString(calls.get(1).tools())).isEqualTo(first);
         assertThat(JSON.writeValueAsString(calls.get(2).tools())).isEqualTo(first);
         assertThat(calls.get(0).system()).isEqualTo(calls.get(2).system());
-        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("8");
+        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("9");
         assertThat(first).doesNotContain("Kestrel").doesNotContain(subject.toString());
     }
 
@@ -1014,5 +1014,94 @@ class JarvisFastBrainServiceTest {
                 ask("Tu es sûr pour le chantier 5 ? Génère la preuve."), new Screen());
 
         assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.DELEGATE);
+    }
+
+    // ------------------------------------------------------- F-240 / SF-240-04 : « dis-m'en plus » (⤵)
+
+    private static final String WITH_OPUS = "## Derniers échanges du fil du sujet courant (état à 09:15)\n"
+            + "- 09:10 Monsieur : Regarde les tickets bloqués.\n- 09:12 Opus : Deux tickets sont bloqués.\n";
+
+    private JarvisFastContextBuilder contextWith(String text) {
+        JarvisFastContextBuilder builder = mock(JarvisFastContextBuilder.class, invocation ->
+                invocation.getMethod().getReturnType() == String.class ? ""
+                        : org.mockito.Mockito.RETURNS_DEFAULTS.answer(invocation));
+        when(builder.build(any(), any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean())).thenReturn(text);
+        return builder;
+    }
+
+    @Test
+    void f240TheMoreMarkIsRelayedUntouchedAndNeverWrittenInTheThread() {
+        JarvisFastExchangeWriter writer = mock(JarvisFastExchangeWriter.class);
+        JarvisFastBrainService service = service(streaming("compris: Dis-m'en plus.\n", "⤵"), null, null);
+        service.setExchanges(writer);
+        StringBuilder heard = new StringBuilder();
+        JarvisFastBrainService.Outcome outcome = service.converse(ask("Dis-m'en plus."), heard::append);
+
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(outcome.spokenText()).isEqualTo("⤵");
+        assertThat(JarvisFastBrainService.isMore(outcome)).isTrue();
+        assertThat(heard.toString().strip()).isEqualTo("⤵");
+        org.mockito.Mockito.verifyNoInteractions(writer);
+        // Une seconde demande de suite n'est pas une répétition creuse : la marque passe encore.
+        JarvisFastBrainService.Outcome again = service.converse(ask("Encore."), null);
+        assertThat(again.spokenText()).isEqualTo("⤵");
+    }
+
+    @Test
+    void f240AfterTheMarkNothingElseIsSaid() {
+        StringBuilder heard = new StringBuilder();
+        JarvisFastBrainService.Outcome outcome = service(streaming("⤵\nVoici la suite détaillée. "), null, null)
+                .converse(ask("Développe."), heard::append);
+        assertThat(outcome.spokenText()).isEqualTo("⤵");
+        assertThat(heard.toString()).doesNotContain("Voici");
+    }
+
+    @Test
+    void f240AMoreRequestNeverDelegatesWhenTheThreadHasAnOpusAnswer() {
+        JarvisFastBrainService service = service(delegating("""
+                {"demande": "Développer le point Helios", "label": "point Helios", "annonce": "Je regarde.",
+                 "sujet": "", "chantier": null}
+                """), null, null);
+        service.setContext(contextWith(WITH_OPUS), null, null);
+        StringBuilder heard = new StringBuilder();
+        JarvisFastBrainService.Outcome outcome = service.converse(ask("Tu peux développer le point Helios ?"),
+                heard::append);
+
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(outcome.spokenText()).isEqualTo("⤵");
+        assertThat(outcome.delegation()).isNull();
+        assertThat(heard.toString().strip()).isEqualTo("⤵");
+    }
+
+    @Test
+    void f240WithoutAnOpusAnswerOrForANewRequestTheDelegationStands() {
+        JarvisFastBrainService service = service(delegating("""
+                {"demande": "x", "label": "y", "annonce": "Je regarde.", "sujet": "", "chantier": null}
+                """), null, null);
+        service.setContext(contextWith("## Maintenant\nlundi"), null, null);
+        assertThat(service.converse(ask("Dis-m'en plus."), null).kind())
+                .isEqualTo(JarvisFastBrainService.Kind.DELEGATE);
+        service.setContext(contextWith(WITH_OPUS), null, null);
+        assertThat(service.converse(ask("Détaille le ticket LDIC-223."), null).kind())
+                .isEqualTo(JarvisFastBrainService.Kind.DELEGATE);
+        // « Vérifie » délègue toujours, réponse d'Opus ou non.
+        assertThat(service.converse(ask("Vérifie."), null).kind()).isEqualTo(JarvisFastBrainService.Kind.DELEGATE);
+    }
+
+    @Test
+    void f240TheBenchUsesItsFrozenContextForTheGuard() {
+        JarvisFastBrainService service = service(delegating("""
+                {"demande": "x", "label": "y", "annonce": "Je regarde.", "sujet": "", "chantier": null}
+                """), null, null);
+        assertThat(service.bench(ask("Dis-m'en plus."), "claude-haiku-5-5", WITH_OPUS).spokenText()).isEqualTo("⤵");
+        assertThat(service.bench(ask("Dis-m'en plus."), "claude-haiku-5-5", "## Maintenant").kind())
+                .isEqualTo(JarvisFastBrainService.Kind.DELEGATE);
+    }
+
+    @Test
+    void f240ThePromptTeachesTheMarkAndTheLengthOnce() {
+        assertThat(JarvisFastBrainPrompt.system()).contains("# La suite d'une réponse d'Opus")
+                .contains("écris seulement la ligne « ⤵ »").contains("environ 25 mots en tout (30 au plus)")
+                .doesNotContain("Une à trois phrases orales");
     }
 }

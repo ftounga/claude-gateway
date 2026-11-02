@@ -177,4 +177,29 @@ class JarvisFastGuardsTest {
         assertThat(JarvisFastGuards.ungroundedFact("Le chantier 7 avance.", "Chantier courant : 7", "")).isNull();
         assertThat(JarvisFastGuards.ungroundedFact("Le chantier 9 avance.", "", "Où en est le chantier 9 ?")).isNull();
     }
+
+    @Test
+    void f240MoreRequestsAreShortAndAboutTheLastAnswer() {
+        assertThat(JarvisFastGuards.isMoreRequest("Dis-m'en plus.")).isTrue();
+        assertThat(JarvisFastGuards.isMoreRequest("Jarvis, développe.")).isTrue();
+        assertThat(JarvisFastGuards.isMoreRequest("Tu peux développer le point Helios ?")).isTrue();
+        assertThat(JarvisFastGuards.isMoreRequest("Et ensuite ?")).isTrue();
+        assertThat(JarvisFastGuards.isMoreRequest("Plus de détails sur la migration")).isTrue();
+        // Une nouvelle demande (identifiant, chiffre), une phrase longue ou « vérifie » ne sont pas « la suite ».
+        assertThat(JarvisFastGuards.isMoreRequest("Détaille le ticket LDIC-223.")).isFalse();
+        assertThat(JarvisFastGuards.isMoreRequest(
+                "Développe-moi une stratégie complète de migration pour tout le parc applicatif du client")).isFalse();
+        assertThat(JarvisFastGuards.isMoreRequest("Vérifie.")).isFalse();
+        assertThat(JarvisFastGuards.isMoreRequest("Continue.")).isFalse();
+        assertThat(JarvisFastGuards.isMoreRequest("Bonjour Jarvis.")).isFalse();
+    }
+
+    @Test
+    void f240AnOpusAnswerIsFoundInTheRecentExchanges() {
+        assertThat(JarvisFastGuards.hasOpusAnswer("## Derniers échanges\n- 09:12 Opus : Deux tickets sont bloqués."))
+                .isTrue();
+        assertThat(JarvisFastGuards.hasOpusAnswer("## Derniers échanges\n- 09:12 Monsieur : bonjour\n- Jarvis : Bonjour."))
+                .isFalse();
+        assertThat(JarvisFastGuards.hasOpusAnswer(null)).isFalse();
+    }
 }

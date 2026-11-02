@@ -47,9 +47,19 @@ final class JarvisConversationBench {
     record Turn(String said, String expect) {
     }
 
-    /** Un scénario : ses tours, sa coupure éventuelle (interruption), sa catégorie. */
-    record Scenario(String id, String category, String heardBeforeCut, List<Turn> turns) {
+    /**
+     * Un scénario : ses tours, sa coupure éventuelle (interruption), sa catégorie ; F-240 / SF-240-04 : un complément
+     * de contexte propre au scénario (les derniers échanges du fil, avec une réponse d'Opus), ou {@code null}.
+     */
+    record Scenario(String id, String category, String heardBeforeCut, List<Turn> turns, String context) {
+
+        Scenario(String id, String category, String heardBeforeCut, List<Turn> turns) {
+            this(id, category, heardBeforeCut, turns, null);
+        }
     }
+
+    /** F-240 / SF-240-04 — la route d'une demande de suite lue sur l'appareil (ligne-marque « ⤵ »). */
+    static final String ROUTE_MORE = "descendre";
 
     /** Le jeu : contexte figé, scénarios, budget par tour, coût d'un tour Opus. */
     record Set(String context, List<Scenario> scenarios, BigDecimal budgetEurPerTurn, BigDecimal opusTurnEur) {
@@ -105,7 +115,8 @@ final class JarvisConversationBench {
                     turns.add(new Turn(t.get("said").asText(), t.path("expect").asText("any")));
                 }
                 scenarios.add(new Scenario(s.get("id").asText(), s.get("category").asText(),
-                        s.hasNonNull("heardBeforeCut") ? s.get("heardBeforeCut").asText() : null, turns));
+                        s.hasNonNull("heardBeforeCut") ? s.get("heardBeforeCut").asText() : null, turns,
+                        s.hasNonNull("context") ? s.get("context").asText() : null));
             }
             return new Set(root.get("context").asText(), scenarios, root.get("budgetEurPerTurn").decimalValue(),
                     root.get("opusTurnEur").decimalValue());
@@ -137,6 +148,9 @@ final class JarvisConversationBench {
 
     /** Ce que le cerveau rapide a fait d'un tour : la route et ce qui a été dit. */
     static String[] routeAndSaid(JarvisFastBrainService.Outcome outcome) {
+        if (JarvisFastBrainService.isMore(outcome)) {
+            return new String[] { ROUTE_MORE, JarvisFastBrainPrompt.MORE_MARK };
+        }
         String route = outcome.kind() == JarvisFastBrainService.Kind.ANSWER ? "repondre"
                 : outcome.kind() == JarvisFastBrainService.Kind.DELEGATE ? "deleguer" : "repli";
         String said = outcome.kind() == JarvisFastBrainService.Kind.ANSWER ? outcome.spokenText()
@@ -172,6 +186,19 @@ final class JarvisConversationBench {
         } catch (RuntimeException e) {
             return unjudged(s, index, route, said);
         }
+    }
+
+    /**
+     * F-240 / SF-240-04 — une demande de suite lue sur l'appareil (« ⤵ ») n'est pas jugée par le modèle (rien n'est dit
+     * par le cerveau rapide : l'écran lit la réponse d'Opus déjà calculée) : verdict déterministe, juste si le
+     * scénario l'attendait (sinon la route le fait échouer).
+     */
+    static TurnVerdict descent(Scenario s, int index) {
+        Turn turn = s.turns().get(index);
+        boolean expected = ROUTE_MORE.equals(turn.expect()) || "any".equals(turn.expect());
+        return new TurnVerdict(s.id(), index + 1, s.category(), ROUTE_MORE, turn.expect(), true, 5, true, false,
+                false, expected, false, false, false, JarvisFastBrainPrompt.MORE_MARK,
+                "suite lue sur l'appareil (aucun appel à Opus)", 0);
     }
 
     private static TurnVerdict unjudged(Scenario s, int index, String route, String said) {

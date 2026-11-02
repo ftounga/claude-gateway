@@ -1908,5 +1908,104 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     host.remove();
     jarvis.ngOnDestroy();
   }));
+
+  const ANSWER = '🎙 Deux tickets sont bloqués, Monsieur.\n↪ Il y a aussi un point sur Helios, je vous le dis ?\n'
+    + '<<essentiel>>\n- ORN-41 : export PDF\n- Helios : bascule jeudi\n<</essentiel>>\n'
+    + '## Tickets\nLes deux tickets attendent la recette.\n## Helios\nLa bascule est prévue jeudi.';
+
+  function answered(): JarvisComponent {
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    dictation.stop.and.resolveTo('Regarde les tickets bloqués.');
+    void jarvis.talk();
+    flushMicrotasks();
+    void jarvis.talk();
+    flushMicrotasks();
+    handlers!.onDone({ reply: ANSWER, actions: [], messageId: 'm-1' });
+    flushMicrotasks();
+    voice.speak.calls.reset();
+    return jarvis;
+  }
+
+  it('F-240 / SF-240-04 — « dis-m’en plus » dit l’essentiel, « encore » déplie le détail : aucun appel au modèle',
+    fakeAsync(() => {
+      const jarvis = answered();
+      const streams = atelier.streamChat.calls.count();
+      void jarvis.handle('Dis-m’en plus.');
+      flushMicrotasks();
+      expect(voice.speak.calls.mostRecent().args[0]).toBe('ORN-41 : export PDF. Helios : bascule jeudi.');
+      expect(jarvis.showDetail()).toBeFalse();
+      void jarvis.handle('Encore.');
+      flushMicrotasks();
+      expect(jarvis.showDetail()).toBeTrue();
+      expect(voice.speak.calls.mostRecent().args[0]).toBe('Tickets. Les deux tickets attendent la recette.');
+      void jarvis.handle('Encore.');
+      flushMicrotasks();
+      expect(voice.speak.calls.mostRecent().args[0]).toBe('Helios. La bascule est prévue jeudi.');
+      void jarvis.handle('Encore.');
+      flushMicrotasks();
+      expect(voice.speak.calls.mostRecent().args[0]).toBe('C’est tout pour cette réponse.');
+      // Jamais Opus, jamais le cerveau rapide.
+      expect(atelier.streamChat.calls.count()).toBe(streams);
+      expect(fastBrain.converse).not.toHaveBeenCalled();
+      jarvis['flushParked']();
+      const report = jarvisApi.timings.calls.all().map((c) => c.args[0]).find((r) => r.depthReached);
+      expect(report?.depthReached).toBe(3);
+      expect(report?.depthVia).toBe('voix');
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-240 / SF-240-04 — un « oui » juste après l’invitation ciblée vaut « dis-m’en plus » ; plus tard, non',
+    fakeAsync(() => {
+      const jarvis = answered();
+      void jarvis.handle('Oui.');
+      flushMicrotasks();
+      expect(voice.speak.calls.mostRecent().args[0]).toBe('ORN-41 : export PDF. Helios : bascule jeudi.');
+      // L'invitation est consommée : un second « oui » n'est plus une descente.
+      const streams = atelier.streamChat.calls.count();
+      void jarvis.handle('Oui.');
+      flushMicrotasks();
+      expect(atelier.streamChat.calls.count()).toBe(streams + 1);
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-240 / SF-240-04 — sans réponse à l’écran, la dernière réponse d’Opus du fil est relue (D9)', fakeAsync(() => {
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    const history = jasmine.createSpy('getHistory').and.returnValue(of([
+      { role: 'USER', content: 'Regarde.' },
+      { role: 'ASSISTANT', content: ANSWER },
+      { role: 'ASSISTANT', content: 'Réponse rapide.', brain: 'FAST' },
+    ]));
+    (atelier as unknown as { getHistory: jasmine.Spy }).getHistory = history;
+    void jarvis.handle('Dis-m’en plus.');
+    flushMicrotasks();
+    expect(history).toHaveBeenCalledWith('w-2');
+    expect(voice.speak.calls.mostRecent().args[0]).toBe('ORN-41 : export PDF. Helios : bascule jeudi.');
+    expect(atelier.streamChat).not.toHaveBeenCalled();
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-240 / SF-240-04 — « ⤵ » du cerveau rapide : jamais dit, l’écran descend d’un étage', fakeAsync(() => {
+    const jarvis = fastOn();
+    dictation.stop.and.resolveTo('Regarde les tickets bloqués.');
+    jarvis.send('w-2', 'Regarde les tickets bloqués.');
+    handlers!.onDone({ reply: ANSWER, actions: [], messageId: 'm-1' });
+    flushMicrotasks();
+    voice.speak.calls.reset();
+    voice.enqueue.calls.reset();
+    void jarvis.handle('Tu peux développer le point Helios ?');
+    flushMicrotasks();
+    fast!.onText('⤵');
+    fast!.onDone({ brain: 'FAST', spokenText: '⤵', firstTokenMs: 300, model: 'm' });
+    fastDone!('ok');
+    flushMicrotasks();
+    expect(voice.enqueue).not.toHaveBeenCalled();
+    expect(voice.speak.calls.allArgs().map((a) => a[0])).not.toContain('⤵');
+    expect(voice.speak.calls.mostRecent().args[0]).toBe('ORN-41 : export PDF. Helios : bascule jeudi.');
+    jarvis.ngOnDestroy();
+  }));
 });
 

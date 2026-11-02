@@ -79,6 +79,34 @@ public final class JarvisFastGuards {
                 || (n.contains("detail") && n.contains("si vous le souhaitez"));
     }
 
+    private static final java.util.regex.Pattern MORE_REQUEST = java.util.regex.Pattern.compile(
+            "\\b(dis m en|dites m en|dis moi en|dites moi en|m en dire|en dire|me dire) (un peu )?plus\\b"
+                    + "|\\bdevelopp|\\bdetaill|\\bplus de details?\\b|\\bdavantage de details?\\b"
+                    + "|^(et )?(la suite|ensuite|apres|quoi d autre|encore)$");
+    private static final java.util.regex.Pattern OPUS_ANSWER = java.util.regex.Pattern
+            .compile("(?m)^- (?:\\d{1,2}:\\d{2} )?Opus : \\S");
+
+    /** Au-delà, la parole n'est plus « la suite » mais une nouvelle demande. */
+    static final int MAX_MORE_WORDS = 8;
+
+    /**
+     * F-240 / SF-240-04 (D8) — <b>une demande de développement</b> de la réponse précédente (« dis-m'en plus »,
+     * « développe le point Helios », « et ensuite ? ») : courte (≤ {@value #MAX_MORE_WORDS} mots), sans chiffre ni
+     * identifiant (« détaille le ticket LDIC-223 » est une nouvelle demande), jamais un ordre de vérifier.
+     */
+    public static boolean isMoreRequest(String text) {
+        String n = normalize(text).replaceAll("^(jarvis|monsieur) ", "").replaceAll(" (jarvis|monsieur)$", "").strip();
+        if (n.isEmpty() || n.matches(".*\\d.*") || n.split(" ").length > MAX_MORE_WORDS || forcesDelegation(text)) {
+            return false;
+        }
+        return MORE_REQUEST.matcher(n).find();
+    }
+
+    /** F-240 / SF-240-04 (D8) — les derniers échanges du contexte portent une réponse d'Opus. */
+    public static boolean hasOpusAnswer(String context) {
+        return context != null && OPUS_ANSWER.matcher(context).find();
+    }
+
     /** Le texte normalisé : minuscules, sans accents, ponctuation en espaces, espaces simples. */
     public static String normalize(String text) {
         if (text == null) {

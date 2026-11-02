@@ -273,7 +273,8 @@ public class JarvisFastBrainService {
             sink.text(outcome.spokenText() + " ");
         }
         // SF-235-04 (D12) : un échange rapide est tracé dans le fil du sujet courant (jamais rejoué comme un tour).
-        if (exchanges != null && outcome.kind() == Kind.ANSWER && request.workspace() != null) {
+        // F-240 / SF-240-04 : « ⤵ » n'est pas une réponse à tracer (l'écran a lu la réponse d'Opus déjà au fil).
+        if (exchanges != null && outcome.kind() == Kind.ANSWER && request.workspace() != null && !isMore(outcome)) {
             exchanges.write(request.userId(), request.workspace().getId(), request.chantier(),
                     outcome.saidOr(request.text()),
                     outcome.spokenText());
@@ -429,7 +430,46 @@ public class JarvisFastBrainService {
                     d.reason()), outcome.reason(), outcome.model(), outcome.firstTokenMs(), outcome.costUsd(),
                     outcome.guards(), outcome.understood(), outcome.shows());
         }
-        return JarvisFastGuards.isSmallTalk(request.text()) ? courteous(request, outcome, out) : outcome;
+        outcome = JarvisFastGuards.isSmallTalk(request.text()) ? courteous(request, outcome, out) : outcome;
+        return moreWithoutDelegation(request, outcome, out, fixedContext);
+    }
+
+    /** F-240 / SF-240-04 — la raison (comptée, jamais dite) d'une demande de suite lue sur l'appareil. */
+    static final String REASON_MORE = "more";
+
+    /**
+     * F-240 / SF-240-04 (D8) — <b>une demande de développement ne délègue jamais</b> quand le fil porte une réponse
+     * d'Opus : la décision (outil appelé, délégation d'office) devient la ligne-marque « ⤵ » et l'écran lit lui-même
+     * la suite de la réponse déjà calculée — aucun appel à Opus. « Vérifie » n'en est pas une (délégation forcée).
+     */
+    Outcome moreWithoutDelegation(Request request, Outcome outcome, Sink out, String fixedContext) {
+        boolean markWritten = outcome.spokenText() != null
+                && outcome.spokenText().contains(JarvisFastBrainPrompt.MORE_MARK);
+        if (outcome.kind() != Kind.DELEGATE || JarvisFastGuards.forcesDelegation(request.text())
+                || !(JarvisFastGuards.isMoreRequest(request.text()) || markWritten)) {
+            return outcome;
+        }
+        String context;
+        try {
+            context = fixedContext != null ? fixedContext : context(request);
+        } catch (RuntimeException e) {
+            return outcome;
+        }
+        if (!JarvisFastGuards.hasOpusAnswer(context)) {
+            return outcome;
+        }
+        String said = outcome.spokenText() == null ? "" : outcome.spokenText().strip();
+        if (!said.contains(JarvisFastBrainPrompt.MORE_MARK)) {
+            out.text(JarvisFastBrainPrompt.MORE_MARK + " ");
+        }
+        return new Outcome(Kind.ANSWER, JarvisFastBrainPrompt.MORE_MARK, null, REASON_MORE, outcome.model(),
+                outcome.firstTokenMs(), outcome.costUsd(), outcome.guards(), outcome.understood(), outcome.shows());
+    }
+
+    /** F-240 / SF-240-04 — la réponse rapide est la ligne-marque « ⤵ » (l'écran lit la suite, rien n'est dit). */
+    static boolean isMore(Outcome outcome) {
+        return outcome.kind() == Kind.ANSWER && outcome.spokenText() != null
+                && outcome.spokenText().strip().startsWith(JarvisFastBrainPrompt.MORE_MARK);
     }
 
     /**
@@ -457,7 +497,8 @@ public class JarvisFastBrainService {
         boolean bench = benchModel != null;
         // D9d : « vérifie », « demande à Opus », « c'est faux »… ⇒ Opus, sans appel au cerveau rapide.
         if (JarvisFastGuards.forcesDelegation(request.text())) {
-            return forced(request);
+            // F-240 / SF-240-04 — au banc (à blanc), la mémoire de session n'est pas lue.
+            return forced(request, !bench);
         }
         // F-239 / SF-239-11 — jamais d'escalade de coût : au-delà du budget, le cerveau rapide CONTINUE (10 à 50 fois
         // moins cher qu'Opus) ; au plafond dur, une réponse fixe, aucun appel ; quota du compte atteint, de même.
@@ -809,8 +850,12 @@ public class JarvisFastBrainService {
      * parole elle-même), sans appel au cerveau rapide.
      */
     Outcome forced(Request request) {
+        return forced(request, true);
+    }
+
+    private Outcome forced(Request request, boolean withMemory) {
         String previous = null;
-        if (memory != null) {
+        if (memory != null && withMemory) {
             List<JarvisFastMemory.Exchange> recalled = memory.recall(request.userId());
             if (!recalled.isEmpty()) {
                 previous = recalled.get(recalled.size() - 1).said();
@@ -887,6 +932,8 @@ public class JarvisFastBrainService {
         private final List<String> saidNow = new ArrayList<>();
         private boolean streamed;
         private boolean addressed;
+        /** F-240 / SF-240-04 — la ligne-marque « ⤵ » a été relayée. */
+        private boolean more;
         private String abortReason;
         private int groundingTrips;
         private int fillersRemoved;
@@ -1009,11 +1056,22 @@ public class JarvisFastBrainService {
         }
 
         private void check(String raw) {
-            if (abortReason != null) {
-                return;
+            if (abortReason != null || more) {
+                return; // F-240 / SF-240-04 : après « ⤵ », plus rien n'est dit
             }
             String sentence = raw.strip();
             if (sentence.isEmpty()) {
+                return;
+            }
+            if (sentence.startsWith(JarvisFastBrainPrompt.MORE_MARK)) {
+                // F-240 / SF-240-04 (D8) — la ligne-marque : relayée telle quelle (jamais dite, jamais un fait), sans
+                // passer par les gardes (une seconde « ⤵ » n'est pas une répétition creuse).
+                more = true;
+                if (spoken.length() > 0) {
+                    spoken.append(' ');
+                }
+                spoken.append(JarvisFastBrainPrompt.MORE_MARK);
+                out.text(JarvisFastBrainPrompt.MORE_MARK + " ");
                 return;
             }
             try {

@@ -379,6 +379,49 @@
           "expect": "deleguer"
         }
       ]
+    },
+    {
+      "id": "F01",
+      "category": "SUITE_F240",
+      "context": "## Derniers échanges du fil du sujet courant (état à 09:15)\n- 09:10 Monsieur : Regarde les tickets bloqués d'Orion-Run.\n- 09:12 Opus : Deux tickets sont bloqués sur Orion-Run, tous deux par la recette en attente de Claire Dumas. — <<essentiel>> - ORN-41 : export PDF, bloqué par la recette - ORN-44 : droits d'accès, bloqué par la recette - Helios : la bascule des flux est prévue jeudi <</essentiel>> ## Détail ORN-41 attend la validation…",
+      "turns": [
+        {
+          "said": "Dis-m'en plus.",
+          "expect": "descendre"
+        }
+      ]
+    },
+    {
+      "id": "F02",
+      "category": "SUITE_F240",
+      "context": "## Derniers échanges du fil du sujet courant (état à 09:15)\n- 09:10 Monsieur : Regarde les tickets bloqués d'Orion-Run.\n- 09:12 Opus : Deux tickets sont bloqués sur Orion-Run, tous deux par la recette en attente de Claire Dumas. — <<essentiel>> - ORN-41 : export PDF, bloqué par la recette - ORN-44 : droits d'accès, bloqué par la recette - Helios : la bascule des flux est prévue jeudi <</essentiel>> ## Détail ORN-41 attend la validation…",
+      "turns": [
+        {
+          "said": "Tu peux développer le point Helios ?",
+          "expect": "descendre"
+        }
+      ]
+    },
+    {
+      "id": "F03",
+      "category": "SUITE_F240",
+      "turns": [
+        {
+          "said": "Et ensuite ?",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "F04",
+      "category": "SUITE_F240",
+      "context": "## Derniers échanges du fil du sujet courant (état à 09:15)\n- 09:10 Monsieur : Regarde les tickets bloqués d'Orion-Run.\n- 09:12 Opus : Deux tickets sont bloqués sur Orion-Run, tous deux par la recette en attente de Claire Dumas. — <<essentiel>> - ORN-41 : export PDF, bloqué par la recette - ORN-44 : droits d'accès, bloqué par la recette - Helios : la bascule des flux est prévue jeudi <</essentiel>> ## Détail ORN-41 attend la validation…",
+      "turns": [
+        {
+          "said": "Vérifie.",
+          "expect": "deleguer"
+        }
+      ]
     }
   ],
   "opusTurnEur": 0.98
