@@ -1,0 +1,221 @@
+// F-236 / SF-236-15 — le cockpit PC (cadrage §12.1) : verre holographique (§7.2), jetons --cg-holo-* (DESIGN_SYSTEM
+// §23), polices de la charte. Au-dessus des étiquettes (z 2) et de l'écran (z 1) ; l'univers passe derrière.
+:host {
+  display: contents;
+}
+
+.ck {
+  position: fixed;
+  top: 72px;
+  bottom: 24px;
+  z-index: 3;
+  display: flex;
+  width: 300px;
+  transition: transform var(--jv-dur-sidePanel, 320ms) var(--jv-ease-glisse, ease-in-out);
+  pointer-events: auto;
+
+  // La poignée est sur le bord tourné vers l'univers : elle reste visible une fois le panneau replié.
+  &--left {
+    left: 16px;
+    flex-direction: row-reverse;
+  }
+
+  &--right {
+    right: 16px;
+    width: 320px;
+  }
+
+  // T-P4 — replié : le panneau glisse hors de l'écran, sa poignée reste visible.
+  &--left.ck--folded {
+    transform: translateX(calc(-100% + 28px));
+  }
+
+  &--right.ck--folded {
+    transform: translateX(calc(100% - 28px));
+  }
+}
+
+.ck__body {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: var(--cg-space-3);
+  border: 1px solid color-mix(in srgb, var(--cg-holo, #E07B39) 55%, transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--cg-holo, #E07B39) 12%, transparent), transparent 40%),
+    color-mix(in srgb, var(--cg-navy, #0B1020) 72%, transparent);
+  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+  backdrop-filter: blur(10px);
+  color: var(--cg-cream, #F5EFE3);
+  transition: opacity var(--jv-dur-sidePanel, 320ms) var(--jv-ease-glisse, ease-in-out);
+  scrollbar-width: thin;
+}
+
+.ck--folded .ck__body {
+  opacity: 0;
+}
+
+.ck__fold {
+  flex: none;
+  align-self: center;
+  width: 28px;
+  height: 64px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--cg-holo, #E07B39) 55%, transparent);
+  background: color-mix(in srgb, var(--cg-navy, #0B1020) 72%, transparent);
+  color: var(--cg-holo-text, #F0954F);
+  font: 600 18px var(--cg-font-heading);
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--cg-holo-text, #F0954F);
+  }
+}
+
+.ck__section + .ck__section {
+  margin-top: var(--cg-space-3);
+}
+
+.ck__title {
+  margin: 0 0 var(--cg-space-2);
+  color: var(--cg-holo-text, #F0954F);
+  font: 600 12px var(--cg-font-heading);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.ck__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ck__item {
+  --tone: var(--cg-holo, #E07B39);
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  width: 100%;
+  min-height: 32px;
+  padding: 2px var(--cg-space-1);
+  border: 1px solid transparent;
+  background: none;
+  color: inherit;
+  font: 500 13px var(--cg-font-body);
+  text-align: left;
+  cursor: pointer;
+
+  &[data-tone='green'] {
+    --tone: var(--cg-holo-green, #4CF2A0);
+  }
+
+  &[data-tone='off'] {
+    --tone: var(--cg-holo-off, #2A4256);
+  }
+
+  &[data-tone='wait'] {
+    --tone: var(--cg-holo-wait, #5FD4FF);
+  }
+
+  &[data-tone='alert'] {
+    --tone: var(--cg-holo-red, #FF5A6E);
+  }
+
+  &:hover,
+  &:focus-visible {
+    border-color: color-mix(in srgb, var(--cg-holo, #E07B39) 55%, transparent);
+    outline: none;
+  }
+
+  &--sub {
+    padding-left: var(--cg-space-4);
+    font-weight: 400;
+  }
+
+  &--current .ck__label {
+    color: var(--cg-holo-text, #F0954F);
+  }
+}
+
+.ck__dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--tone);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--tone) 60%, transparent);
+}
+
+.ck__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ck__note,
+.ck__empty {
+  flex: none;
+  color: color-mix(in srgb, var(--cg-cream, #F5EFE3) 72%, transparent);
+  font-size: 11px;
+}
+
+.ck__facts {
+  display: grid;
+  gap: var(--cg-space-1);
+  margin: 0;
+
+  div {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--cg-space-2);
+  }
+
+  dt {
+    color: color-mix(in srgb, var(--cg-cream, #F5EFE3) 72%, transparent);
+    font-size: 12px;
+  }
+
+  dd {
+    margin: 0;
+    font-size: 13px;
+    text-align: right;
+  }
+}
+
+.ck__num {
+  font-family: var(--cg-font-mono);
+}
+
+.ck__filaments {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.ck__filament,
+.ck__filament-end {
+  opacity: 0;
+  transition: opacity var(--jv-dur-sideFilament, 180ms) var(--jv-ease-sortie, ease-out);
+  filter: drop-shadow(0 0 4px var(--cg-holo, #E07B39));
+
+  &[data-on='1'] {
+    opacity: 1;
+  }
+}
+
+.ck__filament {
+  stroke: var(--cg-holo, #E07B39);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+}
+
+.ck__filament-end {
+  fill: none;
+  stroke: var(--cg-holo-core, #FFF3E4);
+  stroke-width: 1.5;
+}

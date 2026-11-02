@@ -61,6 +61,15 @@ export function bancPlan(scene: string, narrow: boolean): { plan: StagePlan; voi
   };
 }
 
+/** SF-236-15 — ce que l'écran passe au cockpit au banc (univers de test, un tour qui travaille). */
+export function bancScreen(scene: string): ScreenSignals {
+  if (!scene.startsWith('cockpit')) {
+    return IDLE_SCREEN;
+  }
+  return { ...IDLE_SCREEN, universe: testUniverse(), subjectId: 's-forge', state: 'reflexion', turnActive: true,
+    pulses: 3, delegations: 1, scene: BANC_SCENE_VIEWS['commande'] ?? null };
+}
+
 /** SF-236-13 — l'ambiance au banc (au repos, administrateur pour A4). */
 function bancAmbient(name: string, narrow: boolean): StagePlan {
   const ambient = BANC_AMBIENTS[name] ?? null;
@@ -106,6 +115,7 @@ function bancScene(scene: string, narrow: boolean):
 /** SF-236-04 — l'univers posé par chaque scène du banc (univers de test : CAGIP, Edenred ; sujet « Migration Forge »). */
 function bancUniverse(scene: string, narrow: boolean): UniverseView {
   if (!scene.startsWith('univers') && !scene.startsWith('cerveau') && !scene.startsWith('entree')
+      && !scene.startsWith('cockpit')
       && scene !== 'focus-chantier' && scene !== 'zoom' && scene !== 'dezoom') {
     return EMPTY_VIEW;
   }

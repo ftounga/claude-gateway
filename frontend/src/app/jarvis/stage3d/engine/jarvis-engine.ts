@@ -29,6 +29,7 @@ import { JarvisPost } from './jarvis-post';
 import { Effects3d } from './jarvis-effects-3d';
 import { Panels3d } from './jarvis-panels-3d';
 import { boundPanels, panelViewport } from '../jarvis-panels';
+import { BOKEH_MAX_GROWTH, postChain } from '../jarvis-post-chain';
 
 /**
  * F-236 / SF-236-01 — **le moteur 3D, socle** : seul fichier (avec ses voisins de `engine/`) qui importe `three`,
@@ -106,14 +107,20 @@ uniform float uPixelRatio;
 uniform float uDrift;
 uniform float uBreath;
 uniform float uScale;
+uniform float uBokeh;
+uniform float uFocus;
 varying vec3 vColor;
 varying float vTwinkle;
+varying float vBlur;
 void main() {
   vec3 p = position * (1.0 + uBreath * sin(uTime * 0.0021 + aPhase * 0.3));
   p += uDrift * vec3(sin(uTime * 0.00021 + aPhase), cos(uTime * 0.00017 + aPhase * 1.3), sin(uTime * 0.00013 + aPhase * 0.7));
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   gl_Position = projectionMatrix * mv;
-  gl_PointSize = min(aSize * uPixelRatio * (uScale / max(-mv.z, 0.5)), 18.0 * uPixelRatio);
+  // SF-236-15 — profondeur de champ du calque L0 (PC, Haut) : hors du plan de netteté, le point s'élargit en disque.
+  vBlur = uBokeh * clamp(abs(-mv.z - uFocus) / max(uFocus, 1.0), 0.0, 1.0);
+  gl_PointSize = min(aSize * uPixelRatio * (uScale / max(-mv.z, 0.5)) * (1.0 + ${BOKEH_MAX_GROWTH.toFixed(2)} * vBlur),
+    18.0 * uPixelRatio);
   vColor = aColor;
   // SF-236-07 — ce qui frôle la caméra s'efface (la poussière proche faisait des taches sous le bloom).
   vTwinkle = (0.72 + 0.28 * sin(uTime * 0.0016 + aPhase * 6.2831)) * smoothstep(1.5, 5.0, -mv.z);
@@ -123,10 +130,12 @@ const POINTS_FRAGMENT = /* glsl */ `
 uniform float uOpacity;
 varying vec3 vColor;
 varying float vTwinkle;
+varying float vBlur;
 void main() {
   float d = length(gl_PointCoord - 0.5);
   float a = 1.0 - smoothstep(0.0, 0.5, d);
-  a *= a;
+  // SF-236-15 — un point flou est un disque plus plat, d'énergie à peu près conservée (il ne s'éclaire pas).
+  a = pow(a, mix(2.0, 0.9, vBlur)) / (1.0 + 1.6 * vBlur);
   gl_FragColor = vec4(vColor * a * vTwinkle * uOpacity, 1.0);
 }`;
 
@@ -193,6 +202,11 @@ class ThreeJarvisEngine implements JarvisEngine {
   private readonly onRestored = (): void => this.options.onContextRestored();
   private firstFrameSeen = false;
   private lastPoints: ShaderMaterial | null = null;
+  /** SF-236-15 — les particules du calque L0 (étoiles, poussière) qui prennent la profondeur de champ. */
+  private readonly bokehed: ShaderMaterial[] = [];
+  /** SF-236-15 — décalage du centre de l'univers (px) quand un seul panneau latéral est ouvert, et sa cible. */
+  private shift = 0;
+  private shiftTarget = 0;
   private disposed = false;
 
   constructor(private readonly options: JarvisEngineOptions) {
@@ -258,7 +272,8 @@ class ThreeJarvisEngine implements JarvisEngine {
       this.panels = null;
       this.effects = null;
     }
-    this.post = new JarvisPost(this.renderer, this.scene, this.camera, options.width, options.height, options.level);
+    this.post = new JarvisPost(this.renderer, this.scene, this.camera, options.width, options.height, options.level,
+      options.width < 768);
     // Le banc (horloge figée) n'adapte pas la qualité : ses captures restent reproductibles.
     this.governor = options.adaptive ? new QualityGovernor(options.level, start) : null;
 
@@ -285,9 +300,47 @@ class ThreeJarvisEngine implements JarvisEngine {
     this.width = width;
     this.height = height;
     this.camera.aspect = width / height;
-    this.camera.updateProjectionMatrix();
+    this.applyShift();
     this.backdrop.uniforms['uAspect'].value = width / height;
   }
+
+  /** SF-236-15 — les panneaux latéraux couvrent `left` / `right` px : l'univers se centre dans la zone libre. */
+  setInsets(left: number, right: number): void {
+    if (this.disposed) {
+      return;
+    }
+    const narrow = this.width < 768;
+    this.shiftTarget = narrow ? 0 : (Math.max(0, left) - Math.max(0, right)) / 2;
+    this.panelSides = narrow ? { left: 0, right: 0 } : { left: Math.max(0, left), right: Math.max(0, right) };
+  }
+
+  private panelSides = { left: 0, right: 0 };
+
+  /** Le décalage courant appliqué à la caméra (fenêtre décalée, même focale : aucune déformation). */
+  private applyShift(): void {
+    if (Math.abs(this.shift) < 0.5) {
+      this.camera.clearViewOffset();
+    } else {
+      this.camera.setViewOffset(this.width, this.height, -this.shift, 0, this.width, this.height);
+    }
+    this.camera.updateProjectionMatrix();
+  }
+
+  /** SF-236-15 — la netteté suit le point visé par la caméra ; flou du calque L0 selon la chaîne du niveau. */
+  private applyBokeh(): void {
+    if (this.bokehed.length === 0) {
+      return;
+    }
+    const on = postChain(this.level, this.width < 768).bokeh ? 1 : 0;
+    const focus = this.camera.position.distanceTo(this.focusPoint.set(this.rig.tx.value, this.rig.ty.value,
+      this.rig.tz.value));
+    for (const material of this.bokehed) {
+      material.uniforms['uBokeh'].value = on;
+      material.uniforms['uFocus'].value = focus;
+    }
+  }
+
+  private readonly focusPoint = new Vector3();
 
   update(plan: StagePlan): void {
     if (this.disposed) {
@@ -366,8 +419,11 @@ class ThreeJarvisEngine implements JarvisEngine {
     return (key ? view.layout.nodes.find((n) => n.key === key) : undefined) ?? view.focus;
   }
 
-  /** SF-236-08 — un nœud à l'écran (ancre d'un panneau) ; `null` s'il n'est pas posé ou derrière la caméra. */
-  private project(key: string): { x: number; y: number } | null {
+  /**
+   * SF-236-08 — un nœud à l'écran (ancre d'un panneau) ; `null` s'il n'est pas posé ou derrière la caméra.
+   * SF-236-15 — public : les filaments liste ↔ nœud du cockpit le lisent (hors zone, sans allocation de nœud).
+   */
+  project(key: string): { x: number; y: number } | null {
     if (!this.universe || !this.universe.locate(key, this.projected)) {
       return null;
     }
@@ -567,6 +623,13 @@ class ThreeJarvisEngine implements JarvisEngine {
         this.universe.group.rotation.y += (dt / 600_000) * Math.PI * 2;
       }
     }
+    if (this.shift !== this.shiftTarget) {
+      // T-P4 — le centre glisse avec le panneau (≈ 320 ms), jamais de saut.
+      const k = Math.min(1, dt / 90);
+      this.shift = Math.abs(this.shiftTarget - this.shift) < 0.5 ? this.shiftTarget
+        : this.shift + (this.shiftTarget - this.shift) * k;
+      this.applyShift();
+    }
     this.moveCamera(frameNow, dt, entry.distance);
     if (this.effects && this.universe) {
       const universe = this.universe;
@@ -576,9 +639,10 @@ class ThreeJarvisEngine implements JarvisEngine {
     if (this.panels && this.panels.count > 0) {
       // Seulement quand un panneau est affiché : le placement (DOM) n'existe pas au repos.
       this.panels.frame(t, (key) => this.project(key), panelViewport(this.width, this.height, this.width < 768,
-        this.coreScreen()));
+        this.coreScreen(), this.panelSides));
     }
-    this.post.render(bloom);
+    this.applyBokeh();
+    this.post.render(bloom, t);
     this.universe?.renderLabels(this.scene, this.camera);
     if (!this.firstFrameSeen) {
       this.firstFrameSeen = true;
@@ -710,6 +774,7 @@ class ThreeJarvisEngine implements JarvisEngine {
         size[i] = sizes[layer] * (0.6 + random() * 0.8);
         phase[i] = random() * 10;
       }, { opacity: 1, drift: 0, breath: 0, scale: 46 });
+      this.bokehed.push(this.lastPoints!);
     }
   }
 
@@ -731,6 +796,7 @@ class ThreeJarvisEngine implements JarvisEngine {
       phase[i] = random() * 10;
     }, { opacity: HOLO_ALPHA.panel, drift: 0.35, breath: 0, scale: 16 });
     this.dustMaterial = this.lastPoints;
+    this.bokehed.push(this.lastPoints!);
   }
 
   /** L1 — sol polaire : cercles gradués et rayons, orange atténué. */
@@ -793,6 +859,8 @@ class ThreeJarvisEngine implements JarvisEngine {
         uDrift: { value: look.drift },
         uBreath: { value: look.breath },
         uScale: { value: look.scale },
+        uBokeh: { value: 0 },
+        uFocus: { value: 9 },
       },
     });
     this.scene.add(new Points(geometry, material));

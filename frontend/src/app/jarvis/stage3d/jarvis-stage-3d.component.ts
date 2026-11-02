@@ -16,6 +16,7 @@ import { clientKey } from '../scenes/jarvis-universe.models';
 import { ShowPlan3d, directShow } from './scenes3d/jarvis-show-3d';
 import { AmbientPlan3d, COST_VISIBLE_MS, directAmbient } from './scenes3d/jarvis-ambiance-3d';
 import { PANEL_POOL } from './jarvis-panels';
+import { CockpitInsets, NO_INSETS, sameInsets } from './hud/jarvis-cockpit-layout';
 import {
   IDLE_SCREEN, ScreenSignals, StagePlan, UniverseView, directStage, samePlan, stageScene, universeView,
 } from './jarvis-stage-director';
@@ -100,6 +101,12 @@ export class JarvisStage3dComponent implements OnDestroy {
   private readonly narrow = typeof matchMedia === 'function' && matchMedia('(max-width: 767px)').matches;
   /** SF-236-02 — le niveau du micro ou de la voix (0-1), lu à chaque image hors zone. */
   readonly voiceLevel = input<() => number>(() => 0);
+  /** SF-236-15 — ce que couvrent les panneaux latéraux du cockpit (l'univers se centre dans la zone libre). */
+  readonly insets = input<CockpitInsets>(NO_INSETS);
+  /** Téléphone (lu par le cockpit : même relevé que la scène). */
+  get isNarrow(): boolean {
+    return this.narrow;
+  }
 
   private readonly host = inject(ElementRef<HTMLElement>);
   private readonly zone = inject(NgZone);
@@ -273,6 +280,30 @@ export class JarvisStage3dComponent implements OnDestroy {
     });
   });
 
+  /** SF-236-15 — les panneaux latéraux relayés au moteur (hors zone). */
+  private lastInsets: CockpitInsets = NO_INSETS;
+  private readonly relayInsets = effect(() => {
+    const insets = this.insets();
+    untracked(() => this.pushInsets(insets));
+  });
+
+  private pushInsets(insets: CockpitInsets, force = false): void {
+    const engine = this.engine;
+    if (!engine || (!force && sameInsets(insets, this.lastInsets))) {
+      return;
+    }
+    this.lastInsets = insets;
+    this.zone.runOutsideAngular(() => engine.setInsets(insets.left, insets.right));
+  }
+
+  /**
+   * SF-236-15 — un nœud à l'écran (filaments liste ↔ nœud du cockpit), lu hors zone à chaque image ; `null` sans
+   * moteur, nœud absent ou derrière la caméra.
+   */
+  project(key: string): { x: number; y: number } | null {
+    return this.engine?.project(key) ?? null;
+  }
+
   /** Bascule « Vue 3D / 2D », retenue par appareil. */
   /** SF-236-05 — saute l'entrée (premier toucher, n'importe où sur l'écran). */
   skipEntry(): void {
@@ -425,6 +456,7 @@ export class JarvisStage3dComponent implements OnDestroy {
       this.resizeObserver.observe(element);
     }
     this.level.set(level);
+    this.pushInsets(untracked(() => this.insets()), true);
     this.engine.start();
     this.checkSleep();
   }

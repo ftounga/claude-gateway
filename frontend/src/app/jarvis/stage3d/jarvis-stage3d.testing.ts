@@ -86,6 +86,17 @@ export class FakeEngine implements JarvisEngine {
 
   skipped = 0;
   exited = 0;
+  insets: [number, number][] = [];
+  /** SF-236-15 — positions à l'écran des nœuds (filaments) ; absent ⇒ `null`. */
+  positions = new Map<string, { x: number; y: number }>();
+
+  setInsets(left: number, right: number): void {
+    this.insets.push([left, right]);
+  }
+
+  project(key: string): { x: number; y: number } | null {
+    return this.positions.get(key) ?? null;
+  }
 
   skipEntry(): void {
     this.skipped++;

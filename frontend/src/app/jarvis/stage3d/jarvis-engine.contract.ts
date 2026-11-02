@@ -64,6 +64,13 @@ export interface JarvisEngine {
   skipEntry(): void;
   /** SF-236-05 — joue la sortie T-S (0,5 s) ; l'écran navigue ensuite. */
   exit(): void;
+  /**
+   * SF-236-15 — les panneaux latéraux du cockpit couvrent `left` / `right` px : l'univers se recentre dans la zone
+   * libre (glissement, jamais de saut) et aucun hologramme ne se pose dessous.
+   */
+  setInsets(left: number, right: number): void;
+  /** SF-236-15 — un nœud à l'écran (filaments liste ↔ nœud) ; `null` s'il n'est pas posé ou derrière la caméra. */
+  project(key: string): { x: number; y: number } | null;
   /** Images dessinées depuis l'ouverture. */
   readonly frames: number;
   /** Libère tout (géométries, matières, rendu, contexte, écouteurs) ; idempotent. */

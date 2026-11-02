@@ -14,11 +14,12 @@ import { FakeEngine, FakeFrameHost, NO_WEBGL_PROBE, PC_PROBE, fakeEngineFactory 
 
 @Component({
   imports: [JarvisStage3dComponent],
-  template: '<app-jarvis-stage-3d #stage [sober]="sober()" [signals]="signals()" />',
+  template: '<app-jarvis-stage-3d #stage [sober]="sober()" [signals]="signals()" [insets]="insets()" />',
 })
 class HostComponent {
   readonly sober = signal(false);
   readonly signals = signal<ScreenSignals>(IDLE_SCREEN);
+  readonly insets = signal({ left: 0, right: 0 });
 }
 
 describe('F-236 / SF-236-01 — JarvisStage3dComponent (socle, repli 2D, fondu)', () => {
@@ -110,6 +111,26 @@ describe('F-236 / SF-236-01 — JarvisStage3dComponent (socle, repli 2D, fondu)'
     expect(host.getAttribute('aria-hidden')).toBe('true');
     fixture.destroy();
     expect(engine.disposed).toBeTrue();
+  }));
+
+  it('SF-236-15 — les panneaux du cockpit sont relayés au moteur (à l’ouverture, puis à chaque changement) ; projection lue', fakeAsync(() => {
+    configure(PC_PROBE);
+    const fixture = TestBed.createComponent(HostComponent);
+    fixture.componentInstance.insets.set({ left: 316, right: 336 });
+    fixture.detectChanges();
+    flushMicrotasks();
+    const engine = created[0];
+    expect(engine.insets).toEqual([[316, 336]]);
+    fixture.componentInstance.insets.set({ left: 0, right: 0 });
+    fixture.detectChanges();
+    fixture.componentInstance.insets.set({ left: 0, right: 0 });
+    fixture.detectChanges();
+    expect(engine.insets).toEqual([[316, 336], [0, 0]]);
+    engine.positions.set('h-cagip', { x: 10, y: 20 });
+    expect(stageOf(fixture).project('h-cagip')).toEqual({ x: 10, y: 20 });
+    expect(stageOf(fixture).project('absent')).toBeNull();
+    fixture.destroy();
+    expect(stageOf(fixture).project('h-cagip')).toBeNull();
   }));
 
   it('« Vue 2D » : fondu de sortie (400 ms) puis libération ; « Vue 3D » recharge ; choix retenu', fakeAsync(() => {
