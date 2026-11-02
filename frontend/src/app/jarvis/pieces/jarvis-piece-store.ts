@@ -3,6 +3,9 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { JarvisPieceClient, PieceQuery } from './jarvis-piece-client';
 import { GalleryMode, ShowCommand, ShowContext, ShowRefusal, showPlan } from './jarvis-piece-show';
 import { storyOrder } from './jarvis-piece-story';
+import {
+  FAST_CLOSE_MS, PieceCountKey, PieceCounter, categoryKey, kindKey, originKey,
+} from './jarvis-piece-measure';
 import { versionPiece } from './jarvis-piece-versions';
 import { NavAction, NavOrigin, NavReason, NavScope, PieceNav, initialNav, reduceNav, selectedItem } from './jarvis-piece-nav';
 import { Piece } from './jarvis-piece.models';
@@ -55,16 +58,81 @@ export class JarvisPieceStore {
     return item ? this.pieces().get(item.id) ?? null : null;
   });
 
-  /** Applique une action ; en présentation, seule la fermeture passe. */
-  dispatch(action: NavAction): PieceStoreResult {
+  /** F-237 / SF-237-14 — la mesure (§19) : posée par l'écran, sans contenu. */
+  counter: PieceCounter | null = null;
+  private galleryOpenedAt = 0;
+  private mediaSeconds = 0;
+  private lastMediaTime: number | null = null;
+
+  /** Compte une clé du vocabulaire fermé (aucun contenu). */
+  count(key: PieceCountKey, n = 1): void {
+    if (n > 0) {
+      this.counter?.(key, n);
+    }
+  }
+
+  /**
+   * Applique une action ; en présentation, seule la fermeture passe. `source` (SF-237-14) : d'où vient l'ordre —
+   * voix locale, toucher, ou IA (cerveau rapide / ligne d'Opus) — compté s'il aboutit.
+   */
+  dispatch(action: NavAction, source?: 'voice' | 'touch' | 'ai', now = Date.now()): PieceStoreResult {
     if (this.presentation() && action.type !== 'close') {
       return { ok: false, reason: 'PRESENTATION' };
     }
-    const result = reduceNav(this.nav(), action);
+    const before = this.nav();
+    const result = reduceNav(before, action);
     if (result.ok) {
       this.nav.set(result.state);
+      this.measure(before, result.state, action, source, now);
     }
     return result.ok ? { ok: true } : { ok: false, reason: result.reason };
+  }
+
+  /** F-237 / SF-237-14 — ce que l'action change, compté (ordres, pièces ouvertes, pages, fermetures rapides). */
+  private measure(before: PieceNav, after: PieceNav, action: NavAction, source: 'voice' | 'touch' | 'ai' | undefined,
+    now: number): void {
+    if (source) {
+      this.count(source === 'voice' ? 'n_loc' : source === 'touch' ? 'n_tch' : 'n_ai');
+    }
+    if (action.type === 'openGallery') {
+      this.galleryOpenedAt = now;
+      this.count('p_gal');
+      const category = categoryKey(action.scope.category);
+      if (category) {
+        this.count(category);
+      }
+      this.count(originKey(after.origin));
+      return;
+    }
+    if (after.selected != null && after.selected !== before.selected) {
+      this.count(kindKey(after.items[after.selected - 1]?.kind));
+      this.mediaSeconds = 0;
+      this.lastMediaTime = null;
+    }
+    if (action.type === 'page') {
+      this.count('pdf_pg');
+    }
+    const closing = (action.type === 'close' || action.type === 'back' || action.type === 'up')
+      && (before.level === 'GALERIE' || before.level === 'PIECE');
+    if (closing && before.origin === 'PROACTIVE' && now - this.galleryOpenedAt < FAST_CLOSE_MS) {
+      this.count('p_fclose');
+    }
+  }
+
+  /** F-237 / SF-237-14 — l'instant de lecture avance : les secondes lues sont comptées (sauts exclus). */
+  mediaTick(t: number): void {
+    this.mediaTime.set(t);
+    const last = this.lastMediaTime;
+    this.lastMediaTime = t;
+    if (last == null || t <= last || t - last > 2) {
+      return;
+    }
+    this.mediaSeconds += t - last;
+    if (this.mediaSeconds >= 1) {
+      const whole = Math.floor(this.mediaSeconds);
+      this.mediaSeconds -= whole;
+      this.count('v_sec', whole);
+    }
   }
 
   /** Ouvre une galerie : lit l'index (annule la lecture précédente), puis l'état passe en GALERIE. */
@@ -112,7 +180,7 @@ export class JarvisPieceStore {
       return { ok: false, reason: plan.reason };
     }
     if (plan.kind === 'nav') {
-      return this.dispatch(plan.action);
+      return this.dispatch(plan.action, 'ai');
     }
     this.loading?.abort();
     const controller = new AbortController();
@@ -147,9 +215,14 @@ export class JarvisPieceStore {
       }
     }
     this.mode.set(plan.mode);
+    if (plan.mode === 'compare') {
+      this.count('p_cmp');
+    } else if (plan.mode === 'contact') {
+      this.count('p_sheet');
+    }
     const shown = this.show(plan.scope, pieces, plan.origin);
     if (shown.ok && plan.select != null) {
-      return this.dispatch({ type: 'select', ref: plan.select });
+      return this.dispatch({ type: 'select', ref: plan.select }, 'ai');
     }
     return shown;
   }

@@ -1,0 +1,27 @@
+{
+  "title": "Jarvis montre les pièces — planche",
+  "heading": "Jarvis montre les pièces — planche de référence (F-237, itérations C et D)",
+  "intro": [
+    "F-237 / SF-237-05 → SF-237-14. Captures du banc (<code>/jarvis-banc?banc=pieces-…</code>, développement seulement) : contenus <b>dessinés sur place</b>, aucun réseau. Téléphone 390×844 et PC 1920×1080, rendu logiciel.",
+    "<b>Visa du PO délégué</b> pour cette vague (non bloquant) : les remarques de goût seront reprises au polissage suivant."
+  ],
+  "sections": [
+    { "title": "Galerie holographique (SF-237-05)", "items": [
+      { "label": "Éventail 3D depuis le chantier 3 — entrées, preuves (vert), productions (orange)", "base": "pieces-galerie-t2600" },
+      { "label": "Repli 2D en grille — même réducteur, mêmes ordres", "base": "pieces-grille-t2600" }
+    ] },
+    { "title": "Visionneuses (SF-237-06)", "items": [
+      { "label": "Preuve en héros — étape et commandes dites (§11)", "base": "pieces-image-t2600" },
+      { "label": "Besoin initial — carte texte, la parole d'origine", "base": "pieces-texte-t2600" }
+    ] },
+    { "title": "Au-delà (SF-237-11)", "items": [
+      { "label": "Avant / après — rideau glissant, capture d'erreur ↔ preuve", "base": "pieces-avant-apres-t2600" },
+      { "label": "Planche contact du jour — productions en grille, date et heure", "base": "pieces-planche-t2600" }
+    ] }
+  ],
+  "sequences": [],
+  "notes": [
+    "Deux captures PC (héros image, avant / après) sont sous le seuil automatique de 2 % de pixels hors fond : le fond y est volontairement sombre (panneau de verre) ; contrôlées à l'œil.",
+    "i/s galerie ouverte (PC ≥ 60, téléphone ≥ 50 p50) : à relever en usage par la mesure <code>RENDER</code> (SF-237-14)."
+  ]
+}

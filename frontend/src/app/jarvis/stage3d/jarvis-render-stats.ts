@@ -96,6 +96,11 @@ export class RenderStats {
     this.add(key);
   }
 
+  /** F-237 / SF-237-14 — un compteur des pièces (clé fermée), `n` fois. */
+  piece(key: string, n = 1): void {
+    this.counts[key] = Math.min(86_400, (this.counts[key] ?? 0) + Math.max(0, Math.round(n)));
+  }
+
   entry(skipped: boolean): void {
     this.add(skipped ? 'entries_skipped' : 'entries');
   }

@@ -26,7 +26,19 @@ public final class RenderCounts {
             // passages au grand cerveau, entrées jouées / sautées, bascules 3D → 2D en cours de session
             "brains", "entries", "entries_skipped", "to2d",
             // SF-236-26 — vues de l'itération 4 ouvertes : replays, présentation, cockpit externe, veilleur, activité
-            "replays", "presentations", "cockpits", "nights", "activity");
+            "replays", "presentations", "cockpits", "nights", "activity",
+            // F-237 / SF-237-14 (cadrage §19) — les pièces : galeries (par catégorie), demandées / d'initiative,
+            // ouvertes par type, ordres de navigation (voix locale, IA, toucher), vidéos lues et secondes, pages de
+            // PDF, récits, avant / après, planches, épinglages, retours vocaux, preuves (proposées, acceptées,
+            // générées), fermetures < 2 s d'une pièce d'initiative, délai parole → pièce (5 classes)
+            "p_gal", "p_ent", "p_prf", "p_prd", "p_ask", "p_pro",
+            "p_img", "p_vid", "p_aud", "p_pdf", "p_pag", "p_sld", "p_arc", "p_txt", "p_fil",
+            "n_loc", "n_ai", "n_tch", "v_play", "v_sec", "pdf_pg",
+            "p_story", "p_cmp", "p_sheet", "p_pin", "p_note", "pf_off", "pf_ok", "pf_gen", "p_fclose",
+            "lat_0_1", "lat_1_2", "lat_2_3", "lat_3_5", "lat_5p");
+
+    /** F-237 / SF-237-14 — la colonne {@code jarvis_usage_days.render_counts} (varchar 1000). */
+    public static final int MAX_LENGTH = 1_000;
 
     /** Au plus autant par clé et par déclaration (une session : 24 h de secondes au plus). */
     public static final int MAX_PER_REPORT = 86_400;
@@ -58,10 +70,24 @@ public final class RenderCounts {
         return out;
     }
 
-    /** Écrit le détail, trié (le vocabulaire fermé borne sa longueur). */
+    /**
+     * Écrit le détail, trié. F-237 / SF-237-14 — le vocabulaire a grandi : au-delà de {@link #MAX_LENGTH}, les plus
+     * petits compteurs sont laissés de côté (jamais une écriture refusée par la base).
+     */
     public static String format(Map<String, Integer> counts) {
+        Map<String, Integer> kept = new TreeMap<>(counts);
+        String out = join(kept);
+        while (out.length() > MAX_LENGTH && !kept.isEmpty()) {
+            String smallest = kept.entrySet().stream().min(Map.Entry.comparingByValue()).orElseThrow().getKey();
+            kept.remove(smallest);
+            out = join(kept);
+        }
+        return out;
+    }
+
+    private static String join(Map<String, Integer> sorted) {
         StringBuilder out = new StringBuilder();
-        for (var e : new TreeMap<>(counts).entrySet()) {
+        for (var e : sorted.entrySet()) {
             if (!out.isEmpty()) {
                 out.append(';');
             }

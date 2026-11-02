@@ -55,7 +55,8 @@ export class CockpitLeader {
   /** Deux écrans principaux ouverts : le suiveur suit celui qui a parlé en dernier. */
   private readonly id = Math.random().toString(36).slice(2);
 
-  constructor(private readonly channel: LinkChannel, private readonly now: () => number = () => Date.now()) {
+  constructor(private readonly channel: LinkChannel, private readonly now: () => number = () => Date.now(),
+      private readonly onListening: (listening: boolean) => void = () => undefined) {
     channel.onmessage = (event) => {
       const m = event.data;
       if (!isMessage(m)) {
@@ -63,6 +64,7 @@ export class CockpitLeader {
       }
       if (m.type === 'hello') {
         this.followers = true;
+        this.onListening(true);
         if (this.last) {
           this.send(this.last);
         }
@@ -71,6 +73,7 @@ export class CockpitLeader {
         }
       } else if (m.type === 'bye' && m.from === 'follower') {
         this.followers = false;
+        this.onListening(false);
       }
     };
     // Un écran principal ouvert (ou rechargé) après la vue cockpit s'annonce : elle se présente à nouveau.

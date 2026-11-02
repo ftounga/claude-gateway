@@ -46,4 +46,32 @@ class RenderCountsTest {
             assertThat(RenderCounts.KEYS).contains("r_" + reason);
         }
     }
+
+    @Test
+    @DisplayName("F-237 / SF-237-14 — les compteurs des pièces sont au vocabulaire, le même que l'écran")
+    void pieceKeys() throws Exception {
+        String front = java.nio.file.Files.readString(java.nio.file.Path.of(
+                "../frontend/src/app/jarvis/pieces/jarvis-piece-measure.ts"));
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("'([a-z_0-9]+)'")
+                .matcher(front.substring(front.indexOf("PIECE_COUNT_KEYS"), front.indexOf("] as const")));
+        java.util.List<String> keys = new java.util.ArrayList<>();
+        while (m.find()) {
+            keys.add(m.group(1));
+        }
+        assertThat(keys).hasSizeGreaterThan(30);
+        assertThat(RenderCounts.KEYS).containsAll(keys);
+        assertThat(RenderCounts.validate(Map.of("p_gal", 2, "v_sec", 120, "lat_1_2", 1))).hasSize(3);
+    }
+
+    @Test
+    @DisplayName("F-237 / SF-237-14 — jamais plus de 1 000 caractères : les plus petits compteurs sont laissés")
+    void neverLongerThanTheColumn() {
+        Map<String, Integer> all = new HashMap<>();
+        for (String key : RenderCounts.KEYS) {
+            all.put(key, 86_400);
+        }
+        all.put("p_gal", 1);
+        String out = RenderCounts.format(all);
+        assertThat(out.length()).isLessThanOrEqualTo(RenderCounts.MAX_LENGTH);
+    }
 }

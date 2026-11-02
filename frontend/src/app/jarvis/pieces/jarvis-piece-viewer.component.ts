@@ -400,11 +400,14 @@ export class JarvisPieceViewerComponent implements OnDestroy {
   onTime(event: Event): void {
     const t = (event.target as HTMLMediaElement | null)?.currentTime;
     if (typeof t === 'number' && Number.isFinite(t)) {
-      this.store.mediaTime.set(t);
+      this.store.mediaTick(t);
     }
   }
 
   onPlay(): void {
+    if (!this.autoPaused) {
+      this.store.count('v_play'); // F-237 / SF-237-14 — une lecture lancée (pas une reprise après la voix)
+    }
     this.autoPaused = false;
     if (!this.nav().playing) {
       this.store.dispatch({ type: 'play' });
