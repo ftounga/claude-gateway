@@ -123,6 +123,34 @@ public class JarvisFastBrainBenchService {
         this.judgeModel = judgeModel;
     }
 
+    /** F-239 / SF-239-13 — les passages rangés en base : le rapport se lit depuis n'importe quel pod. */
+    private JarvisBenchRunRepository runsStore;
+    static final int MAX_STORED_RUNS = 20;
+    private static final ObjectMapper STORE_JSON = new ObjectMapper().findAndRegisterModules()
+            .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+    @Autowired(required = false)
+    public void setRunsStore(JarvisBenchRunRepository runsStore) {
+        this.runsStore = runsStore;
+    }
+
+    /** Range (ou met à jour) le rapport du passage en base. Best-effort : la mémoire reste la source du pod. */
+    void store(UUID userId, Report report) {
+        if (runsStore == null) {
+            return;
+        }
+        try {
+            runsStore.save(JarvisBenchRun.builder().id(report.runId()).userId(userId).startedAt(report.startedAt())
+                    .status(report.status()).reportJson(STORE_JSON.writeValueAsString(report)).build());
+            List<JarvisBenchRun> mine = runsStore.findByUserIdOrderByStartedAtDesc(userId);
+            if (mine.size() > MAX_STORED_RUNS) {
+                runsStore.deleteAll(mine.subList(MAX_STORED_RUNS, mine.size()));
+            }
+        } catch (Exception e) {
+            log.warn("Banc du cerveau rapide : rapport non rangé en base ({})", e.getClass().getSimpleName());
+        }
+    }
+
     @Autowired(required = false)
     public void setAccounting(ByokKeyService byok, UsageLedgerService ledger) {
         this.byok = byok;
@@ -146,8 +174,10 @@ public class JarvisFastBrainBenchService {
         prune(userId);
         UUID runId = UUID.randomUUID();
         OffsetDateTime now = OffsetDateTime.now(clock);
-        byId.put(runId, new Run(userId, new Report(runId, "RUNNING", which, candidate, judgeModel, 0, 0, null, 0, 0,
-                null, null, List.of(), List.of(), now, null)));
+        Report running = new Report(runId, "RUNNING", which, candidate, judgeModel, 0, 0, null, 0, 0,
+                null, null, List.of(), List.of(), now, null);
+        byId.put(runId, new Run(userId, running));
+        store(userId, running);
         runs.execute(() -> {
             Report report;
             try {
@@ -158,6 +188,7 @@ public class JarvisFastBrainBenchService {
                         List.of("panne du banc"), List.of(), now, OffsetDateTime.now(clock));
             }
             byId.put(runId, new Run(userId, report));
+            store(userId, report);
         });
         return runId;
     }
@@ -165,7 +196,21 @@ public class JarvisFastBrainBenchService {
     /** Le rapport d'un passage du compte (jamais celui d'un autre). */
     public Optional<Report> report(UUID userId, UUID runId) {
         Run run = runId == null ? null : byId.get(runId);
-        return run != null && run.userId().equals(userId) ? Optional.of(run.report()) : Optional.empty();
+        if (run != null) {
+            return run.userId().equals(userId) ? Optional.of(run.report()) : Optional.empty();
+        }
+        // F-239 / SF-239-13 — lancé sur un autre pod : le rapport est relu en base, sous user_id.
+        if (runId == null || runsStore == null) {
+            return Optional.empty();
+        }
+        return runsStore.findByIdAndUserId(runId, userId).flatMap(r -> {
+            try {
+                return Optional.of(STORE_JSON.readValue(r.getReportJson(), Report.class));
+            } catch (Exception e) {
+                log.warn("Banc du cerveau rapide : rapport illisible ({})", e.getClass().getSimpleName());
+                return Optional.empty();
+            }
+        });
     }
 
     /** Un passage, de bout en bout (synchrone : appelé en tâche de fond, et directement par les tests). */

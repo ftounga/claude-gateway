@@ -55,6 +55,30 @@ public final class JarvisFastGuards {
     private JarvisFastGuards() {
     }
 
+    private static final Pattern CHANTIER = Pattern.compile("\\bchantier (\\d{1,4})\\b");
+
+    /**
+     * F-239 / SF-239-13 — une phrase qui parle de ce que Jarvis sait (« le contexte », « mes notes », « mes données ») :
+     * jugée robotique au banc (« Le contexte ne m'en dit pas plus ») ; retirée.
+     */
+    public static boolean isMetaTalk(String sentence) {
+        String n = " " + normalize(sentence) + " ";
+        return n.contains(" contexte ") || n.contains(" mes notes ") || n.contains(" mes donnees ")
+                || n.contains(" les donnees dont je dispose ") || n.contains(" dans mes informations ");
+    }
+
+    /**
+     * F-239 / SF-239-13 — une offre de détail ajoutée d'office (« Je peux détailler… », « Souhaitez-vous le détail ? ») :
+     * elle allonge la réponse sans rien dire (banc prod : 4 phrases) ; retirée.
+     */
+    public static boolean isDetailOffer(String sentence) {
+        String n = normalize(sentence).replaceAll("\\bmonsieur\\b", "").replaceAll("\\s+", " ").strip();
+        return n.matches("^(je peux|je puis|puis je) (vous )?(en )?(detailler|donner le detail|preciser|developper|"
+                + "vous en dire plus|entrer dans le detail).*")
+                || n.matches("^(souhaitez vous|voulez vous|desirez vous) (le|les|plus de|davantage de) detail.*")
+                || (n.contains("detail") && n.contains("si vous le souhaitez"));
+    }
+
     /** Le texte normalisé : minuscules, sans accents, ponctuation en espaces, espaces simples. */
     public static String normalize(String text) {
         if (text == null) {
@@ -206,6 +230,15 @@ public final class JarvisFastGuards {
             }
         }
         String knownNorm = " " + normalize(known) + " ";
+        // F-239 / SF-239-13 — un numéro de chantier se recopie tel quel : « chantier 3 » doit figurer dans ce qui est
+        // connu (banc prod du 02/11 : « chantier 3 du portail Orion » au lieu du chantier 1).
+        Matcher chantiers = CHANTIER.matcher(normalize(sentence));
+        while (chantiers.find()) {
+            String n = chantiers.group(1);
+            if (!knownNorm.contains(" chantier " + n + " ") && !knownNorm.contains(" chantier courant " + n + " ")) {
+                return "chantier " + n;
+            }
+        }
         for (String name : properNouns(sentence)) {
             String n = normalize(name);
             if (n.isEmpty() || ALWAYS_ALLOWED.contains(n)) {

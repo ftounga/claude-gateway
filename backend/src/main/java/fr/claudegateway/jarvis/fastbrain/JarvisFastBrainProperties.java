@@ -18,7 +18,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param effort            effort demandé (défaut {@code low})
  * @param maxTokens         plafond de sortie (défaut 600 : 1-3 phrases orales, ou un appel {@code deleguer})
  * @param monthlyBudgetEur  plafond mensuel propre, en euros (défaut 20) ; atteint ⇒ mode d'avant, sans erreur orale
- * @param firstTokenTimeout délai sans premier jeton au-delà duquel la demande est déléguée d'office (défaut 3 s, D9b)
+ * @param firstTokenTimeout délai sans premier jeton au-delà duquel la demande est déléguée d'office (défaut 8 s, D9b ;
+ *                          F-239 / SF-239-13 : 3 s déléguait à Opus — plus lent et ≈ 1 € — des réponses de Sonnet 5.5)
  */
 @ConfigurationProperties(prefix = "app.jarvis.fast-brain")
 public record JarvisFastBrainProperties(
@@ -39,7 +40,7 @@ public record JarvisFastBrainProperties(
         monthlyBudgetEur = monthlyBudgetEur == null || monthlyBudgetEur.signum() < 0 ? new BigDecimal("20")
                 : monthlyBudgetEur;
         firstTokenTimeout = firstTokenTimeout == null || firstTokenTimeout.isNegative() || firstTokenTimeout.isZero()
-                ? Duration.ofSeconds(3) : firstTokenTimeout;
+                ? Duration.ofSeconds(8) : firstTokenTimeout;
     }
 
     /** Réglages d'un environnement qui ne configure rien : éteint. */

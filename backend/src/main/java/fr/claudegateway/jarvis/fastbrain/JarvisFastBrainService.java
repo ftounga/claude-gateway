@@ -353,6 +353,19 @@ public class JarvisFastBrainService {
      * de l'appel reste inscrit au journal. Le plafond propre ne s'applique pas (le banc est un geste ADMIN borné à
      * 60 cas) ; le quota du compte, si.
      */
+    /** F-239 / SF-239-13 — sonde de banc (tests live seulement) : le texte brut du modèle, avant les gardes. */
+    volatile StringBuilder probeRaw;
+
+    /** F-239 / SF-239-13 — la même décision que le banc, avec le texte brut du modèle (sonde des tests live). */
+    Outcome decideForProbe(Request request, String model, String fixedContext, StringBuilder raw) {
+        probeRaw = raw;
+        try {
+            return bench(request, model, fixedContext);
+        } finally {
+            probeRaw = null;
+        }
+    }
+
     public Outcome bench(Request request, String model, String fixedContext) {
         return decide(request, null, model, fixedContext);
     }
@@ -485,6 +498,10 @@ public class JarvisFastBrainService {
                 first.countDown();
             }
             synchronized (lock) {
+                StringBuilder probe = probeRaw;
+                if (probe != null) {
+                    probe.append(delta);
+                }
                 if (!abandoned[0]) {
                     gate.accept(delta);
                 }
@@ -631,6 +648,8 @@ public class JarvisFastBrainService {
         private int repeatsRemoved;
         private boolean toolText;
         private int imitationsRemoved;
+        /** F-239 / SF-239-13 — au plus autant de phrases dites par réponse. */
+        static final int MAX_SENTENCES = 3;
         /** F-239 / SF-239-02 (D3) — une salutation : une phrase non ancrée est retirée, jamais déléguée. */
         private final boolean smallTalk;
 
@@ -767,6 +786,13 @@ public class JarvisFastBrainService {
                 }
                 if (JarvisFastGuards.isFillerAlone(sentence) || JarvisFastGuards.isListeningInvitation(sentence)) {
                     fillersRemoved++; // F-239 (D3) : « Je vous écoute… » retiré, seul ou en conclusion
+                    return;
+                }
+                // F-239 / SF-239-13 — ni phrase sur « le contexte », ni offre de détail d'office, ni plus de trois
+                // phrases dites (banc prod du 02/11).
+                if (JarvisFastGuards.isMetaTalk(sentence) || JarvisFastGuards.isDetailOffer(sentence)
+                        || saidNow.size() >= MAX_SENTENCES) {
+                    fillersRemoved++;
                     return;
                 }
                 if (repeats(sentence)) {

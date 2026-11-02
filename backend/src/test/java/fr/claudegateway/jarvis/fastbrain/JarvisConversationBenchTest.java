@@ -83,6 +83,17 @@ class JarvisConversationBenchTest {
                 new BigDecimal("1"), new BigDecimal("0.02"), 1, List.of("B budget dépassé"));
         JarvisConversationBench.Result fail = JarvisConversationBench.summarize(turns, List.of(ok, ko));
         assertThat(fail.gatePassed()).isFalse();
-        assertThat(fail.failures()).anyMatch(f -> f.contains("< 90 %")).anyMatch(f -> f.contains("budget"));
+        assertThat(fail.failures()).anyMatch(f -> f.contains("< 90 %"));
+        // F-239 / SF-239-13 — le détail d'un scénario échoué est dans le rapport, pas dans les échecs de la porte.
+        assertThat(fail.failures()).noneMatch(f -> f.contains("budget"));
+        assertThat(fail.scenarios()).anyMatch(s -> s.reasons().contains("B budget dépassé"));
+
+        // ≥ 90 % et aucun zéro enfreint : la porte passe, même avec un scénario échoué (sens faux).
+        List<JarvisConversationBench.ScenarioVerdict> mostly = new java.util.ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            mostly.add(new JarvisConversationBench.ScenarioVerdict("S" + i, "X", i > 0, new BigDecimal("0.01"),
+                    new BigDecimal("0.02"), 0, i > 0 ? List.of() : List.of("S0#1 sens faux")));
+        }
+        assertThat(JarvisConversationBench.summarize(turns, mostly).gatePassed()).isTrue();
     }
 }

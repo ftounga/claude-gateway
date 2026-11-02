@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-239 / SF-239-13 - LES PASSAGES DU BANC DU CERVEAU RAPIDE, EN BASE.
+
+      Avant : l'etat d'un passage vivait dans la memoire d'UN pod ; avec deux replicas, le GET tombait en 404 une fois
+      sur deux. jarvis_bench_runs garde le rapport (JSON, sans parole du compte : le rapport n'en recopie pas) sous
+      user_id ; au plus 20 par compte. Rollback : la table se retire.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="239-jarvis-bench-runs-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="jarvis_bench_runs">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="started_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="report_json" type="text"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="jarvis_bench_runs" indexName="idx_jarvis_bench_runs_user_started">
+            <column name="user_id"/>
+            <column name="started_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="jarvis_bench_runs"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <!-- H2 mappe `text` sur CLOB, que la validation de schéma refuse : varchar(1000000), comme 050. -->
+    <changeSet id="239-jarvis-bench-runs-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="jarvis_bench_runs">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="started_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="report_json" type="varchar(1000000)"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="jarvis_bench_runs" indexName="idx_jarvis_bench_runs_user_started">
+            <column name="user_id"/>
+            <column name="started_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="jarvis_bench_runs"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

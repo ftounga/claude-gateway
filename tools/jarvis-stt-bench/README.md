@@ -22,3 +22,15 @@ ELEVEN=… CG_API=https://…/api CG_TOKEN=… node bench.mjs --only=B2 --captur
 
 Les clés ne sont ni écrites ni journalisées ; l'audio synthétisé est mis en cache dans `out/` (ignoré par git).
 Résultats du 2026-11-02 : `docs/features/F-239/CADRAGE-F-239-jarvis-entend-juste.md`.
+
+## Banc de conversation (porte de déploiement de Jarvis)
+
+Le pré-banc qui fait foi exécute **le code même de la passerelle** (jeu `CONVERSATION`) contre la vraie API, en
+plusieurs passages pour mesurer la variance :
+
+```bash
+cd backend && ANTHROPIC_API_KEY=… JARVIS_LIVE_BENCH=2 ./mvnw -o test -Dtest='JarvisConversationBenchLiveTest#theRealGatewayCodeAgainstTheRealModel'
+# sonde d'une parole : JARVIS_LIVE_BENCH=1 JARVIS_LIVE_PROBE="Où en est le portail d'Orion ?" … -Dtest='JarvisConversationBenchLiveTest#probe'
+```
+
+`conversation.mjs` (hors passerelle) est déclassé : il a surestimé la prod (94,1 % contre 82,4 % le 02/11).

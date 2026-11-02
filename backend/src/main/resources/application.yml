@@ -629,7 +629,9 @@ app:
       effort: ${APP_JARVIS_FAST_EFFORT:low}
       max-tokens: ${APP_JARVIS_FAST_MAX_TOKENS:600}
       monthly-budget-eur: ${APP_JARVIS_FAST_MONTHLY_BUDGET_EUR:20}
-      first-token-timeout: ${APP_JARVIS_FAST_FIRST_TOKEN_TIMEOUT:PT3S}
+      # F-239 / SF-239-13 : 3 s (calibre pour Haiku) faisait deleguer a Opus - plus lent et ~1 EUR - les reponses
+      # de Sonnet 5.5 dont le premier jeton arrive en 3-4 s ; 8 s.
+      first-token-timeout: ${APP_JARVIS_FAST_FIRST_TOKEN_TIMEOUT:PT8S}
     # F-235 / SF-235-08 (D16) : LE BANC du cerveau rapide (POST /api/admin/jarvis/fast-brain/bench, ADMIN) — le juge
     # qui note chaque cas. La mise en service (enabled=true ci-dessus) suit un passage dont la porte est franchie.
     fast-brain-bench:
