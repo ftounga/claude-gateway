@@ -24,7 +24,9 @@ public final class RenderCounts {
             // gestes (tourner, pincer, molette, double toucher) et touchers par type de nœud
             "gestures", "t_client", "t_subject", "t_chantier", "t_step", "t_person", "t_core",
             // passages au grand cerveau, entrées jouées / sautées, bascules 3D → 2D en cours de session
-            "brains", "entries", "entries_skipped", "to2d");
+            "brains", "entries", "entries_skipped", "to2d",
+            // SF-236-26 — vues de l'itération 4 ouvertes : replays, présentation, cockpit externe, veilleur, activité
+            "replays", "presentations", "cockpits", "nights", "activity");
 
     /** Au plus autant par clé et par déclaration (une session : 24 h de secondes au plus). */
     public static final int MAX_PER_REPORT = 86_400;
