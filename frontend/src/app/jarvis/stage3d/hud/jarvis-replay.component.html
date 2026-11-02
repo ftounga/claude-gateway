@@ -1,0 +1,32 @@
+<!-- F-236 / SF-236-22 — NF-10 « Pendant votre absence » : proposé une fois à l'ouverture. -->
+@if (!bar() && absence().length > 0) {
+  <div class="rp rp--offer" role="status">
+    <span>{{ absence().length }} tour{{ absence().length > 1 ? 's' : '' }} depuis votre dernière visite</span>
+    <button type="button" class="rp__btn rp__btn--main" (click)="playAbsence()">▶ Voir ce qui s’est passé</button>
+    <button type="button" class="rp__btn" aria-label="Ignorer" (click)="dismissAbsence()">✕</button>
+  </div>
+}
+<!-- NF-9 — la barre de lecture (T-R) : ×1 / ×4, pause, image par image, suivant, fermer. -->
+@if (bar(); as b) {
+  <div class="rp" role="region" aria-label="Replay d’un tour">
+    <span class="rp__tag">REPLAY</span>
+    <span class="rp__what">
+      @if (b.count > 1) {<span class="rp__num">{{ b.index }}/{{ b.count }}</span>}
+      <span class="rp__num">{{ b.time }}</span> {{ b.ask }}
+    </span>
+    @if (frame()?.scene; as s) {
+      <span class="rp__scene" aria-live="polite">{{ s.libelle }}{{ s.count > 1 ? ' ×' + s.count : '' }}</span>
+    }
+    <span class="rp__track" aria-hidden="true"><i [style.width.%]="b.progress"></i></span>
+    <button type="button" class="rp__btn" aria-label="Image précédente" (click)="step(-1)">⏮</button>
+    <button type="button" class="rp__btn rp__btn--main" [attr.aria-label]="b.paused ? 'Lecture' : 'Pause'"
+            (click)="togglePause()">{{ b.paused ? '▶' : '⏸' }}</button>
+    <button type="button" class="rp__btn" aria-label="Image suivante" (click)="step(1)">⏭</button>
+    <button type="button" class="rp__btn" [attr.aria-pressed]="b.speed === 1" (click)="setSpeed(1)">×1</button>
+    <button type="button" class="rp__btn" [attr.aria-pressed]="b.speed === 4" (click)="setSpeed(4)">×4</button>
+    @if (b.count > 1) {
+      <button type="button" class="rp__btn" aria-label="Tour suivant" (click)="skip()">Suivant</button>
+    }
+    <button type="button" class="rp__btn" aria-label="Fermer le replay" (click)="stop()">✕</button>
+  </div>
+}

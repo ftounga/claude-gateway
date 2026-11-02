@@ -353,6 +353,12 @@
               }
               <span>{{ t.actions }} action{{ t.actions > 1 ? 's' : '' }}{{ t.voice ? ' · dit à Jarvis' : '' }}</span>
             </p>
+            @if (t.pearls.length > 0) {
+              <!-- SF-236-22 (NF-9) — revoir le tour : lecteur privé, ×1 / ×4, pause, image par image. -->
+              <button type="button" class="ck__load ck__replay" [disabled]="turn().active" (click)="replayTurn(t)">
+                ▶ Rejouer ce tour
+              </button>
+            }
           </div>
         }
       }

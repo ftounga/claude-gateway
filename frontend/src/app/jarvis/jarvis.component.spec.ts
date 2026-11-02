@@ -14,7 +14,8 @@ import { signal as ngSignal } from '@angular/core';
 /** F-234 / SF-234-10 — les relevés existants, vus par leurs signaux seulement. */
 const notificationCenter = { items: ngSignal<{ id: string; event: string; workspaceId: string | null }[]>([]) };
 const liveTerminals = { registry: ngSignal<{ terminals: { workspaceId: string }[] } | null>(null) };
-import { AtelierStreamHandlers, WorkspaceSummary } from '../core/models/atelier.models';
+import { AtelierMessage, AtelierStreamHandlers, WorkspaceSummary } from '../core/models/atelier.models';
+import { trackOf } from './stage3d/hud/jarvis-replay';
 import { AtelierService } from '../core/services/atelier.service';
 import { DictationService } from '../core/services/dictation.service';
 import { JarvisVoiceService } from '../core/services/jarvis-voice.service';
@@ -184,6 +185,42 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     jarvis.showLocal('connectes');
     expect(jarvis.stageSignals().shown).toEqual(['h-cagip']);
     jarvis.ngOnDestroy();
+  }));
+
+  it('F-236 / SF-236-22 — replay : l’image du lecteur privé remplace celle du bus, jamais alimenté ; un tour vivant l’arrête', fakeAsync(() => {
+    configure({});
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    const jarvis = fixture.componentInstance;
+    const bus = TestBed.inject(JarvisSceneBus);
+    bus.setUniverse(testUniverse());
+    const before = bus.state();
+    const feeds = ['action', 'output', 'text', 'done', 'turnStarted', 'plan'] as const;
+    const spies = feeds.map((m) => spyOn(bus, m).and.callThrough());
+    const messages = [
+      { id: 'u1', role: 'USER', createdAt: '2026-11-02T08:10:00Z', content: 'Bascule' },
+      { id: 'a1', role: 'ASSISTANT', createdAt: '2026-11-02T08:11:00Z', content: 'Fait.', terminal: {
+        blocks: [{ tool: 'bash', command: 'kubectl get pods', toolUseId: null, output: '', hasOutput: false,
+          error: false }], omittedBlocks: 0, inputTokens: 0, outputTokens: 0, activeSeconds: 0 } },
+    ] as unknown as AtelierMessage[];
+    const track = trackOf(messages, 'u1', testUniverse(), null)!;
+    const replay = jarvis.replayView()!;
+    replay.play([track]);
+    expect(jarvis.stageSignals().scene?.id).toBe('S3');
+    expect(jarvis.stageSignals().turnActive).toBeTrue();
+    expect(jarvis.stageSignals().pulses).toBe(1);
+    tick(1000);
+    for (const spy of spies) {
+      expect(spy).not.toHaveBeenCalled();
+    }
+    expect(bus.state()).toBe(before);
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).querySelector('.rp')?.textContent).toContain('REPLAY');
+    replay.stop();
+    expect(jarvis.stageSignals().scene).toBeNull();
+    jarvis.ngOnDestroy();
+    fixture.destroy();
   }));
 
   it('F-236 / SF-236-01 — 3D possible : bouton « Vue 2D » proposé, masqué en mode sobre', fakeAsync(() => {

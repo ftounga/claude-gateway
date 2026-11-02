@@ -1,5 +1,5 @@
 import {
-  Component, DestroyRef, InjectionToken, NgZone, OnDestroy, OnInit, ViewChild, computed, effect, inject, signal,
+  Component, DestroyRef, InjectionToken, NgZone, OnDestroy, OnInit, ViewChild, computed, effect, inject, signal, viewChild,
   untracked,
 } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
@@ -61,6 +61,7 @@ import { JarvisSceneBus } from './scenes/jarvis-scene-bus.service';
 import { JarvisSceneComponent } from './scenes/jarvis-scene.component';
 import { JarvisConstellationComponent } from './scenes/jarvis-constellation.component';
 import { JarvisCockpitComponent } from './stage3d/hud/jarvis-cockpit.component';
+import { JarvisReplayComponent } from './stage3d/hud/jarvis-replay.component';
 import { JarvisStage3dComponent } from './stage3d/jarvis-stage-3d.component';
 import { holoCssVars } from './stage3d/jarvis-motion';
 import { BrainEnd } from './stage3d/jarvis-brains';
@@ -119,7 +120,7 @@ export function companionOffer(version: JarvisCompanionVersion, installed: numbe
  */
 @Component({
   selector: 'app-jarvis',
-  imports: [JarvisCockpitComponent, JarvisCompanionsComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatIconModule, MatMenuModule],
+  imports: [JarvisCockpitComponent, JarvisCompanionsComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatIconModule, MatMenuModule],
   templateUrl: './jarvis.component.html',
   styleUrl: './jarvis.component.scss',
   providers: [JarvisAppUpdate],
@@ -1525,6 +1526,17 @@ export class JarvisComponent implements OnInit, OnDestroy {
   /** F-236 / SF-236-02 — ce que la scène 3D lit de l'écran (H2, H6, H9, H10) ; rien n'est modifié. */
   readonly stageSignals = computed<ScreenSignals>(() => {
     const reader = this.scenes.state();
+    // SF-236-22 (NF-9) — pendant un replay, l'image du lecteur privé remplace celle du bus (jamais alimenté).
+    const replay = this.replayView()?.frame() ?? null;
+    if (replay) {
+      return {
+        state: 'reflexion', frozen: false, waiting: false, conversing: false, wakeCalls: this.wakeCalls(),
+        delegations: 0, fastBrainOn: this.fastBrainOn(), turnActive: true, brainEnd: 'normal',
+        universe: this.scenes.universe(), subjectId: this.scenes.subjectId(), lit: replay.lit, said: [],
+        shown: null, scene: replay.scene, pulses: replay.pulses, spokenTickets: [], stepsDone: replay.stepsDone,
+        showFocus: null, ambient: null, admin: this.admin(),
+      };
+    }
     return {
       state: this.state(),
       frozen: reader.frozen,
@@ -1650,6 +1662,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
   /** F-236 / SF-236-05 — la sortie T-S est en cours. */
   readonly leaving = signal(false);
   @ViewChild('stage3d') private stage3dRef?: JarvisStage3dComponent;
+  /** F-236 / SF-236-22 — le replay (lecteur privé) et le tour demandé par `?replay=<messageId>`. */
+  readonly replayView = viewChild(JarvisReplayComponent);
+  readonly replayRequested: string | null = this.route.snapshot.queryParamMap.get('replay');
+  readonly replayUniverse = computed(() => this.scenes.universe());
+  readonly liveTurn = computed(() => this.scenes.turnActive());
 
   /** F-236 / SF-236-05 — le premier toucher, n'importe où, saute l'entrée cinématique. */
   firstTouch(): void {

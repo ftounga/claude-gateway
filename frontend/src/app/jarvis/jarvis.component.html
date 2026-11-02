@@ -199,4 +199,7 @@
 <app-jarvis-cockpit #cockpit [stage]="stage3d" [signals]="stageSignals()" [sober]="sober()"
                     [toSendAdded]="toSendAdded()" [shownFilter]="localShowFilter()"
                     (choose)="touchSubject($event)" (show)="showLocal($event)"
-                    (showSearch)="showLocal($event.filter, $event.client)" />
+                    (showSearch)="showLocal($event.filter, $event.client)" (replay)="replay.play([$event])" />
+<!-- F-236 / SF-236-22 — replay d'un tour (NF-9) et « Pendant votre absence » (NF-10) : lecteur privé, 3D et 2D. -->
+<app-jarvis-replay #replay [universe]="replayUniverse()" [subjectId]="subjectId()"
+                   [liveTurn]="liveTurn()" [requested]="replayRequested" />

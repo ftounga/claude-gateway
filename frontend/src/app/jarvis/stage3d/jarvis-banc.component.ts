@@ -4,6 +4,9 @@ import { bancPlan, bancScreen } from './jarvis-banc-scenes';
 import { JARVIS_BANC, JarvisStage3dComponent } from './jarvis-stage-3d.component';
 import { MOTION_DURATIONS, ease, holoCssVars } from './jarvis-motion';
 import { JarvisCockpitComponent } from './hud/jarvis-cockpit.component';
+import { JarvisReplayComponent } from './hud/jarvis-replay.component';
+import { trackOf } from './hud/jarvis-replay';
+import { testUniverse } from '../scenes/jarvis-universe.fixture';
 import { OPEN_FOLDS, writeFolds } from './hud/jarvis-cockpit-layout';
 import { ShowFilter } from '../scenes/jarvis-show';
 import { Observable, of } from 'rxjs';
@@ -19,13 +22,16 @@ import { JARVIS_DAY_HISTORY } from './hud/jarvis-cockpit.component';
  */
 @Component({
   selector: 'app-jarvis-banc',
-  imports: [JarvisStage3dComponent, JarvisCockpitComponent],
+  imports: [JarvisStage3dComponent, JarvisCockpitComponent, JarvisReplayComponent],
   template: `
     <app-jarvis-stage-3d #stage [withCore]="true" [planOverride]="staged.plan" [voiceLevel]="voice"
                          [labelLayer]="labels" [insets]="cockpit ? cockpitRef()?.insets() ?? noInsets : noInsets" />
     <div #labels class="jv3d-labels"></div>
     @if (cockpit) {
       <app-jarvis-cockpit #cockpitRef [stage]="stage" [signals]="screen" [shownFilter]="shownFilter" />
+    }
+    @if (scene === 'cockpit-replay') {
+      <app-jarvis-replay #replayRef />
     }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -36,7 +42,7 @@ import { JARVIS_DAY_HISTORY } from './hud/jarvis-cockpit.component';
   styles: [':host { display: block; min-height: 100dvh; background: #0B1020; }'],
 })
 export class JarvisBancComponent {
-  private readonly scene = inject(JARVIS_BANC)?.scene ?? 'coeur';
+  protected readonly scene = inject(JARVIS_BANC)?.scene ?? 'coeur';
   private readonly t = inject(JARVIS_BANC)?.t ?? 0;
   protected readonly vars = holoCssVars();
   protected readonly staged = bancPlan(this.scene,
@@ -47,6 +53,7 @@ export class JarvisBancComponent {
   protected readonly noInsets = { left: 0, right: 0 };
   protected readonly shownFilter: ShowFilter | null = this.scene === 'cockpit-journee' ? 'chantiers-bloques' : null;
   protected readonly cockpitRef = viewChild<JarvisCockpitComponent>('cockpitRef');
+  protected readonly replayRef = viewChild<JarvisReplayComponent>('replayRef');
 
   constructor() {
     if (this.cockpit) {
@@ -89,6 +96,18 @@ export class JarvisBancComponent {
           body.style.opacity = (1 - p).toFixed(3);
         }
       }, 1500));
+    }
+    if (this.scene === 'cockpit-replay') {
+      // SF-236-22 — le tour de 9 h 15 rejoué à ×4, en pause à l'instant t du banc.
+      afterNextRender(() => setTimeout(() => bancHistory().subscribe((messages) => {
+        const track = trackOf(messages, 'u3', testUniverse(), 's-forge');
+        const replay = this.replayRef();
+        if (track && replay) {
+          replay.play([track]);
+          replay.setSpeed(4);
+          replay.togglePause();
+        }
+      }), 1500));
     }
     if (this.scene === 'cockpit-vues') {
       // SF-236-20 — au téléphone, le volet « Aujourd'hui » ouvert depuis « ☰ Vues ».
