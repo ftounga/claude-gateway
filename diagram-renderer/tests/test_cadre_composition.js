@@ -2,7 +2,7 @@
  * F-238 / SF-238-03 — la composition des zones : AZ parallèles et de taille égale, gabarits identiques ⇒ même
  * mise en page, public avant privé, bande régionale, acteurs externes à l'entrée, grille de 8 px (G5).
  *
- *   cd diagram-renderer && npm ci && node --test tests/*.js
+ *   cd diagram-renderer && npm ci && npm test   (en série : le test de performance mesure un temps)
  */
 
 "use strict";

@@ -198,6 +198,91 @@ function g5Grille(svg, graph) {
   return { defects };
 }
 
+/** Recouvrement STRICT de deux rectangles (se toucher n'est pas chevaucher). */
+function overlaps(a, b) {
+  return Math.max(a.x, b.x) < Math.min(a.x + a.w, b.x + b.w) - 0.5
+    && Math.max(a.y, b.y) < Math.min(a.y + a.h, b.y + b.h) - 0.5;
+}
+
+/** Un segment orthogonal passe-t-il À L'INTÉRIEUR d'un rectangle ? */
+function segmentCrosses(a, b, r) {
+  if (a.y === b.y) {
+    return a.y > r.y && a.y < r.y + r.h && Math.max(Math.min(a.x, b.x), r.x) < Math.min(Math.max(a.x, b.x), r.x + r.w);
+  }
+  return a.x > r.x && a.x < r.x + r.w && Math.max(Math.min(a.y, b.y), r.y) < Math.min(Math.max(a.y, b.y), r.y + r.h);
+}
+
+/** Longueur commune de deux intervalles. */
+function common(a1, a2, b1, b2) {
+  return Math.max(0, Math.min(Math.max(a1, a2), Math.max(b1, b2)) - Math.max(Math.min(a1, a2), Math.min(b1, b2)));
+}
+
+const HUG_DISTANCE = 8;
+const HUG_MAX = 16;
+
+/**
+ * G3 — Collisions : une étiquette de flux ne chevauche ni une icône, ni un libellé de nœud, ni un bandeau de
+ * zone, ni une autre étiquette ; aucune liaison ne passe sous une icône ; aucune liaison ne longe une bordure
+ * de zone (à 8 px ou moins) sur plus de 16 px.
+ */
+function g3Collisions(svg, graph, model) {
+  const { headerRect } = require("./cadre.js");
+  const defects = [];
+  const nodes = model ? model.nodes : graph.nodes;
+  const shapes = nodes.map((n) => ({ id: n.id, ...shapeOf(n) }));
+  const headers = graph.zones.map((z) => ({ id: z.id, r: headerRect(z) }));
+  const labelled = graph.edges.filter((e) => e.labelBox);
+  labelled.forEach((e, i) => {
+    const box = e.labelBox;
+    for (const s of shapes) {
+      if (overlaps(box, s.icon)) {
+        defects.push(`étiquette de ${e.id} sur l'icône « ${s.id} »`);
+      }
+      if (overlaps(box, s.label)) {
+        defects.push(`étiquette de ${e.id} sur le libellé « ${s.id} »`);
+      }
+    }
+    for (const h of headers) {
+      if (overlaps(box, h.r)) {
+        defects.push(`étiquette de ${e.id} sur le libellé de zone « ${h.id} »`);
+      }
+    }
+    for (const other of labelled.slice(i + 1)) {
+      if (overlaps(box, other.labelBox)) {
+        defects.push(`étiquettes de ${e.id} et ${other.id} superposées`);
+      }
+    }
+  });
+  for (const e of graph.edges) {
+    for (let k = 1; k < e.points.length; k += 1) {
+      const a = e.points[k - 1];
+      const b = e.points[k];
+      for (const s of shapes) {
+        if (segmentCrosses(a, b, s.icon)) {
+          defects.push(`liaison ${e.id} sous l'icône « ${s.id} »`);
+        }
+      }
+      for (const z of graph.zones) {
+        const r = z.box;
+        if (a.y === b.y) {
+          for (const line of [r.y, r.y + r.h]) {
+            if (Math.abs(a.y - line) <= HUG_DISTANCE && common(a.x, b.x, r.x, r.x + r.w) > HUG_MAX) {
+              defects.push(`liaison ${e.id} longe la bordure de « ${z.id} »`);
+            }
+          }
+        } else {
+          for (const line of [r.x, r.x + r.w]) {
+            if (Math.abs(a.x - line) <= HUG_DISTANCE && common(a.y, b.y, r.y, r.y + r.h) > HUG_MAX) {
+              defects.push(`liaison ${e.id} longe la bordure de « ${z.id} »`);
+            }
+          }
+        }
+      }
+    }
+  }
+  return { defects };
+}
+
 module.exports = {
-  g1Orthogonalite, g2Extremites, g4Imbrication, g5Grille, g6Conventions, distanceToBorder, pointsOf,
+  g1Orthogonalite, g2Extremites, g3Collisions, g4Imbrication, g5Grille, g6Conventions, distanceToBorder, pointsOf,
 };

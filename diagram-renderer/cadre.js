@@ -337,26 +337,97 @@ async function layoutCadre(prepared) {
   return model;
 }
 
-/** Les étiquettes de flux : au milieu du plus long segment de leur liaison (SF-238-03). */
+function rectsOverlap(a, b) {
+  return Math.max(a.x, b.x) < Math.min(a.x + a.w, b.x + b.w) - 0.5
+    && Math.max(a.y, b.y) < Math.min(a.y + a.h, b.y + b.h) - 0.5;
+}
+
+/** Combien de segments (d'AUTRES liaisons) traversent un rectangle : une étiquette ne doit pas masquer un trait. */
+function segmentsUnder(box, segments) {
+  let count = 0;
+  for (const [a, b] of segments) {
+    const r = { x: Math.min(a.x, b.x) - 0.5, y: Math.min(a.y, b.y) - 0.5,
+      w: Math.abs(a.x - b.x) + 1, h: Math.abs(a.y - b.y) + 1 };
+    if (rectsOverlap(box, r)) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+/**
+ * Les étiquettes de flux (SF-238-04, cadrage §4.2 étape 4) : sur le plus long segment de leur liaison, centrées ;
+ * déplacées le long du segment, puis sur le segment suivant, puis à côté du trait, si elles chevauchent quelque
+ * chose (icône, libellé de nœud, bandeau de zone, autre étiquette — garde G3). Une seule étiquette par liaison.
+ * À collision égale, celle qui masque le moins d'autres traits.
+ */
 function placeLabels(model) {
+  const hard = [];
+  for (const n of model.nodes) {
+    const s = shapeOf(n);
+    hard.push(s.icon, s.label);
+  }
+  for (const z of model.zones) {
+    hard.push(headerRect(z));
+  }
+  const segmentsOf = (edge) => edge.points.slice(1).map((p, i) => [edge.points[i], p]);
+  const W = model.bounds.w;
+  const H = model.bounds.h;
   for (const edge of model.edges) {
     if (!edge.label) {
       continue;
     }
     const w = textWidth(edge.label, EDGE_FONT) + 8;
     const h = LINE_H;
-    let best = null;
-    for (let i = 1; i < edge.points.length; i += 1) {
-      const a = edge.points[i - 1];
-      const b = edge.points[i];
-      const length = Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
-      if (!best || length > best.length) {
-        best = { length, a, b };
+    const others = model.edges.filter((e) => e !== edge).flatMap(segmentsOf);
+    const segments = segmentsOf(edge)
+      .map(([a, b], i) => ({ a, b, i, length: Math.abs(a.x - b.x) + Math.abs(a.y - b.y) }))
+      .sort((u, v) => v.length - u.length || u.i - v.i);
+    const candidates = [];
+    for (const s of segments) {
+      const horizontal = s.a.y === s.b.y;
+      const extent = horizontal ? w : h;
+      const half = Math.max(0, Math.floor((s.length - extent) / 2 / GRID));
+      const cx = (s.a.x + s.b.x) / 2;
+      const cy = (s.a.y + s.b.y) / 2;
+      for (let k = 0; k <= half; k += 1) {
+        for (const sign of k ? [-1, 1] : [1]) {
+          const d = sign * k * GRID;
+          const x = horizontal ? cx + d : cx;
+          const y = horizontal ? cy : cy + d;
+          candidates.push({ x: Math.round(x - w / 2), y: Math.round(y - h / 2), w, h });
+        }
       }
     }
-    const cx = (best.a.x + best.b.x) / 2;
-    const cy = (best.a.y + best.b.y) / 2;
-    edge.labelBox = { x: Math.round(cx - w / 2), y: Math.round(cy - h / 2), w, h };
+    for (const s of segments) {
+      // À côté du trait, au milieu du segment : au-dessus / dessous, ou à gauche / droite.
+      const cx = (s.a.x + s.b.x) / 2;
+      const cy = (s.a.y + s.b.y) / 2;
+      if (s.a.y === s.b.y) {
+        candidates.push({ x: Math.round(cx - w / 2), y: Math.round(cy - h - 2), w, h });
+        candidates.push({ x: Math.round(cx - w / 2), y: Math.round(cy + 2), w, h });
+      } else {
+        candidates.push({ x: Math.round(cx + 4), y: Math.round(cy - h / 2), w, h });
+        candidates.push({ x: Math.round(cx - w - 4), y: Math.round(cy - h / 2), w, h });
+      }
+    }
+    let chosen = null;
+    let chosenSoft = Infinity;
+    for (const c of candidates) {
+      if (c.x < 0 || c.y < 0 || c.x + c.w > W || c.y + c.h > H || hard.some((r) => rectsOverlap(c, r))) {
+        continue;
+      }
+      const soft = segmentsUnder(c, others);
+      if (soft < chosenSoft) {
+        chosen = c;
+        chosenSoft = soft;
+        if (soft === 0) {
+          break;
+        }
+      }
+    }
+    edge.labelBox = chosen || candidates[0];
+    hard.push(edge.labelBox);
   }
 }
 
