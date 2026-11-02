@@ -168,6 +168,14 @@ public class AccountService {
         this.jarvisPreferenceRepository = repository;
     }
 
+    /** Le portrait de Jarvis et ses souvenirs (F-241 / SF-241-01) ; purge nommée à la suppression du compte. */
+    private fr.claudegateway.jarvis.portrait.JarvisPortraitService jarvisPortraitService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJarvisPortraitService(fr.claudegateway.jarvis.portrait.JarvisPortraitService service) {
+        this.jarvisPortraitService = service;
+    }
+
     /** Les veilles Jarvis (F-230 / SF-230-01) ; purge nommée à la suppression du compte. */
     private fr.claudegateway.atelier.veille.JarvisWatchRepository jarvisWatchRepository;
 
@@ -506,6 +514,10 @@ public class AccountService {
         // Les préférences de Jarvis (F-235 / SF-235-09).
         if (jarvisPreferenceRepository != null) {
             jarvisPreferenceRepository.deleteByUser(userId);
+        }
+        // Le portrait de Jarvis, ses souvenirs et (SF-241-04) son journal des allusions (F-241) : physique.
+        if (jarvisPortraitService != null) {
+            jarvisPortraitService.purgeUser(userId);
         }
         // Les captures d'énoncés de Jarvis (F-239 / SF-239-03) : objets puis lignes.
         if (jarvisCaptureService != null) {
