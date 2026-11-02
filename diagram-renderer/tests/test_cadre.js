@@ -5,7 +5,7 @@
  * description passe par `cloud.py --prepare` (validation, icônes résolues), puis par `cadre.js`. Ils ont
  * besoin de python3 + `diagrams` (présents dans l'image) et d'elkjs (`npm ci` dans diagram-renderer/).
  *
- *   cd diagram-renderer && npm ci && node --test tests/*.js
+ *   cd diagram-renderer && npm ci && npm test   (en série : le test de performance mesure un temps)
  */
 
 "use strict";

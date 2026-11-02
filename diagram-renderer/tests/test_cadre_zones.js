@@ -1,7 +1,7 @@
 /**
  * F-238 / SF-238-02 — les zones AWS conformes : `kind`, inférence signalée, imbrication stricte, gardes G4/G6.
  *
- *   cd diagram-renderer && npm ci && node --test tests/*.js
+ *   cd diagram-renderer && npm ci && npm test   (en série : le test de performance mesure un temps)
  */
 
 "use strict";

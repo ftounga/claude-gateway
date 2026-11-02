@@ -4,7 +4,7 @@
   "description": "Service de rendu de diagrammes (F-142, F-238). L'image installe ses dependances dans le Dockerfile (versions identiques) ; ce fichier sert aux tests locaux : npm ci && npm test.",
   "license": "UNLICENSED",
   "scripts": {
-    "test": "node --test tests/*.js"
+    "test": "node --test --test-concurrency=1 tests/*.js"
   },
   "dependencies": {
     "elkjs": "0.9.3"

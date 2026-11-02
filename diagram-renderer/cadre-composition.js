@@ -29,6 +29,8 @@ const RANK_GAP = 64;
 /** Écart entre deux unités d'une zone (zones sœurs, bloc de nœuds) : la place d'un faisceau de liaisons. */
 const UNIT_GAP = 48;
 const PAD = { top: 48, left: 24, right: 24, bottom: 24 };
+/** Unités sans lien entre elles posées côte à côte sur un même rang du flux, au plus. */
+const MAX_SIDE_BY_SIDE = 4;
 const SUBNETS = new Set(["subnet_public", "subnet_private"]);
 
 const snap = (v) => Math.round(v / GRID) * GRID;
@@ -174,6 +176,14 @@ async function compose(prepared, direction) {
       return emptyBlock();
     }
     const ids = new Set(nodes.map((n) => n.id));
+    const internal = prepared.edges.some((e) => e.from !== e.to && ids.has(e.from) && ids.has(e.to));
+    if (!internal) {
+      // Sans lien interne, ELK ne ferait que les aligner sur un rang : on le fait sans lui (même résultat, plus vite).
+      return stack(nodes.map((n) => {
+        const c = cellOf(n);
+        return { w: c.w, h: c.h, items: [{ kind: "node", id: n.id, x: 0, y: 0, w: c.w, h: c.h }] };
+      }), cross, NODE_GAP, "start");
+    }
     const graph = {
       id: "feuille",
       layoutOptions: {
@@ -216,7 +226,7 @@ async function compose(prepared, direction) {
     const g = groups.get(gid);
     const inner = await containerBlock(gid);
     const header = (g.kind === "az" || g.kind === "security_group" || g.kind === "generic" ? 12 : 40)
-      + textWidth(g.label, 13) + 16;
+      + textWidth(g.label, 13) + 48;
     const w = snapUp(Math.max(inner.w + PAD.left + PAD.right, header, 96));
     const h = snapUp(inner.h + PAD.top + PAD.bottom);
     const dx = PAD.left + snapDown((w - PAD.left - PAD.right - inner.w) / 2);
@@ -272,8 +282,14 @@ async function compose(prepared, direction) {
       units.push({ members: new Set([z]), key: firstOf(z), block: await zoneBlock(z) });
     }
     // Les unités d'un même rang du flux (sans lien entre elles) se rangent CÔTE À CÔTE ; les rangs se suivent.
-    const levels = flowLevels(units, gid);
-    let block = stack(levels.map((level) => stack(level.map((u) => u.block), cross, UNIT_GAP, "start")),
+    // Au-delà de MAX_SIDE_BY_SIDE unités sur un rang, le rang passe à la ligne : un schéma étalé ne se lit plus.
+    const rows = [];
+    for (const level of flowLevels(units, gid)) {
+      for (let i = 0; i < level.length; i += MAX_SIDE_BY_SIDE) {
+        rows.push(level.slice(i, i + MAX_SIDE_BY_SIDE));
+      }
+    }
+    let block = stack(rows.map((row) => stack(row.map((u) => u.block), cross, UNIT_GAP, "start")),
       main, UNIT_GAP, "center");
     if (useBand) {
       block = stack([block, bandBlock(direct)], cross, UNIT_GAP, "start");

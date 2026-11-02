@@ -26,6 +26,16 @@ const OVERLAP = 60;
 const CROSSING = 3;
 const FOREIGN_ZONE = 40;
 const PORT_USED = 12;
+/**
+ * A* pondéré (SF-238-04) : l'heuristique de Manhattan est multipliée. Le chemin reste orthogonal et évite les
+ * obstacles ; il peut être un peu plus long que l'optimum. Presque exact sur un schéma courant ; plus glouton
+ * au-delà de DENSE_EDGES liaisons, pour tenir 2 s aux bornes de F-142 (60 nœuds, 120 liens).
+ */
+const HEURISTIC_WEIGHT = 1.2;
+const DENSE_WEIGHT = 4;
+const DENSE_EDGES = 40;
+/** Fenêtre de recherche autour des extrémités, en cases (40 × 8 px = 320 px) ; toute la grille si elle échoue. */
+const WINDOW = 40;
 const DIRS = [[1, 0], [0, 1], [-1, 0], [0, -1]]; // droite, bas, gauche, haut
 
 function textWidth(text, px) {
@@ -248,12 +258,22 @@ function routeAll(model) {
     return out;
   };
 
+  // États de la recherche, remis à zéro par GÉNÉRATION (pas de remplissage de 4N cases par liaison).
   const g = new Float64Array(4 * N);
   const prev = new Int32Array(4 * N);
+  const seenAt = new Int32Array(4 * N);
+  const closedAt = new Int32Array(4 * N);
+  let generation = 0;
   const notices = [];
   const nodeById = new Map(model.nodes.map((n) => [n.id, n]));
+  const weight = model.edges.length > DENSE_EDGES ? DENSE_WEIGHT : HEURISTIC_WEIGHT;
 
+  /** Une liaison : d'abord dans une FENÊTRE autour de ses extrémités, puis, faute de chemin, sur toute la grille. */
   function search(edge) {
+    return searchIn(edge, WINDOW) || searchIn(edge, Infinity);
+  }
+
+  function searchIn(edge, margin) {
     const from = nodeById.get(edge.from);
     const to = nodeById.get(edge.to);
     const sources = portsOf(edge.from, "src");
@@ -274,29 +294,37 @@ function routeAll(model) {
     }
     const tx = targets.map((t) => t.stub % cols);
     const ty = targets.map((t) => Math.floor(t.stub / cols));
+    // Heuristique : distance de Manhattan au rectangle englobant des ports d'arrivée (admissible, et bon marché).
+    const tx0 = Math.min(...tx);
+    const tx1 = Math.max(...tx);
+    const ty0 = Math.min(...ty);
+    const ty1 = Math.max(...ty);
     const h = (p) => {
       const x = p % cols;
       const y = (p - x) / cols;
-      let best = Infinity;
-      for (let i = 0; i < tx.length; i += 1) {
-        const d = Math.abs(x - tx[i]) + Math.abs(y - ty[i]);
-        if (d < best) {
-          best = d;
-        }
-      }
-      return best;
+      return Math.max(tx0 - x, 0, x - tx1) + Math.max(ty0 - y, 0, y - ty1);
     };
-    g.fill(Infinity);
-    prev.fill(-1);
+    const all = [...sources.map((s) => s.stub), ...targets.map((t) => t.stub)];
+    const xs = all.map((p) => p % cols);
+    const ys = all.map((p) => Math.floor(p / cols));
+    const wx0 = Math.max(0, Math.min(...xs) - margin);
+    const wx1 = Math.min(cols - 1, Math.max(...xs) + margin);
+    const wy0 = Math.max(0, Math.min(...ys) - margin);
+    const wy1 = Math.min(rows - 1, Math.max(...ys) + margin);
+    generation += 1;
+    const gen = generation;
+    const gOf = (s) => (seenAt[s] === gen ? g[s] : Infinity);
     const heap = new Heap();
     const startOf = new Map();
     for (const s of sources) {
       const st = s.stub * 4 + s.dir;
       const cost = s.cost + 1;
-      if (cost < g[st]) {
+      if (cost < gOf(st)) {
         g[st] = cost;
+        seenAt[st] = gen;
+        prev[st] = -1;
         startOf.set(st, s);
-        heap.push(cost + h(s.stub), st);
+        heap.push(cost + weight * h(s.stub), st);
       }
     }
     let best = Infinity;
@@ -307,6 +335,10 @@ function routeAll(model) {
         break;
       }
       const st = heap.pop();
+      if (closedAt[st] === gen) {
+        continue;
+      }
+      closedAt[st] = gen;
       const p = st >> 2;
       const d = st & 3;
       const gs = g[st];
@@ -330,7 +362,7 @@ function routeAll(model) {
         }
         const nx = x + DIRS[nd][0];
         const ny = y + DIRS[nd][1];
-        if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) {
+        if (nx < wx0 || ny < wy0 || nx > wx1 || ny > wy1) {
           continue;
         }
         const q = ny * cols + nx;
@@ -353,10 +385,11 @@ function routeAll(model) {
         }
         const ns = q * 4 + nd;
         const ng = gs + cost;
-        if (ng < g[ns]) {
+        if (ng < gOf(ns)) {
           g[ns] = ng;
+          seenAt[ns] = gen;
           prev[ns] = st;
-          heap.push(ng + h(q), ns);
+          heap.push(ng + weight * h(q), ns);
         }
       }
     }
