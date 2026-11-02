@@ -21,10 +21,11 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { JarvisHumour, JarvisSttTicket } from '../core/models/jarvis.models';
 import { MarkdownPipe } from '../shared/markdown.pipe';
-import { EndOfSpeech, MicMeter, silenceMs } from './jarvis-mic-meter';
+import { EndOfSpeech, MicMeter, SPEECH_LEVEL, silenceMs } from './jarvis-mic-meter';
 import { asksConfirmation, classifyConfirmation, confirmationQuestion } from './jarvis-confirm';
 import {
-  ENROLL_COUNT, MIN_WORD_FRAMES, TemplateWakeWordEngine, enrollThreshold, readWakeProfile, saveWakeProfile,
+  ENROLL_COUNT, MIN_WORD_FRAMES, TemplateWakeWordEngine, WakeEvent, enrollThreshold, readWakeProfile,
+  saveWakeProfile,
 } from './jarvis-wake';
 import { JARVIS_COMPANION_DOWNLOAD_PATH, JarvisService } from '../core/services/jarvis.service';
 import { JarvisCompanionVersion } from '../core/models/jarvis.models';
@@ -51,9 +52,10 @@ import {
   LONG_TURN_MS, OralStream, classifyInterruption, isStopCommand, oralPhrase, subjectSwitch, withEndAnnouncement,
 } from './jarvis-oral';
 import {
-  Conversation, IDLE_PHRASE, IDLE_WAKE_HINT, PAUSE_PHRASE, RELISTEN_DELAY_MS, isNoise, isPauseCommand,
+  Conversation, IDLE_PHRASE, IDLE_WAKE_HINT, PAUSE_PHRASE, RELISTEN_DELAY_MS, isPauseCommand,
 } from './jarvis-conversation';
-import { ExchangeFiller, FILLER_DELAY_MS, FORMULA_CLIPS, FormulaPicker } from './jarvis-phrases';
+import { ExchangeFiller, FORMULA_CLIPS, FormulaPicker, LINKED_FILLER_DELAY_MS, linkedFiller } from './jarvis-phrases';
+import { MAX_LISTEN_MS, SpeechRejection, speechGate } from './jarvis-speech-gate';
 import { JarvisOrbComponent, JarvisState } from './jarvis-orb.component';
 import { JarvisAppUpdate } from './jarvis-app-update';
 import { JarvisCompanionsComponent } from './jarvis-companions.component';
@@ -473,7 +475,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
     this.wakeStarting = true;
     try {
-      await this.wakeEngine.start(() => this.zone.run(() => void this.onWake()));
+      await this.wakeEngine.start((event) => this.zone.run(() => void this.onWake(event)));
     } catch {
       this.wakeOn.set(false);
       this.notice.set('Le mot d’éveil n’a pas pu ouvrir le micro.');
@@ -482,13 +484,31 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** « Jarvis » entendu : il coupe sa voix s'il parlait, et écoute. */
-  private async onWake(): Promise<void> {
+  /** F-239 / SF-239-01 (D2) — après « Jarvis », la parole qui reprend dans ce délai dit que la phrase continue. */
+  static readonly WAKE_CONTINUE_MS = 600;
+  /** Un réveil est en cours de traitement : un autre « Jarvis » est ignoré. */
+  private waking = false;
+
+  /**
+   * « Jarvis » entendu : il coupe sa voix s'il parlait, et écoute. F-239 / SF-239-01 (D2) — « Jarvis » **dans une
+   * phrase** (parole juste avant, ou qui reprend aussitôt) : **aucune formule**, et l'écoute reçoit d'abord l'audio de
+   * la phrase, pour que « Bonjour Jarvis » soit transcrit et reçoive sa réponse. « Jarvis » seul : une formule courte.
+   */
+  private async onWake(event?: WakeEvent): Promise<void> {
     // F-236 / SF-236-02 (N2) — le réveil se voit : onde de choc du cœur 3D.
     this.wakeCalls.update((n) => n + 1);
-    if (this.state() === 'ecoute') {
+    if (this.state() === 'ecoute' || this.waking) {
       return;
     }
+    this.waking = true;
+    try {
+      await this.wakeUpOn(event);
+    } finally {
+      this.waking = false;
+    }
+  }
+
+  private async wakeUpOn(event?: WakeEvent): Promise<void> {
     this.jarvis.usage('WAKE');
     if (this.fastBrainOn()) {
       // F-235 / SF-235-05 (D6) — le mot d'éveil pré-chauffe le cache du cerveau rapide (au plus toutes les 4 min).
@@ -497,16 +517,21 @@ export class JarvisComponent implements OnInit, OnDestroy {
     if (this.state() === 'parole') {
       this.voice.stop();
     }
+    let inPhrase = !!event?.precededBySpeech;
+    if (event && !inPhrase) {
+      await new Promise<void>((resolve) => setTimeout(resolve, JarvisComponent.WAKE_CONTINUE_MS));
+      inPhrase = event.speechAfter();
+    }
     // SF-233-02 / SF-233-11 — une courte formule de réveil, variée et jouée localement — pas en pleine conversation
-    // (l'orbe suffit) —, puis la conversation mains libres reprend.
-    if (!this.conversation.active) {
+    // (l'orbe suffit), ni quand « Jarvis » est dans une phrase (F-239) —, puis la conversation mains libres reprend.
+    if (!this.conversation.active && !inPhrase) {
       const formula = this.formulas.pick('wake', (id) => this.voice.hasClip(id));
       if (formula) {
         await this.voice.playClip(formula.id);
       }
     }
     this.startConversation();
-    await this.listen();
+    await this.listen(inPhrase && event ? event : null);
   }
 
   /**
@@ -569,8 +594,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** Ouvre le micro et suit le niveau ; la phrase se clôt au silence. */
-  async listen(): Promise<void> {
+  /**
+   * Ouvre le micro et suit le niveau ; la phrase se clôt au silence. `preRoll` (F-239) : le réveil dont la phrase
+   * est donnée d'abord à l'écoute en flux.
+   */
+  async listen(preRoll: WakeEvent | null = null): Promise<void> {
     if (!this.dictation.supported) {
       this.notice.set('Ce navigateur ne sait pas enregistrer la voix.');
       this.conversation.pause();
@@ -581,7 +609,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
     this.listenOpening = true;
     try {
-      await this.openListening();
+      await this.openListening(preRoll);
     } finally {
       this.listenOpening = false;
     }
@@ -589,13 +617,24 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   private listenOpening = false;
 
-  private async openListening(): Promise<void> {
+  private async openListening(preRoll: WakeEvent | null): Promise<void> {
     this.notice.set(null);
-    // Le micro passe à la dictée : l'écoute du mot d'éveil se tait d'abord.
-    this.wakeEngine.stop();
+    // Le micro passe à la dictée : l'écoute du mot d'éveil se tait d'abord — sauf (F-239) quand elle garde la phrase
+    // qui contenait « Jarvis » : elle se tait alors à l'ouverture de l'écoute en flux, qui reçoit cette phrase.
+    if (!preRoll) {
+      this.wakeEngine.stop();
+    }
     this.listenStartedAt = performance.now();
+    this.voicedMs = null;
+    this.listenPreRoll = false;
     // F-233 / SF-233-05 — l'écoute en flux d'abord ; sinon (non configurée, refus, réseau) la dictée batch.
-    const streaming = await this.startStreaming();
+    const streaming = await this.startStreaming(preRoll ? () => {
+      const audio = preRoll.takeAudio();
+      this.wakeEngine.stop();
+      this.listenPreRoll = audio.length > 0;
+      return audio;
+    } : null);
+    this.wakeEngine.stop();
     if (!streaming) {
       try {
         await this.dictation.start(LISTEN_AUDIO);
@@ -610,10 +649,23 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const stream = this.live?.listening.stream ?? this.dictation.stream;
     if (stream) {
       this.meter = new MicMeter(stream);
+      this.voicedMs = this.meter.available ? 0 : null;
       let end = new EndOfSpeech(performance.now(), silenceMs());
+      let lastFrame = performance.now();
       this.zone.runOutsideAngular(() => {
         const tick = () => {
           this.micLevel = this.meter?.level() ?? 0;
+          const now = performance.now();
+          // F-239 / SF-239-01 (D3b) — le temps de voix réellement entendu au micro (porte de parole réelle).
+          if (this.voicedMs !== null && this.micLevel >= SPEECH_LEVEL) {
+            this.voicedMs += Math.min(100, now - lastFrame);
+          }
+          lastFrame = now;
+          // F-239 — une écoute ne dure jamais plus de MAX_LISTEN_MS : elle se clôt, et la porte décide.
+          if (now - this.listenStartedAt >= MAX_LISTEN_MS) {
+            this.zone.run(() => void this.finishListening());
+            return;
+          }
           if (end.update(this.micLevel, performance.now())) {
             // SF-233-11 — en conversation, le silence ne clôt pas l'écoute (ni clip, ni envoi, ni session rouverte) :
             // elle continue jusqu'à la fin de la conversation.
@@ -630,6 +682,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
               end = new EndOfSpeech(performance.now(), silenceMs());
               // Les secondes parlées et la durée de parole ne comptent pas le silence.
               this.listenStartedAt = performance.now();
+              this.voicedMs = this.voicedMs === null ? null : 0;
             } else {
               this.zone.run(() => void this.finishListening());
               return;
@@ -659,8 +712,16 @@ export class JarvisComponent implements OnInit, OnDestroy {
   /** SF-233-05 — après une fin de tour forcée par l'écran, on attend la validation du fournisseur au plus autant. */
   static readonly COMMIT_WAIT_MS = 1_500;
 
-  /** Ouvre une session d'écoute en flux ; `false` si elle n'est pas possible (repli sur la dictée). */
-  private async startStreaming(): Promise<boolean> {
+  /** F-239 / SF-239-01 — le temps de voix entendu au micro pendant l'écoute en cours (ms) ; `null` : non mesuré. */
+  private voicedMs: number | null = null;
+  /** F-239 / SF-239-01 — l'écoute en cours a commencé par la phrase du réveil (pré-écoute). */
+  private listenPreRoll = false;
+
+  /**
+   * Ouvre une session d'écoute en flux ; `false` si elle n'est pas possible (repli sur la dictée). `preRoll` (F-239) :
+   * l'audio envoyé avant le micro.
+   */
+  private async startStreaming(preRoll: (() => Float32Array) | null = null): Promise<boolean> {
     if (this.streamOff) {
       return false;
     }
@@ -699,7 +760,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
             void this.finishListening();
           }
         }),
-      });
+      }, preRoll);
     } catch {
       this.jarvis.closeSttSession(ticket.sessionId, 0);
       return false;
@@ -822,8 +883,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
     } catch {
       text = '';
     }
-    if (!text || (isNoise(text) && classifyInterruption(text) !== 'ack')) {
+    // F-239 / SF-239-01 — la détection de voix a confirmé une voix : seule la nature du texte est jugée par la porte.
+    const rejection = speechGate(text, { voicedMs: (audio.length / 16_000) * 1000, preRoll: true });
+    if (!text || (rejection && classifyInterruption(text) !== 'ack')) {
       clock.count('falseTriggers');
+      clock.rejected = { rejectedKind: rejection ?? 'empty', rejectedChars: text.length };
       this.jarvis.timings(clock.takeReport()!);
       this.state.set(this.turnRunning ? 'reflexion' : 'repos');
       return;
@@ -929,19 +993,41 @@ export class JarvisComponent implements OnInit, OnDestroy {
       }
     }
     // SF-233-11 — un bruit ou une phrase vide n'est jamais envoyé ; en conversation, l'écoute repart sans un mot.
-    if (!text || (isNoise(text) && !this.pendingConfirm && !this.awaitingVerbal)) {
+    // F-239 / SF-239-01 (D3b) — la porte de parole réelle : sans parole réelle, AUCUN tour (ni cerveau rapide, ni
+    // Opus) ; la mesure garde la raison et la longueur, jamais le texte.
+    const confirming = !!this.pendingConfirm || this.awaitingVerbal;
+    const rejection = speechGate(text, { voicedMs: this.voicedMs, preRoll: this.listenPreRoll });
+    if (!text || (rejection && !confirming)) {
       this.state.set(this.turnRunning ? 'reflexion' : 'repos');
-      if (!text && (this.pendingConfirm || this.awaitingVerbal)) {
+      if (!text && confirming) {
         // SF-231-04 — le silence ne vaut pas accord.
         this.awaitingVerbal = false;
         await this.say(NO_ANSWER_PHRASE);
+        return;
       }
+      this.rejectSpeech(clock, rejection ?? 'empty', text.length);
       return;
     }
     clock.mark('transcript');
     this.pendingClock = clock;
     this.said.set(text);
     await this.handle(text);
+  }
+
+  /**
+   * F-239 / SF-239-01 (D3b) — une parole refusée : aucun tour ; `falseTriggers` compté, raison et longueur dans la
+   * mesure ; elle ne compte pas comme activité (la conversation s'éteint après le silence habituel).
+   */
+  private rejectSpeech(clock: TurnClock, kind: SpeechRejection, chars: number): void {
+    clock.count('falseTriggers');
+    clock.rejected = { rejectedKind: kind, rejectedChars: Math.min(10_000, Math.max(0, chars)) };
+    const report = clock.takeReport();
+    if (report) {
+      this.jarvis.timings(report);
+    }
+    if (this.conversation.active && this.conversation.idleExpired()) {
+      void this.endConversation();
+    }
   }
 
   /** Ce qui a été dit : une confirmation, un ordre d'arrêt, un changement de sujet, sinon une demande au cerveau. */
@@ -1048,7 +1134,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
         && isCorrection(text)) {
       clock.fast = { ...clock.fast, correction: true };
     }
-    this.armFastFiller(latest);
+    // F-239 / SF-239-01 (D1) — aucune formule d'attente avec le cerveau rapide : il répond en 2-3 s ; l'état
+    // « réflexion » (cœur, orbe) suffit. Une délégation dit son annonce précise.
     let said = '';
     let fellBack = false;
     let finished: FastDone | null = null;
@@ -1074,7 +1161,15 @@ export class JarvisComponent implements OnInit, OnDestroy {
       onText: (sentence) => this.zone.run(() => sayNow(sentence)),
       onDelegated: (delegation) => this.zone.run(() => {
         delegationReason = delegation.automatic ? delegation.reason : null;
-        sayNow(delegation.announce);
+        if (!delegation.subjectId) {
+          // F-239 / SF-239-01 — aucun sujet engagé : rien ne partirait ; Jarvis demande au lieu d'annoncer un travail.
+          sayNow(ASK_SUBJECT);
+          return;
+        }
+        // F-239 / SF-239-01 (D1) — une annonce vide (passerelle) = silence : le cœur montre qu'il travaille.
+        if ((delegation.announce ?? '').trim()) {
+          sayNow(delegation.announce);
+        }
         this.startDelegation(delegation, text, heardBeforeCut);
       }),
       onFallback: () => {
@@ -1130,25 +1225,6 @@ export class JarvisComponent implements OnInit, OnDestroy {
       }
       this.flushAnnouncements();
     });
-  }
-
-  /** F-235 / SF-235-05 (D11) — la formule d'attente : seulement si rien n'est parti 1,2 s après la parole. */
-  private armFastFiller(latest: () => boolean): void {
-    this.clearAck();
-    this.filler.begin();
-    const clock = this.clock;
-    const delay = clock ? Math.max(0, FILLER_DELAY_MS - (performance.now() - clock.t0)) : FILLER_DELAY_MS;
-    this.ackTimer = setTimeout(() => {
-      this.ackTimer = null;
-      if (!latest() || this.state() !== 'reflexion' || !this.filler.take()) {
-        return;
-      }
-      const clip = this.formulas.pick('filler', (id) => this.voice.hasClip(id));
-      if (clip) {
-        this.spoken.set(clip.text);
-        void this.voice.playClip(clip.id, { onPlaying: () => clock?.mark('reaction') });
-      }
-    }, delay);
   }
 
   /**
@@ -1279,7 +1355,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       this.turnStartedAt = Date.now();
     }
     this.turnRunning = true;
-    this.armFiller(subjectId, latest);
+    this.armFiller(subjectId, text, latest);
     this.scenes.setSubject(subjectId);
     this.brainEnd.set('normal');
     this.clearLocalShow();
@@ -1408,32 +1484,35 @@ export class JarvisComponent implements OnInit, OnDestroy {
   private ackTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
-   * SF-231-03 / SF-233-11 — la formule d'attente : **une seule** par échange, variée, et **aucune** si la première
-   * phrase est prête {@link FILLER_DELAY_MS} après la fin de la parole. Clip local si chargé, sinon la voix.
+   * SF-231-03 / SF-233-11 / F-239 / SF-239-01 (D1) — l'attente du chemin Opus direct : **une seule** par échange,
+   * **seulement** si rien n'est prêt {@link LINKED_FILLER_DELAY_MS} après la fin de la parole, et **seulement liée à
+   * la demande** (sujet ou chantier nommé ; jamais pour une salutation ; pas le gabarit du tour précédent). Sinon
+   * silence : le cœur montre qu'il réfléchit.
    */
-  private armFiller(subjectId: string, latest: () => boolean): void {
+  private armFiller(subjectId: string, text: string, latest: () => boolean): void {
     this.clearAck();
     this.filler.begin();
     const clock = this.clock;
-    const delay = clock ? Math.max(0, FILLER_DELAY_MS - (performance.now() - clock.t0)) : FILLER_DELAY_MS;
+    const delay = clock ? Math.max(0, LINKED_FILLER_DELAY_MS - (performance.now() - clock.t0))
+      : LINKED_FILLER_DELAY_MS;
     this.ackTimer = setTimeout(() => {
       this.ackTimer = null;
       if (!latest() || !this.turnRunning || this.state() !== 'reflexion' || !this.filler.take()) {
         return;
       }
-      const clip = this.formulas.pick('filler', (id) => this.voice.hasClip(id));
-      const formula = clip ?? this.formulas.pick('filler');
-      if (!formula) {
+      const phrase = linkedFiller(text, this.subjects().map((s) => s.name), this.lastFillerTemplate);
+      if (!phrase) {
         return;
       }
-      this.spoken.set(formula.text);
-      if (clip) {
-        void this.voice.playClip(clip.id, { onPlaying: () => clock?.mark('reaction') });
-      } else {
-        this.voice.speak(formula.text, subjectId).catch(() => undefined);
-      }
+      this.lastFillerTemplate = phrase.template;
+      this.spoken.set(phrase.text);
+      clock?.mark('reaction');
+      this.voice.speak(phrase.text, subjectId).catch(() => undefined);
     }, delay);
   }
+
+  /** F-239 / SF-239-01 — le gabarit de la dernière attente dite : jamais deux tours de suite. */
+  private lastFillerTemplate: number | null = null;
 
   /** SF-233-11 — les formules (réveil, attente), variées ; l'attente de l'échange en cours. */
   private readonly formulas = new FormulaPicker();

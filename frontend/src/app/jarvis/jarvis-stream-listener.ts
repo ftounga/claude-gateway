@@ -112,6 +112,9 @@ const TAP_SOURCE = `class JarvisPcmTap extends AudioWorkletProcessor {
 }
 registerProcessor('jarvis-pcm-tap', JarvisPcmTap);`;
 
+/** Le débit de la pré-écoute rendue par le mot d'éveil (`WAKE_RATE`). */
+export const PRE_ROLL_RATE = 16_000;
+
 /** Au-delà, une session qui ne démarre pas est abandonnée (repli sur la dictée). */
 export const START_TIMEOUT_MS = 3_000;
 
@@ -131,7 +134,11 @@ export class StreamingListener {
   constructor(private readonly ticket: JarvisSttTicket, private readonly stream: MediaStream,
               private readonly handlers: StreamHandlers) {}
 
-  async start(): Promise<void> {
+  /**
+   * @param preRoll F-239 / SF-239-01 (D2) — l'audio de la phrase qui contenait « Jarvis » (16 kHz mono), lu une fois la
+   *                session acceptée et envoyé **avant** le micro ; `null`/absent : rien avant le micro.
+   */
+  async start(preRoll?: (() => Float32Array | null) | null): Promise<void> {
     this.openedAt = performance.now();
     const socket = new WebSocket(sessionUrl(this.ticket));
     this.socket = socket;
@@ -172,7 +179,30 @@ export class StreamingListener {
         }
       };
     });
+    if (preRoll) {
+      this.sendPreRoll(preRoll);
+    }
     await this.capture();
+  }
+
+  /** Envoie la pré-écoute par morceaux de 100 ms, au débit de la session. */
+  private sendPreRoll(preRoll: () => Float32Array | null): void {
+    let audio: Float32Array | null = null;
+    try {
+      audio = preRoll();
+    } catch {
+      audio = null;
+    }
+    if (!audio || audio.length === 0) {
+      return;
+    }
+    const samples = downsample(audio, PRE_ROLL_RATE, this.ticket.sampleRate);
+    const step = Math.max(1, Math.round(this.ticket.sampleRate / 10));
+    for (let i = 0; i < samples.length; i += step) {
+      const pcm = toPcm16(samples.subarray(i, Math.min(samples.length, i + step)));
+      this.send({ message_type: 'input_audio_chunk', audio_base_64: toBase64(pcm), commit: false,
+        sample_rate: this.ticket.sampleRate });
+    }
   }
 
   /** Force la fin de tour (silence détecté par l'écran) : le fournisseur valide ce qu'il a entendu. */
@@ -252,11 +282,12 @@ export interface LiveListening {
  */
 @Injectable({ providedIn: 'root' })
 export class JarvisStreamOpener {
-  async open(ticket: JarvisSttTicket, handlers: StreamHandlers): Promise<LiveListening> {
+  async open(ticket: JarvisSttTicket, handlers: StreamHandlers,
+             preRoll?: (() => Float32Array | null) | null): Promise<LiveListening> {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: LISTEN_AUDIO });
     const listener = new StreamingListener(ticket, stream, handlers);
     try {
-      await listener.start();
+      await listener.start(preRoll);
     } catch (error) {
       listener.close();
       throw error;
