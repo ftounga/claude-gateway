@@ -13,7 +13,11 @@ import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Service;
 
+import fr.claudegateway.atelier.AtelierMessage;
+import fr.claudegateway.atelier.AtelierMessageRepository;
 import fr.claudegateway.atelier.WorkspaceRepository;
+import fr.claudegateway.jarvis.JarvisReplies;
+import fr.claudegateway.jarvis.JarvisSpokenWords;
 
 /**
  * <b>Le chronomètre du tour vocal</b> (F-233 / SF-233-01, D2) : range une mesure sans contenu par tour vocal et rend,
@@ -42,11 +46,14 @@ public class JarvisLatencyService {
 
     private final JarvisTurnTimingRepository repository;
     private final WorkspaceRepository workspaces;
+    private final AtelierMessageRepository messages;
     private final Clock clock;
 
-    public JarvisLatencyService(JarvisTurnTimingRepository repository, WorkspaceRepository workspaces, Clock clock) {
+    public JarvisLatencyService(JarvisTurnTimingRepository repository, WorkspaceRepository workspaces,
+            AtelierMessageRepository messages, Clock clock) {
         this.repository = repository;
         this.workspaces = workspaces;
+        this.messages = messages;
         this.clock = clock;
     }
 
@@ -116,6 +123,15 @@ public class JarvisLatencyService {
                 .rejectedKind(closed(report.rejectedKind(), REJECTIONS))
                 .rejectedChars(report.rejectedKind() == null || report.rejectedChars() == null ? null
                         : Math.max(0, Math.min(MAX_REJECTED_CHARS, report.rejectedChars())))
+                // F-240 / SF-240-01 — ce qui est dit : longueur, coupe, invitation, étage. Jamais le texte.
+                .spokenWords(bounded(report.spokenWords(), MAX_WORDS))
+                .spokenChars(bounded(report.spokenChars(), MAX_SPOKEN_CHARS))
+                .spokenMs(mark(report.spokenMs()))
+                .announceWords(bounded(report.announceWords(), MAX_WORDS))
+                .oralCut(report.oralCut())
+                .invitation(report.invitation())
+                .depthReached(depth(report.depthReached()))
+                .depthVia(report.depthReached() == null ? null : closed(report.depthVia(), DEPTH_VIA))
                 .build());
     }
 
@@ -135,7 +151,47 @@ public class JarvisLatencyService {
                 rows.stream().mapToLong(JarvisTurnTiming::getAcknowledgements).sum(),
                 rows.stream().mapToLong(JarvisTurnTiming::getFalseTriggers).sum());
         return new Latency(window, rows.size(), rows.stream().filter(JarvisTurnTiming::isToolTurn).count(), steps,
-                interruptions, byMode);
+                interruptions, byMode, spoken(rows), oralLines(userId, window));
+    }
+
+    /** F-240 / SF-240-01 — ce qui a été dit sur les tours de la fenêtre (sans contenu). */
+    static Spoken spoken(List<JarvisTurnTiming> rows) {
+        List<Integer> words = rows.stream().map(JarvisTurnTiming::getSpokenWords).filter(v -> v != null).sorted()
+                .toList();
+        List<Integer> ms = rows.stream().map(JarvisTurnTiming::getSpokenMs).filter(v -> v != null).sorted().toList();
+        List<Integer> announce = rows.stream().map(JarvisTurnTiming::getAnnounceWords).filter(v -> v != null)
+                .sorted().toList();
+        long cut = rows.stream().filter(r -> Boolean.TRUE.equals(r.getOralCut())).count();
+        long invited = rows.stream().filter(r -> Boolean.TRUE.equals(r.getInvitation())).count();
+        Map<String, Long> depth = new LinkedHashMap<>();
+        for (int d = 1; d <= MAX_DEPTH; d++) {
+            int level = d;
+            depth.put(String.valueOf(d), rows.stream()
+                    .filter(r -> r.getDepthReached() != null && r.getDepthReached() == level).count());
+        }
+        Map<String, Long> via = new LinkedHashMap<>();
+        DEPTH_VIA.forEach(v -> via.put(v, rows.stream().filter(r -> v.equals(r.getDepthVia())).count()));
+        return new Spoken(words.size(), percentile(words, 50), percentile(words, 90), percentile(ms, 50),
+                percentile(ms, 90), percentile(announce, 90), rate(cut, words.size()), rate(invited, words.size()),
+                depth, via);
+    }
+
+    /**
+     * F-240 / SF-240-01 — la longueur <b>écrite</b> des lignes 🎙 des réponses d'Opus du compte sur la fenêtre (la
+     * base de départ, lisible avant comme après F-240). Lecture sous {@code user_id}, rien n'est recopié.
+     */
+    Spoken.OralLines oralLines(UUID userId, int days) {
+        List<Integer> words = messages
+                .findTop500ByUserIdAndRoleAndCreatedAtGreaterThanEqualAndContentContainingOrderByCreatedAtDesc(userId,
+                        "ASSISTANT", OffsetDateTime.now(clock).minusDays(days), JarvisReplies.ORAL_MARK)
+                .stream().filter(m -> !m.isFastBrain()).map(AtelierMessage::getContent)
+                .map(JarvisReplies::oralLine).filter(l -> l != null && !l.isBlank())
+                .map(JarvisSpokenWords::count).sorted().toList();
+        return new Spoken.OralLines(words.size(), percentile(words, 50), percentile(words, 90));
+    }
+
+    private static Double rate(long part, int total) {
+        return total == 0 ? null : Math.round(part * 1000.0 / total) / 1000.0;
     }
 
     /** Purge des mesures de plus de {@link #RETENTION_DAYS} jours. */
@@ -150,11 +206,29 @@ public class JarvisLatencyService {
 
     /** Percentile au rang le plus proche sur une liste triée ; {@code null} si vide. */
     static Integer percentile(List<Integer> sorted, int p) {
-        if (sorted.isEmpty()) {
+        return JarvisSpokenWords.percentile(sorted, p);
+    }
+
+    /** F-240 / SF-240-01 — une longueur bornée : refusée si négative, plafonnée sinon. */
+    private static Integer bounded(Integer value, int max) {
+        if (value == null) {
             return null;
         }
-        int rank = (int) Math.ceil(p / 100.0 * sorted.size());
-        return sorted.get(Math.max(0, Math.min(sorted.size() - 1, rank - 1)));
+        if (value < 0) {
+            throw new IllegalArgumentException("Longueur négative.");
+        }
+        return Math.min(max, value);
+    }
+
+    /** F-240 / SF-240-01 — l'étage atteint : 1, 2 ou 3. */
+    private static Integer depth(Integer value) {
+        if (value == null) {
+            return null;
+        }
+        if (value < 1 || value > MAX_DEPTH) {
+            throw new IllegalArgumentException("Étage hors bornes (1 à " + MAX_DEPTH + ").");
+        }
+        return value;
     }
 
     private static Integer mark(Integer ms) {
@@ -187,6 +261,12 @@ public class JarvisLatencyService {
     static final List<String> REASONS = List.of("grounding", "refusal", "error", "timeout", "empty", "tool_text",
             "forced", "budget", "quota", "no_subject");
     private static final Pattern MODEL = Pattern.compile("^[a-z0-9.\\-]{1,64}$");
+    /** F-240 / SF-240-01 — bornes de ce qui est dit. */
+    static final int MAX_WORDS = 2_000;
+    static final int MAX_SPOKEN_CHARS = 20_000;
+    static final int MAX_DEPTH = 3;
+    /** F-240 / SF-240-01 — comment un étage est atteint (liste fermée). */
+    static final List<String> DEPTH_VIA = List.of("voix", "toucher");
 
     private static String closed(String value, List<String> allowed) {
         if (value == null || value.isBlank()) {
@@ -233,7 +313,10 @@ public class JarvisLatencyService {
             Integer repeatsRemoved, Integer imitationsRemoved, Boolean forcedDelegation, String delegationReason,
             Boolean correction,
             // F-239 / SF-239-02 (D3b) — facultatifs : une parole refusée par l'écran (aucun tour).
-            String rejectedKind, Integer rejectedChars) {
+            String rejectedKind, Integer rejectedChars,
+            // F-240 / SF-240-01 — facultatifs : ce qui est dit (jamais le texte) et l'étage atteint.
+            Integer spokenWords, Integer spokenChars, Integer spokenMs, Integer announceWords, Boolean oralCut,
+            Boolean invitation, Integer depthReached, String depthVia) {
     }
 
     /** Une étape : nombre de tours où elle a eu lieu, p50 et p90 en ms (nuls sans mesure). */
@@ -247,6 +330,20 @@ public class JarvisLatencyService {
 
     /** La mesure rendue à l'administrateur. */
     public record Latency(int days, int turns, long toolTurns, List<Step> steps, Interruptions interruptions,
-            Map<String, Long> byListenMode) {
+            Map<String, Long> byListenMode, Spoken spoken, Spoken.OralLines oralLines) {
+    }
+
+    /**
+     * F-240 / SF-240-01 — ce qui a été dit : nombre de réponses mesurées, p50/p90 des mots et de la durée dite, p90
+     * des mots d'annonce, taux de coupe et d'invitation (sur les réponses mesurées), étages atteints et par quel
+     * chemin.
+     */
+    public record Spoken(int answers, Integer wordsP50, Integer wordsP90, Integer msP50, Integer msP90,
+            Integer announceWordsP90, Double cutRate, Double invitationRate, Map<String, Long> depthReached,
+            Map<String, Long> depthVia) {
+
+        /** La longueur écrite des lignes 🎙 des réponses d'Opus (base de départ). */
+        public record OralLines(int replies, Integer wordsP50, Integer wordsP90) {
+        }
     }
 }

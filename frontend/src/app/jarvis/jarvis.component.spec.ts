@@ -506,7 +506,10 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(voice.speak).toHaveBeenCalledWith('La migration est à l’étape 4.', 'w-2', jasmine.any(Object));
     expect(jarvis.detail()).toContain('Détail');
     expect(jarvis.state()).toBe('repos');
-    // F-233 / SF-233-01 — le tour vocal est chronométré, sans contenu.
+    // F-233 / SF-233-01 — le tour vocal est chronométré, sans contenu ; F-240 : la mesure est gardée jusqu'au tour
+    // suivant (étage atteint), puis déclarée.
+    expect(jarvisApi.timings).not.toHaveBeenCalled();
+    jarvis['flushParked']();
     expect(jarvisApi.timings).toHaveBeenCalledTimes(1);
     const report = jarvisApi.timings.calls.mostRecent().args[0];
     expect(report.workspaceId).toBe('w-2');
@@ -515,6 +518,9 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(report.firstTokenMs).not.toBeNull();
     expect(report.doneMs).not.toBeNull();
     expect(JSON.stringify(report)).not.toContain('migration');
+    // F-240 / SF-240-01 — ce qui est dit : 6 mots, aucune annonce avant outils.
+    expect(report.spokenWords).toBe(6);
+    expect(report.announceWords).toBe(0);
   }));
 
   it('« passe sur AGENOR » change de sujet sur l’appareil, sans tour', fakeAsync(() => {
@@ -583,7 +589,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     tick(30_000);
     handlers!.onDone({ reply: '🎙 Les tests passent.', actions: [], messageId: 'm-1' });
     flushMicrotasks();
-    expect(voice.speak).toHaveBeenCalledWith('C’est terminé. Les tests passent.', 'w-2');
+    expect(voice.speak).toHaveBeenCalledWith('C’est terminé. Les tests passent.', 'w-2', jasmine.any(Object));
   }));
 
   it('F-239 / SF-239-12 — le compteur : ce que Jarvis a coûté aujourd’hui et ce mois-ci, en euros', fakeAsync(() => {
@@ -939,6 +945,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       expect(jarvis.state()).toBe('ecoute');
       expect(dictation.start).toHaveBeenCalledTimes(2);
       expect(voice.playClip).not.toHaveBeenCalled();
+      jarvis['flushParked']();
       const report = jarvisApi.timings.calls.mostRecent().args[0];
       expect(report.listenMode).toBe('CONV_BATCH');
       jarvis.ngOnDestroy();
@@ -1049,7 +1056,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(voice.enqueue).not.toHaveBeenCalled();
     handlers!.onDone({ reply: 'Bonjour Monsieur. Tout va bien.', actions: [], messageId: 'm-1' });
     flushMicrotasks();
-    expect(voice.speak).toHaveBeenCalledWith('Bonjour Monsieur. Tout va bien.', 'w-2');
+    expect(voice.speak).toHaveBeenCalledWith('Bonjour Monsieur. Tout va bien.', 'w-2', jasmine.any(Object));
   }));
 
   it('F-233 / SF-233-05 — écoute en flux : texte partiel, fin de tour du fournisseur, session close et comptée',
@@ -1084,6 +1091,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       expect(jarvisApi.closeSttSession).toHaveBeenCalledWith('s-1', 4);
       handlers!.onDone({ reply: '🎙 Étape 4.', actions: [], messageId: 'm-1' });
       flushMicrotasks();
+      jarvis['flushParked']();
       expect(jarvisApi.timings.calls.mostRecent().args[0].listenMode).toBe('STREAM');
       expect(jarvisApi.timings.calls.mostRecent().args[0].sttProvider).toBe('elevenlabs');
       expect(jarvisApi.timings.calls.mostRecent().args[0].ttsProvider).toBe('openai');
@@ -1125,6 +1133,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       expect(dictation.transcribe).not.toHaveBeenCalled();
       handlers!.onDone({ reply: '🎙 Étape 4.', actions: [], messageId: 'm-1' });
       flushMicrotasks();
+      jarvis['flushParked']();
       expect(jarvisApi.timings.calls.mostRecent().args[0].sttProvider).toBe('elevenlabs-batch');
     }));
 
@@ -1598,7 +1607,8 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
 
       handlers!.onDone({ reply: '🎙 Deux tickets sont bloqués.\n\nDétail…', actions: [], messageId: 'm-1' });
       flushMicrotasks();
-      expect(voice.speak).toHaveBeenCalledWith('Pour tickets bloqués d’AGENOR : Deux tickets sont bloqués.', 'w-1');
+      expect(voice.speak).toHaveBeenCalledWith('Pour tickets bloqués d’AGENOR : Deux tickets sont bloqués.', 'w-1',
+        jasmine.any(Object));
       expect(jarvis.delegations()).toEqual([]);
       jarvis.ngOnDestroy();
     }));
@@ -1713,11 +1723,13 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
           imitationsRemoved: 0 } });
       fastDone!('ok');
       flushMicrotasks();
+      jarvis['flushParked']();
       const first = jarvisApi.timings.calls.mostRecent().args[0];
       expect(first.brain).toBe('FAST');
       expect(first.fastModel).toBe('claude-haiku-5-5');
       expect(first.fastFirstTokenMs).toBe(420);
       expect(first.fillersRemoved).toBe(1);
+      expect(first.spokenWords).toBe(7); // F-240 / SF-240-01 — « Le chantier 3 en est aux tests. »
       expect(first.correction).toBeUndefined();
       expect(JSON.stringify(first)).not.toContain('chantier 3');
 
@@ -1733,12 +1745,66 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
           imitationsRemoved: 0 } });
       fastDone!('ok');
       flushMicrotasks();
+      // F-240 / SF-240-01 — la mesure d'un échange délégué attend la fin de sa délégation (ici : la sortie de l'écran).
+      const calls = jarvisApi.timings.calls.count();
+      jarvis.ngOnDestroy();
+      expect(jarvisApi.timings.calls.count()).toBe(calls + 1);
       const second = jarvisApi.timings.calls.mostRecent().args[0];
       expect(second.brain).toBe('FAST_DELEGATED');
       expect(second.correction).toBeTrue();
       expect(second.forcedDelegation).toBeTrue();
       expect(second.delegationReason).toBe('forced');
       expect(second.fastFirstTokenMs).toBeNull();
+      expect(second.announceWords).toBe(3);
+      expect(second.spokenWords).toBeUndefined();
+    }));
+
+  it('F-240 / SF-240-01 — tour Opus direct : la réponse dite et l’annonce avant outils sont comptées à part',
+    fakeAsync(() => {
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      const jarvis = fixture.componentInstance;
+      dictation.stop.and.resolveTo('Où en est la migration ?');
+      void jarvis.talk();
+      flushMicrotasks();
+      void jarvis.talk();
+      flushMicrotasks();
+      handlers!.onText('🎙 Je regarde la migration.\n');
+      handlers!.onText('🎙 La migration est à l’étape 4. ');
+      handlers!.onDone({ reply: '🎙 La migration est à l’étape 4.\n\nDétail…', actions: [], messageId: 'm-1' });
+      flushMicrotasks();
+      jarvis['flushParked']();
+      const report = jarvisApi.timings.calls.mostRecent().args[0];
+      expect(report.spokenWords).toBe(6);
+      expect(report.announceWords).toBe(4);
+      expect(report.spokenChars).toBe('La migration est à l’étape 4.'.length);
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-240 / SF-240-01 — échange délégué : la mesure attend la fin dite de la délégation (annonce à part)',
+    fakeAsync(() => {
+      const jarvis = fastOn();
+      dictation.stop.and.resolveTo('Regarde les tickets bloqués d’AGENOR');
+      void jarvis.talk();
+      flushMicrotasks();
+      void jarvis.talk();
+      flushMicrotasks();
+      fast!.onDelegated({
+        delegationId: 'd-9', subjectId: 'w-1', chantier: null, label: 'tickets bloqués d’AGENOR',
+        announce: 'Je regarde les tickets bloqués d’AGENOR, Monsieur.', demande: 'x', automatic: false, reason: null,
+      });
+      fast!.onDone({ brain: 'FAST_DELEGATED', spokenText: '', firstTokenMs: 300, model: 'm' });
+      fastDone!('ok');
+      flushMicrotasks();
+      expect(jarvisApi.timings).not.toHaveBeenCalled();
+      handlers!.onDone({ reply: '🎙 Deux tickets sont bloqués.\n\nDétail…', actions: [], messageId: 'm-1' });
+      flushMicrotasks();
+      jarvis['flushParked']();
+      expect(jarvisApi.timings).toHaveBeenCalledTimes(1);
+      const report = jarvisApi.timings.calls.mostRecent().args[0];
+      expect(report.brain).toBe('FAST_DELEGATED');
+      expect(report.announceWords).toBe(7);
+      expect(report.spokenWords).toBe(4);
       jarvis.ngOnDestroy();
     }));
 });

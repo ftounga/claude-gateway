@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-240 / SF-240-01 - MESURER CE QUI EST DIT.
+
+      jarvis_turn_timings + la longueur de la reponse dite (mots, caracteres, duree audio hors annonce), les mots de
+      l'annonce qui precede les outils, la coupe de l'ecran (garde des 35 mots), l'invitation ciblee dite, et l'etage
+      atteint (1 dit, 2 essentiel, 3 detail) avec son chemin (voix, toucher). JAMAIS le texte. Colonnes additives,
+      NULL pour les lignes existantes. Purge 90 j existante inchangee.
+
+      Numero 240 = numero de la feature. Rollback : les colonnes se retirent.
+    -->
+
+    <changeSet id="240-jarvis-turn-timings-spoken" author="claude-gateway">
+        <addColumn tableName="jarvis_turn_timings">
+            <column name="spoken_words" type="int"/>
+            <column name="spoken_chars" type="int"/>
+            <column name="spoken_ms" type="int"/>
+            <column name="announce_words" type="int"/>
+            <column name="oral_cut" type="boolean"/>
+            <column name="invitation" type="boolean"/>
+            <column name="depth_reached" type="int"/>
+            <column name="depth_via" type="varchar(8)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="jarvis_turn_timings" columnName="depth_via"/>
+            <dropColumn tableName="jarvis_turn_timings" columnName="depth_reached"/>
+            <dropColumn tableName="jarvis_turn_timings" columnName="invitation"/>
+            <dropColumn tableName="jarvis_turn_timings" columnName="oral_cut"/>
+            <dropColumn tableName="jarvis_turn_timings" columnName="announce_words"/>
+            <dropColumn tableName="jarvis_turn_timings" columnName="spoken_ms"/>
+            <dropColumn tableName="jarvis_turn_timings" columnName="spoken_chars"/>
+            <dropColumn tableName="jarvis_turn_timings" columnName="spoken_words"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

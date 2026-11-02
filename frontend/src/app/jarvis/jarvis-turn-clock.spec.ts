@@ -1,4 +1,4 @@
-import { MAX_MARK_MS, TurnClock } from './jarvis-turn-clock';
+import { MAX_MARK_MS, TurnClock, spokenWordCount } from './jarvis-turn-clock';
 
 /** Le chronomètre du tour vocal (F-233 / SF-233-01). */
 describe('TurnClock (F-233 / SF-233-01)', () => {
@@ -35,5 +35,37 @@ describe('TurnClock (F-233 / SF-233-01)', () => {
     clock.mark('done');
     expect(clock.takeReport()!.doneMs).toBeNull();
     expect(clock.takeReport()).toBeNull();
+  });
+
+  it('F-240 / SF-240-01 — ce qui est dit : mots, caractères, durée, annonce, étage le plus profond ; jamais le texte',
+    () => {
+      let now = 0;
+      const clock = new TurnClock(0, null, () => now);
+      now = 1000;
+      clock.mark('firstSound');
+      now = 8500;
+      expect(clock.sinceMark('firstSound')).toBe(7500);
+      expect(clock.sinceMark('done')).toBeNull();
+      clock.said('Oui, Monsieur : le chantier 3 est terminé.', clock.sinceMark('firstSound'), { announceWords: 5 });
+      expect(clock.depthReached).toBe(1);
+      clock.reach(3, 'toucher');
+      clock.reach(2, 'voix');
+      expect(clock.depthReached).toBe(3);
+      const report = clock.takeReport()!;
+      expect(report.spokenWords).toBe(7);
+      expect(report.spokenChars).toBe(42);
+      expect(report.spokenMs).toBe(7500);
+      expect(report.announceWords).toBe(5);
+      expect(report.depthReached).toBe(3);
+      expect(report.depthVia).toBe('toucher');
+      expect(JSON.stringify(report)).not.toContain('chantier');
+    });
+
+  it('F-240 / SF-240-01 — le comptage des mots suit la règle de la passerelle', () => {
+    expect(spokenWordCount(null)).toBe(0);
+    expect(spokenWordCount('🎙 Oui , Monsieur : c’est fait !')).toBe(4);
+    expect(spokenWordCount('l’exposition aujourd’hui dites-moi l’on-premise')).toBe(4);
+    expect(spokenWordCount('4 950 caractères le 01/11 à 18:44')).toBe(7);
+    expect(spokenWordCount('↪ — … ?')).toBe(0);
   });
 });

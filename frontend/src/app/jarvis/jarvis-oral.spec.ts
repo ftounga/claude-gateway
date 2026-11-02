@@ -149,3 +149,18 @@ describe('Comprendre l’interruption (F-233 / SF-233-09)', () => {
     expect(isStopCommand('arrête ça')).toBeTrue();
   });
 });
+
+describe('Jarvis — la ligne de chaque phrase dite (F-240 / SF-240-01)', () => {
+  it('chaque phrase porte sa ligne 🎙 ; l’annonce avant outils se distingue de la réponse finale', () => {
+    const oral = new OralStream();
+    expect(oral.lastLine).toBe(-1);
+    const first = oral.pushLines('🎙 Je regarde le chantier 3.\n');
+    expect(first.map((s) => s.sentence)).toEqual(['Je regarde le chantier 3.']);
+    oral.pushLines('Outil…\n🎙 Le chantier 3 est terminé. ');
+    const announceLine = first[0].line;
+    expect(oral.lastLine).toBeGreaterThan(announceLine);
+    expect(oral.spokenOutside(oral.lastLine)).toEqual(['Je regarde le chantier 3.']);
+    expect(oral.spokenOutside(announceLine)).toEqual(['Le chantier 3 est terminé.']);
+    expect(oral.spoken).toEqual(['Je regarde le chantier 3.', 'Le chantier 3 est terminé.']);
+  });
+});

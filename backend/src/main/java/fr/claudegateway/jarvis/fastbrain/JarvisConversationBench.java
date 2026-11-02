@@ -58,7 +58,28 @@ final class JarvisConversationBench {
     /** Le verdict d'un tour (sans contenu client : le jeu est fictif). */
     record TurnVerdict(String scenarioId, int turn, String category, String route, String expect, boolean judged,
             int natural, boolean concise, boolean robotic, boolean uselessDelegation, boolean meaningRight,
-            boolean returnQuestion, boolean ungrounded, boolean actionNotDelegated, String said, String comment) {
+            boolean returnQuestion, boolean ungrounded, boolean actionNotDelegated, String said, String comment,
+            int words) {
+
+        /** F-240 / SF-240-01 — les mots dits sont comptés d'après {@code said} (même règle que l'écran). */
+        TurnVerdict(String scenarioId, int turn, String category, String route, String expect, boolean judged,
+                int natural, boolean concise, boolean robotic, boolean uselessDelegation, boolean meaningRight,
+                boolean returnQuestion, boolean ungrounded, boolean actionNotDelegated, String said, String comment) {
+            this(scenarioId, turn, category, route, expect, judged, natural, concise, robotic, uselessDelegation,
+                    meaningRight, returnQuestion, ungrounded, actionNotDelegated, said, comment,
+                    fr.claudegateway.jarvis.JarvisSpokenWords.count(said));
+        }
+    }
+
+    /**
+     * F-240 / SF-240-01 — p50/p90 des mots des réponses dites par le cerveau rapide lui-même (route
+     * {@code repondre}), à titre <b>informatif</b> : la porte n'en dépend pas. {@code null} sans réponse.
+     */
+    static Integer[] fastWords(List<TurnVerdict> turns) {
+        List<Integer> words = turns.stream().filter(t -> "repondre".equals(t.route())).map(TurnVerdict::words)
+                .sorted().toList();
+        return new Integer[] { fr.claudegateway.jarvis.JarvisSpokenWords.percentile(words, 50),
+                fr.claudegateway.jarvis.JarvisSpokenWords.percentile(words, 90) };
     }
 
     /** Le verdict d'un scénario. */
