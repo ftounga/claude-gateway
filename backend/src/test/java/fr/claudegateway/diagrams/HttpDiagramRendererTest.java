@@ -147,9 +147,11 @@ class HttpDiagramRendererTest {
     }
 
     @Test
-    @DisplayName("SF-238-01 : par défaut graphviz — aucun champ « layout » n'est posté (rendu d'avant)")
-    void cloudDefaultsToGraphviz() {
+    @DisplayName("SF-238-06 : défaut elk (schéma cadré) ; retour arrière graphviz ⇒ aucun champ « layout » (rendu d'avant)")
+    void cloudDefaultsToElkAndGraphvizIsTheRollback() {
+        assertThat(new DiagramProperties().isCadre()).isTrue();
         serve(200, "image/svg+xml", "<svg/>".getBytes(StandardCharsets.UTF_8));
+        properties.setCloudLayout("graphviz");
         ObjectMapper mapper = new ObjectMapper();
         com.fasterxml.jackson.databind.node.ObjectNode spec = mapper.createObjectNode();
         spec.putArray("nodes").addObject().put("id", "a").put("type", "aws.s3").put("label", "Bucket");

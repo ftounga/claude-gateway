@@ -27,7 +27,30 @@
 </head>
 <body>
 <main>
-<h1>Le schéma AWS cadré — essai du 2026-11-02</h1>
+<h1>Le schéma AWS cadré — moteur final (SF-238-06)</h1>
+<p class="lead">Les mêmes descriptions, rendues par le <b>moteur final</b> : zones posées par nous (Availability Zones
+côte à côte et de même taille, sous-réseau public avant privé, bande régionale, acteurs externes à l'entrée), nœuds
+sur une grille de 8 px, liaisons routées à angle droit, étiquettes qui ne chevauchent rien, conventions officielles
+des groupes AWS. Les six gardes passent sur les quatre schémas. Planche avant/après plus bas (essai du matin).</p>
+
+<table>
+<tr><th>Schéma</th><th>G1 orthogonalité</th><th>G2 extrémités</th><th>G3 collisions</th><th>G4 imbrication</th><th>G5 grille / AZ</th><th>G6 conventions</th></tr>
+<tr><td>3-tiers multi-AZ (LR et TB)</td><td class="ok">0 / 23</td><td class="ok">0</td><td class="ok">0</td><td class="ok">0</td><td class="ok">0</td><td class="ok">0</td></tr>
+<tr><td>EKS</td><td class="ok">0 / 28</td><td class="ok">0</td><td class="ok">0</td><td class="ok">0</td><td class="ok">0</td><td class="ok">0</td></tr>
+<tr><td>Serverless</td><td class="ok">0 / 13</td><td class="ok">0</td><td class="ok">0</td><td class="ok">0</td><td class="ok">0</td><td class="ok">0</td></tr>
+<tr><td>« Tout » (compte, 2 régions, 3 AZ, ASG, security group, centre de données)</td><td class="ok">0 / 62</td><td class="ok">0</td><td class="ok">0</td><td class="ok">0</td><td class="ok">0</td><td class="ok">0</td></tr>
+</table>
+
+<h2>Moteur final</h2>
+<div class="row">
+<figure><img src="final-trois-tiers-tb.png" alt="3-tiers, moteur final, de haut en bas"><figcaption><b>3-tiers, de haut en bas</b> (défaut pour du multi-AZ) : AZ A et B en colonnes, homologues sur la même ligne, S3 dans la bande régionale, utilisateurs hors d'AWS Cloud.</figcaption></figure>
+<figure><img src="final-trois-tiers.png" alt="3-tiers, moteur final, de gauche à droite"><figcaption><b>3-tiers, de gauche à droite</b> (direction donnée) : AZ en bandes parallèles — jamais l'une après l'autre.</figcaption></figure>
+<figure><img src="final-eks.png" alt="EKS, moteur final"><figcaption><b>EKS</b> : sous-réseaux publics puis privés, cluster imbriqué, ECR / CloudWatch / Secrets Manager le long du VPC.</figcaption></figure>
+<figure><img src="final-serverless.png" alt="Serverless, moteur final"><figcaption><b>Serverless</b> : chaque liaison arrive sur son service, étiquettes sur leur liaison.</figcaption></figure>
+<figure><img src="final-tout.png" alt="Schéma tout, moteur final"><figcaption><b>« Tout »</b> : compte, deux régions, trois AZ jumelles alignées, Auto Scaling groups, security group, centre de données à côté des utilisateurs, liaison VPN bidirectionnelle.</figcaption></figure>
+</div>
+
+<h1 style="margin-top:56px">Essai du 2026-11-02 (avant)</h1>
 <p class="lead">Trois schémas types rendus trois fois avec la même description : <b>aujourd'hui</b> (Graphviz, liaisons
 <code>spline</code>, réglage SF-142-17), <b>Graphviz <code>splines=ortho</code></b>, et le <b>prototype ELK</b>
 (liaisons orthogonales, zones aux conventions AWS). Le prototype n'a pas encore la composition des zones
