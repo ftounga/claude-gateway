@@ -28,7 +28,7 @@ import { CORE_KEY } from '../jarvis-link-graph';
 import { JarvisPost } from './jarvis-post';
 import { Effects3d } from './jarvis-effects-3d';
 import { Panels3d } from './jarvis-panels-3d';
-import { panelViewport } from '../jarvis-panels';
+import { boundPanels, panelViewport } from '../jarvis-panels';
 
 /**
  * F-236 / SF-236-01 — **le moteur 3D, socle** : seul fichier (avec ses voisins de `engine/`) qui importe `three`,
@@ -357,7 +357,8 @@ class ThreeJarvisEngine implements JarvisEngine {
    * sinon le premier nœud cité (§9.3).
    */
   private focusNode(): Node3d | null {
-    const key = this.plan.scene?.focus;
+    // A5 — la veille qui sonne fait cadrer son client quand aucune scène ne le demande.
+    const key = this.plan.scene?.focus ?? this.plan.ambient?.focus;
     const view = this.plan.universe;
     if (key === CORE_KEY) {
       return null; // scène centrée sur le cœur : vue d'ensemble
@@ -415,10 +416,12 @@ class ThreeJarvisEngine implements JarvisEngine {
     // SF-236-08 — la scène 3D : panneaux (T-P1 / T-P2) et effets ; au banc, tout part de t = 0.
     const replay = opening && this.options.replayFromZero;
     // SF-236-11 — « Montrer » : teintes imposées et allumage en cascade (T-M), ses panneaux après ceux de la scène.
-    this.universe?.setShow(plan.show ?? null);
-    this.panels?.set([...(plan.scene?.panels ?? []), ...(plan.show?.panels ?? [])], replay ? 0 : now,
-      replay && plan.bancPanelsOut === true);
-    this.effects?.set(plan.scene?.effects ?? [], replay ? 0 : now, replay);
+    // SF-236-13 — l'ambiance : ses teintes (le rouge des alertes prime), ses panneaux après ceux de la scène, ses
+    // effets d'abord (ceux de la scène, s'il y en a, priment dans chaque famille).
+    this.universe?.setShow(plan.show ?? null, plan.ambient ?? null);
+    const panels = [...(plan.scene?.panels ?? []), ...(plan.show?.panels ?? []), ...(plan.ambient?.panels ?? [])];
+    this.panels?.set(boundPanels(panels, this.width < 768), replay ? 0 : now, replay && plan.bancPanelsOut === true);
+    this.effects?.set([...(plan.ambient?.effects ?? []), ...(plan.scene?.effects ?? [])], replay ? 0 : now, replay);
     const travel = plan.scene?.travel;
     if (travel && travel.id !== this.travelId) {
       this.travelId = travel.id;

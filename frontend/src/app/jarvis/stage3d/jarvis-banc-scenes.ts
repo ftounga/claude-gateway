@@ -3,10 +3,11 @@ import { BrainsState, FOLDED } from './jarvis-brains';
 import { HeartMood } from './jarvis-heart';
 import { EMPTY_VIEW, IDLE_SCREEN, ScreenSignals, StagePlan, UniverseView, stageScene, universeView,
 } from './jarvis-stage-director';
-import { BANC_SCENE_VIEWS, BANC_SESSION_FILES, sceneOf } from './scenes3d/jarvis-scene3d.fixture';
+import { BANC_AMBIENTS, BANC_SCENE_VIEWS, BANC_SESSION_FILES, sceneOf } from './scenes3d/jarvis-scene3d.fixture';
 import { SessionMemory } from './scenes3d/jarvis-session-memory';
 import { ShowFilter, resolveShow } from '../scenes/jarvis-show';
 import { directShow } from './scenes3d/jarvis-show-3d';
+import { directAmbient } from './scenes3d/jarvis-ambiance-3d';
 import { baseName } from '../scenes/jarvis-scene-reader';
 import { ScenePlan3d } from './scenes3d/jarvis-scene3d.model';
 
@@ -40,6 +41,9 @@ function bancBrains(scene: string): { brains: BrainsState; fromDeployed: boolean
 
 /** Le plan que le banc pose, et le niveau de voix simulé (ondes ∝ niveau). */
 export function bancPlan(scene: string, narrow: boolean): { plan: StagePlan; voice: number } {
+  if (scene.startsWith('ambiance-')) {
+    return { plan: bancAmbient(scene.slice('ambiance-'.length), narrow), voice: 0 };
+  }
   if (scene.startsWith('montrer-')) {
     return { plan: bancShow(scene.slice('montrer-'.length) as ShowFilter, narrow), voice: 0 };
   }
@@ -55,6 +59,17 @@ export function bancPlan(scene: string, narrow: boolean): { plan: StagePlan; voi
       bancCamera: scene === 'zoom' ? 'zoom' : scene === 'dezoom' ? 'dezoom' : undefined, scene: null },
     voice: mood === 'ecoute' || mood === 'parole' ? 0.7 : 0,
   };
+}
+
+/** SF-236-13 — l'ambiance au banc (au repos, administrateur pour A4). */
+function bancAmbient(name: string, narrow: boolean): StagePlan {
+  const ambient = BANC_AMBIENTS[name] ?? null;
+  const signals: ScreenSignals = { ...IDLE_SCREEN, universe: testUniverse(), subjectId: 's-forge', ambient,
+    admin: true };
+  const view = universeView(signals, false, narrow);
+  return { mood: 'repos', wakes: 0, brains: FOLDED, universe: view, scene: null,
+    ambient: directAmbient(ambient, { universe: signals.universe, nodes: new Set(view.layout.nodes.map((n) => n.key)),
+      busy: false, admin: true, costFresh: true, seq: 1 }) };
 }
 
 /** SF-236-11 — « Montrer » au banc : la demande résolue sur l'univers de test, comme à l'écran. */

@@ -68,6 +68,7 @@ import { ScreenSignals, sameScreen } from './stage3d/jarvis-stage-director';
 import { isShowDismiss, stripShowLines } from './scenes/jarvis-show';
 import { ticketKeys } from './scenes/jarvis-scene-reader';
 import { arrivalDelay } from './stage3d/jarvis-panels';
+import { AuthService } from '../core/services/auth.service';
 import {
   ASK_SUBJECT, AnnouncementQueue, CORRECTION_WINDOW_MS, FastDelegation, FastDone, JarvisFastBrainClient,
   announcementText, isCorrection, isRepeatCommand,
@@ -1545,11 +1546,25 @@ export class JarvisComponent implements OnInit, OnDestroy {
       stepsDone: reader.stepsDone,
       // SF-236-11 — « Montrer » résolu sur l'univers (même objet tant que la demande ne change pas).
       showFocus: this.scenes.focus(),
+      // SF-236-13 — l'ambiance hors tour (A1-A5) et le rôle (A4 : coût en € pour l'administrateur seulement).
+      ambient: this.scenes.ambient(),
+      admin: this.admin(),
     };
   }, { equal: sameScreen });
 
   /** F-236 / SF-236-06 — le volet « Réglages » du HUD 3D (les commandes secondaires y sont regroupées). */
   readonly settingsOpen = signal(false);
+  /**
+   * F-236 / SF-236-13 (A4) — l'utilisateur est-il administrateur ? Lu sur le service d'authentification quand il est
+   * disponible ; sinon (écran monté sans lui) : non. Le serveur ne livre de toute façon le coût qu'à l'administrateur.
+   */
+  private readonly admin: () => boolean = (() => {
+    try {
+      return inject(AuthService).isAdmin;
+    } catch {
+      return () => false;
+    }
+  })();
   /** F-236 / SF-236-06 — le compteur « À envoyer » du HUD (univers + messages finis pendant le tour). */
   readonly toSendCount = computed(() => (this.scenes.universe()?.toSendCount ?? 0) + this.scenes.state().toSendAdded);
   /**

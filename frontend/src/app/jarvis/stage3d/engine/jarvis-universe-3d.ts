@@ -12,6 +12,7 @@ import { Layout3d, Node3d, Node3dKind, UniverseTouch } from '../jarvis-layout-3d
 import { CORE_KEY, Graph3d, LinkState, stateAlpha } from '../jarvis-link-graph';
 import { HOLO_COLORS, HoloRole, rgb } from '../jarvis-motion';
 import { SHOW_STAGGER_MS, ShowPlan3d } from '../scenes3d/jarvis-show-3d';
+import { AmbientPlan3d } from '../scenes3d/jarvis-ambiance-3d';
 import { QualityLevel } from '../jarvis-render-capability';
 
 /**
@@ -103,6 +104,11 @@ export class Universe3d {
   /** SF-236-11 — teintes imposées par « Montrer » (vert connecté, éteint, attente…). */
   private tones = new Map<string, HoloRole>();
   private showSignature = '';
+  private ambientSignature = '';
+  /** SF-236-13 — A2 : ce qui respire ; A1 / A5 : ce qui grésille ; l'horloge de l'univers (ms). */
+  private breathe = new Set<string>();
+  private flicker = new Set<string>();
+  private clock = 0;
   private lastGraph: Graph3d | null = null;
   /** SF-236-05 — l'entrée en cascade : avancement d'un client selon son rang (1 = posé). */
   reveal: (clientIndex: number) => number = () => 1;
@@ -129,22 +135,30 @@ export class Universe3d {
     }
   }
 
-  /** Une nouvelle disposition ou de nouveaux états : reconstruit seulement si l'ensemble des nœuds change. */
   /**
    * SF-236-11 — « Montrer » : chaque élément montré prend sa teinte et s'allume en cascade (50 ms d'écart, T-M) ;
-   * la fin de « Montrer » rend leurs teintes d'origine.
+   * la fin de « Montrer » rend leurs teintes d'origine. SF-236-13 — l'ambiance : teintes des alertes (rouge, qui
+   * prime), lunes qui respirent (A2), halos et liens qui grésillent (A1 / A5).
    */
-  setShow(show: ShowPlan3d | null): void {
-    const signature = show ? `${show.filter}|${show.keys.join(',')}` : '';
-    if (signature === this.showSignature) {
+  setShow(show: ShowPlan3d | null, ambient: AmbientPlan3d | null = null): void {
+    const showSignature = show ? `${show.filter}|${show.keys.join(',')}` : '';
+    const ambientSignature = ambient ? JSON.stringify([ambient.tones, ambient.breathe, ambient.flicker]) : '';
+    if (showSignature === this.showSignature && ambientSignature === this.ambientSignature) {
       return;
     }
-    this.showSignature = signature;
-    this.tones = new Map(Object.entries(show?.tones ?? {}) as [string, HoloRole][]);
+    const showChanged = showSignature !== this.showSignature;
+    this.showSignature = showSignature;
+    this.ambientSignature = ambientSignature;
+    this.tones = new Map([...Object.entries(show?.tones ?? {}), ...Object.entries(ambient?.tones ?? {})] as
+      [string, HoloRole][]);
+    this.breathe = new Set(ambient?.breathe ?? []);
+    this.flicker = new Set(ambient?.flicker ?? []);
     for (const l of this.live) {
       l.role = this.tones.get(l.node.key) ?? nodeRole(l.node);
-      const index = show ? show.keys.indexOf(l.node.key) : -1;
-      l.delay = index >= 0 ? index * SHOW_STAGGER_MS : 0;
+      if (showChanged) {
+        const index = show ? show.keys.indexOf(l.node.key) : -1;
+        l.delay = index >= 0 ? index * SHOW_STAGGER_MS : 0;
+      }
     }
     if (this.lastGraph) {
       const links = new Map(this.lastGraph.links.map((k) => [k.key, k]));
@@ -157,6 +171,7 @@ export class Universe3d {
     }
   }
 
+  /** Une nouvelle disposition ou de nouveaux états : reconstruit seulement si l'ensemble des nœuds change. */
   setView(layout: Layout3d, graph: Graph3d, instant: boolean): void {
     this.lastGraph = graph;
     const signature = layout.nodes.map((n) => `${n.kind}:${n.key}`).join('|') + '#'
@@ -202,6 +217,7 @@ export class Universe3d {
 
   /** Une image : positions et opacités vers leurs cibles, tampons réécrits sur place. */
   frame(dt: number): void {
+    this.clock += dt;
     const kUp = 1 - Math.exp(-dt / TAU_UP);
     const kDown = 1 - Math.exp(-dt / TAU_DOWN);
     const kMove = 1 - Math.exp(-dt / TAU_MOVE);
@@ -380,7 +396,8 @@ export class Universe3d {
       // Dégradé : la source garde la teinte de la liaison, la cible celle de son nœud ; additif ⇒ couleur × opacité.
       const src = this.palette.get(e.role) as number[];
       const dst = this.palette.get(e.to.role) as number[];
-      const a = e.alpha * this.reveal(e.to.clientIndex);
+      // A1 / A5 — le lien de l'alerte grésille.
+      const a = e.alpha * this.reveal(e.to.clientIndex) * (this.flicker.has(e.to.node.key) ? this.crackle(i) : 1);
       for (let k = 0; k < 3; k++) {
         c[i * 6 + k] = src[k] * a;
         c[i * 6 + 3 + k] = dst[k] * a;
@@ -405,7 +422,11 @@ export class Universe3d {
       p[i * 3 + 2] = l.z;
       const rgbRole = this.palette.get(l.role) as number[];
       // Halo indexé sur l'état (§7.1) : latent 0,2 · contexte 0,45 · allumé 1.
-      const k = (0.2 + 0.8 * l.alpha) * this.reveal(l.clientIndex);
+      // A2 — une lune vivante respire (4 s) ; A1 / A5 — l'alerte : halo lent qui grésille.
+      const live = this.breathe.has(l.node.key) ? 0.8 + 0.35 * Math.sin((this.clock / 4000) * Math.PI * 2) : 1;
+      const alert = this.flicker.has(l.node.key) ? 1.3 * (0.75 + 0.25 * Math.sin((this.clock / 2600) * Math.PI * 2))
+        * this.crackle(i) : 1;
+      const k = (0.2 + 0.8 * l.alpha) * this.reveal(l.clientIndex) * live * alert;
       for (let j = 0; j < 3; j++) {
         c[i * 3 + j] = rgbRole[j] * k * 0.3;
       }
@@ -485,6 +506,13 @@ export class Universe3d {
     out.set(live.x, live.y, live.z);
     this.group.localToWorld(out);
     return true;
+  }
+
+  /** Grésillement : un bruit rapide déterministe (somme de sinus), sans allocation. */
+  private crackle(seed: number): number {
+    const t = this.clock / 1000;
+    const n = Math.sin(t * 37 + seed) * Math.sin(t * 23.3 + seed * 1.7) * Math.sin(t * 61.1);
+    return 0.7 + 0.3 * (n > 0.15 ? 1 : n < -0.15 ? 0 : 0.5);
   }
 
   /** Les étiquettes visibles (tests au banc). */
