@@ -68,13 +68,23 @@ grounding) ») — vocabulaire fermé, aucun contenu.
 | Chantier visé | « chantier N » de la parole, sinon « Chantier courant : N » du contexte, sinon celui de la requête |
 
 ## Critères d'acceptation
-- [ ] `containsNumber` : « 14:00 » en fin de ligne et « 9h55 »/« 09:55 » ancrés ; pas de recollement entre lignes (tests).
-- [ ] Phrase non ancrée + `afficher` ⇒ ANSWER avec l'ordre relayé, jamais DELEGATE (test service).
-- [ ] Doute sur chantier sans preuve ⇒ proposition fixe, aucun appel au modèle (test) ; doute + délégation du modèle ⇒ jamais DELEGATE (test) ; « oui » ⇒ délégation conservée (test).
-- [ ] Consigne v8 figée, outils inchangés (tests existants).
-- [ ] Pré-banc PIECES en direct (code prod, Sonnet 5.5) : **2 passages** porte verte (≥ 90 % par catégorie, 0 faute grave).
-- [ ] Pré-banc CONVERSATION en direct : **1 passage** porte verte (≥ 90 %, zéro faute).
-- [ ] Suite backend complète verte.
+- [x] `containsNumber` : « 14:00 » en fin de ligne et « 9h55 »/« 09:55 » ancrés ; pas de recollement entre lignes (tests).
+- [x] Phrase non ancrée + `afficher` ⇒ ANSWER avec l'ordre relayé, jamais DELEGATE (test service).
+- [x] Doute sur chantier sans preuve ⇒ proposition fixe, aucun appel au modèle (test) ; doute + délégation du modèle ⇒ jamais DELEGATE (test) ; « oui » ⇒ délégation conservée (test).
+- [x] Consigne v8 figée, outils inchangés (tests existants).
+- [x] Pré-banc PIECES en direct (code prod, Sonnet 5.5) : **2 passages** porte verte (≥ 90 % par catégorie, 0 faute grave).
+- [x] Pré-banc CONVERSATION en direct : **1 passage** porte verte (≥ 90 %, zéro faute).
+- [x] Suite backend complète verte.
+
+## Résultats (2026-11-02, code de la branche, Sonnet 5.5, clé lue à la volée)
+| Passage | Porte | SHOW | NAVIGATE | PROOF | NEUTRAL | Faute grave |
+|---|---|---|---|---|---|---|
+| PIECES 1 | verte | 12/13 (92 %) | 10/10 | 8/8 | 6/6 | 0 |
+| PIECES 2 | verte | 12/13 (92 %) | 10/10 | 8/8 | 6/6 | 0 |
+| CONVERSATION 1 | verte | 100 % des scénarios, 0,147 €/échange, délégation 14 % | | | | 0 |
+
+Échec restant (non bloquant) : S04 montre les entrées avec `raison=demande` au lieu de `appui`. Suite backend : 7057
+tests, 0 échec.
 
 ## Préoccupations transversales
 | Préoccupation | Cochée | Composants impactés |
