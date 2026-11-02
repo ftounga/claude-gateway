@@ -522,18 +522,59 @@ public class JarvisFastBrainService {
     private record Called(AgentTurn turn, long firstMs, String failure) {
     }
 
+    /** F-237 / SF-237-15 — la raison d'une réponse fixée par la garde « preuve sans oui » (comptée, jamais dite). */
+    public static final String REASON_PROOF_GUARD = "proof_guard";
+
     private Outcome decideCall(Request request, Sink out, String benchModel, String fixedContext,
             java.util.concurrent.atomic.AtomicReference<String> understood) {
-        UUID userId = request.userId();
-        boolean bench = benchModel != null;
-        String model = bench ? benchModel : properties.model();
-        String apiKey = byok == null ? null : byok.resolveActiveApiKey(userId).orElse(null);
         // F-239 / SF-239-08 — l'état du jour (à blanc, le banc ne lit pas la mémoire : « première salutation »).
         // F-237 / SF-237-08 — puis l'écran (« ## Écran ») et les pièces du sujet (« ## Pièces ») : volatils, dans le
         // message, jamais dans la consigne.
         String context = fixedContext != null ? fixedContext : context(request) + "\n\n"
                 + (benchModel != null ? JarvisFastContextBuilder.dayState(true, false) : dayState(request))
                 + screenAndPieces(request);
+        // F-237 / SF-237-15 — un doute sur un chantier sans aucune preuve : la proposition, sans appel au modèle.
+        JarvisProofGuard.Decision before = JarvisProofGuard.before(request.text(), context, request.chantier());
+        if (before != null) {
+            out.text(before.said() + " ");
+            return new Outcome(Kind.ANSWER, before.said(), null, REASON_PROOF_GUARD, properties.model(), 0L, null);
+        }
+        return withoutProofDelegation(request, out, context,
+                callModel(request, out, benchModel, context, understood));
+    }
+
+    /**
+     * F-237 / SF-237-15 — <b>le filet « preuve sans oui »</b> : une parole de doute ne part jamais à Opus, ni par le
+     * modèle ni d'office. Preuves existantes ⇒ la galerie des preuves ; aucune ⇒ la proposition ; inconnu ⇒
+     * « Voulez-vous que je vérifie ? ». Le « oui » suivant n'est pas un doute : sa délégation part.
+     */
+    Outcome withoutProofDelegation(Request request, Sink out, String context, Outcome outcome) {
+        if (outcome.kind() != Kind.DELEGATE) {
+            return outcome;
+        }
+        JarvisProofGuard.Decision instead = JarvisProofGuard.instead(request.text(), context, request.chantier(),
+                outcome.delegation() == null ? null : outcome.delegation().chantier());
+        if (instead == null) {
+            return outcome;
+        }
+        List<JarvisShowCommand> shows = new ArrayList<>(outcome.shows());
+        if (instead.show() != null && JarvisPiecesBench.proactive(shows) < JarvisShowCommand.MAX_APPUI) {
+            out.show(instead.show());
+            shows.add(instead.show());
+        }
+        out.text(instead.said() + " ");
+        String already = outcome.spokenText() == null ? "" : outcome.spokenText().strip();
+        String said = already.isEmpty() ? instead.said() : already + " " + instead.said();
+        return new Outcome(Kind.ANSWER, said, null, REASON_PROOF_GUARD, outcome.model(), outcome.firstTokenMs(),
+                outcome.costUsd(), outcome.guards(), outcome.understood(), shows);
+    }
+
+    private Outcome callModel(Request request, Sink out, String benchModel, String context,
+            java.util.concurrent.atomic.AtomicReference<String> understood) {
+        UUID userId = request.userId();
+        boolean bench = benchModel != null;
+        String model = bench ? benchModel : properties.model();
+        String apiKey = byok == null ? null : byok.resolveActiveApiKey(userId).orElse(null);
         // F-239 / SF-239-11 — l'univers de référence (préfixe relu du cache) ; les gardes voient tout le contexte.
         String reference = bench ? "" : reference(request);
         String grounding = reference.isEmpty() ? context : reference + "\n\n" + context;
@@ -564,6 +605,20 @@ public class JarvisFastBrainService {
             }
             turn = called.turn();
             if (gate.abortReason() != null) {
+                // F-237 / SF-237-15 — une légende non ancrée (retirée, jamais dite) ne jette pas l'écran du même tour.
+                if (REASON_GROUNDING.equals(gate.abortReason()) && turn.toolCalls().stream()
+                        .noneMatch(tc -> JarvisFastBrainPrompt.TOOL_NAME.equals(tc.name()))) {
+                    for (AgentToolCall tc : turn.toolCalls()) {
+                        if (JarvisFastBrainPrompt.SHOW_TOOL.equals(tc.name())) {
+                            JarvisShowCommand.Parsed parsed = JarvisShowCommand.parse(tc.input(), appuiLeft);
+                            if (parsed.command() != null) {
+                                out.show(parsed.command());
+                                shown.add(parsed.command());
+                                appuiLeft -= parsed.appuiUsed();
+                            }
+                        }
+                    }
+                }
                 break;
             }
             // F-237 / SF-237-08 — la boucle d'outil : l'écran part tout de suite, la lecture des pièces relance.
@@ -613,6 +668,17 @@ public class JarvisFastBrainService {
         }
         understood.set(gate.understood());
         if (gate.abortReason() != null) {
+            if (REASON_GROUNDING.equals(gate.abortReason()) && !shown.isEmpty() && turn.toolCalls().stream()
+                    .noneMatch(tc -> JarvisFastBrainPrompt.TOOL_NAME.equals(tc.name()))) {
+                // F-237 / SF-237-15 — l'écran a montré : la phrase non ancrée est retirée, pas d'escalade vers Opus.
+                String text = gate.spoken();
+                if (text.isEmpty()) {
+                    out.text(SHOWN_REPLY + " ");
+                    text = SHOWN_REPLY;
+                }
+                return new Outcome(Kind.ANSWER, text, null, null, properties.model(), firstMs, null, gate.guards())
+                        .withShows(shown);
+            }
             return auto(request, gate.abortReason(), firstMs, gate.guards()).withShows(shown);
         }
         Optional<AgentToolCall> delegate = turn.toolCalls().stream()

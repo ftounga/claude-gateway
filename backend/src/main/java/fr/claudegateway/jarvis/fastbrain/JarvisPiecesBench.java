@@ -119,6 +119,11 @@ public final class JarvisPiecesBench {
         if (proactive(shows) > JarvisShowCommand.MAX_APPUI) {
             misses.add("plus de 3 pièces d'initiative");
         }
+        // F-237 / SF-237-15 — une délégation d'office dit sa raison (vocabulaire fermé : grounding, timeout…).
+        if (!misses.isEmpty() && delegated && outcome.delegation() != null && outcome.delegation().automatic()
+                && outcome.reason() != null) {
+            misses.add("délégation d'office : " + outcome.reason());
+        }
         String expected = Boolean.TRUE.equals(e.show()) ? "afficher"
                 : Boolean.TRUE.equals(e.delegate()) ? "deleguer" : "repondre";
         int sentences = said.isBlank() ? 0 : JarvisFastGuards.split(said + " ").sentences().size();

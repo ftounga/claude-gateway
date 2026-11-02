@@ -157,4 +157,18 @@ class JarvisPiecesBenchTest {
         assertThat(result.content()).isEqualTo(set.pieces());
         assertThat(JarvisPiecesBench.evaluate(c, outcome).routeAgreed()).isTrue();
     }
+
+    /** F-237 / SF-237-15 — un échec par délégation d'office porte sa raison, pour le diagnostic du banc en prod. */
+    @Test
+    void anAutomaticDelegationSaysWhyInTheComment() {
+        JarvisPiecesBench.Case c = find(JarvisPiecesBench.load(), "N01");
+        JarvisFastBrainService.Outcome auto = new JarvisFastBrainService.Outcome(JarvisFastBrainService.Kind.DELEGATE,
+                "", new JarvisFastBrainService.Delegation(UUID.randomUUID(), "Celle sur Terraform.", "", "", null, null,
+                        true, JarvisFastBrainService.REASON_GROUNDING), JarvisFastBrainService.REASON_GROUNDING, "m",
+                10L, null);
+
+        assertThat(JarvisPiecesBench.evaluate(c, auto).comment())
+                .isEqualTo("aucun affichage, délégation d'office : grounding");
+        assertThat(JarvisPiecesBench.evaluate(c, delegated()).comment()).isEqualTo("aucun affichage");
+    }
 }

@@ -30,6 +30,22 @@ class JarvisFastGuardsTest {
                 .isNull();
     }
 
+    /** F-237 / SF-237-15 — banc PIECES en prod : une heure en fin de ligne n'était jamais reconnue. */
+    @Test
+    void timesAtTheEndOfALineAreGroundedAndLinesAreNeverGluedTogether() {
+        String screen = """
+                ## Écran
+                1. vidéo — « Démo du déploiement » — mardi 09:55
+                2. vidéo — « Cours 2 : Terraform » — lundi 14:00
+                3. vidéo — « Cours 3 : Observabilité » — lundi 16:20""";
+        assertThat(JarvisFastGuards.ungroundedFact("Voici « Cours 2 : Terraform », de lundi 14:00.", screen, ""))
+                .isNull();
+        assertThat(JarvisFastGuards.ungroundedFact("Voici la démo, de mardi 09:55.", screen, "")).isNull();
+        assertThat(JarvisFastGuards.ungroundedFact("Voici la démo, produite ce matin à 9h55.", screen, "")).isNull();
+        assertThat(JarvisFastGuards.ungroundedFact("Il y a 14003 vues.", screen, "")).isEqualTo("14003");
+        assertThat(JarvisFastGuards.ungroundedFact("La réunion est à 17:30.", screen, "")).isNotNull();
+    }
+
     @Test
     void ticketKeysMustBeGrounded() {
         assertThat(JarvisFastGuards.ungroundedFact("Le ticket EDN-212 est bloqué.", CONTEXT, "")).isNull();
