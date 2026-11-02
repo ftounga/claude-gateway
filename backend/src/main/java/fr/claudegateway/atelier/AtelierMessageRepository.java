@@ -188,4 +188,12 @@ public interface AtelierMessageRepository extends JpaRepository<AtelierMessage, 
      */
     long countByUserIdAndWorkspaceIdInAndRoleAndCreatedAtGreaterThanEqual(UUID userId,
             java.util.Collection<UUID> workspaceIds, String role, java.time.OffsetDateTime since);
+
+    /**
+     * F-237 / SF-237-01 — les messages <b>de chantier</b> d'un sujet (rattachement des pièces, besoin initial),
+     * bornés ; isolation {@code user_id}.
+     */
+    List<AtelierMessage> findTop2000ByWorkspaceIdAndUserIdAndChantierNumberIsNotNullOrderByCreatedAtAsc(
+            UUID workspaceId, UUID userId);
+
 }

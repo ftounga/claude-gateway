@@ -20,4 +20,8 @@ public interface PresentationRepository extends JpaRepository<Presentation, UUID
     /** Les présentations d'un lieu (poste/client, espace), la plus récemment modifiée d'abord. */
     List<Presentation> findByUserIdAndHostIdAndSpaceOrderByUpdatedAtDesc(UUID userId, UUID hostId,
             PresentationSpace space);
+
+    /** F-237 / SF-237-01 — les présentations d'un sujet, pour l'index des pièces (isolation {@code user_id}). */
+    List<Presentation> findTop50ByUserIdAndWorkspaceIdOrderByUpdatedAtDesc(UUID userId, UUID workspaceId);
+
 }
