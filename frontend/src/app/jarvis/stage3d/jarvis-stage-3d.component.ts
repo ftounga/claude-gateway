@@ -1,3 +1,6 @@
+import { RenderView } from './jarvis-render-stats';
+import { ActivityRing } from './hud/jarvis-activity';
+import type { Effect3d } from './scenes3d/jarvis-scene3d.model';
 import {
   ChangeDetectionStrategy, Component, ElementRef, InjectionToken, NgZone, OnDestroy, computed, effect, inject, input,
   isDevMode, output, signal, untracked,
@@ -149,8 +152,31 @@ export class JarvisStage3dComponent implements OnDestroy {
     const plan = directStage({ state: s.state, frozen: s.frozen, waiting: s.waiting, asleep: this.asleep(),
       wakes: this.wakes(), delegations: s.delegations, fastBrainOn: s.fastBrainOn, turnActive: s.turnActive,
       brainEnd: s.brainEnd }, universe, scene);
-    return { ...plan, show: this.show(), ambient: this.ambientPlan() };
+    return { ...plan, show: this.show(), ambient: this.ambientPlan(), activity: this.activityPlan() };
   }, { equal: samePlan });
+
+  /** SF-236-26 (NF-16) — la carte d'activité posée par le cockpit ; `null` hors vue. */
+  readonly activity = signal<ActivityRing[] | null>(null);
+
+  /** SF-236-26 — une vue de l'itération 4 ouverte : comptée dans la mesure du rendu (sans contenu). */
+  countView(key: RenderView): void {
+    this.stats.view(key);
+  }
+
+  setActivity(rings: ActivityRing[] | null): void {
+    this.activity.set(rings && rings.length > 0 ? rings : null);
+  }
+
+  /** Les anneaux des clients posés dans l'univers (en présentation et en mode sobre : rien). */
+  private readonly activityPlan = computed<Extract<Effect3d, { kind: 'activity' }> | null>(() => {
+    const rings = this.activity();
+    if (!rings || this.sober() || this.presentation()) {
+      return null;
+    }
+    const posed = new Set(this.universe().layout.nodes.map((n) => n.key));
+    const kept = rings.filter((r) => posed.has(r.clientKey)).map((r) => ({ anchor: r.clientKey, levels: r.levels }));
+    return kept.length > 0 ? { kind: 'activity', rings: kept } : null;
+  }, { equal: (a, b) => a === b || (!!a && !!b && JSON.stringify(a) === JSON.stringify(b)) });
 
   /** SF-236-11 — « Montrer » en 3D : recalculé seulement quand la demande résolue change (même objet sinon). */
   private readonly show = computed<ShowPlan3d | null>(() => {

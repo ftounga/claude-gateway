@@ -8,7 +8,7 @@ import { SessionSnapshot } from '../scenes3d/jarvis-session-memory';
 import { of, throwError } from 'rxjs';
 
 import {
-  CockpitStage, JARVIS_DAY_HISTORY, JARVIS_WATCHES, JarvisCockpitComponent, universeItems,
+  CockpitStage, JARVIS_ACTIVITY, JARVIS_DAY_HISTORY, JARVIS_WATCHES, JarvisCockpitComponent, universeItems,
 } from './jarvis-cockpit.component';
 
 /** Une scène 3D simulée : affichée ou non, téléphone ou PC, positions des nœuds à l'écran. */
@@ -18,6 +18,8 @@ export class FakeCockpitStage implements CockpitStage {
   readonly positions = new Map<string, { x: number; y: number }>();
   session?: () => SessionSnapshot;
   look?: (key: string) => void;
+  setActivity?: CockpitStage['setActivity'];
+  countView?: CockpitStage['countView'];
   project(key: string): { x: number; y: number } | null {
     return this.positions.get(key) ?? null;
   }
@@ -234,6 +236,46 @@ describe('F-236 / SF-236-15 — JarvisCockpitComponent (panneaux latéraux, repl
     TestBed.overrideProvider(JARVIS_WATCHES, { useValue: () => of({ pas: 'une liste' }) });
     mount({ ...screen, turnActive: false });
     expect(fixture.nativeElement.querySelector('.ck__clock')).toBeNull();
+  });
+
+  it('SF-236-26 — activité 7 jours : à la demande hors tour, anneaux posés dans la scène, vue comptée ; retirée au second toucher', () => {
+    const activity = jasmine.createSpy('activity').and.returnValue(of({ days: ['2026-10-27', '2026-10-28',
+      '2026-10-29', '2026-10-30', '2026-10-31', '2026-11-01', '2026-11-02'],
+    subjects: [{ subjectId: 's-forge', turns: [0, 0, 0, 0, 1, 0, 4] }] }));
+    TestBed.overrideProvider(JARVIS_ACTIVITY, { useValue: activity });
+    mount();
+    const setActivity = jasmine.createSpy('setActivity');
+    const countView = jasmine.createSpy('countView');
+    stage.setActivity = setActivity;
+    stage.countView = countView;
+    cockpit.toggleActivity(); // un tour tourne : aucun appel
+    expect(activity).not.toHaveBeenCalled();
+    fixture.componentRef.setInput('signals', { ...screen, turnActive: false });
+    fixture.detectChanges();
+    const button = fixture.nativeElement.querySelector('.ck__activity-toggle') as HTMLButtonElement;
+    button.click();
+    fixture.detectChanges();
+    expect(activity).toHaveBeenCalledTimes(1);
+    expect(setActivity).toHaveBeenCalledTimes(1);
+    expect(setActivity.calls.mostRecent().args[0][0]).toEqual(jasmine.objectContaining({ clientKey: 'h-cagip',
+      total: 5 }));
+    expect(countView).toHaveBeenCalledOnceWith('activity');
+    const rows = fixture.nativeElement.querySelectorAll('.ck__activity-row');
+    expect(rows.length).toBe(2);
+    expect(rows[0].getAttribute('aria-label')).toContain('CAGIP');
+    expect(rows[0].querySelectorAll('.ck__activity-day').length).toBe(7);
+    button.click();
+    fixture.detectChanges();
+    expect(setActivity.calls.mostRecent().args[0]).toBeNull();
+    expect(fixture.nativeElement.querySelector('.ck__activity-row')).toBeNull();
+  });
+
+  it('SF-236-26 — activité illisible ⇒ message, aucune erreur', () => {
+    TestBed.overrideProvider(JARVIS_ACTIVITY, { useValue: () => throwError(() => new Error('500')) });
+    mount({ ...screen, turnActive: false });
+    cockpit.toggleActivity();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('L\'activité n\'a pas pu être lue.');
   });
 
   it('SF-236-17 — journée illisible ⇒ message, aucune erreur', () => {

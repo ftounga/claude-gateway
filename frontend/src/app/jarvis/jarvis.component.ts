@@ -288,6 +288,15 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.useJarvisManifest();
+    // SF-236-26 — l'ouverture en présentation ou en vue cockpit est comptée (la scène existe dès la vue créée).
+    queueMicrotask(() => {
+      if (this.presentation()) {
+        this.stage3dRef?.countView('presentations');
+      }
+      if (this.cockpitFollower) {
+        this.stage3dRef?.countView('cockpits');
+      }
+    });
     this.jarvis.usage('SESSION');
     // SF-233-12 — mise à jour automatique : vérifiée à l'ouverture et toutes les 10 min, appliquée au repos.
     this.appUpdate.start(() => this.isQuiet());
@@ -1777,6 +1786,22 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   /** NF-13 — le veilleur de nuit (`?veilleur=1`, ou « Veilleur de nuit » dans les réglages). */
   readonly night = signal(this.route.snapshot.queryParamMap.get('veilleur') === '1');
+
+  /** SF-236-26 — les vues de l'itération 4 ouvertes, comptées dans la mesure du rendu (sans contenu). */
+  private replaying = false;
+  private readonly viewCounts = effect(() => {
+    const replaying = this.replayView()?.playing() ?? false;
+    const night = this.night();
+    untracked(() => {
+      if (replaying && !this.replaying) {
+        this.stage3dRef?.countView('replays');
+      }
+      this.replaying = replaying;
+      if (night) {
+        this.stage3dRef?.countView('nights');
+      }
+    });
+  });
   readonly ambientNow = computed(() => this.stageSignals().ambient);
 
   /** Échap quitte le mode présentation (et le plein écran qu'il avait pris). */

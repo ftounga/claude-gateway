@@ -1,3 +1,4 @@
+import type { Effect3d } from './scenes3d/jarvis-scene3d.model';
 import { BrainEnd, BrainsState, brainsFor } from './jarvis-brains';
 import { JarvisUniverse } from '../scenes/jarvis-universe.models';
 import { HeartMood, JarvisVoiceState, heartMood } from './jarvis-heart';
@@ -150,6 +151,8 @@ export interface StagePlan {
   show?: ShowPlan3d | null;
   /** SF-236-13 — l'ambiance et les alertes (A1-A5), `null` sinon. */
   ambient?: AmbientPlan3d | null;
+  /** SF-236-26 — la carte d'activité 7 jours (anneaux autour des clients), `null` hors vue. */
+  activity?: Extract<Effect3d, { kind: 'activity' }> | null;
 }
 
 /**
@@ -222,7 +225,7 @@ export function samePlan(a: StagePlan, b: StagePlan): boolean {
   return a.mood === b.mood && a.wakes === b.wakes && a.brains.target === b.brains.target
     && a.brains.variant === b.brains.variant && a.brains.pearls === b.brains.pearls && a.universe === b.universe
     && sameScenePlan(a.scene, b.scene) && (a.show ?? null) === (b.show ?? null)
-    && (a.ambient ?? null) === (b.ambient ?? null);
+    && (a.ambient ?? null) === (b.ambient ?? null) && (a.activity ?? null) === (b.activity ?? null);
 }
 
 /** Deux plans de scène identiques (petits objets déclaratifs : comparaison de leur forme écrite). */

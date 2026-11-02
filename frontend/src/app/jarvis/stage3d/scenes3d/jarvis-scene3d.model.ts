@@ -99,7 +99,9 @@ export type Effect3d =
   /** SF-236-12 — S17 : le cadran d'une veille, attaché à son nœud. */
   | { kind: 'dial'; anchor: string; tone: SceneTone }
   /** SF-236-25 (NF-15) — le radar des alertes : un anneau autour de l'univers, un écho par alerte réelle. */
-  | { kind: 'radar'; echoes: readonly { anchor: string; tone: SceneTone }[] };
+  | { kind: 'radar'; echoes: readonly { anchor: string; tone: SceneTone }[] }
+  /** SF-236-26 (NF-16) — la carte d'activité : un anneau à 7 segments autour de chaque client (éclat 0-1 par jour). */
+  | { kind: 'activity'; rings: readonly { anchor: string; levels: readonly number[] }[] };
 
 /** Le plan d'une scène 3D. */
 export interface ScenePlan3d {
