@@ -191,8 +191,26 @@ export class OralStream {
 
   /** Ajoute un delta ; rend les phrases nouvellement complètes. */
   push(delta: string): string[] {
+    return this.pushLines(delta).map((s) => s.sentence);
+  }
+
+  /** F-240 / SF-240-01 — la position de la dernière ligne 🎙 lue (la réponse finale à la fin du tour), ou `-1`. */
+  get lastLine(): number {
+    return this.lastOralLine;
+  }
+
+  /** F-240 / SF-240-01 — les phrases déjà dites hors de la ligne `line` (l'annonce avant outils, pour la réponse). */
+  spokenOutside(line: number): readonly string[] {
+    return this.tagged.filter((s) => s.line !== line).map((s) => s.sentence);
+  }
+
+  private lastOralLine = -1;
+  private readonly tagged: { sentence: string; line: number }[] = [];
+
+  /** F-240 / SF-240-01 — comme {@link push}, chaque phrase avec la position de sa ligne 🎙. */
+  pushLines(delta: string): { sentence: string; line: number }[] {
     this.buffer += delta;
-    const out: string[] = [];
+    const out: { sentence: string; line: number }[] = [];
     const lines = this.buffer.split('\n');
     let offset = 0;
     let inFence = false;
@@ -202,11 +220,13 @@ export class OralStream {
       if (line.startsWith('```')) {
         inFence = !inFence;
       } else if (!inFence && line.startsWith(ORAL_MARK)) {
+        this.lastOralLine = Math.max(this.lastOralLine, offset);
         const body = raw.slice(raw.indexOf(ORAL_MARK) + ORAL_MARK.length);
         const sentences = oralSentences(body, complete).slice(0, MAX_LINE_SENTENCES);
         const done = this.emitted.get(offset) ?? 0;
         for (let k = done; k < sentences.length; k++) {
-          out.push(sentences[k]);
+          out.push({ sentence: sentences[k], line: offset });
+          this.tagged.push({ sentence: sentences[k], line: offset });
           this.said.push(sentences[k]);
         }
         this.emitted.set(offset, Math.max(done, sentences.length));

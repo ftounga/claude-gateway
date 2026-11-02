@@ -212,6 +212,8 @@ export interface Announcement {
   phrase: string;
   subjectId: string;
   confirm: boolean;
+  /** F-240 / SF-240-01 — la délégation d'origine (sa mesure attend que cette fin soit dite). */
+  delegationId?: string;
 }
 
 /**

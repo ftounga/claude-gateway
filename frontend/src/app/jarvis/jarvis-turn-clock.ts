@@ -35,6 +35,10 @@ export class TurnClock {
     | 'correction'>> = {};
   /** F-239 / SF-239-01 — la parole a été refusée (aucun tour) : raison et longueur, jamais le texte. */
   rejected: Pick<TurnTimingReport, 'rejectedKind' | 'rejectedChars'> | null = null;
+  /** F-240 / SF-240-01 — ce qui a été dit (longueur, coupe, invitation), jamais le texte. */
+  spoken: Partial<Pick<TurnTimingReport, 'spokenWords' | 'spokenChars' | 'spokenMs' | 'announceWords' | 'oralCut'
+    | 'invitation'>> = {};
+  private depth: Pick<TurnTimingReport, 'depthReached' | 'depthVia'> | null = null;
   private reported = false;
 
   /**
@@ -52,6 +56,12 @@ export class TurnClock {
     }
   }
 
+  /** F-240 / SF-240-01 — le temps écoulé depuis la marque `step` (ex. la durée dite depuis le premier son), ou `null`. */
+  sinceMark(step: TurnMark): number | null {
+    const at = this.marks.get(step);
+    return at === undefined ? null : Math.max(0, Math.round(this.now() - this.t0 - at));
+  }
+
   /** La marque posée, ou `null`. */
   at(step: TurnMark): number | null {
     return this.marks.get(step) ?? null;
@@ -59,6 +69,33 @@ export class TurnClock {
 
   count(counter: TurnCounter, by = 1): void {
     this.counters[counter] = Math.min(1_000, this.counters[counter] + by);
+  }
+
+  /**
+   * F-240 / SF-240-01 — ce qui a été dit de la réponse : mots et caractères de `text` (la réponse dite, hors annonce),
+   * sa durée audio si elle est connue. Une valeur déjà posée n'est pas effacée par une absence.
+   */
+  said(text: string, ms: number | null, extra: Partial<Pick<TurnTimingReport, 'announceWords' | 'oralCut'
+    | 'invitation'>> = {}): void {
+    this.spoken = {
+      ...this.spoken,
+      spokenWords: spokenWordCount(text),
+      spokenChars: text.length,
+      ...(ms !== null && ms >= 0 ? { spokenMs: Math.min(MAX_MARK_MS, Math.round(ms)) } : {}),
+      ...extra,
+    };
+  }
+
+  /** F-240 / SF-240-01 — l'étage atteint (le plus profond est gardé) et son chemin. */
+  reach(depth: 1 | 2 | 3, via: 'voix' | 'toucher'): void {
+    if (!this.depth || (this.depth.depthReached ?? 0) < depth) {
+      this.depth = { depthReached: depth, depthVia: via };
+    }
+  }
+
+  /** F-240 — l'étage atteint, ou 1 si rien n'a été ouvert. */
+  get depthReached(): 1 | 2 | 3 {
+    return this.depth?.depthReached ?? 1;
   }
 
   /** La mesure à envoyer, **une seule fois** (`null` ensuite). */
@@ -89,6 +126,20 @@ export class TurnClock {
       ...this.counters,
       ...this.fast,
       ...(this.rejected ?? {}),
+      ...this.spoken,
+      ...(this.depth ?? {}),
     };
   }
+}
+
+/**
+ * F-240 / SF-240-01 — **combien de mots** : un groupe séparé par des blancs qui contient au moins une lettre ou un
+ * chiffre (même règle que la passerelle, `JarvisSpokenWords`). L'élision et le trait d'union ne coupent pas ; la
+ * ponctuation et les marques (🎙, ↪) ne comptent pas.
+ */
+export function spokenWordCount(text: string | null | undefined): number {
+  if (!text || !text.trim()) {
+    return 0;
+  }
+  return text.trim().split(/\s+/).filter((token) => /[\p{L}\p{N}]/u.test(token)).length;
 }

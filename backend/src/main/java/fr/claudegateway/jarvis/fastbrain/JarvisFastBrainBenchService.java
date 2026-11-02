@@ -97,7 +97,16 @@ public class JarvisFastBrainBenchService {
      * échange (en €), taux de délégation, verdicts par scénario et par tour.
      */
     public record ConversationReport(double passRate, java.math.BigDecimal costPerExchangeEur, double delegationRate,
-            List<JarvisConversationBench.ScenarioVerdict> scenarios, List<JarvisConversationBench.TurnVerdict> turns) {
+            List<JarvisConversationBench.ScenarioVerdict> scenarios, List<JarvisConversationBench.TurnVerdict> turns,
+            Integer fastWordsP50, Integer fastWordsP90) {
+
+        /** F-240 / SF-240-01 — p50/p90 des mots dits par le cerveau rapide, calculés sur les tours (informatif). */
+        public ConversationReport(double passRate, java.math.BigDecimal costPerExchangeEur, double delegationRate,
+                List<JarvisConversationBench.ScenarioVerdict> scenarios,
+                List<JarvisConversationBench.TurnVerdict> turns) {
+            this(passRate, costPerExchangeEur, delegationRate, scenarios, turns,
+                    JarvisConversationBench.fastWords(turns)[0], JarvisConversationBench.fastWords(turns)[1]);
+        }
     }
 
     private record Run(UUID userId, Report report) {

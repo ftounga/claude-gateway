@@ -156,4 +156,37 @@ public class JarvisTurnTiming {
     /** F-239 / SF-239-02 (D3b) — la longueur du texte transcrit refusé, {@code null} sinon. */
     @Column(name = "rejected_chars")
     private Integer rejectedChars;
+
+    // ---- F-240 / SF-240-01 — ce qui est dit (longueur, coupe, invitation, étage atteint). Jamais le texte.
+
+    /** Les mots de la réponse dite (hors annonce avant outils) ; {@code null} sans réponse dite. */
+    @Column(name = "spoken_words")
+    private Integer spokenWords;
+
+    @Column(name = "spoken_chars")
+    private Integer spokenChars;
+
+    /** La durée audio de la réponse dite, hors annonce, en ms. */
+    @Column(name = "spoken_ms")
+    private Integer spokenMs;
+
+    /** Les mots de l'annonce qui précède les outils (D3 : comptés à part). */
+    @Column(name = "announce_words")
+    private Integer announceWords;
+
+    /** L'écran a coupé la ligne dite (D5 : plus de 35 mots ⇒ première phrase seulement). */
+    @Column(name = "oral_cut")
+    private Boolean oralCut;
+
+    /** Une invitation ciblée « ↪ » a été dite (D6). */
+    @Column(name = "invitation")
+    private Boolean invitation;
+
+    /** L'étage atteint : 1 dit, 2 essentiel, 3 détail. */
+    @Column(name = "depth_reached")
+    private Integer depthReached;
+
+    /** Comment l'étage a été atteint : {@code voix} ou {@code toucher}. */
+    @Column(name = "depth_via", length = 8)
+    private String depthVia;
 }

@@ -30,7 +30,7 @@ import { LiveTerminalService } from '../core/services/live-terminal.service';
 import { NotificationCenterService } from '../core/services/notification-center.service';
 import { DictationError, DictationService } from '../core/services/dictation.service';
 import { JarvisVoiceError, JarvisVoiceService, SpeakHooks } from '../core/services/jarvis-voice.service';
-import { TurnClock, TurnCounter } from './jarvis-turn-clock';
+import { TurnClock, TurnCounter, spokenWordCount } from './jarvis-turn-clock';
 import { BargeInController, JarvisVadService, RunningVad, bargeInEnabled, encodeWav } from './jarvis-barge-in';
 import { CutSnapshot } from '../core/services/jarvis-voice.service';
 import { JarvisStreamOpener, LISTEN_AUDIO, LiveListening } from './jarvis-stream-listener';
@@ -63,6 +63,8 @@ function readWakeOn(): boolean {
 export const DOUBT_PHRASE = 'Je n’ai pas compris : je ne fais rien. Vous pouvez confirmer depuis le terminal.';
 /** F-235 / SF-235-05 (D13) — une annonce attend une pause d'au moins ce délai. */
 export const ANNOUNCE_PAUSE_MS = 800;
+/** F-240 / SF-240-01 — la mesure d'un tour fini (ou délégué) part au plus tard après ce délai. */
+export const PARKED_CLOCK_MS = 10 * 60_000;
 /** SF-231-04 — ce que Jarvis dit quand personne ne répond. */
 export const NO_ANSWER_PHRASE = 'Sans réponse, je ne fais rien.';
 import {
@@ -431,6 +433,16 @@ export class JarvisComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    // F-240 / SF-240-01 — les mesures gardées partent à la sortie de l'écran.
+    this.flushParked();
+    this.delegationClocks.forEach(({ clock, timer }) => {
+      clearTimeout(timer);
+      const report = clock.takeReport();
+      if (report) {
+        this.jarvis.timings(report);
+      }
+    });
+    this.delegationClocks.clear();
     this.stopTour();
     this.leader?.close();
     this.follower?.close();
@@ -1441,6 +1453,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
     let fellBack = false;
     let finished: FastDone | null = null;
     let delegationReason: string | null = null;
+    // F-240 / SF-240-01 — l'échange a délégué : sa mesure attend que la fin de la délégation soit dite.
+    let delegatedId: string | null = null;
     const sayNow = (sentence: string) => {
       if (!latest()) {
         return;
@@ -1498,6 +1512,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
         if ((delegation.announce ?? '').trim()) {
           sayNow(delegation.announce);
         }
+        delegatedId = delegation.delegationId;
         this.startDelegation(delegation, understood ?? text, heardBeforeCut);
       }),
       onFallback: () => {
@@ -1554,8 +1569,22 @@ export class JarvisComponent implements OnInit, OnDestroy {
         this.pieces.count('pf_off'); // F-237 / SF-237-14 — proposition de générer la preuve, dite
       }
       this.clock?.mark('done');
-      this.reportClock();
+      // F-240 / SF-240-01 — la mesure attend la fin de la voix (durée dite) ; une délégation attend sa fin, dite.
+      const ending = this.clock;
+      this.clock = null;
+      this.refreshCosts();
       await this.voice.idle();
+      if (ending) {
+        if (delegatedId) {
+          ending.spoken = { ...ending.spoken, announceWords: spokenWordCount(said) };
+          this.holdForDelegation(delegatedId, ending);
+        } else {
+          if (said && done?.brain === 'FAST') {
+            ending.said(said, ending.sinceMark('firstSound'));
+          }
+          this.park(ending);
+        }
+      }
       if (latest() && (this.state() === 'parole' || this.state() === 'reflexion')) {
         this.state.set('repos');
       }
@@ -1596,7 +1625,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
       }
       const phrase = failed ? 'La recherche n’a pas abouti ; le détail est au terminal.'
         : oralPhrase(reply) || 'C’est fait. Le détail est à l’écran.';
-      this.announcements.push({ label, phrase, subjectId, confirm: !failed && asksConfirmation(phrase) });
+      this.announcements.push({ label, phrase, subjectId, confirm: !failed && asksConfirmation(phrase),
+        delegationId: delegation.delegationId });
       this.flushAnnouncements();
     });
     void this.atelier.streamChat(subjectId, text, {
@@ -1660,7 +1690,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
       }
       return;
     }
-    void this.say(announcementText(item)).then(() => this.zone.run(() => {
+    // F-240 / SF-240-01 — la fin d'une délégation dite : sa longueur et sa durée entrent dans la mesure de l'échange.
+    const timed = this.timedHooks();
+    void this.say(announcementText(item), timed.hooks).then(() => this.zone.run(() => {
+      this.delegationSaid(item.delegationId, item.phrase, timed.elapsed());
       if (item.confirm) {
         // La délégation finit sur « Vous confirmez ? » : la réponse ira directement à son tour Opus (D8).
         this.awaitingVerbal = true;
@@ -1692,6 +1725,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const oral = new OralStream();
     this.oral = oral;
     this.streamedText = '';
+    this.lineStarts = new Map();
     if (!this.turnRunning) {
       this.turnStartedAt = Date.now();
     }
@@ -1877,8 +1911,89 @@ export class JarvisComponent implements OnInit, OnDestroy {
   /** SF-233-06 — le fournisseur de la voix de Jarvis (mesure). */
   private ttsProvider: string | null = null;
 
+  /**
+   * F-240 / SF-240-01 — **le dernier tour fini est gardé** : l'étage atteint ensuite (« dis-m'en plus », toucher sur
+   * « Voir le détail ») entre dans sa mesure. Elle part au tour suivant, à la sortie de l'écran, ou au plus tard après
+   * {@link PARKED_CLOCK_MS}.
+   */
+  private parkedClock: TurnClock | null = null;
+  private parkTimer: ReturnType<typeof setTimeout> | null = null;
+  /** F-240 / SF-240-01 — les mesures des échanges délégués, jusqu'à ce que la fin de leur délégation soit dite. */
+  private readonly delegationClocks = new Map<string, { clock: TurnClock; timer: ReturnType<typeof setTimeout> }>();
+  /** F-240 / SF-240-01 — l'instant où chaque ligne 🎙 a commencé à être dite (par position dans le flux). */
+  private lineStarts = new Map<number, number>();
+
+  /** F-240 / SF-240-01 — le tour en cours est fini : sa mesure est gardée (voir {@link parkedClock}). */
+  private parkClock(): void {
+    this.refreshCosts();
+    const clock = this.clock;
+    this.clock = null;
+    if (clock) {
+      this.park(clock);
+    }
+  }
+
+  private park(clock: TurnClock): void {
+    this.flushParked();
+    this.parkedClock = clock;
+    this.parkTimer = setTimeout(() => this.flushParked(), PARKED_CLOCK_MS);
+  }
+
+  /** F-240 / SF-240-01 — déclare la mesure gardée (une seule fois). */
+  private flushParked(): void {
+    if (this.parkTimer) {
+      clearTimeout(this.parkTimer);
+      this.parkTimer = null;
+    }
+    const report = this.parkedClock?.takeReport();
+    this.parkedClock = null;
+    if (report) {
+      this.jarvis.timings(report);
+    }
+  }
+
+  /** F-240 / SF-240-01 — la mesure d'un échange délégué attend la fin de sa délégation (au plus {@link PARKED_CLOCK_MS}). */
+  private holdForDelegation(delegationId: string, clock: TurnClock): void {
+    const timer = setTimeout(() => {
+      this.delegationClocks.delete(delegationId);
+      const report = clock.takeReport();
+      if (report) {
+        this.jarvis.timings(report);
+      }
+    }, PARKED_CLOCK_MS);
+    this.delegationClocks.set(delegationId, { clock, timer });
+  }
+
+  /** F-240 / SF-240-01 — la fin d'une délégation a été dite : ce qui a été dit entre dans la mesure de l'échange. */
+  private delegationSaid(delegationId: string | undefined, phrase: string, ms: number | null): void {
+    const held = delegationId ? this.delegationClocks.get(delegationId) : undefined;
+    if (!held || !delegationId) {
+      return;
+    }
+    clearTimeout(held.timer);
+    this.delegationClocks.delete(delegationId);
+    held.clock.said(phrase, ms);
+    this.park(held.clock);
+  }
+
+  /** F-240 / SF-240-01 — des crochets de lecture qui notent quand la voix a commencé (durée dite). */
+  private timedHooks(base?: SpeakHooks): { hooks: SpeakHooks; elapsed: () => number | null } {
+    let startedAt: number | null = null;
+    return {
+      hooks: {
+        ...base,
+        onPlaying: () => {
+          base?.onPlaying?.();
+          startedAt ??= performance.now();
+        },
+      },
+      elapsed: () => (startedAt === null ? null : Math.round(performance.now() - startedAt)),
+    };
+  }
+
   /** SF-233-01 — l'envoi part : le chronomètre de la phrase transcrite devient celui du tour. */
   private startClock(): void {
+    this.flushParked();
     this.reportClock();
     this.clock = this.pendingClock;
     this.pendingClock = null;
@@ -1920,13 +2035,14 @@ export class JarvisComponent implements OnInit, OnDestroy {
    * que la précédente joue). Pas pendant une confirmation, ni au-delà d'un tour long (la fin s'annonce alors).
    */
   private speakAsWritten(subjectId: string, oral: OralStream, delta: string): void {
-    const sentences = oral.push(delta);
-    if (sentences.length === 0 || this.pendingConfirm
+    const lines = oral.pushLines(delta);
+    if (lines.length === 0 || this.pendingConfirm
         || (this.turnStartedAt > 0 && Date.now() - this.turnStartedAt >= LONG_TURN_MS)) {
       return;
     }
     this.filler.answered();
-    for (const sentence of sentences) {
+    const starts = this.lineStarts;
+    for (const { sentence, line } of lines) {
       const first = this.streamedText === '';
       this.clearAck();
       this.streamedText = first ? sentence : `${this.streamedText} ${sentence}`;
@@ -1938,7 +2054,18 @@ export class JarvisComponent implements OnInit, OnDestroy {
         this.voice.resetHeard();
       }
       // F-234 / SF-234-11 (D13) — le nom surligné suit la phrase DITE (au moment où elle commence à jouer).
-      this.voice.enqueue(sentence, subjectId, this.sayingHooks(sentence, first ? this.clockHooks() : undefined));
+      // F-240 / SF-240-01 — l'instant où la ligne commence à être dite (durée de la réponse dite).
+      const base = first ? this.clockHooks() : undefined;
+      const lineHooks: SpeakHooks = {
+        ...base,
+        onPlaying: () => {
+          base?.onPlaying?.();
+          if (!starts.has(line)) {
+            starts.set(line, performance.now());
+          }
+        },
+      };
+      this.voice.enqueue(sentence, subjectId, this.sayingHooks(sentence, lineHooks));
     }
     // La file dite, le tour continue (outils) : l'orbe repasse en réflexion.
     void this.voice.idle().then(() => this.zone.run(() => {
@@ -2554,15 +2681,26 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const streamed = this.streamedText;
     this.oral = null;
     this.streamedText = '';
+    // F-240 / SF-240-01 — la réponse dite est la dernière ligne 🎙 ; les lignes d'avant (annonce) comptent à part.
+    const finalLine = oral?.lastLine ?? -1;
+    const announceWords = oral ? spokenWordCount(oral.spokenOutside(finalLine).join(' ')) : 0;
+    let spokenMs: number | null = null;
     if (streamed) {
       // SF-233-03 — déjà dit au fil de l'écriture : la file va au bout, puis le reste de la phrase finale.
       await this.voice.idle();
       const rest = oral?.remaining(phrase) ?? '';
       // Interrompu (il écoute déjà) : on ne reprend pas la parole.
       if (rest && this.state() !== 'ecoute') {
-        await this.say(rest);
-      } else if (this.voice.lastQueueError && this.voice.lastQueueError !== 'interrompu') {
-        this.notice.set(voiceMessage(this.voice.lastQueueError));
+        const timed = this.timedHooks();
+        await this.say(rest, timed.hooks);
+        const lineStart = this.lineStarts.get(finalLine);
+        spokenMs = lineStart !== undefined ? Math.round(performance.now() - lineStart) : timed.elapsed();
+      } else {
+        const lineStart = this.lineStarts.get(finalLine);
+        spokenMs = lineStart !== undefined ? Math.round(performance.now() - lineStart) : null;
+        if (this.voice.lastQueueError && this.voice.lastQueueError !== 'interrompu') {
+          this.notice.set(voiceMessage(this.voice.lastQueueError));
+        }
       }
       if (this.state() === 'parole' || this.state() === 'reflexion') {
         this.state.set('repos');
@@ -2571,10 +2709,13 @@ export class JarvisComponent implements OnInit, OnDestroy {
       this.clock?.mark('firstOralSentence');
       this.voice.resetHeard();
       // SF-231-03 — un tour long s'annonce : le PO a pu passer à autre chose.
-      await this.say(withEndAnnouncement(phrase, elapsed), this.clockHooks());
+      const timed = this.timedHooks(this.clockHooks());
+      await this.say(withEndAnnouncement(phrase, elapsed), timed.hooks);
+      spokenMs = timed.elapsed();
     }
     this.clock?.mark('done');
-    this.reportClock();
+    this.clock?.said(phrase, spokenMs, { announceWords });
+    this.parkClock();
     // SF-231-04 — l'agent a reformulé une action qui engage et attend « oui » : Jarvis écoute la réponse.
     if (asksConfirmation(phrase)) {
       this.awaitingVerbal = true;

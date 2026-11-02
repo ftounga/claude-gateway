@@ -96,4 +96,24 @@ class JarvisConversationBenchTest {
         }
         assertThat(JarvisConversationBench.summarize(turns, mostly).gatePassed()).isTrue();
     }
+
+    @Test
+    void f240EachTurnCarriesItsWordsAndTheReportGivesTheFastBrainP90() {
+        JarvisConversationBench.TurnVerdict hello = good("S", 1, "repondre", "repondre");
+        assertThat(hello.words()).isEqualTo(2);
+        JarvisConversationBench.TurnVerdict longer = new JarvisConversationBench.TurnVerdict("S", 2, "X", "repondre",
+                "any", true, 4, true, false, false, true, false, false, false,
+                "Le chantier 3 en est aux tests d'intégration de la migration Keycloak.", "ok");
+        JarvisConversationBench.TurnVerdict delegated = new JarvisConversationBench.TurnVerdict("S", 3, "X",
+                "deleguer", "deleguer", true, 4, true, false, false, true, false, false, false,
+                "Je regarde les tickets bloqués d'Edenred, Monsieur, et je reviens vers vous.", "ok");
+        // Seules les réponses du cerveau rapide comptent (une annonce de délégation est à part).
+        Integer[] words = JarvisConversationBench.fastWords(List.of(hello, longer, delegated));
+        assertThat(words[0]).isEqualTo(2);
+        assertThat(words[1]).isEqualTo(12);
+        assertThat(JarvisConversationBench.fastWords(List.of(delegated))[1]).isNull();
+        JarvisFastBrainBenchService.ConversationReport report = new JarvisFastBrainBenchService.ConversationReport(1.0,
+                BigDecimal.ZERO, 0.0, List.of(), List.of(hello, longer));
+        assertThat(report.fastWordsP90()).isEqualTo(12);
+    }
 }

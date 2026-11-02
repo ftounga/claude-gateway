@@ -147,6 +147,19 @@ export interface TurnTimingReport {
    */
   rejectedKind?: 'empty' | 'noise' | 'hallucination' | 'no_voice' | 'implausible' | null;
   rejectedChars?: number | null;
+  /**
+   * F-240 / SF-240-01 — ce qui a été dit (jamais le texte) : mots, caractères et durée audio de la réponse dite (hors
+   * annonce), mots de l'annonce avant outils, coupe de l'écran (D5), invitation ciblée dite (D6), étage atteint
+   * (1 dit, 2 essentiel, 3 détail) et son chemin.
+   */
+  spokenWords?: number | null;
+  spokenChars?: number | null;
+  spokenMs?: number | null;
+  announceWords?: number | null;
+  oralCut?: boolean | null;
+  invitation?: boolean | null;
+  depthReached?: 1 | 2 | 3 | null;
+  depthVia?: 'voix' | 'toucher' | null;
 }
 
 /** F-239 / SF-239-12 — ce que Jarvis a coûté, en euros, par poste. */

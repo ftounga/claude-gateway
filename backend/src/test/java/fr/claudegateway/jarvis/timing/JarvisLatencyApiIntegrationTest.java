@@ -38,6 +38,7 @@ class JarvisLatencyApiIntegrationTest {
     @Autowired private UserRepository userRepository;
     @Autowired private WorkspaceRepository workspaceRepository;
     @Autowired private JarvisTurnTimingRepository timings;
+    @Autowired private fr.claudegateway.atelier.AtelierMessageRepository messages;
     @Autowired private JwtService jwtService;
 
     private User admin;
@@ -182,6 +183,63 @@ class JarvisLatencyApiIntegrationTest {
         });
         assertThat(timings.findByUserIdAndCreatedAtGreaterThanEqual(otherAdmin.getId(),
                 OffsetDateTime.now().minusDays(1))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("F-240 / SF-240-01 — ce qui est dit : mots, durée, coupe, invitation, étage ; p50/p90 ADMIN ; isolation")
+    void spokenLengthIsMeasured() throws Exception {
+        report(adminToken, "{\"brain\":\"OPUS\",\"spokenWords\":24,\"spokenChars\":140,\"spokenMs\":7800,"
+                + "\"announceWords\":6,\"oralCut\":false,\"invitation\":true,\"depthReached\":3,\"depthVia\":\"voix\"}")
+                .andExpect(status().isNoContent());
+        report(adminToken, "{\"brain\":\"FAST\",\"spokenWords\":40,\"spokenChars\":230,\"spokenMs\":12000,"
+                + "\"oralCut\":true,\"depthReached\":2,\"depthVia\":\"TOUCHER\"}").andExpect(status().isNoContent());
+        report(adminToken, "{\"doneMs\":10}").andExpect(status().isNoContent());
+        // Un autre compte : ses mots ne comptent jamais pour l'administrateur.
+        report(otherAdminToken, "{\"spokenWords\":300,\"spokenMs\":90000}").andExpect(status().isNoContent());
+        // Bornes et listes fermées.
+        report(adminToken, "{\"spokenWords\":-1}").andExpect(status().isBadRequest());
+        report(adminToken, "{\"depthReached\":4,\"depthVia\":\"voix\"}").andExpect(status().isBadRequest());
+        report(adminToken, "{\"depthReached\":2,\"depthVia\":\"clavier\"}").andExpect(status().isBadRequest());
+        report(adminToken, "{\"spokenMs\":700000}").andExpect(status().isBadRequest());
+
+        latency(adminToken).andExpect(status().isOk())
+                .andExpect(jsonPath("$.turns").value(3))
+                .andExpect(jsonPath("$.spoken.answers").value(2))
+                .andExpect(jsonPath("$.spoken.wordsP50").value(24))
+                .andExpect(jsonPath("$.spoken.wordsP90").value(40))
+                .andExpect(jsonPath("$.spoken.msP90").value(12000))
+                .andExpect(jsonPath("$.spoken.announceWordsP90").value(6))
+                .andExpect(jsonPath("$.spoken.cutRate").value(0.5))
+                .andExpect(jsonPath("$.spoken.invitationRate").value(0.5))
+                .andExpect(jsonPath("$.spoken.depthReached.2").value(1))
+                .andExpect(jsonPath("$.spoken.depthReached.3").value(1))
+                .andExpect(jsonPath("$.spoken.depthVia.voix").value(1))
+                .andExpect(jsonPath("$.spoken.depthVia.toucher").value(1));
+        latency(otherAdminToken).andExpect(jsonPath("$.spoken.answers").value(1))
+                .andExpect(jsonPath("$.spoken.wordsP90").value(300));
+    }
+
+    @Test
+    @DisplayName("F-240 / SF-240-01 — base de départ : mots des lignes 🎙 écrites par Opus, sous user_id, rapides exclues")
+    void oralLinesBaseline() throws Exception {
+        Workspace mine = workspaceRepository.save(Workspace.builder().userId(admin.getId()).name("lat-oral").build());
+        Workspace theirs = workspaceRepository.save(Workspace.builder().userId(otherAdmin.getId())
+                .name("lat-oral-b").build());
+        messages.save(fr.claudegateway.atelier.AtelierMessage.builder().workspaceId(mine.getId())
+                .userId(admin.getId()).role("ASSISTANT").via("JARVIS")
+                .content("🎙 Oui, Monsieur : le chantier 3 est terminé.\n<<essentiel>>\nFini.\n<</essentiel>>").build());
+        messages.save(fr.claudegateway.atelier.AtelierMessage.builder().workspaceId(mine.getId())
+                .userId(admin.getId()).role("ASSISTANT").via("JARVIS").brain("FAST")
+                .content("🎙 réponse rapide hors mesure avec beaucoup de mots ici").build());
+        messages.save(fr.claudegateway.atelier.AtelierMessage.builder().workspaceId(theirs.getId())
+                .userId(otherAdmin.getId()).role("ASSISTANT").via("JARVIS")
+                .content("🎙 Une ligne d'un autre compte.").build());
+
+        latency(adminToken).andExpect(status().isOk())
+                .andExpect(jsonPath("$.oralLines.replies").value(1))
+                .andExpect(jsonPath("$.oralLines.wordsP90").value(7));
+        latency(otherAdminToken).andExpect(jsonPath("$.oralLines.replies").value(1))
+                .andExpect(jsonPath("$.oralLines.wordsP90").value(5));
     }
 
     @Test

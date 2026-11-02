@@ -28,6 +28,13 @@ public interface AtelierMessageRepository extends JpaRepository<AtelierMessage, 
      */
     List<AtelierMessage> findTop60ByUserIdAndViaAndRoleOrderByCreatedAtDesc(UUID userId, String via, String role);
 
+    /**
+     * F-240 / SF-240-01 — les dernières réponses du compte qui portent une ligne orale « 🎙 » (tours nés à la voix),
+     * depuis un instant, pour la longueur écrite de la ligne dite. Toujours sous {@code user_id}, bornées à 500.
+     */
+    List<AtelierMessage> findTop500ByUserIdAndRoleAndCreatedAtGreaterThanEqualAndContentContainingOrderByCreatedAtDesc(
+            UUID userId, String role, java.time.OffsetDateTime from, String fragment);
+
     /** F-239 / SF-239-09 — les messages Jarvis du compte depuis un instant (la journée), du plus ancien au plus récent. */
     List<AtelierMessage> findTop200ByUserIdAndViaAndCreatedAtGreaterThanEqualOrderByCreatedAtAsc(UUID userId, String via,
             java.time.OffsetDateTime from);
