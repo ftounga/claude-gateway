@@ -135,7 +135,7 @@ public class JarvisFastBrainController {
                 }
             }
             send(emitter, "done", new DoneEvent(brainOf(outcome), outcome.spokenText(), outcome.firstTokenMs(),
-                    outcome.model(), turnSeq, outcome.guards()));
+                    outcome.model(), turnSeq, outcome.guards(), budgetOf(outcome)));
             emitter.complete();
         } catch (RuntimeException e) {
             log.warn("Cerveau rapide : flux interrompu ({})", e.getClass().getSimpleName());
@@ -178,8 +178,19 @@ public class JarvisFastBrainController {
     record UnderstoodEvent(String text) {
     }
 
+    /**
+     * @param budget F-239 / SF-239-11 — {@code soft} (budget du mois dépassé, le cerveau rapide continue), {@code hard}
+     *               (plafond dur : réponse fixe), sinon {@code null}
+     */
     record DoneEvent(String brain, String spokenText, long firstTokenMs, String model, Long turnSeq,
-            JarvisFastBrainService.Guards guards) {
+            JarvisFastBrainService.Guards guards, String budget) {
+    }
+
+    static String budgetOf(JarvisFastBrainService.Outcome outcome) {
+        if (JarvisFastBrainService.REASON_BUDGET_SOFT.equals(outcome.reason())) {
+            return "soft";
+        }
+        return JarvisFastBrainService.REASON_BUDGET_HARD.equals(outcome.reason()) ? "hard" : null;
     }
 
     record ErrorEvent(String error) {

@@ -1322,6 +1322,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
           this.lastFastAnswerAt = Date.now();
         }
       }
+      // F-239 / SF-239-11 — budget de la conversation dépassé : dit une fois par ouverture, jamais d'escalade.
+      if (done?.budget && !this.budgetNoticed) {
+        this.budgetNoticed = true;
+        this.notice.set(done.budget === 'hard' ? BUDGET_HARD_NOTICE : BUDGET_SOFT_NOTICE);
+      }
       this.clock?.mark('done');
       this.reportClock();
       await this.voice.idle();
@@ -1615,6 +1620,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
       this.voice.speak(phrase.text, subjectId).catch(() => undefined);
     }, delay);
   }
+
+  /** F-239 / SF-239-11 — le dépassement du budget de conversation a déjà été signalé sur cette ouverture. */
+  private budgetNoticed = false;
 
   /** F-239 / SF-239-01 — le gabarit de la dernière attente dite : jamais deux tours de suite. */
   private lastFillerTemplate: number | null = null;
@@ -2318,6 +2326,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.micLevel = 0;
   }
 }
+
+/** F-239 / SF-239-11 — budget mensuel du cerveau rapide dépassé (il continue) ou plafond dur atteint. */
+export const BUDGET_SOFT_NOTICE = 'Budget mensuel de la conversation dépassé : Jarvis continue, sobrement.';
+export const BUDGET_HARD_NOTICE = 'Plafond mensuel de la conversation atteint : relevez-le dans la configuration.';
 
 function readStoredSubject(): string | null {
   try {

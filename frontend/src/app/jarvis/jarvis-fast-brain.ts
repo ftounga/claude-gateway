@@ -30,6 +30,11 @@ export interface FastDone {
   model: string;
   /** SF-235-03 — ce que les garde-fous ont fait (compté, sans contenu). */
   guards?: FastGuards | null;
+  /**
+   * F-239 / SF-239-11 — le budget mensuel du cerveau rapide : `soft` dépassé (il continue, sobrement), `hard` plafond
+   * atteint (réponse fixe, aucun appel) ; absent sinon. Jamais une bascule vers Opus.
+   */
+  budget?: 'soft' | 'hard' | null;
 }
 
 /** Les compteurs des garde-fous du serveur (SF-235-03, SF-235-09). */

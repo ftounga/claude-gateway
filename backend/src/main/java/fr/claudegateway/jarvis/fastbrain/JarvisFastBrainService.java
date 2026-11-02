@@ -323,7 +323,7 @@ public class JarvisFastBrainService {
         if (last != null && last.plus(WARM_EVERY).isAfter(now)) {
             return false;
         }
-        if (overBudget(userId)) {
+        if (budgetState(userId) == Budget.HARD) {
             return false;
         }
         warmed.put(userId, now);
@@ -397,29 +397,78 @@ public class JarvisFastBrainService {
             java.util.concurrent.atomic.AtomicReference<String> understood) {
         UUID userId = request.userId();
         boolean bench = benchModel != null;
-        String model = bench ? benchModel : properties.model();
         // D9d : « vérifie », « demande à Opus », « c'est faux »… ⇒ Opus, sans appel au cerveau rapide.
         if (JarvisFastGuards.forcesDelegation(request.text())) {
             return forced(request);
         }
-        if (!bench && overBudget(userId)) {
-            return fallback(REASON_BUDGET);
+        // F-239 / SF-239-11 — jamais d'escalade de coût : au-delà du budget, le cerveau rapide CONTINUE (10 à 50 fois
+        // moins cher qu'Opus) ; au plafond dur, une réponse fixe, aucun appel ; quota du compte atteint, de même.
+        Budget budget = bench ? Budget.NONE : budgetState(userId);
+        if (budget == Budget.HARD) {
+            return fixed(out, BUDGET_HARD_REPLY, REASON_BUDGET_HARD);
         }
         if (quota != null) {
             try {
                 quota.assertWithinQuota(userId);
             } catch (RuntimeException e) {
-                return fallback(REASON_QUOTA);
+                return fixed(out, QUOTA_REPLY, REASON_QUOTA);
             }
         }
+        Outcome decided = decideCall(request, out, benchModel, fixedContext, understood);
+        if (budget == Budget.SOFT && decided.kind() == Kind.ANSWER && decided.reason() == null) {
+            return new Outcome(decided.kind(), decided.spokenText(), decided.delegation(), REASON_BUDGET_SOFT,
+                    decided.model(), decided.firstTokenMs(), decided.costUsd(), decided.guards());
+        }
+        return decided;
+    }
+
+    /** F-239 / SF-239-11 — l'état du budget mensuel du cerveau rapide. */
+    enum Budget { NONE, SOFT, HARD }
+
+    static final String REASON_BUDGET_SOFT = "budget_soft";
+    static final String REASON_BUDGET_HARD = "budget_hard";
+    static final String BUDGET_HARD_REPLY = "Monsieur, le plafond mensuel de la conversation est atteint.";
+    static final String QUOTA_REPLY = "Le quota de votre compte est atteint, Monsieur.";
+
+    /** Une réponse fixe, dite tout de suite, sans aucun appel au modèle. */
+    private Outcome fixed(Sink out, String reply, String reason) {
+        out.text(reply + " ");
+        return new Outcome(Kind.ANSWER, reply, null, reason, properties.model(), 0L, null);
+    }
+
+    /** NONE sous le budget, SOFT au-delà, HARD à 2 × le budget (ou budget nul). Illisible : NONE (le quota garde). */
+    Budget budgetState(UUID userId) {
+        BigDecimal budgetEur = properties.monthlyBudgetEur();
+        if (budgetEur.signum() == 0) {
+            return Budget.HARD;
+        }
+        try {
+            BigDecimal spentEur = usage.monthFastBrainCostUsd(userId).multiply(usdToEur);
+            if (spentEur.compareTo(budgetEur.multiply(BigDecimal.valueOf(2))) >= 0) {
+                return Budget.HARD;
+            }
+            return spentEur.compareTo(budgetEur) >= 0 ? Budget.SOFT : Budget.NONE;
+        } catch (RuntimeException e) {
+            return Budget.NONE;
+        }
+    }
+
+    private Outcome decideCall(Request request, Sink out, String benchModel, String fixedContext,
+            java.util.concurrent.atomic.AtomicReference<String> understood) {
+        UUID userId = request.userId();
+        boolean bench = benchModel != null;
+        String model = bench ? benchModel : properties.model();
         String apiKey = byok == null ? null : byok.resolveActiveApiKey(userId).orElse(null);
         String context = fixedContext != null ? fixedContext : context(request);
-        SentenceGate gate = new SentenceGate(context, request.text(), bench ? List.of() : recentSentences(userId),
+        // F-239 / SF-239-11 — l'univers de référence (préfixe relu du cache) ; les gardes voient tout le contexte.
+        String reference = bench ? "" : reference(request);
+        String grounding = reference.isEmpty() ? context : reference + "\n\n" + context;
+        SentenceGate gate = new SentenceGate(grounding, request.text(), bench ? List.of() : recentSentences(userId),
                 out, JarvisFastGuards.isSmallTalk(request.text()));
         AgentTurnRequest call = new AgentTurnRequest(model, systemFor(userId),
                 bench ? List.of(AgentMessage.userText(message(context, request.text())
                         + (sober(request, context) ? "\n\n" + fr.claudegateway.jarvis.preferences.JarvisSobriety.NOTE
-                                : ""))) : messages(request, context),
+                                : ""))) : messages(request, context, reference),
                 List.of(JarvisFastBrainPrompt.delegateTool()), apiKey,
                 AgentReasoning.off(properties.effort()), AgentContextPolicy.none(), AgentTurnMode.ACT,
                 AgentCallShape.compact(properties.maxTokens()));
@@ -789,15 +838,45 @@ public class JarvisFastBrainService {
 
     /** Les messages de l'appel : la parole et son contexte, dans le message (jamais dans la consigne système). */
     List<AgentMessage> messages(Request request) {
-        return messages(request, context(request));
+        return messages(request, context(request), reference(request));
+    }
+
+    /** F-239 / SF-239-11 — le message d'ouverture qui porte l'univers de référence, et la réponse fixe qui le suit. */
+    static final String REFERENCE_HEADER = "[Référence — univers]\n";
+    static final String REFERENCE_ACK = "Noté.";
+
+    /** F-239 / SF-239-11 — l'univers de référence du compte (vide sans constructeur de contexte, ou illisible). */
+    String reference(Request request) {
+        if (contextBuilder == null) {
+            return "";
+        }
+        try {
+            return contextBuilder.reference(request.userId());
+        } catch (RuntimeException e) {
+            return "";
+        }
+    }
+
+    List<AgentMessage> messages(Request request, String context) {
+        return messages(request, context, "");
     }
 
     /**
      * Les échanges de la session (mots seuls, D6) puis le dernier message, seul à porter le contexte. Un échange
      * dont la réponse est vide n'est pas rejoué (la conversation doit alterner).
      */
-    List<AgentMessage> messages(Request request, String context) {
+    /**
+     * F-239 / SF-239-11 — {@code [univers de référence] → [« Noté. »] → échanges de la session → [contexte volatil +
+     * parole]} : tout ce qui précède le dernier message est stable d'un appel à l'autre (relu en cache) ; le dernier,
+     * propre à l'appel, n'est pas écrit en cache (forme {@code compact}).
+     */
+    List<AgentMessage> messages(Request request, String context, String reference) {
         List<AgentMessage> messages = new ArrayList<>();
+        if (reference != null && !reference.isBlank()) {
+            messages.add(AgentMessage.userText(REFERENCE_HEADER + reference.strip()));
+            messages.add(AgentMessage.assistant(List.of(new fr.claudegateway.agent.AgentContentBlock.Text(
+                    REFERENCE_ACK))));
+        }
         if (memory != null) {
             for (JarvisFastMemory.Exchange e : memory.recall(request.userId())) {
                 if (e.answered() == null || e.answered().isBlank()) {
@@ -840,8 +919,9 @@ public class JarvisFastBrainService {
     /** Le contexte de l'échange (SF-235-02) ; à défaut de constructeur, l'heure, le sujet et le chantier courants. */
     String context(Request request) {
         if (contextBuilder != null) {
+            // F-239 / SF-239-11 — sans l'univers : il est donné en référence en tête de conversation.
             return contextBuilder.build(request.userId(), request.workspace(), request.chantier(),
-                    request.heardBeforeCut());
+                    request.heardBeforeCut(), false);
         }
         StringBuilder context = new StringBuilder();
         context.append("Maintenant : ").append(ZonedDateTime.now(clock).withZoneSameInstant(ZONE).format(STAMP))
@@ -903,23 +983,6 @@ public class JarvisFastBrainService {
                 request.chantier(), true, reason), reason, properties.model(), firstMs, null, guards);
     }
 
-    private Outcome fallback(String reason) {
-        return new Outcome(Kind.FALLBACK, "", null, reason, properties.model(), -1L, null);
-    }
-
-    /** Vrai si le plafond mensuel propre du cerveau rapide est atteint (D15). */
-    boolean overBudget(UUID userId) {
-        BigDecimal budgetEur = properties.monthlyBudgetEur();
-        if (budgetEur.signum() == 0) {
-            return true;
-        }
-        try {
-            BigDecimal spentEur = usage.monthFastBrainCostUsd(userId).multiply(usdToEur);
-            return spentEur.compareTo(budgetEur) >= 0;
-        } catch (RuntimeException e) {
-            return false; // illisible : le quota du compte reste la garde
-        }
-    }
 
     /** Coût de l'appel : journal d'usage (annexe) et journée Jarvis. Best-effort. */
     void account(UUID userId, Workspace workspace, AgentTurn turn) {

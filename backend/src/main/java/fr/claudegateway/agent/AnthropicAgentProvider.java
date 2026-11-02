@@ -286,7 +286,7 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         body.put("model", request.model());
         AgentCallShape shape = request.shape();
         body.put("max_tokens", shape.maxTokens() != null ? shape.maxTokens() : properties.agentMaxTokens());
-        body.put("messages", toApiMessages(request.messages()));
+        body.put("messages", toApiMessages(request.messages(), shape.cacheLastMessage()));
         if (StringUtils.hasText(request.system())) {
             // Forme « liste de blocs » : seule forme qui accepte un `cache_control`. Le contenu est
             // inchangé. L'ordre de rendu du fournisseur étant tools -> system -> messages, ce
@@ -996,7 +996,7 @@ public class AnthropicAgentProvider implements AiAgentProvider {
      * toutes les suivantes relisent le segment à une fraction du prix (D2). Sur un tour de 30
      * itérations, chaque segment est écrit une fois et relu jusqu'à 29 fois.</p>
      */
-    private List<Map<String, Object>> toApiMessages(List<AgentMessage> rawMessages) {
+    private List<Map<String, Object>> toApiMessages(List<AgentMessage> rawMessages, boolean cacheLast) {
         // Point de passage UNIQUE vers le fournisseur (F-117 / SF-117-08) : la séquence est assainie
         // ICI, avant tout envoi (streamé, non streamé, synthèse, exploration, compaction), pour être
         // toujours structurellement valide — alternance stricte, démarrage sur `user`, pas de bloc
@@ -1025,7 +1025,10 @@ public class AnthropicAgentProvider implements AiAgentProvider {
             // il n'a aucun bloc où le poser, et le fournisseur le refuserait.
             // F-188 / SF-188-01 : jamais de marqueur sur un bloc d'outil serveur (rejoué à l'identique) ;
             // un message qui finit par l'un d'eux — la reprise d'une pause — n'en porte pas.
-            boolean marked = (i == messages.size() - 1 || i == intermediate)
+            // F-239 / SF-239-11 — `cacheLast` faux : le marqueur final recule d'un message (le dernier, volatil,
+            // n'est pas écrit en cache ; tout ce qui le précède est relu).
+            int last = cacheLast || messages.size() < 2 ? messages.size() - 1 : messages.size() - 2;
+            boolean marked = (i == last || i == intermediate)
                     && !message.content().isEmpty()
                     && !(message.content().get(message.content().size() - 1) instanceof AgentContentBlock.ServerTool);
             List<Map<String, Object>> blocks = new ArrayList<>(message.content().size());

@@ -1111,6 +1111,38 @@ class AnthropicAgentProviderTest {
     }
 
     @Test
+    void f239ACompactCallMarksTheMessageBeforeTheLastAStandardCallTheLast() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        java.util.List<AgentMessage> messages = List.of(AgentMessage.userText("référence"),
+                AgentMessage.assistant(List.of(new AgentContentBlock.Text("Noté."))), AgentMessage.userText("volatil"));
+        JsonNode compact = captureMessages(messages, AgentCallShape.compact(600));
+        assertThat(compact.path("messages").get(1).path("content").get(0).has("cache_control")).isTrue();
+        assertThat(compact.path("messages").get(2).path("content").get(0).has("cache_control")).isFalse();
+
+        JsonNode standard = captureMessages(messages, AgentCallShape.standard());
+        assertThat(standard.path("messages").get(2).path("content").get(0).has("cache_control")).isTrue();
+        assertThat(standard.path("messages").get(1).path("content").get(0).has("cache_control")).isFalse();
+    }
+
+    private JsonNode captureMessages(List<AgentMessage> messages, AgentCallShape shape) {
+        java.util.concurrent.atomic.AtomicReference<String> captured = new java.util.concurrent.atomic.AtomicReference<>();
+        server.expect(requestTo(URL)).andExpect(request -> captured.set(
+                ((org.springframework.mock.http.client.MockClientHttpRequest) request).getBodyAsString()))
+                .andRespond(withSuccess("""
+                        {"content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn",
+                         "usage": {"input_tokens": 1, "output_tokens": 1}}
+                        """, MediaType.APPLICATION_JSON));
+        provider.nextTurn(new AgentTurnRequest("claude-sonnet-5-5", "consigne", messages, List.of(), null,
+                AgentReasoning.off("low"), null, null, shape));
+        server.reset();
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().readTree(captured.get());
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex);
+        }
+    }
+
+    @Test
     void aCompactStreamedCallKeepsItsOwnOutputCap() {
         buildWith(AgentApiFeaturesProperties.defaults());
         JsonNode body = captureCall("claude-haiku-5-5", AgentReasoning.off("low"), List.of(delegateTool()),
