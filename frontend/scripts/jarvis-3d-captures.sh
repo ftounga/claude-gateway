@@ -16,6 +16,8 @@ SCENES="${JARVIS_BANC_SCENES:-coeur}"
 TIMES="${JARVIS_BANC_TIMES:-0 1200 2600}"
 CHROME="${CHROME:-$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)}"
 MIN_COVERAGE="0.02"
+# SF-236-14 — au-delà de cette part de gris neutre, la capture montre le message d'erreur du serveur de dev.
+MAX_OVERLAY="0.08"
 
 if [[ -z "$CHROME" ]]; then
   echo "jarvis-3d-captures : Chrome introuvable (variable CHROME)." >&2
@@ -45,7 +47,8 @@ for scene in $SCENES; do
           --screenshot="$png" "$BASE/jarvis-banc?banc=${scene}&t=${t}&niveau=${level}" >"$log" 2>&1 || true
         rm -rf "$profile"
         if [[ -s "$png" ]] && awk -v s="$(node "$HERE/png-coverage.mjs" "$png")" -v m="$MIN_COVERAGE" \
-            'BEGIN { exit !(s >= m) }'; then
+            'BEGIN { exit !(s >= m) }' && awk -v o="$(node "$HERE/png-coverage.mjs" "$png" --overlay)" \
+            -v m="$MAX_OVERLAY" 'BEGIN { exit !(o <= m) }'; then
           break
         fi
         [[ $attempt -lt 3 ]] && rm -f "$log"
@@ -58,9 +61,13 @@ for scene in $SCENES; do
       fi
       share="$(node "$HERE/png-coverage.mjs" "$png")"
       errors="$(grep -E 'CONSOLE.*(Uncaught|ERROR|Error)|:ERROR:CONSOLE' "$log" || true)"
+      overlay="$(node "$HERE/png-coverage.mjs" "$png" --overlay)"
       rm -f "$log"
       if awk -v s="$share" -v m="$MIN_COVERAGE" 'BEGIN { exit !(s < m) }'; then
         echo "ÉCHEC $png : capture vide ($share de pixels hors fond < $MIN_COVERAGE)." >&2
+        failed=1
+      elif awk -v o="$overlay" -v m="$MAX_OVERLAY" 'BEGIN { exit !(o > m) }'; then
+        echo "ÉCHEC $png : message d'erreur du serveur de développement à l'écran (recompilation ratée)." >&2
         failed=1
       elif [[ -n "$errors" ]]; then
         echo "ÉCHEC $png : erreur console :" >&2

@@ -57,7 +57,9 @@ void main() {
   gl_Position = projectionMatrix * mv;
   gl_PointSize = min(aSize * uPixelRatio * (20.0 / max(-mv.z, 0.5)), 14.0 * uPixelRatio);
   vColor = mix(mix(uNormal, uDeep, uHue), uDeepCore, aHeat * uHue);
-  vAlpha = uGain * local * (0.65 + 0.35 * sin(uTime * 0.0021 + aPhase * 6.2831));
+  // SF-236-14 — réserve du PO (itération 1) : le centre du grand cerveau saturait sur PC (densité + chaleur sous le
+  // bloom) ; les particules du cœur chaud sont atténuées quand le champ est déployé, la périphérie reste intacte.
+  vAlpha = uGain * local * (0.65 + 0.35 * sin(uTime * 0.0021 + aPhase * 6.2831)) * (1.0 - 0.6 * aHeat * uHue);
 }`;
 
 const FIELD_FRAGMENT = /* glsl */ `
@@ -289,7 +291,7 @@ export class Brain3d {
       delay[i] = random();
       phase[i] = random() * 10;
       size[i] = 1 + random() * 2;
-      heat[i] = Math.max(0, 1 - depth * 1.8);
+      heat[i] = Math.max(0, 1 - depth * 2.2);
     }
     const geometry = new BufferGeometry();
     geometry.setAttribute('position', new BufferAttribute(deployed, 3));

@@ -34,6 +34,15 @@
   }
 }
 
+// SF-236-14 — réserve du PO (itération 1) : grand cerveau déployé, le centre est très lumineux ; les étiquettes
+// prennent un fond de verre navy (texte net, contraste ≥ 5,8:1 quel que soit le fond).
+:host ::ng-deep .jv3d-labels[data-deep='1'] .jv3d-label {
+  padding: 1px 6px;
+  background: linear-gradient(transparent 22%, color-mix(in srgb, var(--cg-navy, #0B1020) 82%, transparent) 22% 78%,
+    transparent 78%);
+  text-shadow: none;
+}
+
 :host ::ng-deep button.jv3d-label {
   display: inline-flex;
   align-items: center;

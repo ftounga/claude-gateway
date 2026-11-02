@@ -1,0 +1,69 @@
+{
+  "title": "Jarvis 3D — planche itération 2",
+  "heading": "Jarvis en 3D — planche de référence, itération 2 « Jarvis montre ce qu'il fait »",
+  "intro": [
+    "F-236 / SF-236-08 → SF-236-14. Toutes les scènes F-234 ont désormais leur rendu 3D (seules S16, S18, S19 restent en S-GEN 3D, par déclaration). Panneaux holographiques (verre §7.2, DOM net, face à l'écran), effets préalloués, aucun appel réseau, aucun appel IA.",
+    "Goût du PO appliqué : <b>orange de la marque</b> en teinte normale, <b>cyan</b> pour l'attente, <b>vert</b> pour le réussi, <b>violet</b> pour le grand cerveau, <b>rouge réservé aux alertes</b> (test N13). Captures du banc headless en rendu logiciel (swiftshader) : téléphone 390 × 844 (niveau Moyen), PC 1920 × 1080 (niveau Haut), univers de test (CAGIP, Edenred ; sujet « Migration Forge », chantier 3, Zahi attendu).",
+    "<span class=\"note\">Visa du PO délégué pour cette vague : la planche est fournie, les remarques de goût seront traitées dans la SF de polissage suivante.</span>"
+  ],
+  "sections": [
+    { "title": "Socle des scènes (SF-236-08)", "items": [
+      { "label": "S-GEN 3D — impulsion, libellé du registre, entité allumée", "base": "../scenes/scene-sgen-t1200" }
+    ] },
+    { "title": "Commandes, tickets, fichiers (SF-236-09)", "items": [
+      { "label": "S3 commande — flux du poste au cœur, 2 lignes masquées", "base": "../scenes/scene-commande-t1200" },
+      { "label": "S4 tickets — éventail, carte nommée illuminée", "base": "../scenes/scene-tickets-t1200" },
+      { "label": "S5 écriture — feuillets, nuage du dépôt", "base": "../scenes/scene-fichiers-t1200" },
+      { "label": "S5 lecture d'un document — pages qui défilent", "base": "../scenes/scene-lecture-t1200" },
+      { "label": "S5 recherche — la loupe", "base": "../scenes/scene-recherche-t1200" }
+    ] },
+    { "title": "Chantiers, étapes, attentes, « oui » (SF-236-10)", "items": [
+      { "label": "S9 étape — chapelet, barre done + stepsDone", "base": "../scenes/scene-etape-t1200" },
+      { "label": "S11 attente posée — L-attente", "base": "../scenes/scene-attente-t1200" },
+      { "label": "S2 « oui » — devant tout, arc qui se vide", "base": "../scenes/scene-oui-t1200" },
+      { "label": "S2 question", "base": "../scenes/scene-question-t1200" },
+      { "label": "S14 points de route — couronne", "base": "../scenes/scene-points-t1200" },
+      { "label": "S15 le point — vague + travelling", "base": "../scenes/scene-le-point-t1200" }
+    ] },
+    { "title": "À envoyer et Montrer (SF-236-11)", "items": [
+      { "label": "S1 enveloppe — destinataire, objet, jamais le corps", "base": "../scenes/scene-message-t1200" },
+      { "label": "Montrer : clients", "base": "../scenes/montrer-clients-t1200" },
+      { "label": "Montrer : connectés (vert)", "base": "../scenes/montrer-connectes-t1200" },
+      { "label": "Montrer : déconnectés (éteints)", "base": "../scenes/montrer-deconnectes-t1200" },
+      { "label": "Montrer : chantiers bloqués (attente)", "base": "../scenes/montrer-chantiers-bloques-t1200" },
+      { "label": "Montrer : étapes en cours (chapelets)", "base": "../scenes/montrer-etapes-en-cours-t1200" },
+      { "label": "Montrer : à envoyer (enveloppes)", "base": "../scenes/montrer-a-envoyer-t1200" }
+    ] },
+    { "title": "Web, création, vidéo, passation, mémoire, essaim (SF-236-12)", "items": [
+      { "label": "S6 web — barre d'adresse, globe filaire", "base": "../scenes/scene-web-t1200" },
+      { "label": "S7 page publiée — couches", "base": "../scenes/scene-page-t1200" },
+      { "label": "S7 salle de montage", "base": "../scenes/scene-montage-t1200" },
+      { "label": "S5b vidéo regardée — pellicule", "base": "../scenes/scene-video-t1200" },
+      { "label": "S10 passation — arc lumineux", "base": "../scenes/scene-passation-t1200" },
+      { "label": "S12 souvenir — remonte des profondeurs", "base": "../scenes/scene-souvenir-t1200" },
+      { "label": "S12 carte du savoir — constellation", "base": "../scenes/scene-carte-t1200" },
+      { "label": "S13 essaim de sous-agents (≤ 4 ; téléphone 2 + « +n »)", "base": "../scenes/scene-essaim-t1200" },
+      { "label": "S17 veille — cadran", "base": "../scenes/scene-veille-t1200" }
+    ] },
+    { "title": "Ambiance et alertes (SF-236-13)", "items": [
+      { "label": "A1 poste muet (rouge, grésille)", "base": "../scenes/ambiance-poste-muet-t1200" },
+      { "label": "A2 terminaux vivants (respirent)", "base": "../scenes/ambiance-vivants-t1200" },
+      { "label": "A3 cloche (attente, onde)", "base": "../scenes/ambiance-cloche-t1200" },
+      { "label": "A4 coût en € (administrateur, 5 s)", "base": "../scenes/ambiance-cout-t1200" },
+      { "label": "A5 la veille sonne (rouge, cadran relié)", "base": "../scenes/ambiance-veille-t1200" }
+    ] },
+    { "title": "Réserves de l'itération 1 traitées (SF-236-14)", "items": [
+      { "label": "Grand cerveau déployé — centre adouci, étiquettes sur verre", "base": "../reserves/cerveau-t4000" }
+    ] }
+  ],
+  "sequences": [
+    { "title": "T-P1 — apparition d'un panneau (0,42 s)", "base": "../panneaux/panneau-entree", "times": [0, 84, 168, 252, 336, 420] },
+    { "title": "T-P2 — disparition d'un panneau (0,28 s)", "base": "../panneaux/panneau-sortie", "times": [0, 56, 112, 168, 224, 280] },
+    { "title": "T-L4 — rupture d'une attente levée (0,7 s)", "base": "../transitions/scene-attente-levee", "times": [0, 140, 280, 420, 560, 700] },
+    { "title": "T-P3 — l'enveloppe vole vers « À envoyer » (1,1 s)", "base": "../transitions/scene-envoi", "times": [0, 220, 440, 660, 880, 1100] }
+  ],
+  "notes": [
+    "<b>Règles §7.3</b> : jamais de saut (tests du pas maximal de T-P1/T-P2 ; ressorts et fondus partout) · interruptible (un panneau qui revient repart de l'état courant) · ≤ 3 transitions majeures · couleurs d'état d'une seule source (`jarvis-motion.ts`) · un seul héros (≤ 3 nœuds allumés) · rien ne bouge pendant l'écoute · aucun roulis · texte DOM net, jamais incliné · jamais de noir.",
+    "<b>Mesures i/s</b> : à relever sur les appareils du PO (le banc headless est en rendu logiciel) ; l'événement `RENDER` (SF-236-06) les remonte en production."
+  ]
+}

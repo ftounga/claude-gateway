@@ -14,6 +14,7 @@
     "verify:public:dist": "node scripts/verify-public-metadata.mjs dist/frontend/browser",
     "verify:templates": "node scripts/verify-inline-templates.test.mjs && node scripts/verify-inline-templates.mjs",
     "verify:jarvis3d": "node scripts/check-jarvis-3d-budget.mjs",
+    "verify:planche": "node scripts/jarvis-planche.test.mjs",
     "build:partage": "node scripts/page-partagee.mjs dist/frontend/browser && node scripts/page-partagee.test.mjs dist/frontend/browser/partage.html"
   },
   "private": true,
