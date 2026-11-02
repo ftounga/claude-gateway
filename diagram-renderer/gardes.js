@@ -149,4 +149,55 @@ function g6Conventions(svg) {
   return { defects };
 }
 
-module.exports = { g1Orthogonalite, g2Extremites, g4Imbrication, g6Conventions, distanceToBorder, pointsOf };
+/**
+ * G5 — Grille : chaque nœud sur la grille de 8 px (coin et centre) ; deux AZ sœurs de même gabarit placent leurs
+ * nœuds homologues au même endroit (relativement à l'AZ) — donc sur la même ligne.
+ */
+function g5Grille(svg, graph) {
+  const defects = [];
+  for (const n of graph.nodes) {
+    const b = n.box;
+    if (b.x % 8 || b.y % 8 || (b.x + b.w / 2) % 8) {
+      defects.push(`nœud « ${n.id} » hors grille (${b.x},${b.y})`);
+    }
+  }
+  const zones = new Map(graph.zones.map((z) => [z.id, z]));
+  const within = (nodeZone, azId) => {
+    let z = nodeZone;
+    while (z) {
+      if (z === azId) {
+        return true;
+      }
+      z = zones.get(z) ? zones.get(z).parent : "";
+    }
+    return false;
+  };
+  const azs = graph.zones.filter((z) => z.kind === "az");
+  const content = (az) => graph.nodes.filter((n) => within(n.zone, az.id))
+    .map((n) => ({ type: n.type, dx: n.box.x - az.box.x, dy: n.box.y - az.box.y }))
+    .sort((a, b) => a.type.localeCompare(b.type) || a.dy - b.dy || a.dx - b.dx);
+  for (let i = 0; i < azs.length; i += 1) {
+    for (let j = i + 1; j < azs.length; j += 1) {
+      const a = azs[i];
+      const b = azs[j];
+      if (a.parent !== b.parent) {
+        continue;
+      }
+      const ca = content(a);
+      const cb = content(b);
+      if (ca.map((c) => c.type).join() !== cb.map((c) => c.type).join()) {
+        continue;
+      }
+      ca.forEach((c, k) => {
+        if (c.dx !== cb[k].dx || c.dy !== cb[k].dy) {
+          defects.push(`homologues non alignés entre « ${a.id} » et « ${b.id} » (${c.type})`);
+        }
+      });
+    }
+  }
+  return { defects };
+}
+
+module.exports = {
+  g1Orthogonalite, g2Extremites, g4Imbrication, g5Grille, g6Conventions, distanceToBorder, pointsOf,
+};
