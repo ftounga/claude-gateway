@@ -1004,6 +1004,34 @@ valeur en dur ailleurs.
   (une vue à la fois). Décor : une profondeur d'étoiles, grille simple, ni nébuleuse ni poussière ; liaisons du
   focus seulement ; un panneau ancré (deux pour les tickets) ; entrée 1,2 s.
 
+## 24 — Conventions AWS des schémas d'architecture (ajout F-238 / SF-238-06, 2026-11-02)
+
+Les schémas d'architecture **livrés** (moteur `cloud` et `drawio` du service de rendu, schéma cadré) suivent les
+**conventions officielles AWS**, pas la charte de l'application (décision F-142 §8, précisée par F-238 D5). La charte
+Jarvis ne s'applique qu'à la scène 3D (§23). Source unique : `ZONE_STYLES` de `diagram-renderer/cadre.js`, vérifiée
+par la garde G6.
+
+| Zone (`kind`) | Bordure | Trait | Fond | Icône de groupe |
+|---|---|---|---|---|
+| AWS Cloud | `#232F3E` | continu | — | logo AWS |
+| Compte | `#E7157B` | continu | — | compte |
+| Région | `#00A4A6` | pointillé | — | drapeau |
+| VPC | `#8C4FFF` | continu | — | VPC |
+| Availability Zone | `#00A4A6` | pointillé | — | aucune |
+| Sous-réseau public | `#7AA116` | continu | `#F2F6E8` | cadenas |
+| Sous-réseau privé | `#00A4A6` | continu | `#E6F6F7` | cadenas |
+| Auto Scaling group | `#ED7100` | pointillé | — | Auto Scaling |
+| Security group | `#DD344C` | continu | — | aucune |
+| Centre de données | `#7D8998` | continu | — | immeuble |
+| Générique | `#7D8998` | pointillé | — | aucune |
+
+- **Liaisons** horizontales ou verticales seulement (coudes droits), 1,5 px `#545B64`, pointe pleine ; étiquettes
+  12 px sur fond blanc, posées sur leur liaison, sans rien chevaucher.
+- **Libellés** Arial/Helvetica (convention AWS), zones 13 px de la couleur de bordure, en haut à gauche.
+- **Grille** de 8 px ; Availability Zones sœurs côte à côte, de même taille ; sous-réseau public avant privé.
+- **Icônes** officielles, jamais recolorées ni approchantes ; un type sans icône = boîte rouge pointillée « ? ».
+- Tout rendu passe les gardes **G1–G6** (`diagram-renderer/gardes.js`).
+
 ## Logo & marque (ajout 2026-07-03)
 
 - **Logo de l'application** : `frontend/public/ng-portal-logo.png` (« NG Portal » — bouclier hexagonal, tête + étincelle, bulle de chat, orbite). Utilisé comme **favicon** (`index.html`) et sur la **landing** (nav, hero, footer). Nom de marque affiché : **« NG Portal »** (renommé en F-29 SF-29-01 : le terme « Proxy » faisait classer le domaine en catégorie « anonymizer » par les filtres d'entreprise).

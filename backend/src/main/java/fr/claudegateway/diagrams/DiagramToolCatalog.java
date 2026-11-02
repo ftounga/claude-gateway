@@ -44,8 +44,8 @@ public class DiagramToolCatalog {
             + "à generate_image. Dessine dès qu'un schéma aide à comprendre.\n"
             + "DEUX MOTEURS : par défaut du Mermaid (« code »). Pour une ARCHITECTURE CLOUD avec les "
             + "ICÔNES OFFICIELLES (AWS, Azure, GCP, on-prem), passe engine=cloud et donne « spec » : "
-            + "{title, direction (LR/TB), groups:[{id,label,parent}], nodes:[{id,type,label,group}], "
-            + "edges:[{from,to,label}]}. Les types sont de la forme « aws.rds », « aws.ecs », "
+            + "{title, direction (LR/TB), groups:[{id,label,parent,kind}], nodes:[{id,type,label,group}], "
+            + "edges:[{from,to,label,bidirectional}]}. Les types sont de la forme « aws.rds », « aws.ecs », "
             + "« aws.alb », « aws.s3 », « aws.lambda », « azure.aks », « gcp.gke », "
             + "« onprem.postgresql », « onprem.kafka », « onprem.users »… Plus de MILLE icônes sont "
             + "atteignables : donne le NOM EXACT du composant (« aws.natgateway », "
@@ -56,20 +56,39 @@ public class DiagramToolCatalog {
             + "par exemple) met un composant FAUX dans un livrable client.\n"
             + "UN GROUPE N'EST PAS UN NŒUD : un réseau, un VPC, une zone se décrivent dans « groups », "
             + "pas par une icône.\n"
-            + "UN GROUPE PEUT EN CONTENIR UN AUTRE : donne « parent » (l'id d'un autre groupe) pour "
-            + "qu'un VPC CONTIENNE ses sous-réseaux au lieu d'être dessiné à côté d'eux — sans cela la "
-            + "topologie affichée est FAUSSE.\n"
+            + "ZONES AWS (schéma CADRÉ : liaisons horizontales et verticales, zones aux conventions AWS) : "
+            + "décris chaque zone avec « kind » (cloud, account, region, vpc, az, subnet_public, "
+            + "subnet_private, asg, security_group, onprem, generic) et imbrique-les par « parent » COMME "
+            + "DANS LA RÉALITÉ : Région › VPC › Availability Zone › sous-réseau (6 niveaux au plus). Une "
+            + "zone mal placée (une AZ hors d'un VPC) est REFUSÉE avec la raison : corrige et rends de "
+            + "nouveau. Sans « kind », il est déduit du libellé et le rendu te le signale. Deux AZ qui "
+            + "portent les mêmes services se décrivent avec les MÊMES types : le rendu les aligne côte à "
+            + "côte. Ne place jamais un composant dans une zone où il n'est pas, et n'en ajoute aucun pour "
+            + "la symétrie. Pour du multi-AZ, préfère direction TB (AZ en colonnes). Un échange dans les "
+            + "deux sens est UN lien avec bidirectional:true.\n"
             + "TROISIÈME MOTEUR — RÉOUVRABLE : engine=drawio rend DEUX fichiers depuis la MÊME « spec » "
             + "que cloud — un « .drawio » que l'utilisateur ROUVRE ET MODIFIE dans draw.io / "
             + "diagrams.net (ou VS Code, ou Confluence), et son aperçu PNG. Choisis-le dès que le "
             + "schéma a vocation à être REPRIS, discuté ou amendé par le client — un PNG est un "
             + "cul-de-sac. Pose le PNG dans le livrable, et ANNONCE le « .drawio » comme la version "
-            + "modifiable : sans cela, l'utilisateur ne saura pas qu'il existe. Ce moteur n'a PAS les "
-            + "icônes officielles (boîtes nommées) : pour un schéma cloud définitif, garde engine=cloud.\n"
+            + "modifiable : sans cela, l'utilisateur ne saura pas qu'il existe. Il reprend la MÊME mise en "
+            + "page cadrée que cloud (zones imbriquées, icônes officielles) ; un nœud sans « type » y "
+            + "devient une boîte nommée.\n"
             + "Tu écris une DESCRIPTION, jamais du code : rien de ce que tu donnes n'est exécuté.\n"
             + "FACTUEL : ne dessine que ce qui est établi ; ce qui est supposé se marque « (supposé) ». "
             + "Si le rendu échoue, DIS-LE avec la raison rendue — ne fabrique jamais une image, et "
             + "n'invente pas un composant pour faire joli.";
+
+    /**
+     * La description du champ {@code spec} de l'outil (F-238 / SF-238-06) : un littéral FIXE, comme
+     * {@link #GUIDE} — il fait partie du préfixe mis en cache (F-134), modifié une fois puis byte-stable.
+     */
+    static final String SPEC_DESCRIPTION = "Pour engine=cloud ou engine=drawio : la DESCRIPTION du schéma — "
+            + "title, direction (LR/TB ; TB conseillé en multi-AZ), groups[{id,label,parent,kind}] — « parent » "
+            + "est l'id du groupe CONTENANT (Région › VPC › Availability Zone › sous-réseau), « kind » sa nature "
+            + "AWS (cloud, account, region, vpc, az, subnet_public, subnet_private, asg, security_group, onprem, "
+            + "generic) —, nodes[{id,type,label,group}], edges[{from,to,label,bidirectional}]. Des données, "
+            + "jamais du code. En drawio, « type » est facultatif (boîte nommée).";
 
     /** Vrai si ce nom d'outil est celui du rendu de diagrammes. */
     public static boolean isDiagramTool(String tool) {
@@ -125,13 +144,7 @@ public class DiagramToolCatalog {
                                                 + "PNG). cloud et drawio partent de « spec ».",
                                         "enum", List.of("mermaid", "cloud", "drawio")),
                                 "spec", Map.of("type", "object",
-                                        "description", "Pour engine=cloud ou engine=drawio : la "
-                                                + "DESCRIPTION du schéma — title, direction (LR/TB), "
-                                                + "groups[{id,label,parent}] — « parent » est l'id du "
-                                                + "groupe CONTENANT, pour imbriquer un sous-réseau dans "
-                                                + "son VPC —, nodes[{id,type,label,group}], "
-                                                + "edges[{from,to,label}]. Des données, jamais du code. "
-                                                + "En drawio, « type » et « parent » sont ignorés (boîtes nommées, cadres frères)."),
+                                        "description", SPEC_DESCRIPTION),
                                 "format", Map.of("type", "string",
                                         "description", "png (défaut, pour une slide ou un document) ou "
                                                 + "svg (net à tout zoom, pour une page).",

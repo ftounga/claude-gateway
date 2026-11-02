@@ -25,10 +25,11 @@ public class DiagramProperties {
     private int maxPerTurn = 6;
     /**
      * F-238 / SF-238-01 — la mise en page du moteur {@code cloud} : {@code graphviz} (historique, liaisons
-     * courbes) ou {@code elk} (le schéma cadré : liaisons orthogonales, zones aux conventions AWS). Toute
+     * courbes) ou {@code elk} (le schéma cadré : liaisons orthogonales, zones aux conventions AWS). Défaut
+     * {@code elk} depuis SF-238-06 ; retour arrière = {@code APP_DIAGRAM_CLOUD_LAYOUT=graphviz}. Toute
      * autre valeur vaut {@code graphviz} : un réglage mal écrit ne doit jamais casser le rendu.
      */
-    private String cloudLayout = "graphviz";
+    private String cloudLayout = "elk";
 
     public String getBaseUrl() {
         return baseUrl;
