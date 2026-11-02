@@ -1537,6 +1537,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
       pulses: reader.pulses,
       // SF-236-09 — la carte de ticket nommée dans la phrase dite s'illumine (clés seulement).
       spokenTickets: ticketKeys(this.spoken()),
+      // SF-236-10 — les étapes cochées pendant le tour : la perle du chapelet se remplit avant la relecture.
+      stepsDone: reader.stepsDone,
     };
   }, { equal: sameScreen });
 

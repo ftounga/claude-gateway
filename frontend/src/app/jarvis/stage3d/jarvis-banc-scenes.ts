@@ -62,7 +62,8 @@ function bancScene(scene: string, narrow: boolean):
     return null;
   }
   const signals: ScreenSignals = { ...IDLE_SCREEN, universe: testUniverse(), subjectId: 's-forge', scene: view,
-    pulses: 1, state: 'reflexion', spokenTickets: name === 'tickets' ? ['FORGE-42'] : [] };
+    pulses: 1, state: view.pinned ? 'repos' : 'reflexion', spokenTickets: name === 'tickets' ? ['FORGE-42'] : [],
+    stepsDone: name === 'etape' ? { 's-forge#3': 1 } : {}, waiting: view.pinned };
   const universe = universeView(signals, false, narrow);
   // SF-236-09 — la mémoire de session du banc : des fichiers vus plus tôt (nuage du dépôt) et la scène elle-même.
   const memory = new SessionMemory();

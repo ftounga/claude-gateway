@@ -10,7 +10,7 @@ import { EMPTY_SESSION } from './jarvis-session-memory';
 
 function ctx(extra: Partial<SceneContext> = {}): SceneContext {
   return { universe: testUniverse(), subjectId: 's-forge', nodes: new Set(['h-cagip', 's-forge', 's-forge#3']),
-    pulses: 4, narrow: false, session: EMPTY_SESSION, spokenTickets: [], ...extra };
+    pulses: 4, narrow: false, session: EMPTY_SESSION, spokenTickets: [], stepsDone: {}, ...extra };
 }
 
 describe('F-236 / SF-236-08 — registre des scènes 3D et garde', () => {

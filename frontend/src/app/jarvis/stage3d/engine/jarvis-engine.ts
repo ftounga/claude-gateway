@@ -160,6 +160,9 @@ class ThreeJarvisEngine implements JarvisEngine {
     dist: new Spring(9),
   };
   private shot: CameraShot | null = null;
+  /** SF-236-10 — travelling des scènes (S15 « le point », S10 passation) : décalage de lacet, joué une fois par id. */
+  private travelYaw = 0;
+  private travelId: string | null = null;
   private manualUntil = -Infinity;
   private lastDecide = -Infinity;
   private planDirty = true;
@@ -379,7 +382,7 @@ class ThreeJarvisEngine implements JarvisEngine {
   private placeCamera(shot: CameraShot, instant: boolean, world = false): void {
     this.shot = shot;
     this.world.set(shot.x, shot.y, shot.z);
-    let yaw = shot.yaw;
+    let yaw = shot.yaw + this.travelYaw;
     if (!world && this.universe && shot.kind === 'node') {
       this.universe.group.updateMatrixWorld();
       this.universe.group.localToWorld(this.world);
@@ -409,6 +412,12 @@ class ThreeJarvisEngine implements JarvisEngine {
     const replay = opening && this.options.replayFromZero;
     this.panels?.set(plan.scene?.panels ?? [], replay ? 0 : now, replay && plan.bancPanelsOut === true);
     this.effects?.set(plan.scene?.effects ?? [], replay ? 0 : now, replay);
+    const travel = plan.scene?.travel;
+    if (travel && travel.id !== this.travelId) {
+      this.travelId = travel.id;
+      this.travelYaw += (travel.degrees * Math.PI) / 180;
+      this.planDirty = true;
+    }
     if (opening && this.options.replayFromZero) {
       this.heart.setMood('repos', 0, true);
       this.heart.setMood(plan.mood, 0, false);

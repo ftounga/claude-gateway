@@ -79,6 +79,8 @@ export interface LayoutOptions {
   narrow: boolean;
   /** Clés citées / montrées : elles sont posées même hors du client courant. */
   shown: ReadonlySet<string>;
+  /** SF-236-10 — étapes faites pendant le tour, par chantier (la perle se remplit avant la relecture de l'univers). */
+  stepsDone?: Readonly<Record<string, number>>;
 }
 
 export function layoutUniverse3d(universe: JarvisUniverse | null, options: LayoutOptions): Layout3d {
@@ -124,7 +126,7 @@ export function layoutUniverse3d(universe: JarvisUniverse | null, options: Layou
             const spos = ringAround(cpos, STEP_ORBIT, pa, 0);
             nodes.push({ key: `${key}/${k + 1}`, kind: 'step', label: chantier.step && chantier.step.rank === k + 1
               ? chantier.step.title : '', clientKey: ck, subjectId: subject.id, chantierKey: key,
-              done: k < chantier.done, ...spos });
+              done: k < chantier.done + (options.stepsDone?.[key] ?? 0), ...spos });
           }
         }
         for (const name of chantier.waitingOn) {
