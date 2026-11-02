@@ -4,7 +4,7 @@ import { Observable } from 'rxjs';
 
 import {
   JarvisAbsence, JarvisCompanionDevice, JarvisCompanionPairingCode, JarvisCompanionVersion, JarvisHumour,
-  JarvisPreferences, JarvisToSendList, JarvisSttTicket, JarvisUtterance, TurnTimingReport,
+  JarvisCaptureMeta, JarvisPreferences, JarvisToSendList, JarvisSttTicket, JarvisUtterance, TurnTimingReport,
 } from '../models/jarvis.models';
 
 /** F-232 / SF-232-02 — l'APK du compagnon Android, servi par le chemin des paquets du runner (F-44). */
@@ -131,6 +131,27 @@ export class JarvisService {
   /** F-235 / SF-235-09 (D18) — les préférences de Jarvis du compte (humour : aucun / léger, léger par défaut). */
   preferences(): Observable<JarvisPreferences> {
     return this.http.get<JarvisPreferences>('/api/jarvis/preferences');
+  }
+
+  /** F-239 / SF-239-03 — allume ou éteint la capture des énoncés (ADMIN ; l'éteindre efface les captures). */
+  setCaptureAudio(on: boolean): Observable<JarvisPreferences> {
+    return this.http.put<JarvisPreferences>('/api/jarvis/preferences', { captureAudio: on });
+  }
+
+  /** F-239 / SF-239-03 — garde un énoncé pour le banc (la passerelle l'ignore sans interrupteur). Best-effort. */
+  capture(audio: Blob, meta: JarvisCaptureMeta): void {
+    const form = new FormData();
+    form.append('audio', audio, 'enonce.wav');
+    if (meta.seconds !== null && Number.isFinite(meta.seconds)) {
+      form.append('seconds', String(Math.round(meta.seconds * 10) / 10));
+    }
+    form.append('listenMode', meta.listenMode);
+    if (meta.provider) {
+      form.append('provider', meta.provider);
+    }
+    form.append('streamText', meta.streamText.slice(0, 2_000));
+    form.append('finalText', meta.finalText.slice(0, 2_000));
+    this.http.post<void>('/api/jarvis/captures', form).subscribe({ error: () => undefined });
   }
 
   /** F-235 / SF-235-09 (D18) — enregistre le réglage d'humour du compte. */

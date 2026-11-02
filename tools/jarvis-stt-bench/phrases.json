@@ -1,0 +1,213 @@
+{
+  "voices": [
+    {
+      "id": "JBFqnCBsd6RMkjVDRZzb",
+      "name": "George"
+    },
+    {
+      "id": "mS2c341jkKGRuIkGxaYf",
+      "name": "Français élégant 1"
+    }
+  ],
+  "vocabulary": [
+    "Jarvis",
+    "CAGIP",
+    "Edenred",
+    "agenor",
+    "cicd-bff",
+    "cloudops-run",
+    "data-platform",
+    "gitlab-tfstate",
+    "LZI",
+    "alarm4tech",
+    "audit-secu-aws",
+    "chaîne marchand",
+    "pentest Opera",
+    "revue Zelda",
+    "secrets-azure-devops",
+    "security-assessment",
+    "spider-mfa",
+    "WAF",
+    "LDIC-223",
+    "GitLab",
+    "Jira",
+    "Confluence",
+    "chantier",
+    "René",
+    "Keycloak",
+    "Opus"
+  ],
+  "phrases": [
+    {
+      "id": "p01",
+      "segments": [
+        "Bonjour Jarvis."
+      ],
+      "pauses": []
+    },
+    {
+      "id": "p02",
+      "segments": [
+        "Jarvis, est-ce que le client CAGIP est connecté ?"
+      ],
+      "pauses": []
+    },
+    {
+      "id": "p03",
+      "segments": [
+        "Où en est le sujet agenor,",
+        "sur le chantier trois ?"
+      ],
+      "pauses": [
+        1000
+      ]
+    },
+    {
+      "id": "p04",
+      "segments": [
+        "Allons chez le client",
+        "et donnez-moi l'état des tickets bloqués d'Edenred."
+      ],
+      "pauses": [
+        900
+      ]
+    },
+    {
+      "id": "p05",
+      "segments": [
+        "Regarde le ticket LDIC-223",
+        "dans gitlab-tfstate."
+      ],
+      "pauses": [
+        800
+      ]
+    },
+    {
+      "id": "p06",
+      "segments": [
+        "Passe sur Edenred",
+        "et montre-moi les chantiers en cours."
+      ],
+      "pauses": [
+        1100
+      ]
+    },
+    {
+      "id": "p07",
+      "segments": [
+        "Explique-moi comment fonctionne le réseau",
+        "sur l'architecture de CAGIP."
+      ],
+      "pauses": [
+        1200
+      ]
+    },
+    {
+      "id": "p08",
+      "segments": [
+        "Sur le cluster data-platform,",
+        "est-ce qu'il y a des tâches en cours ?"
+      ],
+      "pauses": [
+        900
+      ]
+    },
+    {
+      "id": "p09",
+      "segments": [
+        "Non, la rotation du jeton GitLab,",
+        "je pense qu'il n'y a pas de souci. On peut la passer."
+      ],
+      "pauses": [
+        800
+      ]
+    },
+    {
+      "id": "p10",
+      "segments": [
+        "Prépare un message pour René",
+        "sur le pentest Opera."
+      ],
+      "pauses": [
+        1000
+      ]
+    },
+    {
+      "id": "p11",
+      "segments": [
+        "Fais le point sur spider-mfa",
+        "et sur le WAF d'Edenred."
+      ],
+      "pauses": [
+        900
+      ]
+    },
+    {
+      "id": "p12",
+      "segments": [
+        "Merci, ce sera tout pour ce matin."
+      ],
+      "pauses": []
+    },
+    {
+      "id": "r01",
+      "real": true,
+      "segments": [
+        "Combien de clients sont connectés ?"
+      ],
+      "pauses": []
+    },
+    {
+      "id": "r02",
+      "real": true,
+      "segments": [
+        "Est-ce que tu peux me dire, euh,",
+        "où on en est sur le sujet agenor ?"
+      ],
+      "pauses": [
+        700
+      ]
+    },
+    {
+      "id": "r03",
+      "real": true,
+      "segments": [
+        "Sur le cluster, euh,",
+        "est-ce qu'il y a des tâches en cours ?"
+      ],
+      "pauses": [
+        900
+      ]
+    },
+    {
+      "id": "r04",
+      "real": true,
+      "segments": [
+        "Montre-moi les sujets en cours."
+      ],
+      "pauses": []
+    },
+    {
+      "id": "r05",
+      "real": true,
+      "segments": [
+        "Allons chez le client Edenred,",
+        "et donnez-moi l'état des chantiers."
+      ],
+      "pauses": [
+        1000
+      ]
+    },
+    {
+      "id": "r06",
+      "real": true,
+      "segments": [
+        "Euh, Jarvis, est-ce que René, de CAGIP,",
+        "est connecté ce matin ?"
+      ],
+      "pauses": [
+        800
+      ]
+    }
+  ]
+}

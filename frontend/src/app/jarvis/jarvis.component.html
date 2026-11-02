@@ -88,6 +88,13 @@
         <mat-icon aria-hidden="true">{{ humour() === 'LIGHT' ? 'sentiment_satisfied' : 'sentiment_neutral' }}</mat-icon>
         Humour : {{ humour() === 'LIGHT' ? 'léger' : 'aucun' }}
       </button>
+      @if (canCapture()) {
+        <!-- F-239 / SF-239-03 — capture réelle pour le banc d'écoute : ADMIN seulement, 7 jours, effacée à l'extinction. -->
+        <button mat-button type="button" class="jv__capture" [attr.aria-pressed]="captureAudio()" (click)="toggleCapture()">
+          <mat-icon aria-hidden="true">{{ captureAudio() ? 'mic' : 'mic_off' }}</mat-icon>
+          {{ captureAudio() ? 'Énoncés gardés pour le banc (7 j)' : 'Garder mes énoncés pour le banc' }}
+        </button>
+      }
       @if (companion(); as offer) {
         <a mat-button [href]="companionHref" download="jarvis-compagnon.apk">
           <mat-icon aria-hidden="true">install_mobile</mat-icon> Compagnon Android (v{{ offer.versionName }})
@@ -189,6 +196,14 @@
         <mat-icon aria-hidden="true">{{ humour() === 'LIGHT' ? 'sentiment_satisfied' : 'sentiment_neutral' }}</mat-icon>
         Humour : {{ humour() === 'LIGHT' ? 'léger' : 'aucun' }}
       </button>
+      @if (canCapture()) {
+        <!-- F-239 / SF-239-03 — capture réelle pour le banc d'écoute : ADMIN seulement, 7 jours, effacée à l'extinction. -->
+        <button mat-button type="button" class="jv__wake-button jv__capture" [attr.aria-pressed]="captureAudio()"
+                (click)="toggleCapture()">
+          <mat-icon aria-hidden="true">{{ captureAudio() ? 'mic' : 'mic_off' }}</mat-icon>
+          {{ captureAudio() ? 'Énoncés gardés pour le banc (7 j)' : 'Garder mes énoncés pour le banc' }}
+        </button>
+      }
     </div>
     <!-- F-232 / SF-232-02 — le compagnon Android : « Jarvis » téléphone verrouillé. Android confirme l'installation. -->
     @if (companion(); as offer) {

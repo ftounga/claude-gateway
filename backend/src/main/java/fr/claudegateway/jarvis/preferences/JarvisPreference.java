@@ -34,4 +34,9 @@ public class JarvisPreference {
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    /** F-239 / SF-239-03 — garder les énoncés pour le banc d'écoute (ADMIN seulement, faux par défaut). */
+    @Builder.Default
+    @Column(name = "capture_audio", nullable = false)
+    private boolean captureAudio = false;
 }

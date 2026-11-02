@@ -25,6 +25,7 @@ import { ASK_SUBJECT, FastBrainHandlers, FastBrainOutcome, JarvisFastBrainClient
 import { VeilleService } from '../core/services/veille.service';
 import { JarvisStreamOpener, StreamHandlers } from './jarvis-stream-listener';
 import { WakeEvent } from './jarvis-wake';
+import { AuthService } from '../core/services/auth.service';
 import { JarvisVadService, VadHandlers } from './jarvis-barge-in';
 import { FORMULAS, FORMULA_CLIPS, tutoie } from './jarvis-phrases';
 import { JARVIS_3D_LOADER, JarvisEngineFactory } from './stage3d/jarvis-engine.contract';
@@ -115,7 +116,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     voice.playClip.and.resolveTo(false);
     voice.hasClip.and.returnValue(false);
     voice.level.and.returnValue(0);
-    jarvisApi = jasmine.createSpyObj<JarvisService>('JarvisService', ['usage', 'companion', 'companions', 'timings', 'sttSession', 'closeSttSession', 'preferences', 'setHumour', 'scenes', 'render', 'utterance']);
+    jarvisApi = jasmine.createSpyObj<JarvisService>('JarvisService', ['usage', 'companion', 'companions', 'timings', 'sttSession', 'closeSttSession', 'preferences', 'setHumour', 'scenes', 'render', 'utterance', 'setCaptureAudio', 'capture']);
     jarvisApi.sttSession.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
     jarvisApi.utterance.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
     jarvisApi.preferences.and.returnValue(of({ humour: 'LIGHT' as const }));
@@ -1070,6 +1071,51 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       handlers!.onDone({ reply: '🎙 Étape 4.', actions: [], messageId: 'm-1' });
       flushMicrotasks();
       expect(jarvisApi.timings.calls.mostRecent().args[0].sttProvider).toBe('elevenlabs-batch');
+    }));
+
+  it('F-239 / SF-239-03 — non-ADMIN : aucun interrupteur de capture, aucune capture', fakeAsync(() => {
+    const ready = streamWithAudio();
+    jarvisApi.preferences.and.returnValue(of({ humour: 'LIGHT' as const, captureAudio: true }));
+    jarvisApi.utterance.and.returnValue(of({ text: 'Où en est CAGIP ?', provider: 'elevenlabs-batch', ms: 600 }));
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).querySelector('.jv__capture')).toBeNull();
+    void fixture.componentInstance.talk();
+    flushMicrotasks();
+    ready.stt().onCommitted('Où en est Cagibi ?');
+    flushMicrotasks();
+    expect(jarvisApi.capture).not.toHaveBeenCalled();
+  }));
+
+  it('F-239 / SF-239-03 — ADMIN : l’interrupteur existe ; allumé, l’énoncé part au banc avec ses deux textes',
+    fakeAsync(() => {
+      TestBed.overrideProvider(AuthService, { useValue: { isAdmin: () => true } });
+      const ready = streamWithAudio();
+      jarvisApi.preferences.and.returnValue(of({ humour: 'LIGHT' as const, captureAudio: false }));
+      jarvisApi.setCaptureAudio.and.returnValue(of({ humour: 'LIGHT' as const, captureAudio: true }));
+      jarvisApi.utterance.and.returnValue(of({ text: 'Où en est CAGIP ?', provider: 'elevenlabs-batch', ms: 600 }));
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      const jarvis = fixture.componentInstance;
+      expect((fixture.nativeElement as HTMLElement).querySelector('.jv__capture')).not.toBeNull();
+
+      void jarvis.talk();
+      flushMicrotasks();
+      ready.stt().onCommitted('Où en est Cagibi ?');
+      flushMicrotasks();
+      expect(jarvisApi.capture).not.toHaveBeenCalled();
+
+      jarvis.toggleCapture();
+      expect(jarvisApi.setCaptureAudio).toHaveBeenCalledWith(true);
+      expect(jarvis.captureAudio()).toBeTrue();
+      jarvis.state.set('repos');
+      void jarvis.talk();
+      flushMicrotasks();
+      ready.stt().onCommitted('Où en est Cagibi ?');
+      flushMicrotasks();
+      expect(jarvisApi.capture).toHaveBeenCalledWith(jasmine.any(Blob), jasmine.objectContaining({
+        listenMode: 'STREAM', provider: 'elevenlabs-batch', streamText: 'Où en est Cagibi ?',
+        finalText: 'Où en est CAGIP ?', seconds: 2 }));
     }));
 
   it('F-239 / SF-239-04 — flux : retranscription trop lente (> 2,5 s) ⇒ le texte du flux part', fakeAsync(() => {
