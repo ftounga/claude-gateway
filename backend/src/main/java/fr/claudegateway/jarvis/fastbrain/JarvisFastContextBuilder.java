@@ -83,6 +83,15 @@ public class JarvisFastContextBuilder {
     }
 
     /**
+     * F-239 / SF-239-08 — <b>l'état de la conversation du jour</b>, dans le message (volatil, jamais dans la consigne) :
+     * la consigne s'en sert pour la question de politesse (une seule, à la première salutation du jour).
+     */
+    public static String dayState(boolean firstOfDay, boolean courtesyQuestionAsked) {
+        return "## Conversation du jour\nPremière salutation du jour : " + (firstOfDay ? "oui" : "non")
+                + "\nQuestion de politesse déjà posée : " + (courtesyQuestionAsked ? "oui" : "non");
+    }
+
+    /**
      * F-239 / SF-239-11 — <b>l'univers de référence</b>, sans heure : il ne change que si l'univers change, et peut donc
      * former le préfixe relu du cache (en tête de conversation, jamais dans la consigne système). Vide si illisible.
      */

@@ -99,9 +99,8 @@ final class JarvisConversationBench {
      */
     static String contextFor(String fixed, List<String[]> previous, String heardBeforeCut) {
         StringBuilder b = new StringBuilder(fixed);
-        b.append("\n\n## Conversation du jour\nPremière salutation du jour : ").append(previous.isEmpty() ? "oui" : "non")
-                .append("\nQuestion de politesse déjà posée : ")
-                .append(previous.stream().anyMatch(e -> e[1] != null && e[1].contains("?")) ? "oui" : "non");
+        b.append("\n\n").append(JarvisFastContextBuilder.dayState(previous.isEmpty(),
+                previous.stream().anyMatch(e -> e[1] != null && e[1].contains("?"))));
         if (!previous.isEmpty()) {
             b.append("\n\n## Derniers échanges de la conversation\n");
             for (String[] exchange : previous) {
