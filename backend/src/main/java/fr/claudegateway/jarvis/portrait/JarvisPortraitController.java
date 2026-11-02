@@ -24,15 +24,47 @@ import fr.claudegateway.auth.CurrentUser;
 public class JarvisPortraitController {
 
     private final JarvisPortraitService service;
+    private final JarvisInterviewService interviews;
     private final CurrentUser currentUser;
 
-    public JarvisPortraitController(JarvisPortraitService service, CurrentUser currentUser) {
+    public JarvisPortraitController(JarvisPortraitService service, JarvisInterviewService interviews,
+            CurrentUser currentUser) {
         this.service = service;
+        this.interviews = interviews;
         this.currentUser = currentUser;
     }
 
-    /** {@code {"sections": {"QUI": "…"}, "enabled": true}} — chaque champ est facultatif. */
-    public record UpdateRequest(Map<String, String> sections, Boolean enabled) {
+    /**
+     * {@code {"sections": {"QUI": "…"}, "enabled": true, "interviewed": true}} — chaque champ est facultatif ;
+     * {@code interviewed} (SF-241-02) : la validation d'un entretien, qui date le dernier entretien.
+     */
+    public record UpdateRequest(Map<String, String> sections, Boolean enabled, Boolean interviewed) {
+    }
+
+    /** SF-241-02 — les réponses de l'entretien à ranger (rien n'est stocké). */
+    public record DraftRequest(java.util.List<JarvisInterviewService.Answer> answers) {
+    }
+
+    /** SF-241-02 — l'écran peut-il proposer l'entretien (cadence D13) ? */
+    @GetMapping("/jarvis/portrait/interview")
+    public JarvisInterviewService.Offer interviewOffer() {
+        return interviews.offer(currentUser.requireId());
+    }
+
+    /** SF-241-02 — l'entretien a été proposé et remis à plus tard. */
+    @PostMapping("/jarvis/portrait/interview/offered")
+    public JarvisInterviewService.Offer interviewOffered() {
+        return interviews.offered(currentUser.requireId());
+    }
+
+    /** SF-241-02 — le brouillon rangé en sections : rendu, <b>jamais écrit</b>. */
+    @PostMapping("/jarvis/portrait/interview/draft")
+    public ResponseEntity<JarvisInterviewService.Draft> interviewDraft(
+            @RequestBody(required = false) DraftRequest body) {
+        if (body == null || body.answers() == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        return ResponseEntity.ok(interviews.draft(currentUser.requireId(), body.answers()));
     }
 
     /** {@code {"text": "…", "sensitive": false, "source": "ECRAN"}}. */
@@ -53,7 +85,13 @@ public class JarvisPortraitController {
         if (body == null || (body.sections() == null && body.enabled() == null)) {
             return ResponseEntity.badRequest().build();
         }
-        return ResponseEntity.ok(service.update(currentUser.requireId(), body.sections(), body.enabled()));
+        java.util.UUID userId = currentUser.requireId();
+        JarvisPortraitService.View view = service.update(userId, body.sections(), body.enabled());
+        if (Boolean.TRUE.equals(body.interviewed())) {
+            service.markInterviewed(userId);
+            view = service.view(userId);
+        }
+        return ResponseEntity.ok(view);
     }
 
     /** « Tout effacer » : portrait, souvenirs (et, dès SF-241-04, le journal des allusions) — suppression physique. */

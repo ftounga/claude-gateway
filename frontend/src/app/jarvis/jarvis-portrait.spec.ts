@@ -139,6 +139,40 @@ describe('JarvisPortraitComponent', () => {
     expect(el).toBeTruthy();
   });
 
+  it('SF-241-02 — un brouillon d’entretien est surligné ; rien n’est écrit avant « Valider »', () => {
+    client.get.and.returnValue(of(portrait()));
+    fixture = TestBed.createComponent(JarvisPortraitComponent);
+    fixture.componentRef.setInput('draft', { sections: { GOUTS: 'Le jazz' }, souvenirs: [{ text: 'Naissance en mars', sensitive: true, source: 'ENTRETIEN' }] });
+    fixture.detectChanges();
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.jp__draft')?.textContent).toContain('Naissance en mars');
+    expect(el.querySelectorAll('.jp__section--draft').length).toBe(1);
+    expect(client.update).not.toHaveBeenCalled();
+    expect(client.addSouvenir).not.toHaveBeenCalled();
+    let done: boolean | null = null;
+    fixture.componentInstance.draftDone.subscribe((v) => (done = v));
+    client.update.and.returnValue(of(portrait()));
+    client.addSouvenir.and.returnValue(of(portrait().souvenirs[0]));
+    fixture.componentInstance.validateDraft();
+    expect(client.update).toHaveBeenCalledWith({ GOUTS: 'Le jazz' }, undefined, true);
+    expect(client.addSouvenir).toHaveBeenCalledWith('Naissance en mars', true, 'ENTRETIEN');
+    expect(done).toBeTrue();
+  });
+
+  it('SF-241-02 — « Abandonner » ne laisse aucune trace', () => {
+    client.get.and.returnValue(of(portrait()));
+    fixture = TestBed.createComponent(JarvisPortraitComponent);
+    fixture.componentRef.setInput('draft', { sections: { GOUTS: 'Le jazz' }, souvenirs: [] });
+    fixture.detectChanges();
+    let done: boolean | null = null;
+    fixture.componentInstance.draftDone.subscribe((v) => (done = v));
+    fixture.componentInstance.abandonDraft();
+    expect(done).toBeFalse();
+    expect(client.update).not.toHaveBeenCalled();
+    expect(client.addSouvenir).not.toHaveBeenCalled();
+  });
+
   it('coupe l’interrupteur « Jarvis se sert de mon portrait »', () => {
     create();
     client.update.and.returnValue(of(portrait({ enabled: false })));

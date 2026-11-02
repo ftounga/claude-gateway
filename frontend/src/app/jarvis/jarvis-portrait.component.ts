@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, OnInit, computed, inject, output, signal } from '@angular/core';
+import { Component, OnInit, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -8,12 +8,14 @@ import { MatInputModule } from '@angular/material/input';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { forkJoin, of } from 'rxjs';
 
 import { ConfirmDialogComponent, ConfirmDialogData } from '../chat/confirm-dialog/confirm-dialog.component';
 import {
   JarvisPortraitClient, PORTRAIT_MAX_TOKENS, Portrait, PortraitError, PortraitSection, PortraitSectionKey,
   PortraitSouvenir, counterLabel, draftChars, portraitErrorMessage, portraitTokens,
 } from './jarvis-portrait';
+import { InterviewDraft } from './jarvis-interview';
 
 /**
  * **Le volet « Mon portrait »** (F-241 / SF-241-01) — dans les réglages de `/jarvis`.
@@ -44,11 +46,27 @@ import {
           Ce que Jarvis sait de vous, pour converser — jamais pour un message à un tiers, jamais en présentation.
           Rien n'est retenu sans apparaître ici.
         </p>
+        @if (draft(); as d) {
+          <!-- F-241 / SF-241-02 — le brouillon de l'entretien : surligné, RIEN n'est enregistré avant « Valider ». -->
+          <div class="jp__draft" role="status">
+            <span>Brouillon de l'entretien : relisez, corrigez, puis validez. Rien n'est enregistré avant.</span>
+            @if (d.souvenirs.length) {
+              <ul class="jp__souvenirs">
+                @for (m of d.souvenirs; track $index) { <li class="jp__souvenir-text">Souvenir proposé — {{ m.text }}</li> }
+              </ul>
+            }
+            <span class="jp__draft-actions">
+              <button mat-flat-button color="primary" type="button" class="jp__validate" [disabled]="over() || saving()"
+                      (click)="validateDraft()">Valider</button>
+              <button mat-stroked-button type="button" class="jp__abandon" (click)="abandonDraft()">Abandonner</button>
+            </span>
+          </div>
+        }
         <mat-slide-toggle class="jp__enabled" [checked]="p.enabled" (change)="toggleEnabled($event.checked)">
           Jarvis se sert de mon portrait
         </mat-slide-toggle>
         @for (s of p.sections; track s.key) {
-          <div class="jp__section">
+          <div class="jp__section" [class.jp__section--draft]="drafted(s.key)">
             <div class="jp__section-head">
               <span class="jp__section-title">{{ s.title }}</span>
               @if (s.sensitive) { <span class="jp__tag">sensible</span> }
@@ -156,6 +174,10 @@ import {
     .jp__souvenir-text { flex: 1 1 200px; font-size: 14px; }
     .jp__souvenir-actions { display: flex; }
     .jp__souvenir-actions button { color: var(--cg-cream); }
+    .jp__draft { display: flex; flex-direction: column; gap: var(--cg-space-2); padding: var(--cg-space-2) var(--cg-space-3);
+      border: 1px solid var(--cg-orange-2); border-radius: 4px; font-size: 13px; }
+    .jp__draft-actions { display: flex; flex-wrap: wrap; gap: var(--cg-space-2); }
+    .jp__section--draft .jp__section-title { color: var(--cg-orange-2); }
     .jp__danger { justify-content: flex-end; margin-top: var(--cg-space-2); }
     @media (max-width: 767px) {
       .jp { right: var(--cg-space-2); left: var(--cg-space-2); width: auto; padding: var(--cg-space-3); }
@@ -168,6 +190,78 @@ export class JarvisPortraitComponent implements OnInit {
   private readonly snack = inject(MatSnackBar);
 
   readonly closed = output<void>();
+  /** F-241 / SF-241-02 — un brouillon d'entretien à relire ; rien n'est enregistré avant « Valider ». */
+  readonly draft = input<InterviewDraft | null>(null);
+  /** F-241 / SF-241-02 — le brouillon est validé (`true`) ou abandonné (`false`). */
+  readonly draftDone = output<boolean>();
+
+  constructor() {
+    // Le brouillon arrive (ou le portrait se recharge) : les sections proposées remplacent le texte en cours d'édition.
+    effect(() => {
+      const d = this.draft();
+      const p = this.portrait();
+      if (d && p) {
+        untracked(() => this.drafts.update((cur) => ({ ...cur, ...d.sections })));
+      }
+    });
+  }
+
+  /** Vrai si la section porte une proposition du brouillon différente du texte enregistré. */
+  drafted(key: PortraitSectionKey): boolean {
+    const d = this.draft();
+    const p = this.portrait();
+    const proposed = d?.sections[key];
+    return proposed !== undefined && proposed !== (p?.sections.find((s) => s.key === key)?.text ?? '');
+  }
+
+  /** « Valider » : les sections (brouillon corrigé) puis les souvenirs proposés ; l'entretien est daté. */
+  validateDraft(): void {
+    const p = this.portrait();
+    const d = this.draft();
+    if (!p || !d || this.over()) {
+      return;
+    }
+    const cur = this.drafts();
+    const changed: Partial<Record<PortraitSectionKey, string>> = {};
+    for (const s of p.sections) {
+      if ((cur[s.key] ?? '') !== s.text) {
+        changed[s.key] = cur[s.key] ?? '';
+      }
+    }
+    this.saving.set(true);
+    this.client.update(changed, undefined, true).subscribe({
+      next: () => {
+        const adds = d.souvenirs.map((m) => this.client.addSouvenir(m.text, m.sensitive, 'ENTRETIEN'));
+        (adds.length ? forkJoin(adds) : of([])).subscribe({
+          next: () => this.afterValidate(),
+          error: (err: PortraitError) => {
+            this.afterValidate();
+            this.snack.open(portraitErrorMessage(err), 'OK', { duration: 6000 });
+          },
+        });
+      },
+      error: (err: PortraitError) => {
+        this.saving.set(false);
+        this.snack.open(portraitErrorMessage(err), 'OK', { duration: 6000 });
+      },
+    });
+  }
+
+  /** « Abandonner » : rien n'est écrit, le texte enregistré revient. */
+  abandonDraft(): void {
+    const p = this.portrait();
+    if (p) {
+      this.apply(p);
+    }
+    this.draftDone.emit(false);
+  }
+
+  private afterValidate(): void {
+    this.saving.set(false);
+    this.draftDone.emit(true);
+    this.client.get().subscribe({ next: (fresh) => this.apply(fresh), error: () => undefined });
+    this.snack.open('Portrait enregistré.', undefined, { duration: 2500 });
+  }
 
   readonly maxTokens = PORTRAIT_MAX_TOKENS;
   readonly portrait = signal<Portrait | null>(null);
