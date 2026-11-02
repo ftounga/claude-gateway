@@ -4,7 +4,7 @@ import { Observable } from 'rxjs';
 
 import {
   JarvisAbsence, JarvisCompanionDevice, JarvisCompanionPairingCode, JarvisCompanionVersion, JarvisHumour,
-  JarvisCaptureMeta, JarvisPreferences, JarvisToSendList, JarvisSttTicket, JarvisUtterance, TurnTimingReport,
+  JarvisCaptureMeta, JarvisCostSummary, JarvisPreferences, JarvisToSendList, JarvisSttTicket, JarvisUtterance, TurnTimingReport,
 } from '../models/jarvis.models';
 
 /** F-232 / SF-232-02 — l'APK du compagnon Android, servi par le chemin des paquets du runner (F-44). */
@@ -131,6 +131,11 @@ export class JarvisService {
   /** F-235 / SF-235-09 (D18) — les préférences de Jarvis du compte (humour : aucun / léger, léger par défaut). */
   preferences(): Observable<JarvisPreferences> {
     return this.http.get<JarvisPreferences>('/api/jarvis/preferences');
+  }
+
+  /** F-239 / SF-239-12 — ce que Jarvis a coûté aujourd'hui et ce mois-ci, en euros, par poste. */
+  costs(): Observable<JarvisCostSummary> {
+    return this.http.get<JarvisCostSummary>('/api/jarvis/costs');
   }
 
   /** F-239 / SF-239-03 — allume ou éteint la capture des énoncés (ADMIN ; l'éteindre efface les captures). */

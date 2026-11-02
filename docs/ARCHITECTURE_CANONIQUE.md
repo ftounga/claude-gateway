@@ -1400,6 +1400,8 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   `POST /api/jarvis/usage`, lus par `GET /api/admin/jarvis/measure` (`scenes`).
   F-235 / SF-235-01 (migration `235-jarvis-usage-fast-brain`) : `fast_brain_calls`, `fast_brain_cost_usd` — le
   cerveau rapide de Jarvis, son **plafond mensuel propre** `app.jarvis.fast-brain.monthly-budget-eur` (20 €).
+  F-239 / SF-239-12 (migration `239-jarvis-usage-opus`) : `opus_turns`, `opus_cost_usd` — les tours Opus nés de
+  Jarvis (`via = JARVIS`), comptés à leur fin ; lus en euros par `GET /api/jarvis/costs` (compteur visible).
 - **jarvis_turn_timings** — **un tour vocal chronométré** (F-233 / SF-233-01, migration `196`) : `user_id`,
   `workspace_id` (nul si sujet d'autrui), `created_at`, `listen_mode` (`BATCH|STREAM|CONV_BATCH|CONV_STREAM`, SF-233-11), `stt_provider`, `tts_provider`,
   `tool_turn`, marques en ms depuis la fin de parole (`speech_ms`, `transcript_ms`, `reaction_ms`, `sent_ms`,

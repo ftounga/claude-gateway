@@ -4,7 +4,7 @@ import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angul
 import { HttpErrorResponse } from '@angular/common/http';
 import { Subject, of, throwError } from 'rxjs';
 
-import { BUDGET_SOFT_NOTICE, JARVIS_USER_AGENT, JarvisComponent, companionOffer } from './jarvis.component';
+import { BUDGET_SOFT_NOTICE, JARVIS_USER_AGENT, JarvisComponent, companionOffer, euros } from './jarvis.component';
 import { JarvisSceneBus } from './scenes/jarvis-scene-bus.service';
 import { testUniverse } from './scenes/jarvis-universe.fixture';
 import { NotificationCenterService } from '../core/services/notification-center.service';
@@ -116,9 +116,10 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     voice.playClip.and.resolveTo(false);
     voice.hasClip.and.returnValue(false);
     voice.level.and.returnValue(0);
-    jarvisApi = jasmine.createSpyObj<JarvisService>('JarvisService', ['usage', 'companion', 'companions', 'timings', 'sttSession', 'closeSttSession', 'preferences', 'setHumour', 'scenes', 'render', 'utterance', 'setCaptureAudio', 'capture']);
+    jarvisApi = jasmine.createSpyObj<JarvisService>('JarvisService', ['usage', 'companion', 'companions', 'timings', 'sttSession', 'closeSttSession', 'preferences', 'setHumour', 'scenes', 'render', 'utterance', 'setCaptureAudio', 'capture', 'costs']);
     jarvisApi.sttSession.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
     jarvisApi.utterance.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
+    jarvisApi.costs.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
     jarvisApi.preferences.and.returnValue(of({ humour: 'LIGHT' as const }));
     jarvisApi.setHumour.and.callFake((humour) => of({ humour }));
     opener = jasmine.createSpyObj<JarvisStreamOpener>('JarvisStreamOpener', ['open']);
@@ -583,6 +584,20 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     handlers!.onDone({ reply: '🎙 Les tests passent.', actions: [], messageId: 'm-1' });
     flushMicrotasks();
     expect(voice.speak).toHaveBeenCalledWith('C’est terminé. Les tests passent.', 'w-2');
+  }));
+
+  it('F-239 / SF-239-12 — le compteur : ce que Jarvis a coûté aujourd’hui et ce mois-ci, en euros', fakeAsync(() => {
+    const zero = { fastBrain: 0, opus: 0, voice: 0, listening: 0, total: 0, opusTurns: 0 };
+    jarvisApi.costs.and.returnValue(of({ today: { ...zero, total: 0.42 },
+      month: { fastBrain: 1.2, opus: 4.9, voice: 0, listening: 0, total: 6.1, opusTurns: 5 } }));
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    expect(jarvis.costLine()).toBe(`Jarvis : ${euros(0.42)} aujourd’hui · ${euros(6.1)} ce mois`);
+    expect(jarvis.costDetail()).toContain('Opus');
+    expect(jarvis.costDetail()).toContain('5 tours');
+    expect(euros(6.1)).toContain('6,10');
+    jarvis.ngOnDestroy();
   }));
 
   it('SF-231-03 — « stop » interrompt le travail en cours', fakeAsync(() => {

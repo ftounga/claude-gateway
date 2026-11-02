@@ -149,6 +149,22 @@ export interface TurnTimingReport {
   rejectedChars?: number | null;
 }
 
+/** F-239 / SF-239-12 — ce que Jarvis a coûté, en euros, par poste. */
+export interface JarvisCosts {
+  fastBrain: number;
+  opus: number;
+  voice: number;
+  listening: number;
+  total: number;
+  opusTurns: number;
+}
+
+/** F-239 / SF-239-12 — aujourd'hui et le mois en cours. */
+export interface JarvisCostSummary {
+  today: JarvisCosts;
+  month: JarvisCosts;
+}
+
 /** F-239 / SF-239-04 — un énoncé retranscrit par la passerelle (Scribe v2 batch + vocabulaire). */
 export interface JarvisUtterance {
   text: string;

@@ -1809,6 +1809,14 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.jarvisDelegations = jarvisDelegations;
     }
 
+    /** F-239 / SF-239-12 — le compteur de Jarvis : le coût des tours nés de Jarvis. Facultatif. */
+    private fr.claudegateway.jarvis.JarvisUsageService jarvisUsage;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJarvisUsage(fr.claudegateway.jarvis.JarvisUsageService jarvisUsage) {
+        this.jarvisUsage = jarvisUsage;
+    }
+
     /** F-235 / SF-235-04 (D12) — borne de la note des échanges rapides jointe au message du tour Opus suivant. */
     static final int FAST_EXCHANGES_NOTE_MAX = 1_500;
 
@@ -4711,6 +4719,14 @@ public class AtelierChatService implements RelayInterruptTarget {
         Integer reusedPercent = fr.claudegateway.quota.TurnCostView.reusedPercent(turnTokens);
         AtelierTurnReport report = new AtelierTurnReport(inputTokens, outputTokens, activeSeconds,
                 interrupted, spendCapReached, planOfTurn.get(), List.copyOf(transcript), costUsd);
+        // F-239 / SF-239-12 — un tour né de Jarvis compte dans le compteur de Jarvis (best-effort, jamais bloquant).
+        if (viaJarvis && jarvisUsage != null) {
+            try {
+                jarvisUsage.addOpus(userId, costUsd);
+            } catch (RuntimeException e) {
+                log.debug("Compteur Jarvis : tour Opus non compté ({})", e.getClass().getSimpleName());
+            }
+        }
         AtelierMessage assistant = messageRepository.save(AtelierMessage.builder()
                 .workspaceId(workspaceId).userId(userId).role("ASSISTANT")
                 .chantierNumber(workspace.getTurnChantier())

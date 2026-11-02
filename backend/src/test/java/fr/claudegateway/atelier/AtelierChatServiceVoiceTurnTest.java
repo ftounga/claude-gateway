@@ -100,6 +100,18 @@ class AtelierChatServiceVoiceTurnTest {
     }
 
     @Test
+    void F239_SF_239_12_unTourNeALaVoixCompteDansLeCompteurDeJarvisUnTourTapeNon() {
+        fr.claudegateway.jarvis.JarvisUsageService usage = Mockito.mock(fr.claudegateway.jarvis.JarvisUsageService.class);
+        service.setJarvisUsage(usage);
+        service.chat(userId, workspaceId, "bonjour");
+        Mockito.verifyNoInteractions(usage);
+
+        service.markVoiceTurn(userId, workspaceId, null);
+        service.chat(userId, workspaceId, "valide l'étape trois");
+        verify(usage).addOpus(org.mockito.ArgumentMatchers.eq(userId), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void SF_231_03_laConsigneOraleVaDansLeMessageJamaisDansLeSysteme() {
         service.markVoiceTurn(userId, workspaceId, null);
         agentProvider.enqueueFinal("🎙 C'est fait.");

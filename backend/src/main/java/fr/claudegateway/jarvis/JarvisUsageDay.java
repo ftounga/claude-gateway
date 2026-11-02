@@ -88,6 +88,16 @@ public class JarvisUsageDay {
     @Column(name = "fast_brain_cost_usd", nullable = false, precision = 12, scale = 6)
     private BigDecimal fastBrainCostUsd = BigDecimal.ZERO;
 
+    /** F-239 / SF-239-12 — les tours Opus nés de Jarvis ce jour-là. */
+    @Builder.Default
+    @Column(name = "opus_turns", nullable = false)
+    private int opusTurns = 0;
+
+    /** F-239 / SF-239-12 — leur coût en dollars (converti en euros à la lecture). */
+    @Builder.Default
+    @Column(name = "opus_cost_usd", nullable = false, precision = 12, scale = 6)
+    private BigDecimal opusCostUsd = BigDecimal.ZERO;
+
     /** F-234 / SF-234-11 (D16) — scènes montrées ce jour-là, dont génériques. */
     @Builder.Default
     @Column(name = "scenes_shown", nullable = false)

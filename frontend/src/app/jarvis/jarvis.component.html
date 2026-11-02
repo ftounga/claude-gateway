@@ -88,6 +88,10 @@
         <mat-icon aria-hidden="true">{{ humour() === 'LIGHT' ? 'sentiment_satisfied' : 'sentiment_neutral' }}</mat-icon>
         Humour : {{ humour() === 'LIGHT' ? 'léger' : 'aucun' }}
       </button>
+      @if (costLine(); as line) {
+        <!-- F-239 / SF-239-12 — le compteur visible : ce que Jarvis a coûté, en euros. -->
+        <span class="jv__cost" [attr.title]="costDetail()">{{ line }}</span>
+      }
       @if (canCapture()) {
         <!-- F-239 / SF-239-03 — capture réelle pour le banc d'écoute : ADMIN seulement, 7 jours, effacée à l'extinction. -->
         <button mat-button type="button" class="jv__capture" [attr.aria-pressed]="captureAudio()" (click)="toggleCapture()">
@@ -196,6 +200,10 @@
         <mat-icon aria-hidden="true">{{ humour() === 'LIGHT' ? 'sentiment_satisfied' : 'sentiment_neutral' }}</mat-icon>
         Humour : {{ humour() === 'LIGHT' ? 'léger' : 'aucun' }}
       </button>
+      @if (costLine(); as line) {
+        <!-- F-239 / SF-239-12 — le compteur visible : ce que Jarvis a coûté, en euros. -->
+        <span class="jv__cost" [attr.title]="costDetail()">{{ line }}</span>
+      }
       @if (canCapture()) {
         <!-- F-239 / SF-239-03 — capture réelle pour le banc d'écoute : ADMIN seulement, 7 jours, effacée à l'extinction. -->
         <button mat-button type="button" class="jv__wake-button jv__capture" [attr.aria-pressed]="captureAudio()"

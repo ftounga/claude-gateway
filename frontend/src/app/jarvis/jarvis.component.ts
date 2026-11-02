@@ -19,7 +19,7 @@ import { CutSnapshot } from '../core/services/jarvis-voice.service';
 import { JarvisStreamOpener, LISTEN_AUDIO, LiveListening } from './jarvis-stream-listener';
 import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { JarvisHumour, JarvisSttTicket, JarvisUtterance } from '../core/models/jarvis.models';
+import { JarvisCostSummary, JarvisHumour, JarvisSttTicket, JarvisUtterance } from '../core/models/jarvis.models';
 import { MarkdownPipe } from '../shared/markdown.pipe';
 import { EndOfSpeech, MicMeter, SPEECH_LEVEL, silenceMs } from './jarvis-mic-meter';
 import { asksConfirmation, classifyConfirmation, confirmationQuestion } from './jarvis-confirm';
@@ -237,6 +237,31 @@ export class JarvisComponent implements OnInit, OnDestroy {
     });
   }
 
+  // ---- F-239 / SF-239-12 : le compteur visible ----
+  /** Ce que Jarvis a coûté aujourd'hui et ce mois-ci (en euros), lu à l'ouverture et après chaque échange. */
+  readonly costs = signal<JarvisCostSummary | null>(null);
+  readonly costLine = computed(() => {
+    const c = this.costs();
+    return c ? `Jarvis : ${euros(c.today.total)} aujourd’hui · ${euros(c.month.total)} ce mois` : null;
+  });
+  readonly costDetail = computed(() => {
+    const m = this.costs()?.month;
+    return m ? `Ce mois : conversation ${euros(m.fastBrain)}, Opus ${euros(m.opus)} (${m.opusTurns} tour${
+      m.opusTurns > 1 ? 's' : ''}), voix ${euros(m.voice)}, écoute ${euros(m.listening)}` : '';
+  });
+  private costTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Relit le compteur (au plus une fois toutes les 5 s). Best-effort. */
+  refreshCosts(): void {
+    if (this.costTimer) {
+      return;
+    }
+    this.costTimer = setTimeout(() => {
+      this.costTimer = null;
+    }, 5_000);
+    this.jarvis.costs().subscribe({ next: (c) => this.costs.set(c), error: () => undefined });
+  }
+
   private loadPreferences(): void {
     this.jarvis.preferences().subscribe({
       next: (prefs) => {
@@ -343,6 +368,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const installed = fromCompanion && Number.isInteger(rawInstalled) && rawInstalled >= 1 ? rawInstalled : null;
     this.loadCompanion(installed);
     this.loadPreferences();
+    this.refreshCosts();
     this.atelier.listWorkspaces().subscribe({
       next: (list) => {
         this.subjects.set(list);
@@ -1651,6 +1677,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   /** SF-233-01 — déclare la mesure du tour (une seule fois), sans contenu. */
   private reportClock(): void {
+    // F-239 / SF-239-12 — un échange fini : le compteur est relu.
+    this.refreshCosts();
     const clock = this.clock;
     this.clock = null;
     const report = clock?.takeReport();
@@ -2330,6 +2358,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
 /** F-239 / SF-239-11 — budget mensuel du cerveau rapide dépassé (il continue) ou plafond dur atteint. */
 export const BUDGET_SOFT_NOTICE = 'Budget mensuel de la conversation dépassé : Jarvis continue, sobrement.';
 export const BUDGET_HARD_NOTICE = 'Plafond mensuel de la conversation atteint : relevez-le dans la configuration.';
+
+/** F-239 / SF-239-12 — un montant en euros, à la française. */
+export function euros(value: number): string {
+  return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value);
+}
 
 function readStoredSubject(): string | null {
   try {
