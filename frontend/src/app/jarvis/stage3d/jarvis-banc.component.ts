@@ -5,6 +5,9 @@ import { JARVIS_BANC, JarvisStage3dComponent } from './jarvis-stage-3d.component
 import { MOTION_DURATIONS, ease, holoCssVars } from './jarvis-motion';
 import { JarvisCockpitComponent } from './hud/jarvis-cockpit.component';
 import { JarvisReplayComponent } from './hud/jarvis-replay.component';
+import { JarvisNightComponent } from './hud/jarvis-night.component';
+import { VeilleService } from '../../core/services/veille.service';
+import { JarvisWatchSummary } from '../../core/models/veille.models';
 import { trackOf } from './hud/jarvis-replay';
 import { testUniverse } from '../scenes/jarvis-universe.fixture';
 import { OPEN_FOLDS, writeFolds } from './hud/jarvis-cockpit-layout';
@@ -22,7 +25,7 @@ import { JARVIS_DAY_HISTORY } from './hud/jarvis-cockpit.component';
  */
 @Component({
   selector: 'app-jarvis-banc',
-  imports: [JarvisStage3dComponent, JarvisCockpitComponent, JarvisReplayComponent],
+  imports: [JarvisStage3dComponent, JarvisCockpitComponent, JarvisReplayComponent, JarvisNightComponent],
   template: `
     <app-jarvis-stage-3d #stage [withCore]="true" [planOverride]="staged.plan" [voiceLevel]="voice"
                          [labelLayer]="labels" [insets]="cockpit ? cockpitRef()?.insets() ?? noInsets : noInsets" />
@@ -30,13 +33,18 @@ import { JARVIS_DAY_HISTORY } from './hud/jarvis-cockpit.component';
     @if (cockpit) {
       <app-jarvis-cockpit #cockpitRef [stage]="stage" [signals]="screen" [shownFilter]="shownFilter" />
     }
+    @if (scene === 'veilleur') {
+      <app-jarvis-night [ambient]="nightAmbient" />
+    }
     @if (scene === 'cockpit-replay') {
       <app-jarvis-replay #replayRef />
     }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
   // SF-236-17 — le banc ne lit jamais le réseau : la journée vient d'un historique simulé.
-  providers: [{ provide: JARVIS_DAY_HISTORY, useValue: () => bancHistory() }],
+  providers: [{ provide: JARVIS_DAY_HISTORY, useValue: () => bancHistory() },
+    // SF-236-24 — le veilleur du banc : trois veilles simulées, aucun appel.
+    { provide: VeilleService, useValue: { listForAccount: () => bancWatches() } }],
   host: { '[style]': 'vars' },
   styleUrls: ['./jarvis-labels.scss'],
   styles: [':host { display: block; min-height: 100dvh; background: #0B1020; }'],
@@ -54,6 +62,9 @@ export class JarvisBancComponent {
   protected readonly shownFilter: ShowFilter | null = this.scene === 'cockpit-journee' ? 'chantiers-bloques' : null;
   protected readonly cockpitRef = viewChild<JarvisCockpitComponent>('cockpitRef');
   protected readonly replayRef = viewChild<JarvisReplayComponent>('replayRef');
+  /** SF-236-24 — le veilleur du banc : un poste muet vient de réveiller l'écran. */
+  protected readonly nightAmbient = { hostDown: { clientKey: 'h-eden', name: 'Edenred' }, liveSubjects: new Set<string>(),
+    calling: null, cost: null, alert: null };
 
   constructor() {
     if (this.cockpit) {
@@ -146,4 +157,18 @@ export function bancHistory(): Observable<AtelierMessage[]> {
     ...turn('4', 10, 50, 'Publie la page d’architecture', 'Page publiée.', ['read_file', 'publish_page']),
     ...turn('5', 11, 5, 'Fais le point', 'Deux tickets bloqués, une attente.', ['memory_search', 'bash']),
   ]);
+}
+
+/** SF-236-24 — les veilles du banc : demain 7 h 30, 9 h, 12 h (passages connus du serveur). */
+export function bancWatches(): Observable<JarvisWatchSummary[]> {
+  const at = (h: number, m: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    d.setHours(h, m, 0, 0);
+    return d.toISOString();
+  };
+  const w = (id: string, name: string, subject: string, next: string) => ({ workspaceName: subject,
+    watch: { id, name, active: true, proposed: false, nextRunAt: next } }) as unknown as JarvisWatchSummary;
+  return of([w('w1', 'Tickets FORGE', 'Migration Forge', at(7, 30)), w('w2', 'Incidents', 'Runner', at(9, 0)),
+    w('w3', 'Revue des PR', 'Doc archi', at(12, 0))]);
 }

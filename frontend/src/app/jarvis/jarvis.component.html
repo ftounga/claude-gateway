@@ -5,7 +5,8 @@
                      (talk)="talk()" />
 <main class="jv" [attr.data-state]="state()" [class.jv--3d]="stage3d.rendering() === '3d'"
       [class.jv--entry]="stage3d.entry() === 'full' && stage3d.shown()" [class.jv--exiting]="leaving()"
-      [class.jv--cockpit]="cockpit.mode() === 'cockpit'" [class.jv--presentation]="presentation()">
+      [class.jv--cockpit]="cockpit.mode() === 'cockpit'" [class.jv--presentation]="presentation()"
+      [class.jv--follower]="cockpitFollower">
   <header class="jv__top">
     <!-- F-236 / SF-236-05 — T-S : en 3D, la sortie se joue (0,5 s) avant de quitter. -->
     <a mat-icon-button class="jv__back" href="/atelier" (click)="leave($event)" aria-label="Quitter Jarvis">
@@ -27,6 +28,10 @@
       <mat-icon>terminal</mat-icon>
     </button>
     <!-- F-236 / SF-236-06 — HUD 3D : compteur « À envoyer », plein écran (PC), volet « Réglages ». -->
+    @if (cockpitFollower) {
+      <!-- F-236 / SF-236-24 — la vue cockpit : ce que l'écran principal relaie. -->
+      <span class="jv__presenting" role="status">{{ leaderGone() ? 'Écran principal fermé' : 'Vue cockpit' }}</span>
+    }
     @if (presentation()) {
       <!-- F-236 / SF-236-23 (NF-11) — mode présentation : rien de nominatif, Échap pour quitter. -->
       <span class="jv__presenting" role="status">Présentation · Échap pour quitter</span>
@@ -52,6 +57,16 @@
     <aside id="jv-settings" class="jv__settings" aria-label="Réglages">
       <button mat-button type="button" [attr.aria-pressed]="sober()" (click)="toggleSober()">
         <mat-icon aria-hidden="true">blur_off</mat-icon> Mode sobre
+      </button>
+      <!-- F-236 / SF-236-24 — la vue cockpit sur un second écran (NF-12) et le veilleur de nuit (NF-13). -->
+      @if (canCockpit && canFullscreen) {
+        <button mat-button type="button" class="jv__cockpit-open" (click)="openCockpitWindow()">
+          <mat-icon aria-hidden="true">open_in_new</mat-icon> Cockpit sur un 2ᵉ écran
+        </button>
+      }
+      <button mat-button type="button" class="jv__night-open" [attr.aria-pressed]="night()"
+              (click)="night.set(true); settingsOpen.set(false)">
+        <mat-icon aria-hidden="true">bedtime</mat-icon> Veilleur de nuit
       </button>
       @if (stage3d.offer3d()) {
         <button mat-button type="button" [attr.aria-pressed]="false" (click)="stage3d.toggleView()">
@@ -218,4 +233,8 @@
 @if (!presentation()) {
 <app-jarvis-replay #replay [universe]="replayUniverse()" [subjectId]="subjectId()"
                    [liveTurn]="liveTurn()" [requested]="replayRequested" />
+}
+<!-- F-236 / SF-236-24 (NF-13) — le veilleur de nuit : voile sombre, horloge, veilles, alertes ; réveil à l'alerte. -->
+@if (night()) {
+  <app-jarvis-night [ambient]="ambientNow()" (exit)="night.set(false)" />
 }

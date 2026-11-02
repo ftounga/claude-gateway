@@ -1,0 +1,84 @@
+// F-236 / SF-236-24 — le veilleur de nuit : voile sombre (luminosité basse), horloge, veilles, alertes. Jetons
+// --cg-holo-* (DESIGN_SYSTEM §23), polices de la charte ; le rouge n'est porté que par les alertes (N13).
+:host {
+  display: contents;
+}
+
+.nt {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--cg-space-3);
+  padding: var(--cg-space-4) 16px;
+  background: color-mix(in srgb, var(--cg-navy, #0B1020) 88%, transparent);
+  color: var(--cg-holo-text, #F0954F);
+  opacity: 0.55;
+  transition: opacity var(--jv-dur-fade, 400ms) var(--jv-ease-souffle, ease-in-out),
+    background var(--jv-dur-fade, 400ms) var(--jv-ease-souffle, ease-in-out);
+
+  &--awake {
+    opacity: 1;
+    background: color-mix(in srgb, var(--cg-navy, #0B1020) 55%, transparent);
+  }
+}
+
+.nt__clock {
+  margin: 0;
+  font: 600 clamp(64px, 18vw, 180px) / 1 var(--cg-font-heading);
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.nt__alerts,
+.nt__watches {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  text-align: center;
+  font-size: 15px;
+}
+
+.nt__alerts li {
+  color: var(--cg-holo-red, #FF5A6E);
+  font-weight: 600;
+}
+
+.nt__watches li {
+  color: var(--cg-cream, #F5EFE3);
+  opacity: 0.8;
+}
+
+.nt__when {
+  font-family: var(--cg-font-mono);
+  color: var(--cg-holo-text, #F0954F);
+}
+
+.nt__subject,
+.nt__none {
+  opacity: 0.6;
+}
+
+.nt__exit {
+  min-height: 44px;
+  padding: 0 var(--cg-space-3);
+  border: 1px solid color-mix(in srgb, var(--cg-holo, #E07B39) 40%, transparent);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--cg-holo, #E07B39);
+    outline-offset: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nt {
+    transition: none;
+  }
+}

@@ -16,6 +16,7 @@ const notificationCenter = { items: ngSignal<{ id: string; event: string; worksp
 const liveTerminals = { registry: ngSignal<{ terminals: { workspaceId: string }[] } | null>(null) };
 import { AtelierMessage, AtelierStreamHandlers, WorkspaceSummary } from '../core/models/atelier.models';
 import { trackOf } from './stage3d/hud/jarvis-replay';
+import { COCKPIT_CHANNEL, CockpitLeader, LinkChannel } from './stage3d/hud/jarvis-cockpit-link';
 import { AtelierService } from '../core/services/atelier.service';
 import { DictationService } from '../core/services/dictation.service';
 import { JarvisVoiceService } from '../core/services/jarvis-voice.service';
@@ -255,6 +256,45 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(jarvis.presentation()).toBeFalse();
     expect(jarvis.stageSignals().scene?.detail).toContain('kubectl');
     jarvis.ngOnDestroy();
+    fixture.destroy();
+    discardPeriodicTasks();
+  }));
+
+  it('F-236 / SF-236-24 — ?cockpit=1 : ne parle ni n’écoute ; dessine ce que l’écran principal relaie ; meneur parti ⇒ ses signaux', async () => {
+    configure({ cockpit: '1' });
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    expect(jarvis.cockpitFollower).toBeTrue();
+    expect(jarvis.wakeOn()).toBeFalse();
+    const leader = new CockpitLeader(new BroadcastChannel(COCKPIT_CHANNEL) as unknown as LinkChannel);
+    await new Promise((r) => setTimeout(r, 50));
+    leader.publish({ ...jarvis.stageSignals(), pulses: 42, subjectId: 's-relaye' });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(jarvis.stageSignals().pulses).toBe(42);
+    expect(jarvis.linkLatency()).toBeLessThan(100);
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).querySelector('.jv__presenting')?.textContent).toContain('Vue cockpit');
+    leader.close();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(jarvis.leaderGone()).toBeTrue();
+    expect(jarvis.stageSignals().pulses).toBe(0);
+    expect(atelier.streamChat).not.toHaveBeenCalled();
+    jarvis.ngOnDestroy();
+    fixture.destroy();
+  });
+
+  it('F-236 / SF-236-24 — veilleur de nuit : ouvert depuis ?veilleur=1, refermé par « Quitter le veilleur »', fakeAsync(() => {
+    configure({ veilleur: '1' });
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('app-jarvis-night .nt__clock')).not.toBeNull();
+    (el.querySelector('.nt__exit') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('app-jarvis-night')).toBeNull();
+    fixture.componentInstance.ngOnDestroy();
     fixture.destroy();
     discardPeriodicTasks();
   }));
