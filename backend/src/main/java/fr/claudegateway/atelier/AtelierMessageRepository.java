@@ -104,6 +104,14 @@ public interface AtelierMessageRepository extends JpaRepository<AtelierMessage, 
             @Param("userId") UUID userId);
 
     /**
+     * F-236 / SF-236-26 — les tours du compte depuis {@code since} (carte d'activité 7 jours) : lignes
+     * {@code [workspaceId, createdAt]} des messages de l'utilisateur, <b>filtrées {@code user_id}</b>, sans contenu.
+     */
+    @Query("select m.workspaceId, m.createdAt from AtelierMessage m where m.userId = :userId and m.role = 'USER' "
+            + "and m.createdAt >= :since")
+    List<Object[]> userTurnsSince(@Param("userId") UUID userId, @Param("since") java.time.OffsetDateTime since);
+
+    /**
      * Relecture <b>isolée</b> du chemin sémantique à portée poste (F-178 / SF-178-01) : filtrée
      * {@code user_id} ET {@code workspace_id} dans l'ensemble des fils du poste (défense en profondeur).
      */
