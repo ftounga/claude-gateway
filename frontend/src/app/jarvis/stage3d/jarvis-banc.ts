@@ -53,7 +53,9 @@ export const BANC_SCENES = ['coeur', 'ecoute', 'reflexion', 'parole', 'oui', 'co
   // SF-236-19 — inspecteur de nœud et recherche « montre-moi ».
   'cockpit-inspecteur', 'cockpit-recherche',
   // SF-236-20 — téléphone allégé : le volet des vues.
-  'cockpit-vues'] as const;
+  'cockpit-vues',
+  // SF-236-21 — séquence T-P4 (repli d'un panneau latéral).
+  'cockpit-repli-anim'] as const;
 
 const SCENE_NAME = /^[a-z0-9-]{1,40}$/;
 

@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, afterNextRender, inject, viewChild 
 
 import { bancPlan, bancScreen } from './jarvis-banc-scenes';
 import { JARVIS_BANC, JarvisStage3dComponent } from './jarvis-stage-3d.component';
-import { holoCssVars } from './jarvis-motion';
+import { MOTION_DURATIONS, ease, holoCssVars } from './jarvis-motion';
 import { JarvisCockpitComponent } from './hud/jarvis-cockpit.component';
 import { OPEN_FOLDS, writeFolds } from './hud/jarvis-cockpit-layout';
 import { ShowFilter } from '../scenes/jarvis-show';
@@ -37,6 +37,7 @@ import { JARVIS_DAY_HISTORY } from './hud/jarvis-cockpit.component';
 })
 export class JarvisBancComponent {
   private readonly scene = inject(JARVIS_BANC)?.scene ?? 'coeur';
+  private readonly t = inject(JARVIS_BANC)?.t ?? 0;
   protected readonly vars = holoCssVars();
   protected readonly staged = bancPlan(this.scene,
     typeof matchMedia === 'function' && matchMedia('(max-width: 767px)').matches);
@@ -72,6 +73,20 @@ export class JarvisBancComponent {
         cockpit?.inspectNode('s-forge#3', 'chantier');
         if (this.scene === 'cockpit-recherche') {
           cockpit?.setQuery('forge');
+        }
+      }, 1500));
+    }
+    if (this.scene === 'cockpit-repli-anim') {
+      // SF-236-21 — séquence T-P4 : le panneau gauche se replie, posé à l'instant t du banc (courbe `glisse`).
+      afterNextRender(() => setTimeout(() => {
+        const p = ease('glisse', Math.min(1, this.t / MOTION_DURATIONS.sidePanel));
+        const aside = document.querySelector<HTMLElement>('.ck--left');
+        const body = aside?.querySelector<HTMLElement>('.ck__body');
+        if (aside && body) {
+          aside.style.transition = 'none';
+          body.style.transition = 'none';
+          aside.style.transform = `translateX(calc((-100% + 28px) * ${p.toFixed(3)}))`;
+          body.style.opacity = (1 - p).toFixed(3);
         }
       }, 1500));
     }
