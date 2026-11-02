@@ -31,10 +31,31 @@ public class DiagramToolExecutor {
 
     private final DiagramRenderer renderer;
     private final ProjectFileDeposit deposit;
+    /** F-237 / SF-237-03 : conservation des schémas — injectée par mutateur (absente des tests historiques). */
+    private DiagramRenderService renders;
 
     public DiagramToolExecutor(DiagramRenderer renderer, ProjectFileDeposit deposit) {
         this.renderer = renderer;
         this.deposit = deposit;
+    }
+
+    /** F-237 / SF-237-03 : branche la conservation des schémas rendus (sans toucher au constructeur). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setRenders(DiagramRenderService renders) {
+        this.renders = renders;
+    }
+
+    /** Conserve un rendu réussi — au mieux : jamais une raison d'échouer le rendu. */
+    private void keep(UUID userId, Workspace workspace, String callId, String engine, JsonNode spec, String code,
+            String fileName, DiagramRenderService.Files files) {
+        if (renders == null) {
+            return;
+        }
+        try {
+            renders.record(userId, workspace, callId, engine, spec, code, fileName, files);
+        } catch (RuntimeException e) {
+            // déjà journalisé côté service ; le schéma est livré dans le projet
+        }
     }
 
     /** Le résultat rendu à la boucle : un texte, et s'il est une erreur. */
@@ -98,6 +119,9 @@ public class DiagramToolExecutor {
             return Outcome.error("Diagramme rendu (" + rendered.bytes().length + " octets), mais son dépôt "
                     + "dans le projet a échoué : réessaie, ou livre le diagramme dans une page.");
         }
+        keep(userId, workspace, callId, cloud ? "cloud" : "mermaid", cloud ? spec : null, cloud ? null : code, name,
+                format == Format.SVG ? new DiagramRenderService.Files(rendered.bytes(), null, null)
+                        : new DiagramRenderService.Files(null, rendered.bytes(), null));
         String warning = rendered.hasUnknownTypes()
                 // F-142 / SF-142-09 : dit, et pas seulement dessiné. L'utilisateur doit savoir quels
                 // composants n'ont pas d'icône officielle — c'est à lui de juger si c'est acceptable.
@@ -162,6 +186,8 @@ public class DiagramToolExecutor {
                     fileName(source, Format.PNG), rendered.png(), Format.PNG.contentType(),
                     DiagramToolCatalog.RENDER);
         }
+        keep(userId, workspace, callId, "drawio", spec, null, source,
+                new DiagramRenderService.Files(null, rendered.hasPreview() ? rendered.png() : null, rendered.drawio()));
         StringBuilder message = new StringBuilder();
         message.append("Schéma rendu par la gateway. Fichier RÉOUVRABLE déposé sous « ").append(deposited)
                 .append(" » : l'utilisateur peut l'ouvrir et le MODIFIER dans draw.io / diagrams.net "

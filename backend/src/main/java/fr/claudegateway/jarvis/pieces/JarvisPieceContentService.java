@@ -13,6 +13,8 @@ import fr.claudegateway.atelier.besoin.AppRequestService;
 import fr.claudegateway.atelier.proof.ProofCapture;
 import fr.claudegateway.atelier.proof.ProofCaptureRepository;
 import fr.claudegateway.atelier.proof.ProofCaptureService;
+import fr.claudegateway.diagrams.DiagramRender;
+import fr.claudegateway.diagrams.DiagramRenderService;
 import fr.claudegateway.images.GeneratedImageRepository;
 import fr.claudegateway.images.GeneratedImageStore;
 import fr.claudegateway.mail.ClientEmail;
@@ -65,6 +67,7 @@ public class JarvisPieceContentService {
     private final VideoStore videoStore;
     private final ClientEmailRepository emails;
     private final AppRequestService requests;
+    private final DiagramRenderService diagrams;
     private final Map<ThumbKey, byte[]> thumbs = new LinkedHashMap<>(16, 0.75f, true) {
         @Override
         protected boolean removeEldestEntry(Map.Entry<ThumbKey, byte[]> eldest) {
@@ -76,7 +79,8 @@ public class JarvisPieceContentService {
     public JarvisPieceContentService(ProofCaptureRepository proofs, ProofCaptureService proofService,
             GeneratedImageRepository images, GeneratedImageStore imageStore, PresentationRepository presentations,
             PresentationService presentationService, VideoRepository videos, VideoVersionRepository videoVersions,
-            VideoStore videoStore, ClientEmailRepository emails, AppRequestService requests) {
+            VideoStore videoStore, ClientEmailRepository emails, AppRequestService requests,
+            DiagramRenderService diagrams) {
         this.proofs = proofs;
         this.proofService = proofService;
         this.images = images;
@@ -88,6 +92,7 @@ public class JarvisPieceContentService {
         this.videoStore = videoStore;
         this.emails = emails;
         this.requests = requests;
+        this.diagrams = diagrams;
     }
 
     /**
@@ -120,6 +125,7 @@ public class JarvisPieceContentService {
                     .flatMap(i -> imageStore.image(userId, i.getId()));
             case "slides" -> presentations.findByIdAndUserId(id.id(), userId).flatMap(p -> firstSlide(userId, p));
             case "video" -> videos.findByIdAndUserId(id.id(), userId).flatMap(v -> poster(userId, v, id.version()));
+            case "diag" -> diagrams.find(userId, id.id()).flatMap(d -> diagrams.bytes(d.getPngKey()));
             default -> Optional.empty();
         };
     }
@@ -137,6 +143,36 @@ public class JarvisPieceContentService {
         return videoVersions.findByVideoIdAndUserIdAndVersion(video.getId(), userId, wanted)
                 .map(VideoVersion::getPosterKey)
                 .flatMap(posterKey -> posterKey == null ? Optional.empty() : videoStore.get(posterKey));
+    }
+
+    /**
+     * L'image d'un schéma du compte : le SVG (vectoriel, zoom sans perte) s'il existe, sinon le PNG (SF-237-03).
+     */
+    @Transactional(readOnly = true)
+    public Content diagramImage(UUID userId, String rawId) {
+        DiagramRender d = diagram(userId, rawId);
+        Optional<byte[]> svg = diagrams.bytes(d.getSvgKey());
+        if (svg.isPresent()) {
+            return new Content(svg.get(), "image/svg+xml", "schema.svg");
+        }
+        return diagrams.bytes(d.getPngKey()).map(png -> new Content(png, "image/png", "schema.png"))
+                .orElseThrow(PieceNotFoundException::new);
+    }
+
+    /** La description reçue d'un schéma du compte (groupes, nœuds, liens) — point d'extension §10 (F-238). */
+    @Transactional(readOnly = true)
+    public String diagramSpec(UUID userId, String rawId) {
+        DiagramRender d = diagram(userId, rawId);
+        if (d.getSpecJson() == null) {
+            throw new PieceNotFoundException();
+        }
+        return d.getSpecJson();
+    }
+
+    private DiagramRender diagram(UUID userId, String rawId) {
+        PieceId id = PieceId.parse(rawId).filter(p -> "diag".equals(p.prefix()))
+                .orElseThrow(PieceNotFoundException::new);
+        return diagrams.find(userId, id.id()).orElseThrow(PieceNotFoundException::new);
     }
 
     /** Le corps <b>texte</b> d'un courriel du compte — jamais le HTML (aucune injection). */

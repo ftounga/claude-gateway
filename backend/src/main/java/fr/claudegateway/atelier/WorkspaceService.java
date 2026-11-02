@@ -661,6 +661,9 @@ public class WorkspaceService {
         // Les CAPTURES DE PREUVE (F-212 / SF-212-03) : elles s'en vont avec le terminal, hors du
         // préfixe des fichiers de projet ; leurs lignes suivent par cascade sur workspace_id.
         storage.deletePrefix(fr.claudegateway.atelier.proof.ProofCaptureService.prefixOf(userId, id));
+        // F-237 / SF-237-03 : les SCHÉMAS CONSERVÉS du sujet, hors du préfixe des fichiers de projet ; leurs lignes
+        // suivent par cascade sur workspace_id.
+        storage.deletePrefix(fr.claudegateway.diagrams.DiagramRenderService.prefixOf(userId, id));
         // F-213 / SF-213-01 : les vidéos et séries du sujet, objets puis lignes. Un effacement incomplet lève
         // et annule la suppression (F-79), comme les fichiers du projet.
         if (videoService != null) {
