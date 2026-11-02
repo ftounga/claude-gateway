@@ -63,6 +63,10 @@ import { JarvisConstellationComponent } from './scenes/jarvis-constellation.comp
 import { JarvisCockpitComponent } from './stage3d/hud/jarvis-cockpit.component';
 import { JarvisReplayComponent } from './stage3d/hud/jarvis-replay.component';
 import { PresentationFilter, TOUR_STEP_MS, tourKeys } from './stage3d/hud/jarvis-presentation';
+import {
+  CockpitFollower, CockpitLeader, ScreenArea, browserChannel, cockpitPlacement,
+} from './stage3d/hud/jarvis-cockpit-link';
+import { JarvisNightComponent } from './stage3d/hud/jarvis-night.component';
 import { JarvisStage3dComponent } from './stage3d/jarvis-stage-3d.component';
 import { holoCssVars } from './stage3d/jarvis-motion';
 import { BrainEnd } from './stage3d/jarvis-brains';
@@ -121,7 +125,7 @@ export function companionOffer(version: JarvisCompanionVersion, installed: numbe
  */
 @Component({
   selector: 'app-jarvis',
-  imports: [JarvisCockpitComponent, JarvisCompanionsComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatIconModule, MatMenuModule],
+  imports: [JarvisCockpitComponent, JarvisCompanionsComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatIconModule, MatMenuModule],
   templateUrl: './jarvis.component.html',
   styleUrl: './jarvis.component.scss',
   providers: [JarvisAppUpdate],
@@ -180,7 +184,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
   private readonly veilles = inject(VeilleService);
   private readonly wakeEngine = new TemplateWakeWordEngine(() => readWakeProfile());
   /** Le mot d'éveil est-il allumé sur cet appareil ? */
-  readonly wakeOn = signal(readWakeOn());
+  /** F-236 / SF-236-24 (NF-12) — cette fenêtre est la vue cockpit d'un écran principal (`?cockpit=1`) : elle ne parle
+   *  pas, n'écoute pas, et dessine ce que l'écran principal lui relaie. */
+  readonly cockpitFollower = this.route.snapshot.queryParamMap.get('cockpit') === '1';
+  readonly wakeOn = signal(!this.cockpitFollower && readWakeOn());
   /** Un profil « Jarvis » a-t-il été appris sur cet appareil ? */
   readonly wakeLearned = signal(readWakeProfile() !== null);
   /** Apprentissage en cours : le nombre de « Jarvis » déjà entendus, ou `null`. */
@@ -314,7 +321,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
           // Le PO vient de dire « Jarvis » au téléphone : on l'écoute, et le réveil compte (D9). SF-233-11 : la
           // conversation démarre directement en mains libres.
           void this.onWake();
-        } else if (list.length > 0) {
+        } else if (list.length > 0 && !this.cockpitFollower) {
           // SF-233-12 — ouvrir Jarvis, c'est parler : démarrage direct si le navigateur permet le son.
           void this.autoStart();
         }
@@ -338,6 +345,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.stopTour();
+    this.leader?.close();
+    this.follower?.close();
     if (this.toSendTimer !== null) {
       clearTimeout(this.toSendTimer);
     }
@@ -1527,7 +1536,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   /** F-236 / SF-236-02 — ce que la scène 3D lit de l'écran (H2, H6, H9, H10) ; rien n'est modifié. */
   readonly stageSignals = computed<ScreenSignals>(() => {
-    const raw = this.liveSignals();
+    // SF-236-24 (NF-12) — la vue cockpit dessine ce que l'écran principal lui relaie (ses propres signaux sinon).
+    const raw = this.remoteSignals() ?? this.liveSignals();
     // SF-236-23 (NF-11) — mode présentation : filtré avant le dessin (initiales, ni coût, ni sortie, ni détail).
     return this.presentation() ? this.presenter.signals(raw) : raw;
   }, { equal: sameScreen });
@@ -1713,6 +1723,61 @@ export class JarvisComponent implements OnInit, OnDestroy {
       this.tourTimer = null;
     }
   }
+
+  // ---- F-236 / SF-236-24 : vue cockpit sur un écran externe (NF-12), veilleur de nuit (NF-13) ----
+
+  /** Ce que l'écran principal relaie à la vue cockpit ; `null` hors cockpit ou meneur parti. */
+  readonly remoteSignals = signal<ScreenSignals | null>(null);
+  /** Dernière latence mesurée meneur → cockpit (ms). */
+  readonly linkLatency = signal<number | null>(null);
+  readonly leaderGone = signal(false);
+  private leader: CockpitLeader | null = null;
+  private follower: CockpitFollower | null = null;
+  private readonly linkSetup = (() => {
+    const channel = browserChannel();
+    if (!channel) {
+      return null;
+    }
+    if (this.cockpitFollower) {
+      this.follower = new CockpitFollower(channel, (signals, latency) => this.zone.run(() => {
+        this.remoteSignals.set(signals);
+        this.linkLatency.set(latency);
+        this.leaderGone.set(signals === null);
+      }));
+    } else {
+      this.leader = new CockpitLeader(channel);
+    }
+    return channel;
+  })();
+  private readonly linkPublish = effect(() => {
+    const s = this.stageSignals();
+    untracked(() => this.leader?.publish(s));
+  });
+
+  /** Le navigateur sait-il ouvrir une seconde fenêtre reliée (canal local) ? */
+  readonly canCockpit = !this.cockpitFollower && typeof BroadcastChannel === 'function'
+    && typeof window !== 'undefined' && typeof window.open === 'function';
+
+  /** Ouvre la vue cockpit, sur un autre écran si la Window Management API le permet (sinon, où le veut le navigateur). */
+  async openCockpitWindow(): Promise<void> {
+    const url = '/jarvis?cockpit=1';
+    let features: string | null = null;
+    try {
+      const w = window as unknown as { getScreenDetails?: () => Promise<{ screens: ScreenArea[];
+        currentScreen: ScreenArea }> };
+      if (typeof w.getScreenDetails === 'function') {
+        const details = await w.getScreenDetails();
+        features = cockpitPlacement(details.screens, details.currentScreen);
+      }
+    } catch {
+      // permission refusée : le navigateur place la fenêtre
+    }
+    window.open(url, 'jarvis-cockpit', features ?? 'popup');
+  }
+
+  /** NF-13 — le veilleur de nuit (`?veilleur=1`, ou « Veilleur de nuit » dans les réglages). */
+  readonly night = signal(this.route.snapshot.queryParamMap.get('veilleur') === '1');
+  readonly ambientNow = computed(() => this.stageSignals().ambient);
 
   /** Échap quitte le mode présentation (et le plein écran qu'il avait pris). */
   onPresentationKey(event: KeyboardEvent): void {

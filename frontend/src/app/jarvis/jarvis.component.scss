@@ -469,3 +469,10 @@
 .jv--presentation .jv__version {
   display: none;
 }
+
+/* F-236 / SF-236-24 (NF-12) — la vue cockpit : la scène et les panneaux ; ni voix, ni échange. */
+.jv--follower .jv__controls,
+.jv--follower .jv__exchange,
+.jv--follower .jv__version {
+  display: none;
+}
