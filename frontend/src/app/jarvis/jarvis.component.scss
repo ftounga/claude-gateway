@@ -1,3 +1,4 @@
+@use './stage3d/jarvis-labels';
 // F-231 / SF-231-02 — L'écran Jarvis : plein écran, téléphone d'abord, navy du design system (§2), orbe en orange.
 // Aucune couleur nouvelle : --cg-navy, --cg-navy-2, --cg-accent, --cg-orange-2, --cg-cream, --cg-divider.
 
@@ -81,6 +82,20 @@
 /* F-236 / SF-236-02 — le cœur 3D est dessiné derrière : l'orbe 2D s'efface en fondu (T-F), son bouton reste. */
 .jv--3d .jv__orb {
   opacity: 0;
+}
+
+/* F-236 / SF-236-04 — l'univers 3D remplace la carte 2D (le fil d'Ariane, équivalent accessible, reste). */
+.jv__constellation ::ng-deep .cst__map {
+  transition: opacity var(--jv-dur-fade, 400ms) var(--jv-ease-glisse, ease-in-out);
+}
+
+.jv--3d .jv__constellation ::ng-deep .cst__map {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.jv3d-labels {
+  transition: opacity var(--jv-dur-fade, 400ms) var(--jv-ease-glisse, ease-in-out);
 }
 
 .jv__status {

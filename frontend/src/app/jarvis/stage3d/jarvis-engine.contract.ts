@@ -4,6 +4,7 @@ import { EngineClock } from './jarvis-banc';
 import { FrameHost } from './jarvis-frame-loop';
 import { QualityLevel } from './jarvis-render-capability';
 import { StagePlan } from './jarvis-stage-director';
+import { UniverseTouch } from './jarvis-layout-3d';
 
 /**
  * F-236 / SF-236-01 — **le contrat du moteur 3D**, sans `three` : l'écran ne connaît que lui ; le moteur (et `three`)
@@ -35,6 +36,10 @@ export interface JarvisEngineOptions {
   onQualityChange(level: QualityLevel): void;
   /** SF-236-02 — niveau Bas sous 30 i/s pendant 5 s : repli 2D (`low_perf`). */
   onLowPerf(): void;
+  /** SF-236-04 — où poser les étiquettes DOM (au-dessus de l'écran) ; `null` = aucune étiquette. */
+  labelHost: HTMLElement | null;
+  /** SF-236-04 — un nœud touché (hors zone : l'appelant y revient). */
+  onTouch(touch: UniverseTouch): void;
   /** Première image dessinée : l'écran lance le fondu 2D → 3D (T-F). */
   onFirstFrame(): void;
   /** Contexte WebGL perdu (T11). */

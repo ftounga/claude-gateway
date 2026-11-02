@@ -6,6 +6,7 @@ import { JARVIS_3D_LOADER, JarvisEngineFactory } from './jarvis-engine.contract'
 import {
   ContextLossPolicy, JARVIS_RENDER_PROBE, JARVIS_VIEW_KEY, RenderProbe,
 } from './jarvis-render-capability';
+import { testUniverse } from '../scenes/jarvis-universe.fixture';
 import { SLEEP_AFTER_MS } from './jarvis-heart';
 import { IDLE_SCREEN, ScreenSignals } from './jarvis-stage-director';
 import { JARVIS_BANC, JARVIS_CONTEXT_LOSS, JARVIS_FRAME_HOST, JarvisStage3dComponent } from './jarvis-stage-3d.component';
@@ -323,6 +324,28 @@ describe('F-236 / SF-236-01 — JarvisStage3dComponent (socle, repli 2D, fondu)'
     fixture.componentInstance.signals.set({ ...IDLE_SCREEN, conversing: true, turnActive: true });
     fixture.detectChanges();
     expect(engine.plans.length).withContext('plan identique : rien n’est renvoyé').toBe(count);
+    fixture.destroy();
+  }));
+
+  it('SF-236-04 — l’univers suit l’écran ; un nœud touché remonte en sortie ; aucun univers ⇒ cœur seul', fakeAsync(() => {
+    configure(PC_PROBE);
+    const fixture = TestBed.createComponent(HostComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    const engine = created[0];
+    expect(engine.options.plan.universe.layout.nodes).toEqual([]);
+    fixture.componentInstance.signals.set({ ...IDLE_SCREEN, conversing: true, universe: testUniverse(),
+      subjectId: 's-forge', lit: ['s-forge#3'] });
+    fixture.detectChanges();
+    const view = engine.plans.at(-1)!.universe;
+    expect(view.layout.nodes.some((n) => n.key === 's-forge#3')).toBeTrue();
+    expect(view.graph.nodes.get('s-forge#3')).toBe('lit');
+    expect(view.freeze).toBeTrue();
+    const stage = stageOf(fixture);
+    const touched: unknown[] = [];
+    stage.touched.subscribe((t) => touched.push(t));
+    engine.options.onTouch({ key: 's-doc', kind: 'subject', subjectId: 's-doc' });
+    expect(touched).toEqual([{ key: 's-doc', kind: 'subject', subjectId: 's-doc' }]);
     fixture.destroy();
   }));
 });

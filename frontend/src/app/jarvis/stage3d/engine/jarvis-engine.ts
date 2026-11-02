@@ -13,7 +13,9 @@ import { StagePlan } from '../jarvis-stage-director';
 import { Tween } from '../jarvis-tween';
 import { BrainsClock } from '../jarvis-brains';
 import { Brain3d } from './jarvis-brain-3d';
+import { CAMERA_FOV, OVERVIEW_ELEVATION_DEG, overviewDistance } from '../jarvis-camera-rules';
 import { Heart3d } from './jarvis-heart-3d';
+import { Universe3d } from './jarvis-universe-3d';
 import { JarvisPost } from './jarvis-post';
 
 /**
@@ -130,6 +132,11 @@ class ThreeJarvisEngine implements JarvisEngine {
   private readonly heart: Heart3d | null;
   /** SF-236-03 — le grand cerveau et son horloge. */
   private readonly brain: Brain3d | null;
+  /** SF-236-04 — l'univers et ses liaisons. */
+  private readonly universe: Universe3d | null;
+  private distance = 9;
+  private width: number;
+  private height: number;
   private brains: BrainsClock = new BrainsClock();
   private floorMaterial: LineBasicMaterial | null = null;
   private readonly floorNormal = rgb(HOLO_COLORS.normalDim);
@@ -167,7 +174,9 @@ class ThreeJarvisEngine implements JarvisEngine {
     this.renderer.setClearColor(HOLO_COLORS.fog, 1);
     this.renderer.setSize(options.width, options.height, false);
 
-    this.camera = new PerspectiveCamera(50, options.width / Math.max(options.height, 1), 0.1, 200);
+    this.width = options.width;
+    this.height = options.height;
+    this.camera = new PerspectiveCamera(CAMERA_FOV, options.width / Math.max(options.height, 1), 0.1, 200);
     this.camera.position.set(0, 0.6, 9);
     this.camera.lookAt(0, 0, 0);
 
@@ -181,10 +190,15 @@ class ThreeJarvisEngine implements JarvisEngine {
     if (options.withCore) {
       this.heart = new Heart3d(this.scene, options.random, options.level, this.renderer.getPixelRatio());
       this.brain = new Brain3d(this.scene, options.random, options.level, this.renderer.getPixelRatio());
+      this.universe = new Universe3d(this.scene, options.labelHost, options.level, this.renderer.getPixelRatio(),
+        options.onTouch);
+      this.universe.setSize(options.width, options.height);
       this.applyPlan(options.plan, start, true);
+      this.distance = overviewDistance(options.plan.universe.layout.extent, options.width / Math.max(options.height, 1));
     } else {
       this.heart = null;
       this.brain = null;
+      this.universe = null;
     }
     this.post = new JarvisPost(this.renderer, this.scene, this.camera, options.width, options.height, options.level);
     // Le banc (horloge figée) n'adapte pas la qualité : ses captures restent reproductibles.
@@ -209,6 +223,9 @@ class ThreeJarvisEngine implements JarvisEngine {
     }
     this.renderer.setSize(width, height, false);
     this.post.setSize(width, height);
+    this.universe?.setSize(width, height);
+    this.width = width;
+    this.height = height;
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.backdrop.uniforms['uAspect'].value = width / height;
@@ -227,6 +244,7 @@ class ThreeJarvisEngine implements JarvisEngine {
     if (!this.heart) {
       return;
     }
+    this.universe?.setView(plan.universe.layout, plan.universe.graph, opening);
     if (opening && this.options.replayFromZero) {
       this.heart.setMood('repos', 0, true);
       this.heart.setMood(plan.mood, 0, false);
@@ -278,6 +296,7 @@ class ThreeJarvisEngine implements JarvisEngine {
       }
     });
     this.scene.clear();
+    this.universe?.dispose();
     this.post.dispose();
     this.renderer.dispose();
     this.renderer.forceContextLoss();
@@ -329,11 +348,26 @@ class ThreeJarvisEngine implements JarvisEngine {
     this.backdrop.uniforms['uGlow'].value = 0.35 + 0.65 * light;
     // Dérive lente de la caméra (parallaxe des calques) : aucun roulis, focale fixe (§7.3, règle 8) ; recul de
     // 15 % quand le grand cerveau est déployé (§9.3).
+    // SF-236-04 — vue d'ensemble : l'univers tient dans le champ (portrait compris) ; dérive lente de l'univers
+    // (un tour en 10 min), arrêtée pendant l'écoute et sur un focus.
+    const dt = Math.min(Math.max(frameMs, 0), MAX_DT_MS);
+    const aspect = this.width / Math.max(this.height, 1);
+    const target = overviewDistance(this.plan.universe.layout.extent, aspect) * (1 + 0.15 * spread);
+    this.distance += (target - this.distance) * (1 - Math.exp(-dt / 600));
+    if (this.universe) {
+      this.universe.frame(dt);
+      this.universe.group.scale.setScalar(1 + 0.15 * spread);
+      if (!this.plan.universe.freeze && this.options.adaptive) {
+        this.universe.group.rotation.y += (dt / 600_000) * Math.PI * 2;
+      }
+    }
+    const elevation = ((aspect < 0.8 ? 6 : OVERVIEW_ELEVATION_DEG) * Math.PI) / 180;
     this.camera.position.x = Math.sin(t * 0.00005) * 0.35;
-    this.camera.position.y = 0.6 + Math.sin(t * 0.000037) * 0.12;
-    this.camera.position.z = 9 * (1 + 0.15 * spread);
+    this.camera.position.y = Math.sin(elevation) * this.distance + Math.sin(t * 0.000037) * 0.12;
+    this.camera.position.z = Math.cos(elevation) * this.distance;
     this.camera.lookAt(0, 0, 0);
     this.post.render(bloom);
+    this.universe?.renderLabels(this.scene, this.camera);
     if (!this.firstFrameSeen) {
       this.firstFrameSeen = true;
       this.options.onFirstFrame();

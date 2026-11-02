@@ -1,5 +1,8 @@
 import { BrainEnd, BrainsState, brainsFor } from './jarvis-brains';
+import { JarvisUniverse } from '../scenes/jarvis-universe.models';
 import { HeartMood, JarvisVoiceState, heartMood } from './jarvis-heart';
+import { EMPTY_LAYOUT, Layout3d, layoutUniverse3d } from './jarvis-layout-3d';
+import { Graph3d, linkGraph } from './jarvis-link-graph';
 
 /**
  * F-236 — **le directeur de scène** (cadrage §3). Fichier <b>pur</b> : il lit les signaux existants de l'écran et
@@ -40,10 +43,54 @@ export interface ScreenSignals {
   fastBrainOn: boolean;
   turnActive: boolean;
   brainEnd: BrainEnd;
+  /** H1 / H5 — SF-236-04 : l'univers, le sujet courant (D19 : `null` ⇒ « Jarvis global »). */
+  universe: JarvisUniverse | null;
+  subjectId: string | null;
+  /** H2 — clés des nœuds cités (par priorité) et nommés dans la phrase dite. */
+  lit: readonly string[];
+  said: readonly string[];
+  /** H3 — « Montrer » : clés des éléments montrés, `null` sinon. */
+  shown: readonly string[] | null;
 }
 
 export const IDLE_SCREEN: ScreenSignals = { state: 'repos', frozen: false, waiting: false, conversing: false,
-  wakeCalls: 0, delegations: 0, fastBrainOn: false, turnActive: false, brainEnd: 'normal' };
+  wakeCalls: 0, delegations: 0, fastBrainOn: false, turnActive: false, brainEnd: 'normal', universe: null,
+  subjectId: null, lit: [], said: [], shown: null };
+
+/** Deux relevés de l'écran identiques (évite de recalculer le plan pour rien). */
+export function sameScreen(a: ScreenSignals, b: ScreenSignals): boolean {
+  return a.state === b.state && a.frozen === b.frozen && a.waiting === b.waiting && a.conversing === b.conversing
+    && a.wakeCalls === b.wakeCalls && a.delegations === b.delegations && a.fastBrainOn === b.fastBrainOn
+    && a.turnActive === b.turnActive && a.brainEnd === b.brainEnd && a.universe === b.universe
+    && a.subjectId === b.subjectId && sameKeys(a.lit, b.lit) && sameKeys(a.said, b.said)
+    && (a.shown === b.shown || (!!a.shown && !!b.shown && sameKeys(a.shown, b.shown)));
+}
+
+function sameKeys(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((k, i) => k === b[i]);
+}
+
+/** SF-236-04 — l'univers à dessiner : disposition, graphe des liaisons, gel de la dérive. */
+export interface UniverseView {
+  layout: Layout3d;
+  graph: Graph3d;
+  /** La dérive lente s'arrête pendant l'écoute et sur un focus (§8.1). */
+  freeze: boolean;
+}
+
+export const EMPTY_VIEW: UniverseView = { layout: EMPTY_LAYOUT, graph: { links: [], nodes: new Map() }, freeze: false };
+
+/** H1-H5 ⇒ l'univers à dessiner. `narrow` = téléphone. */
+export function universeView(s: ScreenSignals, asleep: boolean, narrow: boolean): UniverseView {
+  if (!s.universe) {
+    return EMPTY_VIEW;
+  }
+  const lit = [...s.said, ...s.lit.filter((k) => !s.said.includes(k))];
+  const layout = layoutUniverse3d(s.universe, { subjectId: s.subjectId, narrow,
+    shown: new Set([...lit, ...(s.shown ?? [])]) });
+  const graph = linkGraph(layout, { subjectId: s.subjectId, lit, shown: s.shown, asleep });
+  return { layout, graph, freeze: s.state === 'ecoute' || lit.length > 0 || s.shown !== null };
+}
 
 /** Le plan que le moteur dessine. */
 export interface StagePlan {
@@ -53,13 +100,16 @@ export interface StagePlan {
   brains: BrainsState;
   /** Banc seulement : les cerveaux partent déployés (séquence du retour). */
   brainsFromDeployed?: boolean;
+  /** SF-236-04 — l'univers et ses liaisons. */
+  universe: UniverseView;
 }
 
 export const IDLE_SIGNALS: StageSignals = { state: 'repos', frozen: false, waiting: false, asleep: false, wakes: 0,
   delegations: 0, fastBrainOn: false, turnActive: false, brainEnd: 'normal' };
 
-export function directStage(signals: StageSignals): StagePlan {
+export function directStage(signals: StageSignals, universe: UniverseView = EMPTY_VIEW): StagePlan {
   return {
+    universe,
     mood: heartMood(signals),
     wakes: signals.wakes,
     brains: brainsFor({ delegations: signals.delegations, fastBrainOn: signals.fastBrainOn,
@@ -70,5 +120,5 @@ export function directStage(signals: StageSignals): StagePlan {
 /** Deux plans identiques ⇒ le moteur n'a rien à faire. */
 export function samePlan(a: StagePlan, b: StagePlan): boolean {
   return a.mood === b.mood && a.wakes === b.wakes && a.brains.target === b.brains.target
-    && a.brains.variant === b.brains.variant && a.brains.pearls === b.brains.pearls;
+    && a.brains.variant === b.brains.variant && a.brains.pearls === b.brains.pearls && a.universe === b.universe;
 }

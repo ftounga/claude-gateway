@@ -62,7 +62,8 @@ import { JarvisConstellationComponent } from './scenes/jarvis-constellation.comp
 import { JarvisStage3dComponent } from './stage3d/jarvis-stage-3d.component';
 import { holoCssVars } from './stage3d/jarvis-motion';
 import { BrainEnd } from './stage3d/jarvis-brains';
-import { ScreenSignals } from './stage3d/jarvis-stage-director';
+import { UniverseTouch } from './stage3d/jarvis-layout-3d';
+import { ScreenSignals, sameScreen } from './stage3d/jarvis-stage-director';
 import { isShowDismiss, stripShowLines } from './scenes/jarvis-show';
 import {
   ASK_SUBJECT, AnnouncementQueue, CORRECTION_WINDOW_MS, FastDelegation, FastDone, JarvisFastBrainClient,
@@ -1519,10 +1520,20 @@ export class JarvisComponent implements OnInit, OnDestroy {
       fastBrainOn: this.fastBrainOn(),
       turnActive: this.scenes.turnActive(),
       brainEnd: this.brainEnd(),
+      universe: this.scenes.universe(),
+      subjectId: this.scenes.subjectId(),
+      lit: reader.lit.map((l) => l.node.key),
+      said: reader.said,
+      shown: this.scenes.focus()?.items.map((i) => i.node.key) ?? null,
     };
-  }, { equal: (a, b) => a.state === b.state && a.frozen === b.frozen && a.waiting === b.waiting
-    && a.conversing === b.conversing && a.wakeCalls === b.wakeCalls && a.delegations === b.delegations
-    && a.fastBrainOn === b.fastBrainOn && a.turnActive === b.turnActive && a.brainEnd === b.brainEnd });
+  }, { equal: sameScreen });
+
+  /** F-236 / SF-236-04 — un nœud de l'univers 3D touché : un sujet se choisit (D12) ; les autres se regardent (D9). */
+  touched3d(touch: UniverseTouch): void {
+    if (touch.kind === 'subject' && touch.subjectId) {
+      this.touchSubject(touch.subjectId);
+    }
+  }
 
   toggleSober(): void {
     const on = !this.scenes.sober();
