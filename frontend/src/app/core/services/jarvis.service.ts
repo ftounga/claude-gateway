@@ -159,6 +159,12 @@ export class JarvisService {
     this.http.post<void>('/api/jarvis/captures', form).subscribe({ error: () => undefined });
   }
 
+  /** F-239 / SF-239-06 — la correction du PO devient la référence du banc pour sa dernière capture. Best-effort. */
+  correctCapture(text: string): void {
+    this.http.put<void>('/api/jarvis/captures/latest/correction', { text: text.slice(0, 2_000) })
+      .subscribe({ error: () => undefined });
+  }
+
   /** F-235 / SF-235-09 (D18) — enregistre le réglage d'humour du compte. */
   setHumour(humour: JarvisHumour): Observable<JarvisPreferences> {
     return this.http.put<JarvisPreferences>('/api/jarvis/preferences', { humour });

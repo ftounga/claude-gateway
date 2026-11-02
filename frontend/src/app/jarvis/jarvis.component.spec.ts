@@ -116,7 +116,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     voice.playClip.and.resolveTo(false);
     voice.hasClip.and.returnValue(false);
     voice.level.and.returnValue(0);
-    jarvisApi = jasmine.createSpyObj<JarvisService>('JarvisService', ['usage', 'companion', 'companions', 'timings', 'sttSession', 'closeSttSession', 'preferences', 'setHumour', 'scenes', 'render', 'utterance', 'setCaptureAudio', 'capture', 'costs']);
+    jarvisApi = jasmine.createSpyObj<JarvisService>('JarvisService', ['usage', 'companion', 'companions', 'timings', 'sttSession', 'closeSttSession', 'preferences', 'setHumour', 'scenes', 'render', 'utterance', 'setCaptureAudio', 'capture', 'costs', 'correctCapture']);
     jarvisApi.sttSession.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
     jarvisApi.utterance.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
     jarvisApi.costs.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
@@ -599,6 +599,46 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(euros(6.1)).toContain('6,10');
     jarvis.ngOnDestroy();
   }));
+
+  it('F-239 / SF-239-06 — un toucher sur le texte compris l’ouvre ; Entrée envoie la demande corrigée', fakeAsync(() => {
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    jarvis.said.set('Où en est Cagibi ?');
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    el.querySelector<HTMLButtonElement>('button.jv__said')!.click();
+    fixture.detectChanges();
+    const input = el.querySelector<HTMLInputElement>('.jv__said-edit input')!;
+    expect(input.value).toBe('Où en est Cagibi ?');
+
+    void jarvis.submitTouchCorrection('Où en est CAGIP ?');
+    flushMicrotasks();
+    expect(jarvis.said()).toBe('Où en est CAGIP ?');
+    expect(atelier.streamChat).toHaveBeenCalledWith('w-2', 'Où en est CAGIP ?', jasmine.any(Object), 'ACT', false, [],
+      null, false, 'JARVIS', null);
+    expect(jarvisApi.correctCapture).not.toHaveBeenCalled(); // capture éteinte
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-239 / SF-239-06 — « non, j’ai dit CAGIP » corrige le mot mal compris de la demande précédente',
+    fakeAsync(() => {
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      const jarvis = fixture.componentInstance;
+      void jarvis.handle('Où en est Cagibi ?');
+      flushMicrotasks();
+      handlers!.onDone({ reply: '🎙 Je ne connais pas Cagibi.', actions: [], messageId: 'm-1' });
+      flushMicrotasks();
+      atelier.streamChat.calls.reset();
+
+      void jarvis.handle('Non, j’ai dit CAGIP.');
+      flushMicrotasks();
+      expect(atelier.streamChat).toHaveBeenCalledWith('w-2', 'Où en est CAGIP ?', jasmine.any(Object), 'ACT', false,
+        [], null, false, 'JARVIS', null);
+      expect(jarvis.said()).toBe('Où en est CAGIP ?');
+      jarvis.ngOnDestroy();
+    }));
 
   it('SF-231-03 — « stop » interrompt le travail en cours', fakeAsync(() => {
     const fixture = TestBed.createComponent(JarvisComponent);

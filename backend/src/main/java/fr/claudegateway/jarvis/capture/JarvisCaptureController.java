@@ -10,6 +10,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -60,6 +62,21 @@ public class JarvisCaptureController {
         }
         service.record(currentUser.requireId(), adminService.isAdmin(), audio.getBytes(),
                 new JarvisCaptureService.Incoming(seconds, listenMode, provider, streamText, finalText));
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Le corps d'une correction : le texte voulu. */
+    public record Correction(String text) {
+    }
+
+    /** F-239 / SF-239-06 — la correction du PO pour sa dernière capture (≤ 2 min) ; 204 dans tous les cas utiles. */
+    @PutMapping("/jarvis/captures/latest/correction")
+    public ResponseEntity<?> correct(@RequestBody(required = false) Correction body) {
+        atelierAccess.requireAccess();
+        if (body == null || body.text() == null || body.text().isBlank()) {
+            return ResponseEntity.badRequest().body(new ErrorResponse("validation_error", "Aucun texte."));
+        }
+        service.correctLatest(currentUser.requireId(), body.text());
         return ResponseEntity.noContent().build();
     }
 
