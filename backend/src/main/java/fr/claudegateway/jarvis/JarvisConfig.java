@@ -14,6 +14,7 @@ import fr.claudegateway.jarvis.stt.JarvisSttStreamProperties;
  */
 @Configuration
 @EnableConfigurationProperties({ JarvisVoiceProperties.class, JarvisSttStreamProperties.class,
-        JarvisAuditionProperties.class, JarvisFastBrainProperties.class })
+        JarvisAuditionProperties.class, JarvisFastBrainProperties.class,
+        fr.claudegateway.jarvis.stt.JarvisUtteranceProperties.class })
 public class JarvisConfig {
 }

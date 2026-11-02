@@ -25,10 +25,11 @@ public interface StreamingTranscriptionProvider {
      *
      * @param languageHint  langue attendue (ex. {@code fr}) ou {@code null}
      * @param silenceSeconds silence de fin de tour côté fournisseur (D6)
+     * @param vocabulary     F-239 / SF-239-04 — les termes vers lesquels orienter la reconnaissance (bornés), ou vide
      * @throws fr.claudegateway.teams.meeting.stt.TranscriptionProviderUnavailableException non configuré (aucun appel)
      * @throws fr.claudegateway.teams.meeting.stt.TranscriptionProviderException            échec de l'appel
      */
-    StreamingSession openStreamingSession(String languageHint, double silenceSeconds);
+    StreamingSession openStreamingSession(String languageHint, double silenceSeconds, java.util.List<String> vocabulary);
 
     /**
      * Une session prête : l'URL WebSocket <b>sans</b> le jeton (l'écran l'ajoute), le jeton, son échéance et le format

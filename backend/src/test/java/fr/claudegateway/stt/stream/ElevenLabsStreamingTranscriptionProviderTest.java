@@ -36,7 +36,15 @@ class ElevenLabsStreamingTranscriptionProviderTest {
                 Clock.systemUTC());
         assertThat(provider.isConfigured()).isFalse();
         assertThat(provider.name()).isEqualTo("elevenlabs");
-        assertThatThrownBy(() -> provider.openStreamingSession("fr", 0.7))
+        assertThatThrownBy(() -> provider.openStreamingSession("fr", 0.7, java.util.List.of()))
                 .isInstanceOf(TranscriptionProviderUnavailableException.class);
+    }
+
+    @org.junit.jupiter.api.Test
+    void f239TheVocabularyRidesAsOneKeytermParameterPerTerm() {
+        String url = ElevenLabsStreamingTranscriptionProvider.sessionUrl("wss://x", "scribe_v2_realtime", "fr", 0.7,
+                java.util.List.of("CAGIP", "LDIC-223", "René Martin"));
+        org.assertj.core.api.Assertions.assertThat(url)
+                .contains("&keyterms=CAGIP&keyterms=LDIC-223&keyterms=Ren%C3%A9+Martin");
     }
 }

@@ -4,7 +4,7 @@ import { Observable } from 'rxjs';
 
 import {
   JarvisAbsence, JarvisCompanionDevice, JarvisCompanionPairingCode, JarvisCompanionVersion, JarvisHumour,
-  JarvisPreferences, JarvisToSendList, JarvisSttTicket, TurnTimingReport,
+  JarvisPreferences, JarvisToSendList, JarvisSttTicket, JarvisUtterance, TurnTimingReport,
 } from '../models/jarvis.models';
 
 /** F-232 / SF-232-02 — l'APK du compagnon Android, servi par le chemin des paquets du runner (F-44). */
@@ -82,6 +82,19 @@ export class JarvisService {
    */
   sttSession(): Observable<JarvisSttTicket> {
     return this.http.post<JarvisSttTicket>('/api/jarvis/stt-session', {});
+  }
+
+  /**
+   * F-239 / SF-239-04 — retranscrit l'énoncé complet (Scribe v2 batch + vocabulaire de l'univers, côté passerelle).
+   * Rien n'est conservé. Rejeté si la passerelle refuse (éteinte 503, plafond 429, échec 502).
+   */
+  utterance(audio: Blob, seconds: number | null): Observable<JarvisUtterance> {
+    const form = new FormData();
+    form.append('audio', audio, audio.type.includes('webm') ? 'enonce.webm' : 'enonce.wav');
+    if (seconds !== null && Number.isFinite(seconds) && seconds > 0) {
+      form.append('seconds', String(Math.round(seconds * 10) / 10));
+    }
+    return this.http.post<JarvisUtterance>('/api/jarvis/utterance', form);
   }
 
   /** F-233 / SF-233-04 — clôt la session et déclare sa durée (comptée, bornée par la passerelle). Best-effort. */

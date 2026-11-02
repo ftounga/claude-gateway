@@ -69,6 +69,10 @@ describe('Écoute en flux (F-233 / SF-233-05)', () => {
       expect(sent.length).toBe(4);
       expect(sent.slice(0, 3).every((m) => m.audio !== 'MICRO' && !m.commit)).toBeTrue();
       expect(sent[3].audio).toBe('MICRO');
+      // F-239 / SF-239-04 — l'énoncé gardé commence par la pré-écoute : 4 000 échantillons × 2 octets + en-tête WAV.
+      expect(listener.audioSeconds()).toBeCloseTo(0.25, 3);
+      expect(listener.audio()!.size).toBe(44 + 8_000);
+      expect(listener.audio()!.type).toBe('audio/wav');
       listener.close();
     } finally {
       (window as unknown as { WebSocket: unknown }).WebSocket = original;

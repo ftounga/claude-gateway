@@ -112,6 +112,34 @@ const TAP_SOURCE = `class JarvisPcmTap extends AudioWorkletProcessor {
 }
 registerProcessor('jarvis-pcm-tap', JarvisPcmTap);`;
 
+/** F-239 / SF-239-04 — l'audio gardé pour la retranscription ne dépasse pas cette durée. */
+export const MAX_KEPT_SECONDS = 60;
+
+/** PCM 16 bits petit-boutiste mono ⇒ WAV. */
+export function wavBlob(pcm: Uint8Array, sampleRate: number): Blob {
+  const header = new ArrayBuffer(44);
+  const view = new DataView(header);
+  const text = (offset: number, value: string) => {
+    for (let i = 0; i < value.length; i++) {
+      view.setUint8(offset + i, value.charCodeAt(i));
+    }
+  };
+  text(0, 'RIFF');
+  view.setUint32(4, 36 + pcm.length, true);
+  text(8, 'WAVE');
+  text(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  text(36, 'data');
+  view.setUint32(40, pcm.length, true);
+  return new Blob([header, pcm], { type: 'audio/wav' });
+}
+
 /** Le débit de la pré-écoute rendue par le mot d'éveil (`WAKE_RATE`). */
 export const PRE_ROLL_RATE = 16_000;
 
@@ -130,6 +158,9 @@ export class StreamingListener {
   private tapUrl: string | null = null;
   private openedAt = 0;
   private closed = false;
+  /** F-239 / SF-239-04 — l'audio envoyé (pré-écoute comprise), gardé pour la retranscription de l'énoncé complet. */
+  private readonly kept: Uint8Array[] = [];
+  private keptBytes = 0;
 
   constructor(private readonly ticket: JarvisSttTicket, private readonly stream: MediaStream,
               private readonly handlers: StreamHandlers) {}
@@ -200,8 +231,40 @@ export class StreamingListener {
     const step = Math.max(1, Math.round(this.ticket.sampleRate / 10));
     for (let i = 0; i < samples.length; i += step) {
       const pcm = toPcm16(samples.subarray(i, Math.min(samples.length, i + step)));
+      this.keep(pcm);
       this.send({ message_type: 'input_audio_chunk', audio_base_64: toBase64(pcm), commit: false,
         sample_rate: this.ticket.sampleRate });
+    }
+  }
+
+  /**
+   * F-239 / SF-239-04 — l'énoncé entendu jusqu'ici, en WAV (PCM 16 bits mono, débit de la session), ou `null` s'il
+   * n'y a rien. Borné à {@link MAX_KEPT_SECONDS} s (au-delà, le début est oublié).
+   */
+  audio(): Blob | null {
+    if (this.keptBytes === 0) {
+      return null;
+    }
+    const pcm = new Uint8Array(this.keptBytes);
+    let at = 0;
+    for (const part of this.kept) {
+      pcm.set(part, at);
+      at += part.length;
+    }
+    return wavBlob(pcm, this.ticket.sampleRate);
+  }
+
+  /** La durée de l'audio gardé, en secondes. */
+  audioSeconds(): number {
+    return this.keptBytes / 2 / this.ticket.sampleRate;
+  }
+
+  private keep(pcm: Uint8Array): void {
+    this.kept.push(pcm);
+    this.keptBytes += pcm.length;
+    const max = MAX_KEPT_SECONDS * this.ticket.sampleRate * 2;
+    while (this.keptBytes > max && this.kept.length > 1) {
+      this.keptBytes -= this.kept.shift()!.length;
     }
   }
 
@@ -239,6 +302,7 @@ export class StreamingListener {
   private push(samples: Float32Array, inRate: number): void {
     const pcm = toPcm16(downsample(samples, inRate, this.ticket.sampleRate));
     if (pcm.length > 0) {
+      this.keep(pcm);
       this.send({ message_type: 'input_audio_chunk', audio_base_64: toBase64(pcm), commit: false,
         sample_rate: this.ticket.sampleRate });
     }
@@ -274,6 +338,9 @@ export interface LiveListening {
   readonly stream: MediaStream;
   commit(): void;
   close(): number;
+  /** F-239 / SF-239-04 — l'énoncé entendu (WAV), et sa durée en secondes. */
+  audio(): Blob | null;
+  audioSeconds(): number;
 }
 
 /**
@@ -292,6 +359,7 @@ export class JarvisStreamOpener {
       listener.close();
       throw error;
     }
-    return { stream, commit: () => listener.commit(), close: () => listener.close() };
+    return { stream, commit: () => listener.commit(), close: () => listener.close(), audio: () => listener.audio(),
+      audioSeconds: () => listener.audioSeconds() };
   }
 }

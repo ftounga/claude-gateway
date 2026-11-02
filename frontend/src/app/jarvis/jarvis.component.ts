@@ -19,7 +19,7 @@ import { CutSnapshot } from '../core/services/jarvis-voice.service';
 import { JarvisStreamOpener, LISTEN_AUDIO, LiveListening } from './jarvis-stream-listener';
 import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { JarvisHumour, JarvisSttTicket } from '../core/models/jarvis.models';
+import { JarvisHumour, JarvisSttTicket, JarvisUtterance } from '../core/models/jarvis.models';
 import { MarkdownPipe } from '../shared/markdown.pipe';
 import { EndOfSpeech, MicMeter, SPEECH_LEVEL, silenceMs } from './jarvis-mic-meter';
 import { asksConfirmation, classifyConfirmation, confirmationQuestion } from './jarvis-confirm';
@@ -770,6 +770,58 @@ export class JarvisComponent implements OnInit, OnDestroy {
     return true;
   }
 
+  // ---- F-239 / SF-239-04 : retranscrire l'énoncé complet ----
+  /** L'écran n'attend pas la retranscription plus longtemps : au-delà, le texte du flux est gardé. */
+  static readonly UTTERANCE_WAIT_MS = 2_500;
+  /** La passerelle a dit que la retranscription est éteinte : on n'essaie plus pendant cette ouverture. */
+  private utteranceOff = false;
+
+  /**
+   * F-239 / SF-239-04 — l'énoncé complet retranscrit par la passerelle (Scribe v2 batch + vocabulaire), ou `null`
+   * (rien à envoyer, éteinte, plafond, échec, plus de {@link UTTERANCE_WAIT_MS} ms). Ne rejette jamais.
+   */
+  private async retranscribe(audio: Blob | null, seconds: number | null): Promise<JarvisUtterance | null> {
+    if (!audio || audio.size === 0 || this.utteranceOff) {
+      return null;
+    }
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const late = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), JarvisComponent.UTTERANCE_WAIT_MS);
+    });
+    const call = firstValueFrom(this.jarvis.utterance(audio, seconds)).catch((error: unknown) => {
+      if (error instanceof HttpErrorResponse && error.status === 503) {
+        this.utteranceOff = true;
+      }
+      return null;
+    });
+    try {
+      return await Promise.race([call, late]);
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    }
+  }
+
+  /**
+   * F-239 / SF-239-04 — un extrait déjà capté (dictée, interruption) : retranscrit par Jarvis ; seulement si la
+   * retranscription n'est pas possible, l'ancienne dictée (repli). Rejette comme la dictée.
+   */
+  private async transcribeClip(clip: Blob | null, seconds: number | null, filename: string,
+                               clock: TurnClock | null): Promise<string> {
+    if (!clip || clip.size === 0) {
+      return '';
+    }
+    const final = await this.retranscribe(clip, seconds);
+    if (final) {
+      if (clock) {
+        clock.sttProvider = final.provider;
+      }
+      return final.text;
+    }
+    return this.dictation.transcribe(clip, filename);
+  }
+
   /** Clôt l'écoute en flux et rend ce qui a été dit (validé, sinon le dernier provisoire). */
   private async finishStreaming(): Promise<string> {
     const live = this.live!;
@@ -879,7 +931,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.applyPendingCounts(clock);
     let text = '';
     try {
-      text = (await this.dictation.transcribe(encodeWav(audio))).trim();
+      // F-239 / SF-239-04 — l'interruption passe aussi par la retranscription de Jarvis.
+      text = (await this.transcribeClip(encodeWav(audio), audio.length / 16_000, 'coupure.wav', clock)).trim();
     } catch {
       text = '';
     }
@@ -982,10 +1035,22 @@ export class JarvisComponent implements OnInit, OnDestroy {
     if (this.live) {
       clock.listenMode = conversing ? 'CONV_STREAM' : 'STREAM';
       clock.sttProvider = this.live.ticket.provider;
-      text = (await this.finishStreaming()).trim();
+      // F-239 / SF-239-04 (D1) — l'énoncé complet part à la retranscription AUSSITÔT, en parallèle de l'attente du
+      // dernier segment du flux ; le texte du flux n'est plus que provisoire (et le repli).
+      const listening = this.live.listening;
+      const audio = typeof listening.audio === 'function' ? listening.audio() : null;
+      const seconds = typeof listening.audioSeconds === 'function' ? listening.audioSeconds() : null;
+      const retranscribed = this.retranscribe(audio, seconds);
+      const streamed = (await this.finishStreaming()).trim();
+      const final = await retranscribed;
+      text = final?.text.trim() || streamed;
+      if (final?.text.trim()) {
+        clock.sttProvider = final.provider;
+      }
     } else {
+      // F-239 / SF-239-04 — la dictée (repli sans flux) passe aussi par la retranscription de Jarvis.
       try {
-        text = (await this.dictation.stop()).trim();
+        text = (await this.transcribeClip(await this.dictation.stopRecording(), null, 'dictee.webm', clock)).trim();
       } catch (error) {
         this.state.set('repos');
         this.notice.set(dictationMessage(error as DictationError));

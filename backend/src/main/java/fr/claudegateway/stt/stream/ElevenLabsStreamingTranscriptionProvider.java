@@ -67,7 +67,8 @@ public class ElevenLabsStreamingTranscriptionProvider implements StreamingTransc
     }
 
     @Override
-    public StreamingSession openStreamingSession(String languageHint, double silenceSeconds) {
+    public StreamingSession openStreamingSession(String languageHint, double silenceSeconds,
+            java.util.List<String> vocabulary) {
         if (!isConfigured()) {
             throw new TranscriptionProviderUnavailableException("L'écoute en flux n'est pas configurée.");
         }
@@ -95,11 +96,17 @@ public class ElevenLabsStreamingTranscriptionProvider implements StreamingTransc
         }
         Instant expiresAt = clock.instant().plus(TOKEN_TTL);
         return new StreamingSession(NAME, sessionUrl(elevenLabs.wsBaseUrl(), properties.model(), languageHint,
-                silenceSeconds), token, expiresAt, SAMPLE_RATE);
+                silenceSeconds, vocabulary), token, expiresAt, SAMPLE_RATE);
     }
 
     /** L'URL WebSocket de la session, sans le jeton. */
     static String sessionUrl(String wsBaseUrl, String model, String languageHint, double silenceSeconds) {
+        return sessionUrl(wsBaseUrl, model, languageHint, silenceSeconds, java.util.List.of());
+    }
+
+    /** F-239 / SF-239-04 — l'URL, avec un paramètre {@code keyterms} par terme du vocabulaire (accepté en flux). */
+    static String sessionUrl(String wsBaseUrl, String model, String languageHint, double silenceSeconds,
+            java.util.List<String> vocabulary) {
         StringBuilder url = new StringBuilder(wsBaseUrl).append("/v1/speech-to-text/realtime?model_id=")
                 .append(encode(model))
                 .append("&audio_format=pcm_").append(SAMPLE_RATE)
@@ -108,6 +115,9 @@ public class ElevenLabsStreamingTranscriptionProvider implements StreamingTransc
                 .append(String.format(Locale.ROOT, "%.2f", Math.max(0.3, Math.min(3.0, silenceSeconds))));
         if (languageHint != null && !languageHint.isBlank()) {
             url.append("&language_code=").append(encode(languageHint.strip().toLowerCase(Locale.ROOT)));
+        }
+        for (String term : vocabulary == null ? java.util.List.<String>of() : vocabulary) {
+            url.append("&keyterms=").append(encode(term));
         }
         return url.toString();
     }
