@@ -1,6 +1,7 @@
 import { JarvisUniverse } from '../../scenes/jarvis-universe.models';
 import { SceneView } from '../../scenes/jarvis-scene-reader';
 import { HoloRole } from '../jarvis-motion';
+import { SessionSnapshot } from './jarvis-session-memory';
 
 /**
  * F-236 / SF-236-08 — **le contrat des scènes 3D** (cadrage §3.2, §9.2). Fichier <b>pur</b> (aucun import de
@@ -40,12 +41,34 @@ export interface Panel3d {
   progress?: number;
   /** Devant tout, jamais écarté par la borne du pool (S2). */
   front?: boolean;
+  /** SF-236-09 (N11) — les lignes défilent lentement (pages qui défilent : un document lu). */
+  scroll?: boolean;
+}
+
+/** SF-236-09 — un point du nuage du dépôt (N9) : un amas par dossier, lecture ou écriture. */
+export interface CloudPoint {
+  angle: number;
+  height: number;
+  write: boolean;
+  /** Le fichier de l'action en cours (il brille). */
+  hot: boolean;
 }
 
 /** Un effet 3D déclaratif (le moteur choisit sa recette). Les SF suivantes en ajoutent. */
 export type Effect3d =
   /** S-GEN — un anneau d'impulsion par appel (`seq` avance à chaque appel d'outil). */
-  | { kind: 'pulse'; anchor: string; tone: SceneTone; seq: number };
+  | { kind: 'pulse'; anchor: string; tone: SceneTone; seq: number }
+  /** SF-236-09 (N6) — un flux de particules d'un nœud vers un autre ; `rate` 0-1 = débit (∝ sortie). */
+  | { kind: 'flow'; from: string; to: string; tone: SceneTone; rate: number }
+  /**
+   * SF-236-09 — des cartes holographiques : en <b>éventail</b> (S4 tickets, ≤ 6, sorties du client en arc, 90 ms
+   * d'écart) ou en <b>pile</b> (S5 feuillets) ; `hot` = la carte nommée (ou le feuillet en cours d'écriture).
+   */
+  | { kind: 'cards'; anchor: string; count: number; hot: number | null; layout: 'fan' | 'stack'; tone: SceneTone }
+  /** SF-236-09 — la loupe qui balaie (S5 recherche). */
+  | { kind: 'scan'; anchor: string; tone: SceneTone }
+  /** SF-236-09 (N9) — le nuage du dépôt près du sujet : un amas par dossier, lecture / écriture. */
+  | { kind: 'cloud'; anchor: string; points: readonly CloudPoint[] };
 
 /** Le plan d'une scène 3D. */
 export interface ScenePlan3d {
@@ -68,6 +91,10 @@ export interface SceneContext {
   pulses: number;
   /** Téléphone (portrait étroit). */
   narrow: boolean;
+  /** SF-236-09 — la mémoire de session de l'écran (tickets vus, fichiers du nuage) ; jamais un contenu. */
+  session: SessionSnapshot;
+  /** SF-236-09 — les clés de tickets nommées dans la phrase dite (la carte s'illumine). */
+  spokenTickets: readonly string[];
 }
 
 /** Une scène 3D : pure, déterministe. */

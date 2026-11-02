@@ -2,6 +2,7 @@ import { GENERIC_SCENE, SCENE_REGISTRY, SceneRegistry } from '../../scenes/jarvi
 import { SceneView } from '../../scenes/jarvis-scene-reader';
 import { Scene3d, SceneContext, ScenePlan3d } from './jarvis-scene3d.model';
 import { sceneGeneric } from './jarvis-scene-sgen';
+import { sceneCommande, sceneFichiers, sceneTickets } from './jarvis-scenes-poste';
 
 /**
  * F-236 / SF-236-08 — **le registre des scènes 3D** (cadrage §3.2, prolonge F-234 D17).
@@ -12,6 +13,10 @@ import { sceneGeneric } from './jarvis-scene-sgen';
  */
 export const SCENES_3D: Readonly<Record<string, Scene3d>> = {
   [GENERIC_SCENE]: sceneGeneric,
+  // SF-236-09 — commandes, tickets, fichiers.
+  S3: sceneCommande,
+  S4: sceneTickets,
+  S5: sceneFichiers,
 };
 
 /**
@@ -19,7 +24,7 @@ export const SCENES_3D: Readonly<Record<string, Scene3d>> = {
  * une (SF-236-09 → 13) ; restent la vague D F-234 (S18 Radar, S19 Teams, D-PO-7) et S16 (« S-GEN libellée »).
  */
 export const SGEN_3D_IDS: ReadonlySet<string> = new Set([
-  'S1', 'S2', 'S3', 'S4', 'S5', 'S5b', 'S6', 'S7', 'S9', 'S10', 'S11', 'S12', 'S13', 'S14', 'S15', 'S16', 'S17',
+  'S1', 'S2', 'S5b', 'S6', 'S7', 'S9', 'S10', 'S11', 'S12', 'S13', 'S14', 'S15', 'S16', 'S17',
   'S18', 'S19',
 ]);
 

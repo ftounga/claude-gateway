@@ -28,7 +28,9 @@ export const BANC_SCENES = ['coeur', 'ecoute', 'reflexion', 'parole', 'oui', 'co
   'cerveau-aller', 'cerveau', 'cerveau-retour', 'cerveau-annule', 'univers', 'univers-cite', 'univers-montrer',
   'univers-telephone', 'entree', 'entree-courte', 'focus-chantier', 'zoom', 'dezoom',
   // SF-236-08 — panneaux holographiques et S-GEN 3D.
-  'scene-sgen', 'panneau-entree', 'panneau-sortie'] as const;
+  'scene-sgen', 'panneau-entree', 'panneau-sortie',
+  // SF-236-09 — commandes, tickets, fichiers.
+  'scene-commande', 'scene-tickets', 'scene-fichiers', 'scene-lecture', 'scene-recherche'] as const;
 
 const SCENE_NAME = /^[a-z0-9-]{1,40}$/;
 

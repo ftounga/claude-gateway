@@ -6,10 +6,11 @@ import { SCENES_3D, SGEN_3D_IDS, directScene, knownSceneIds, scene3dFor } from '
 import { BANC_SCENE_VIEWS, sceneOf } from './jarvis-scene3d.fixture';
 import { SceneContext } from './jarvis-scene3d.model';
 import { sceneGeneric } from './jarvis-scene-sgen';
+import { EMPTY_SESSION } from './jarvis-session-memory';
 
 function ctx(extra: Partial<SceneContext> = {}): SceneContext {
   return { universe: testUniverse(), subjectId: 's-forge', nodes: new Set(['h-cagip', 's-forge', 's-forge#3']),
-    pulses: 4, narrow: false, ...extra };
+    pulses: 4, narrow: false, session: EMPTY_SESSION, spokenTickets: [], ...extra };
 }
 
 describe('F-236 / SF-236-08 — registre des scènes 3D et garde', () => {

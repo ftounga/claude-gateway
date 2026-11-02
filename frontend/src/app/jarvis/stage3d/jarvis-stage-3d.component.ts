@@ -11,6 +11,8 @@ import { RenderReport, RenderStats } from './jarvis-render-stats';
 import { MOTION_DURATIONS } from './jarvis-motion';
 import { UniverseTouch } from './jarvis-layout-3d';
 import { SLEEP_AFTER_MS, SleepWatch } from './jarvis-heart';
+import { EMPTY_SESSION, SessionMemory, SessionSnapshot } from './scenes3d/jarvis-session-memory';
+import { clientKey } from '../scenes/jarvis-universe.models';
 import {
   IDLE_SCREEN, ScreenSignals, StagePlan, UniverseView, directStage, samePlan, stageScene, universeView,
 } from './jarvis-stage-director';
@@ -132,8 +134,22 @@ export class JarvisStage3dComponent implements OnDestroy {
     const universe = this.universe();
     return directStage({ state: s.state, frozen: s.frozen, waiting: s.waiting, asleep: this.asleep(),
       wakes: this.wakes(), delegations: s.delegations, fastBrainOn: s.fastBrainOn, turnActive: s.turnActive,
-      brainEnd: s.brainEnd }, universe, this.sober() ? null : stageScene(s, universe, this.narrow));
+      brainEnd: s.brainEnd }, universe, this.sober() ? null : stageScene(s, universe, this.narrow, this.session()));
   }, { equal: samePlan });
+
+  /** SF-236-09 — la mémoire de session de l'écran (tickets vus, nuage du dépôt) : noms seulement, aucun appel. */
+  private readonly memory = new SessionMemory();
+  private readonly session = signal<SessionSnapshot>(EMPTY_SESSION);
+  private readonly sessionFollow = effect(() => {
+    const s = this.signals();
+    untracked(() => {
+      const poste = s.universe?.clients.find((c) => c.subjects.some((x) => x.id === s.subjectId));
+      const now = Date.now();
+      if (this.memory.see(s.scene, poste ? clientKey(poste) : null, s.subjectId, now)) {
+        this.session.set(this.memory.snapshot(now));
+      }
+    });
+  });
 
   /** SF-236-04 — l'univers : recalculé seulement quand ce qui le décide change. */
   private readonly universe = computed<UniverseView>(() => {

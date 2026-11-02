@@ -3,7 +3,9 @@ import { BrainsState, FOLDED } from './jarvis-brains';
 import { HeartMood } from './jarvis-heart';
 import { EMPTY_VIEW, IDLE_SCREEN, ScreenSignals, StagePlan, UniverseView, stageScene, universeView,
 } from './jarvis-stage-director';
-import { BANC_SCENE_VIEWS } from './scenes3d/jarvis-scene3d.fixture';
+import { BANC_SCENE_VIEWS, BANC_SESSION_FILES, sceneOf } from './scenes3d/jarvis-scene3d.fixture';
+import { SessionMemory } from './scenes3d/jarvis-session-memory';
+import { baseName } from '../scenes/jarvis-scene-reader';
 import { ScenePlan3d } from './scenes3d/jarvis-scene3d.model';
 
 /**
@@ -60,9 +62,15 @@ function bancScene(scene: string, narrow: boolean):
     return null;
   }
   const signals: ScreenSignals = { ...IDLE_SCREEN, universe: testUniverse(), subjectId: 's-forge', scene: view,
-    pulses: 1, state: 'reflexion' };
+    pulses: 1, state: 'reflexion', spokenTickets: name === 'tickets' ? ['FORGE-42'] : [] };
   const universe = universeView(signals, false, narrow);
-  return { mood: view.pinned ? 'oui' : 'reflexion', view: universe, plan: stageScene(signals, universe, narrow) };
+  // SF-236-09 — la mémoire de session du banc : des fichiers vus plus tôt (nuage du dépôt) et la scène elle-même.
+  const memory = new SessionMemory();
+  BANC_SESSION_FILES.forEach((f, i) => memory.see(sceneOf('S5', `f${i}`, 'Fichier', { detail: f.path },
+    { mode: f.write ? 'write' : 'read', files: [baseName(f.path)] }), 'h-cagip', 's-forge', i));
+  memory.see(view, 'h-cagip', 's-forge', 100);
+  return { mood: view.pinned ? 'oui' : 'reflexion', view: universe,
+    plan: stageScene(signals, universe, narrow, memory.snapshot(100)) };
 }
 
 /** SF-236-04 — l'univers posé par chaque scène du banc (univers de test : CAGIP, Edenred ; sujet « Migration Forge »). */

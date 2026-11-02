@@ -154,7 +154,8 @@ export class Panels3d {
   /** Écrit le contenu (texte seulement) et remesure si la forme change. */
   private write(live: LivePanel, spec: Panel3d): void {
     live.spec = spec;
-    const signature = JSON.stringify([spec.title, spec.lines, spec.kind, spec.tone, spec.mono, spec.progress]);
+    const signature = JSON.stringify([spec.title, spec.lines, spec.kind, spec.tone, spec.mono, spec.progress,
+      spec.scroll]);
     if (signature === live.signature) {
       return;
     }
@@ -181,6 +182,12 @@ export class Panels3d {
       }
       p.textContent = line.text;
       el.appendChild(p);
+    }
+    if (spec.scroll) {
+      // N11 — les pages qui défilent : des lignes de texte stylisées (aucun contenu) qui remontent lentement.
+      const pages = document.createElement('span');
+      pages.className = 'jv3d-panel__pages';
+      el.appendChild(pages);
     }
     live.bar = null;
     if (spec.progress !== undefined) {
