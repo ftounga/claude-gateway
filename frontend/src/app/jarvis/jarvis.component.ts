@@ -57,6 +57,9 @@ import {
 import { ExchangeFiller, FORMULA_CLIPS, FormulaPicker, LINKED_FILLER_DELAY_MS, linkedFiller } from './jarvis-phrases';
 import { MAX_LISTEN_MS, SpeechRejection, speechGate } from './jarvis-speech-gate';
 import { STREAM_FALLBACK_MS, SUSPENDED_EXTRA_MS, isSuspended } from './jarvis-turn-end';
+import { CORRECTION_WINDOW_MS as VOICE_CORRECTION_WINDOW_MS, applyCorrection, parseVoiceCorrection } from './jarvis-correction';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
 import { JarvisOrbComponent, JarvisState } from './jarvis-orb.component';
 import { JarvisAppUpdate } from './jarvis-app-update';
 import { JarvisCompanionsComponent } from './jarvis-companions.component';
@@ -128,7 +131,7 @@ export function companionOffer(version: JarvisCompanionVersion, installed: numbe
  */
 @Component({
   selector: 'app-jarvis',
-  imports: [JarvisCockpitComponent, JarvisCompanionsComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatIconModule, MatMenuModule],
+  imports: [JarvisCockpitComponent, JarvisCompanionsComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatMenuModule],
   templateUrl: './jarvis.component.html',
   styleUrl: './jarvis.component.scss',
   providers: [JarvisAppUpdate],
@@ -1199,10 +1202,53 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
   }
 
+  // ---- F-239 / SF-239-06 : corriger d'un toucher ou de la voix ----
+  /** La dernière demande comprise (texte et instant) : ce qu'une correction vient corriger. */
+  private lastHeard: { text: string; at: number } | null = null;
+  /** La demande en cours est une correction (comptée dans la mesure du tour). */
+  private correcting = false;
+  /** Le texte compris est en cours d'édition au toucher. */
+  readonly editingSaid = signal(false);
+
+  /** Le toucher : la demande corrigée part comme une nouvelle demande. */
+  async submitTouchCorrection(value: string): Promise<void> {
+    this.editingSaid.set(false);
+    const corrected = value.trim();
+    if (!corrected || corrected === this.said()) {
+      return;
+    }
+    await this.submitCorrection(corrected);
+  }
+
+  private async submitCorrection(corrected: string): Promise<void> {
+    this.said.set(corrected);
+    this.correcting = true;
+    if (this.captureAudio() && this.admin()) {
+      // F-239 / SF-239-03 — la correction devient la référence du banc pour la dernière capture.
+      this.jarvis.correctCapture(corrected);
+    }
+    await this.handle(corrected);
+  }
+
+  /** F-239 / SF-239-06 — la mesure du tour qui part : corrigé ou non (une fois). */
+  private takeCorrecting(): boolean {
+    const was = this.correcting;
+    this.correcting = false;
+    return was;
+  }
+
   /** Ce qui a été dit : une confirmation, un ordre d'arrêt, un changement de sujet, sinon une demande au cerveau. */
   async handle(text: string): Promise<void> {
     if (this.pendingConfirm) {
       await this.answerToolConfirmation(this.pendingConfirm, text);
+      return;
+    }
+    // F-239 / SF-239-06 — « non, j'ai dit … » peu après une demande : la demande précédente, corrigée.
+    const fix = parseVoiceCorrection(text);
+    const previous = this.lastHeard;
+    if (fix && previous && Date.now() - previous.at <= VOICE_CORRECTION_WINDOW_MS) {
+      this.lastHeard = null;
+      await this.submitCorrection(applyCorrection(previous.text, fix));
       return;
     }
     // F-235 / SF-235-05 (D8) — une confirmation attendue court-circuite le cerveau rapide : la réponse va DIRECTEMENT
@@ -1268,6 +1314,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       await this.say(`Je passe sur ${target.name}.`);
       return;
     }
+    this.lastHeard = { text, at: Date.now() };
     if (this.fastBrainOn() && !directToOpus) {
       // F-235 / SF-235-05 — le cerveau rapide converse ; il délègue à Opus dès qu'il faut agir ou vérifier.
       void this.converse(text);
@@ -1297,10 +1344,12 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const seq = ++this.sendSeq;
     const latest = () => seq === this.sendSeq;
     this.startClock();
-    // F-235 / SF-235-07 (D14) — une parole qui corrige la réponse rapide d'il y a ≤ 30 s est comptée (sans contenu).
+    // F-235 / SF-235-07 (D14) — une parole qui corrige la réponse rapide d'il y a ≤ 30 s est comptée (sans contenu) ;
+    // F-239 / SF-239-06 — une demande corrigée (toucher ou « j'ai dit ») aussi.
     const clock = this.clock;
-    if (clock && this.lastFastAnswerAt > 0 && Date.now() - this.lastFastAnswerAt <= CORRECTION_WINDOW_MS
-        && isCorrection(text)) {
+    const corrected = this.takeCorrecting();
+    if (clock && (corrected || (this.lastFastAnswerAt > 0 && Date.now() - this.lastFastAnswerAt <= CORRECTION_WINDOW_MS
+        && isCorrection(text)))) {
       clock.fast = { ...clock.fast, correction: true };
     }
     // F-239 / SF-239-01 (D1) — aucune formule d'attente avec le cerveau rapide : il répond en 2-3 s ; l'état
@@ -1334,6 +1383,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
         if (latest()) {
           understood = read;
           this.said.set(read);
+          this.lastHeard = { text: read, at: Date.now() };
         }
       }),
       onDelegated: (delegation) => this.zone.run(() => {
@@ -1529,6 +1579,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const seq = ++this.sendSeq;
     const latest = () => seq === this.sendSeq;
     this.startClock();
+    // F-239 / SF-239-06 — une demande corrigée est comptée telle (sans contenu).
+    if (this.takeCorrecting() && this.clock) {
+      this.clock.fast = { ...this.clock.fast, correction: true };
+    }
     // SF-233-03 — la parole au fil de l'écriture : un nouveau lecteur de lignes 🎙 par envoi.
     const oral = new OralStream();
     this.oral = oral;

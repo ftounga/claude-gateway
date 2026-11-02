@@ -96,4 +96,18 @@ class JarvisCaptureServiceTest {
         when(repository.findByIdAndUserId(rows.get(0).getId(), alice)).thenReturn(Optional.of(rows.get(0)));
         assertThat(service().audio(alice, rows.get(0).getId()).orElseThrow()).isEqualTo(new byte[] { 2 });
     }
+
+    @Test
+    void f239TheCorrectionFillsTheLatestCaptureWithinTwoMinutesOnly() {
+        service().record(alice, true, new byte[] { 1 }, new JarvisCaptureService.Incoming(1.0, "STREAM", null,
+                "Où en est Cagibi", "Où en est Cagibi ?"));
+        now = now.plusSeconds(60);
+        assertThat(service().correctLatest(alice, "Où en est CAGIP ?")).isTrue();
+        assertThat(rows.get(0).getCorrectedText()).isEqualTo("Où en est CAGIP ?");
+
+        now = now.plusSeconds(180);
+        assertThat(service().correctLatest(alice, "trop tard")).isFalse();
+        assertThat(rows.get(0).getCorrectedText()).isEqualTo("Où en est CAGIP ?");
+        assertThat(service().correctLatest(UUID.randomUUID(), "autrui")).isFalse();
+    }
 }

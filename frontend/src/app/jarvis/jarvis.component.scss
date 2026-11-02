@@ -290,10 +290,27 @@
 
 .jv__said {
   margin: 0;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
   font-size: 14px;
   opacity: 0.75;
   font-style: italic;
   overflow-wrap: anywhere;
+  cursor: text;
+}
+
+.jv__said:hover,
+.jv__said:focus-visible {
+  opacity: 1;
+  text-decoration: underline dotted;
+}
+
+.jv__said-edit {
+  width: min(560px, 100%);
 }
 
 .jv__spoken {

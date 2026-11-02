@@ -98,6 +98,27 @@ public class JarvisCaptureService {
         return repository.findByIdAndUserId(id, userId).flatMap(c -> storage.getFile(c.getStorageKey()));
     }
 
+    /** F-239 / SF-239-06 — une correction ne vaut que pour la capture qu'elle suit de près. */
+    static final Duration CORRECTION_WINDOW = Duration.ofMinutes(2);
+
+    /**
+     * F-239 / SF-239-06 — la correction du PO devient la référence du banc pour sa <b>dernière</b> capture, si elle date
+     * de moins de deux minutes. Rend vrai si une capture a été corrigée.
+     */
+    public boolean correctLatest(UUID userId, String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        List<JarvisAudioCapture> mine = repository.findByUserIdOrderByCreatedAtDesc(userId);
+        if (mine.isEmpty() || mine.get(0).getCreatedAt().isBefore(OffsetDateTime.now(clock).minus(CORRECTION_WINDOW))) {
+            return false;
+        }
+        JarvisAudioCapture latest = mine.get(0);
+        latest.setCorrectedText(cut(text, MAX_TEXT));
+        repository.save(latest);
+        return true;
+    }
+
     /** Efface toutes les captures du compte (extinction de l'interrupteur, suppression du compte). */
     public int purgeUser(UUID userId) {
         List<JarvisAudioCapture> all = repository.findByUserIdOrderByCreatedAtDesc(userId);

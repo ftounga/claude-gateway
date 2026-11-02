@@ -156,7 +156,17 @@
       <p class="jv__partial" aria-live="polite">{{ text }}</p>
     }
     @if (said(); as text) {
-      <p class="jv__said">« {{ text }} »</p>
+      <!-- F-239 / SF-239-06 — ce que Jarvis a compris ; un toucher pour le corriger. -->
+      @if (editingSaid()) {
+        <mat-form-field appearance="outline" class="jv__said-edit">
+          <mat-label>Ce que vous avez dit</mat-label>
+          <input matInput #fix [value]="text" (keydown.enter)="submitTouchCorrection(fix.value)"
+                 (keydown.escape)="editingSaid.set(false)" aria-label="Corriger ce que Jarvis a compris" />
+        </mat-form-field>
+      } @else {
+        <button type="button" class="jv__said" (click)="editingSaid.set(true)"
+                title="Toucher pour corriger ce que Jarvis a compris">« {{ text }} »</button>
+      }
     }
     @if (spoken(); as phrase) {
       <p class="jv__spoken">{{ phrase }}</p>
