@@ -35,4 +35,8 @@ public interface AppRequestRepository extends JpaRepository<AppRequest, UUID> {
     @Modifying
     @Query("delete from AppRequest r where r.userId = :userId")
     int purgeUser(@Param("userId") UUID userId);
+
+    /** F-237 / SF-237-01 — les besoins d'un sujet, pour l'index des pièces (isolation {@code user_id}). */
+    List<AppRequest> findTop50ByUserIdAndWorkspaceIdOrderByCreatedAtAsc(UUID userId, UUID workspaceId);
+
 }

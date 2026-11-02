@@ -21,4 +21,9 @@ public interface GeneratedImageRepository extends JpaRepository<GeneratedImage, 
 
     /** Nombre d'images REELLES (READY) d'un compte — sert au quota. */
     long countByUserIdAndStatus(UUID userId, GeneratedImageStatus status);
+
+    /** F-237 / SF-237-01 — les images prêtes d'un sujet, pour l'index des pièces (isolation {@code user_id}). */
+    List<GeneratedImage> findTop50ByUserIdAndWorkspaceIdAndStatusOrderByCreatedAtDesc(UUID userId, UUID workspaceId,
+            GeneratedImageStatus status);
+
 }

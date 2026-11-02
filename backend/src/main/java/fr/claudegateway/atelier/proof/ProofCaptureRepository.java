@@ -10,4 +10,9 @@ public interface ProofCaptureRepository extends JpaRepository<ProofCapture, UUID
 
     /** Une capture de CE compte et de CE terminal, ou vide (inconnue et étrangère indiscernables). */
     Optional<ProofCapture> findByIdAndUserIdAndWorkspaceId(UUID id, UUID userId, UUID workspaceId);
+
+    /** F-237 / SF-237-01 — les captures d'un sujet, pour l'index des pièces (isolation {@code user_id}). */
+    java.util.List<ProofCapture> findTop200ByUserIdAndWorkspaceIdOrderByCapturedAtAscPositionAsc(UUID userId,
+            UUID workspaceId);
+
 }

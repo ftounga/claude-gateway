@@ -37,4 +37,9 @@ public interface ClientEmailRepository extends JpaRepository<ClientEmail, UUID> 
             + " and e.nextAttemptAt <= :now) or (e.status = fr.claudegateway.mail.ClientEmailStatus.SENDING"
             + " and e.leasedUntil < :now))")
     int claim(@Param("id") UUID id, @Param("now") OffsetDateTime now, @Param("until") OffsetDateTime until);
+
+    /** F-237 / SF-237-01 — les courriels envoyés d'un sujet, pour l'index des pièces (isolation {@code user_id}). */
+    java.util.List<ClientEmail> findTop50ByUserIdAndWorkspaceIdAndStatusOrderByCreatedAtDesc(UUID userId,
+            UUID workspaceId, ClientEmailStatus status);
+
 }
