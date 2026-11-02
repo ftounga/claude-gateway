@@ -6,7 +6,7 @@ import { of, throwError } from 'rxjs';
 
 import {
   JarvisPortraitClient, Portrait, PortraitSectionKey, counterLabel, draftChars, portraitBlocks, portraitErrorMessage,
-  portraitSafe, portraitTokens,
+  isPortraitMark, portraitSafe, portraitTokens,
 } from './jarvis-portrait';
 import { JarvisPortraitComponent } from './jarvis-portrait.component';
 
@@ -51,6 +51,12 @@ describe('jarvis-portrait (fonctions)', () => {
     expect(portraitSafe('Rien à voir avec Sandra. Le déploiement est fini.', 'Le déploiement ?', terms))
       .toBe('Le déploiement est fini.');
     expect(portraitSafe('Tout va bien.', '', [])).toBe('Tout va bien.');
+  });
+
+  it('SF-241-04 — une ligne-marque ✦ ou 📌 n’est jamais dite', () => {
+    expect(isPortraitMark('✦ allusion: le petit')).toBeTrue();
+    expect(isPortraitMark(' 📌 retenir: un fait')).toBeTrue();
+    expect(isPortraitMark('Bonjour, Monsieur.')).toBeFalse();
   });
 
   it('rend le message du refus de la passerelle, sinon un message neutre', () => {

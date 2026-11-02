@@ -97,7 +97,7 @@ class JarvisFastBrainPortraitTest {
         s.converse(ask(alice, "Merci", false), null);
         String system = calls.get(0).system();
         assertThat(system).startsWith(JarvisFastBrainPrompt.system())
-                .endsWith(JarvisPortraitNote.block(alicePortrait))
+                .endsWith(JarvisPortraitNote.block(alicePortrait) + JarvisPortraitNote.FAST_MARKS)
                 .contains(JarvisPortraitNote.RULES).contains("Léo").contains("mis à jour en octobre 2026")
                 .contains("S1 (noté en octobre 2026) : Prépare le semi-marathon de Lyon");
         assertThat(calls.get(1).system()).isEqualTo(system);
@@ -151,7 +151,7 @@ class JarvisFastBrainPortraitTest {
         assertThat(calls.get(0).system()).isEqualTo(JarvisFastBrainPrompt.system());
         verify(portraits, never()).snapshot(any());
         s.benchWithPortrait(ask(alice, "Bonjour", false), "claude-sonnet-5-5", "Maintenant : lundi", alicePortrait);
-        assertThat(calls.get(1).system()).endsWith(JarvisPortraitNote.block(alicePortrait));
+        assertThat(calls.get(1).system()).endsWith(JarvisPortraitNote.block(alicePortrait) + JarvisPortraitNote.FAST_MARKS);
     }
 
     @Test

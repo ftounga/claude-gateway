@@ -48,6 +48,7 @@ class JarvisPortraitApiIntegrationTest {
     @Autowired private JwtService jwtService;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private AccountService accountService;
+    @Autowired private JarvisAllusionService allusionService;
 
     private record Account(UUID id, String bearer) {
     }
@@ -223,7 +224,13 @@ class JarvisPortraitApiIntegrationTest {
                     .andExpect(status().isOk());
             addSouvenir(x, "un souvenir");
         }
+        allusionService.record(a.id(), "ALLUSION", "le petit", "Léo dort ?", true);
+        allusionService.record(keep.id(), "ALLUSION", "le jazz", null, false);
         accountService.deleteAccount(a.id());
+        assertThat(jdbc.queryForObject("select count(*) from jarvis_allusions where user_id = ?", Integer.class,
+                a.id())).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from jarvis_allusions where user_id = ?", Integer.class,
+                keep.id())).isEqualTo(1);
         assertThat(jdbc.queryForObject("select count(*) from jarvis_portraits where user_id = ?", Integer.class,
                 a.id())).isZero();
         assertThat(jdbc.queryForObject("select count(*) from jarvis_souvenirs where user_id = ?", Integer.class,

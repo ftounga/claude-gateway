@@ -70,6 +70,11 @@ export function portraitBlocks(sentence: string, said: string, terms: readonly s
   return terms.some((t) => touches(spoken, t) && !touches(heard, t));
 }
 
+/** F-241 / SF-241-04 — une ligne-marque du cerveau rapide (✦ allusion, 📌 souvenir) : jamais dite, jamais affichée. */
+export function isPortraitMark(sentence: string): boolean {
+  return /^\s*(✦|📌)/u.test(sentence ?? '');
+}
+
 /** D12 (a) — la phrase dite sans ses phrases interdites (découpe aux fins de phrase). */
 export function portraitSafe(text: string, said: string, terms: readonly string[]): string {
   if (!terms.length || !text) {

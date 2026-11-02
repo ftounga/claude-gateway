@@ -134,6 +134,8 @@ public class JarvisLatencyService {
                 .depthVia(report.depthReached() == null ? null : closed(report.depthVia(), DEPTH_VIA))
                 .portraitOn(report.portraitOn())
                 .portraitBlocked(report.portraitBlocked() == null ? null : counter(report.portraitBlocked()))
+                .personalAllusion(report.personalAllusion() == null ? null
+                        : ALLUSIONS.contains(report.personalAllusion()) ? report.personalAllusion() : null)
                 .build());
     }
 
@@ -153,7 +155,7 @@ public class JarvisLatencyService {
                 rows.stream().mapToLong(JarvisTurnTiming::getAcknowledgements).sum(),
                 rows.stream().mapToLong(JarvisTurnTiming::getFalseTriggers).sum());
         return new Latency(window, rows.size(), rows.stream().filter(JarvisTurnTiming::isToolTurn).count(), steps,
-                interruptions, byMode, spoken(rows), oralLines(userId, window));
+                interruptions, byMode, spoken(rows), oralLines(userId, window), allusions(rows));
     }
 
     /** F-240 / SF-240-01 — ce qui a été dit sur les tours de la fenêtre (sans contenu). */
@@ -320,7 +322,19 @@ public class JarvisLatencyService {
             Integer spokenWords, Integer spokenChars, Integer spokenMs, Integer announceWords, Boolean oralCut,
             Boolean invitation, Integer depthReached, String depthVia,
             // F-241 / SF-241-03 — facultatifs : le portrait servait, phrases écartées par ses interdits.
-            Boolean portraitOn, Integer portraitBlocked) {
+            Boolean portraitOn, Integer portraitBlocked,
+            // F-241 / SF-241-04 — facultatif : l'allusion personnelle du tour (SPONTANEE, REPONSE, AUCUNE).
+            String personalAllusion) {
+    }
+
+    /** F-241 / SF-241-04 — les valeurs admises de {@code personalAllusion}. */
+    static final java.util.Set<String> ALLUSIONS = java.util.Set.of("SPONTANEE", "REPONSE", "AUCUNE");
+
+    /**
+     * F-241 / SF-241-04 — les allusions sur les tours du compte où le portrait servait : nombre de ces tours, allusions
+     * spontanées, en réponse, et le <b>taux d'allusion spontanée</b> (par tour, donc par échange de conversation).
+     */
+    public record Allusions(long portraitTurns, long spontaneous, long inResponse, Double spontaneousRate) {
     }
 
     /** Une étape : nombre de tours où elle a eu lieu, p50 et p90 en ms (nuls sans mesure). */
@@ -334,7 +348,16 @@ public class JarvisLatencyService {
 
     /** La mesure rendue à l'administrateur. */
     public record Latency(int days, int turns, long toolTurns, List<Step> steps, Interruptions interruptions,
-            Map<String, Long> byListenMode, Spoken spoken, Spoken.OralLines oralLines) {
+            Map<String, Long> byListenMode, Spoken spoken, Spoken.OralLines oralLines, Allusions allusions) {
+    }
+
+    /** F-241 / SF-241-04 — le taux d'allusion spontanée, sur les tours où le portrait servait. */
+    static Allusions allusions(List<JarvisTurnTiming> rows) {
+        long on = rows.stream().filter(r -> Boolean.TRUE.equals(r.getPortraitOn())).count();
+        long spontaneous = rows.stream().filter(r -> "SPONTANEE".equals(r.getPersonalAllusion())).count();
+        long response = rows.stream().filter(r -> "REPONSE".equals(r.getPersonalAllusion())).count();
+        return new Allusions(on, spontaneous, response,
+                on == 0 ? null : Math.round(spontaneous * 1000.0 / on) / 1000.0);
     }
 
     /**

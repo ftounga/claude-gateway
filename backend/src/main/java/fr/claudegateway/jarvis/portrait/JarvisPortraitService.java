@@ -223,9 +223,20 @@ public class JarvisPortraitService {
         });
     }
 
+    /** F-241 / SF-241-04 — le journal des allusions, vidé avec le portrait. */
+    private JarvisAllusionService allusions;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setAllusions(JarvisAllusionService allusions) {
+        this.allusions = allusions;
+    }
+
     /** « Tout effacer » (et la suppression du compte) : suppression <b>physique</b> immédiate. */
     @Transactional
     public void eraseAll(UUID userId) {
+        if (allusions != null) {
+            allusions.purgeUser(userId);
+        }
         souvenirs.deleteByUser(userId);
         portraits.deleteByUser(userId);
         cache.remove(userId);

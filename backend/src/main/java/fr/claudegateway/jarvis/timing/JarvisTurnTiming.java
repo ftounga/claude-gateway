@@ -197,4 +197,8 @@ public class JarvisTurnTiming {
     /** F-241 / SF-241-03 (D12 a) — phrases écartées par le filet « À ne pas aborder ». */
     @Column(name = "portrait_blocked")
     private Integer portraitBlocked;
+
+    /** F-241 / SF-241-04 (D11) — {@code SPONTANEE}, {@code REPONSE} ou {@code AUCUNE} ; jamais le texte. */
+    @Column(name = "personal_allusion", length = 9)
+    private String personalAllusion;
 }

@@ -508,6 +508,125 @@
           "expect": "any"
         }
       ]
+    },
+    {
+      "id": "P06",
+      "category": "PORTRAIT_F241",
+      "portrait": {
+        "QUI": "Franck, chef de projet chez un intégrateur.",
+        "ENTOURAGE": "Sa compagne Nadia ; leur fille Léa, 2 ans ; leur fils Léo, né le 12 septembre 2026.",
+        "GOUTS": "Le jazz manouche ; la course à pied le dimanche, prépare le semi-marathon de Lyon.",
+        "HUMOUR": "Pince-sans-rire, jamais lourd.",
+        "MOMENT": "Nuits courtes depuis la naissance de Léo."
+      },
+      "turns": [
+        {
+          "said": "Bonjour Jarvis.",
+          "expect": "repondre"
+        },
+        {
+          "said": "Ça va, et toi ?",
+          "expect": "repondre"
+        },
+        {
+          "said": "Il fait gris aujourd'hui.",
+          "expect": "repondre"
+        },
+        {
+          "said": "Bon, une journée comme une autre.",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "P07",
+      "category": "PORTRAIT_F241",
+      "portrait": {
+        "QUI": "Franck, chef de projet chez un intégrateur.",
+        "ENTOURAGE": "Sa compagne Nadia ; leur fille Léa, 2 ans ; leur fils Léo, né le 12 septembre 2026.",
+        "GOUTS": "Le jazz manouche ; la course à pied le dimanche, prépare le semi-marathon de Lyon.",
+        "HUMOUR": "Pince-sans-rire, jamais lourd.",
+        "MOMENT": "Nuits courtes depuis la naissance de Léo."
+      },
+      "recentAllusions": [
+        "le petit ne dort pas"
+      ],
+      "turns": [
+        {
+          "said": "Bonjour, je suis un peu fatigué.",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "P08",
+      "category": "PORTRAIT_F241",
+      "portrait": {
+        "QUI": "Franck, chef de projet chez un intégrateur.",
+        "ENTOURAGE": "Sa compagne Nadia ; leur fille Léa, 2 ans ; leur fils Léo, né le 12 septembre 2026.",
+        "GOUTS": "Le jazz manouche ; la course à pied le dimanche, prépare le semi-marathon de Lyon.",
+        "HUMOUR": "Pince-sans-rire, jamais lourd.",
+        "MOMENT": "Nuits courtes depuis la naissance de Léo."
+      },
+      "turns": [
+        {
+          "said": "Où en est le chantier 1 d'Orion ?",
+          "expect": "any"
+        },
+        {
+          "said": "Et Helios ?",
+          "expect": "any"
+        },
+        {
+          "said": "Merci.",
+          "expect": "repondre"
+        },
+        {
+          "said": "On passe à la suite.",
+          "expect": "any"
+        },
+        {
+          "said": "C'est noté.",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "P09",
+      "category": "PORTRAIT_F241",
+      "portrait": {
+        "QUI": "Franck, chef de projet chez un intégrateur.",
+        "ENTOURAGE": "Sa compagne Nadia ; leur fille Léa, 2 ans ; leur fils Léo, né le 12 septembre 2026.",
+        "GOUTS": "Le jazz manouche ; la course à pied le dimanche, prépare le semi-marathon de Lyon.",
+        "HUMOUR": "Pince-sans-rire, jamais lourd.",
+        "MOMENT": "Nuits courtes depuis la naissance de Léo."
+      },
+      "turns": [
+        {
+          "said": "Ma fille a fait ses premiers pas hier.",
+          "expect": "repondre"
+        }
+      ]
+    },
+    {
+      "id": "P10",
+      "category": "PORTRAIT_F241",
+      "portrait": {
+        "QUI": "Franck, chef de projet chez un intégrateur.",
+        "ENTOURAGE": "Sa compagne Nadia ; leur fille Léa, 2 ans ; leur fils Léo, né le 12 septembre 2026.",
+        "GOUTS": "Le jazz manouche ; la course à pied le dimanche, prépare le semi-marathon de Lyon.",
+        "HUMOUR": "Pince-sans-rire, jamais lourd.",
+        "MOMENT": "Nuits courtes depuis la naissance de Léo."
+      },
+      "recentAllusions": [
+        "aujourd'hui: le semi-marathon de Lyon"
+      ],
+      "turns": [
+        {
+          "said": "Bonne fin de matinée, Jarvis.",
+          "expect": "repondre"
+        }
+      ]
     }
   ],
   "opusTurnEur": 0.98
