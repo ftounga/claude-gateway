@@ -289,7 +289,7 @@ export class Brain3d {
       delay[i] = random();
       phase[i] = random() * 10;
       size[i] = 1 + random() * 2;
-      heat[i] = Math.max(0, 1 - depth * 1.4);
+      heat[i] = Math.max(0, 1 - depth * 1.8);
     }
     const geometry = new BufferGeometry();
     geometry.setAttribute('position', new BufferAttribute(deployed, 3));

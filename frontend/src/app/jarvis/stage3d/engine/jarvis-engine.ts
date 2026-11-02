@@ -85,7 +85,8 @@ void main() {
     float t = uTime * 0.000012;
     float n = fbm(p * 2.2 + vec2(t, -t * 0.7));
     float m = fbm(p * 4.0 - vec2(t * 0.5, t));
-    float veil = smoothstep(0.35, 0.8, n) * (1.0 - smoothstep(0.15, 1.25, r));
+    // SF-236-07 — la nébuleuse reste loin du cœur : sous lui, elle passait le seuil du bloom (tache claire).
+    float veil = smoothstep(0.35, 0.8, n) * smoothstep(0.28, 0.6, r) * (1.0 - smoothstep(0.6, 1.4, r));
     color += uTint * veil * 0.16 + uDeep * smoothstep(0.5, 0.9, m) * veil * 0.08;
   }
   gl_FragColor = vec4(color, 1.0);
@@ -109,7 +110,8 @@ void main() {
   gl_Position = projectionMatrix * mv;
   gl_PointSize = min(aSize * uPixelRatio * (uScale / max(-mv.z, 0.5)), 18.0 * uPixelRatio);
   vColor = aColor;
-  vTwinkle = 0.72 + 0.28 * sin(uTime * 0.0016 + aPhase * 6.2831);
+  // SF-236-07 — ce qui frôle la caméra s'efface (la poussière proche faisait des taches sous le bloom).
+  vTwinkle = (0.72 + 0.28 * sin(uTime * 0.0016 + aPhase * 6.2831)) * smoothstep(1.5, 5.0, -mv.z);
 }`;
 
 const POINTS_FRAGMENT = /* glsl */ `

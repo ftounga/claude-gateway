@@ -389,7 +389,8 @@ export class Universe3d {
         subjectId: live.node.subjectId }));
     }
     const object = new CSS2DObject(element);
-    object.center.set(0.5, live.node.kind === 'client' ? -0.6 : -0.3);
+    // SF-236-07 — l'étiquette se pose sous le nœud et son halo, jamais dessus.
+    object.center.set(0.5, live.node.kind === 'client' ? -3.2 : -1.4);
     object.position.set(0, 0, 0);
     this.group.add(object);
     return object;
