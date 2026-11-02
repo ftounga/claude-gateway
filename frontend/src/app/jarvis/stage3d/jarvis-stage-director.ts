@@ -1,7 +1,7 @@
 import { BrainEnd, BrainsState, brainsFor } from './jarvis-brains';
 import { JarvisUniverse } from '../scenes/jarvis-universe.models';
 import { HeartMood, JarvisVoiceState, heartMood } from './jarvis-heart';
-import { EMPTY_LAYOUT, Layout3d, layoutUniverse3d } from './jarvis-layout-3d';
+import { EMPTY_LAYOUT, Layout3d, Node3d, layoutUniverse3d } from './jarvis-layout-3d';
 import { Graph3d, linkGraph } from './jarvis-link-graph';
 
 /**
@@ -76,9 +76,14 @@ export interface UniverseView {
   graph: Graph3d;
   /** La dérive lente s'arrête pendant l'écoute et sur un focus (§8.1). */
   freeze: boolean;
+  /** SF-236-05 — le nœud dont on parle (le premier cité, posé), cadré par la caméra. */
+  focus: Node3d | null;
+  /** Le sujet courant (un changement de sujet ⇒ dézoom). */
+  subjectId: string | null;
 }
 
-export const EMPTY_VIEW: UniverseView = { layout: EMPTY_LAYOUT, graph: { links: [], nodes: new Map() }, freeze: false };
+export const EMPTY_VIEW: UniverseView = { layout: EMPTY_LAYOUT, graph: { links: [], nodes: new Map() }, freeze: false,
+  focus: null, subjectId: null };
 
 /** H1-H5 ⇒ l'univers à dessiner. `narrow` = téléphone. */
 export function universeView(s: ScreenSignals, asleep: boolean, narrow: boolean): UniverseView {
@@ -89,7 +94,10 @@ export function universeView(s: ScreenSignals, asleep: boolean, narrow: boolean)
   const layout = layoutUniverse3d(s.universe, { subjectId: s.subjectId, narrow,
     shown: new Set([...lit, ...(s.shown ?? [])]) });
   const graph = linkGraph(layout, { subjectId: s.subjectId, lit, shown: s.shown, asleep });
-  return { layout, graph, freeze: s.state === 'ecoute' || lit.length > 0 || s.shown !== null };
+  const focus = s.shown === null ? layout.nodes.find((n) => n.key === lit.find((k) => graph.nodes.get(k) === 'lit'))
+    ?? null : null;
+  return { layout, graph, freeze: s.state === 'ecoute' || lit.length > 0 || s.shown !== null, focus,
+    subjectId: s.subjectId };
 }
 
 /** Le plan que le moteur dessine. */
@@ -100,6 +108,8 @@ export interface StagePlan {
   brains: BrainsState;
   /** Banc seulement : les cerveaux partent déployés (séquence du retour). */
   brainsFromDeployed?: boolean;
+  /** Banc seulement : la caméra rejoue un zoom (T-Z1) ou un dézoom (T-Z2) depuis t = 0. */
+  bancCamera?: 'zoom' | 'dezoom';
   /** SF-236-04 — l'univers et ses liaisons. */
   universe: UniverseView;
 }

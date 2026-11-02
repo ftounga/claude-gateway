@@ -77,6 +77,17 @@ export class FakeEngine implements JarvisEngine {
     this.plans.push(plan);
   }
 
+  skipped = 0;
+  exited = 0;
+
+  skipEntry(): void {
+    this.skipped++;
+  }
+
+  exit(): void {
+    this.exited++;
+  }
+
   /** Simule la première image dessinée. */
   firstFrame(): void {
     this.frames++;

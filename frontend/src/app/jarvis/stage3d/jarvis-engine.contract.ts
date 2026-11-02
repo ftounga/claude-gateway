@@ -3,6 +3,7 @@ import { InjectionToken } from '@angular/core';
 import { EngineClock } from './jarvis-banc';
 import { FrameHost } from './jarvis-frame-loop';
 import { QualityLevel } from './jarvis-render-capability';
+import { EntryKind } from './jarvis-camera-rules';
 import { StagePlan } from './jarvis-stage-director';
 import { UniverseTouch } from './jarvis-layout-3d';
 
@@ -40,6 +41,10 @@ export interface JarvisEngineOptions {
   labelHost: HTMLElement | null;
   /** SF-236-04 — un nœud touché (hors zone : l'appelant y revient). */
   onTouch(touch: UniverseTouch): void;
+  /** SF-236-05 — l'entrée cinématique à jouer (T-E1 la première fois du jour, T-E2 ensuite, aucune au banc). */
+  entry: EntryKind;
+  /** SF-236-05 — le cœur touché sur le canevas : « parler » (même méthode que l'orbe). */
+  onTalk(): void;
   /** Première image dessinée : l'écran lance le fondu 2D → 3D (T-F). */
   onFirstFrame(): void;
   /** Contexte WebGL perdu (T11). */
@@ -53,6 +58,10 @@ export interface JarvisEngine {
   resize(width: number, height: number): void;
   /** SF-236-02 — un nouveau plan : le moteur interpole vers ses cibles, jamais de saut. */
   update(plan: StagePlan): void;
+  /** SF-236-05 — saute l'entrée (fondu de 300 ms vers l'état final). */
+  skipEntry(): void;
+  /** SF-236-05 — joue la sortie T-S (0,5 s) ; l'écran navigue ensuite. */
+  exit(): void;
   /** Images dessinées depuis l'ouverture. */
   readonly frames: number;
   /** Libère tout (géométries, matières, rendu, contexte, écouteurs) ; idempotent. */

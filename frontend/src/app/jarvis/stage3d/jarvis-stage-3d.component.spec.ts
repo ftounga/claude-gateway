@@ -348,4 +348,49 @@ describe('F-236 / SF-236-01 — JarvisStage3dComponent (socle, repli 2D, fondu)'
     expect(touched).toEqual([{ key: 's-doc', kind: 'subject', subjectId: 's-doc' }]);
     fixture.destroy();
   }));
+
+  it('SF-236-05 — le cœur touché ⇒ « parler » ; sortie T-S jouée en 3D puis navigation ; en 2D, tout de suite', fakeAsync(() => {
+    configure(PC_PROBE);
+    const fixture = TestBed.createComponent(HostComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    const engine = created[0];
+    const stage = stageOf(fixture);
+    let talks = 0;
+    stage.talk.subscribe(() => talks++);
+    engine.options.onTalk();
+    expect(talks).toBe(1);
+    let left = 0;
+    stage.leave(() => left++);
+    expect(left).withContext('pas encore affichée : départ immédiat').toBe(1);
+    engine.firstFrame();
+    stage.leave(() => left++);
+    expect(engine.exited).toBe(1);
+    tick(499);
+    expect(left).toBe(1);
+    tick(1);
+    expect(left).toBe(2);
+    fixture.destroy();
+  }));
+
+  it('SF-236-05 — l’entrée : T-E1 ou T-E2 hors banc ; au banc, seulement les scènes d’entrée ; sautée au toucher', fakeAsync(() => {
+    configure(PC_PROBE);
+    const fixture = TestBed.createComponent(HostComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    const engine = created[0];
+    expect(['full', 'short']).toContain(engine.options.entry);
+    const stage = stageOf(fixture);
+    stage.skipEntry();
+    expect(engine.skipped).toBe(1);
+    expect(stage.entry()).toBe('none');
+    fixture.destroy();
+    TestBed.resetTestingModule();
+    configure({ ...PC_PROBE, majorPerformanceCaveat: true }, { scene: 'coeur', t: 0, level: null });
+    const banc = TestBed.createComponent(HostComponent);
+    banc.detectChanges();
+    flushMicrotasks();
+    expect(created[0].options.entry).toBe('none');
+    banc.destroy();
+  }));
 });

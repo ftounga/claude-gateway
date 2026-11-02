@@ -26,7 +26,7 @@ function levelOf(raw: string | null): QualityLevel | null {
 /** Les scènes que le banc sait poser ; une scène inconnue retombe sur `coeur`. */
 export const BANC_SCENES = ['coeur', 'ecoute', 'reflexion', 'parole', 'oui', 'coupure', 'veille', 'reveil',
   'cerveau-aller', 'cerveau', 'cerveau-retour', 'cerveau-annule', 'univers', 'univers-cite', 'univers-montrer',
-  'univers-telephone'] as const;
+  'univers-telephone', 'entree', 'entree-courte', 'focus-chantier', 'zoom', 'dezoom'] as const;
 
 const SCENE_NAME = /^[a-z0-9-]{1,40}$/;
 

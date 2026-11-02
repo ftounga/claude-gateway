@@ -98,6 +98,54 @@
   transition: opacity var(--jv-dur-fade, 400ms) var(--jv-ease-glisse, ease-in-out);
 }
 
+/* F-236 / SF-236-05 — en 3D, le vide de l'écran laisse passer les gestes vers l'univers (tourner, pincer, toucher) ;
+   tout ce qui se touche dans l'écran reste touchable. */
+.jv--3d {
+  pointer-events: none;
+
+  .jv__top,
+  .jv__stage > :not(.jv__constellation),
+  .jv__orb-button,
+  .jv__exchange > *,
+  .jv__controls,
+  .jv__wake-gate {
+    pointer-events: auto;
+  }
+}
+
+/* T-E1 — le HUD glisse depuis les bords à la fin de l'entrée (1,9 → 2,6 s, `sortie`, 40 ms d'écart). */
+@keyframes jv-hud-in-top {
+  from { opacity: 0; transform: translateY(-16px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes jv-hud-in-bottom {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: none; }
+}
+
+.jv--entry {
+  .jv__top {
+    animation: jv-hud-in-top 700ms var(--jv-ease-sortie, ease-out) 1900ms both;
+  }
+
+  .jv__status,
+  .jv__sober,
+  .jv__view {
+    animation: jv-hud-in-bottom 700ms var(--jv-ease-sortie, ease-out) 1940ms both;
+  }
+
+  .jv__controls {
+    animation: jv-hud-in-bottom 700ms var(--jv-ease-sortie, ease-out) 1980ms both;
+  }
+}
+
+/* T-S — le HUD s'efface (200 ms, `entree`) pendant que l'univers se replie vers le cœur. */
+.jv--exiting {
+  opacity: 0;
+  transition: opacity 200ms var(--jv-ease-entree, ease-in);
+}
+
 .jv__status {
   margin: 0;
   font-size: 16px;
