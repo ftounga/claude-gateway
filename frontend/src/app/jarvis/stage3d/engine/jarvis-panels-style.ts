@@ -113,6 +113,9 @@ export const PANELS_CSS = `
   from { background-position: 0 0; }
   to { background-position: 0 -60px; }
 }
+.jv3d-panel.is-flying {
+  box-shadow: 0 0 24px var(--tone);
+}
 .jv3d-panel__pages {
   position: relative;
   display: block;

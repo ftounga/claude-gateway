@@ -9,6 +9,9 @@ import { NodeRef } from '../../scenes/jarvis-universe.models';
 export const FORGE: NodeRef = { kind: 'subject', key: 's-forge', label: 'Migration Forge', clientKey: 'h-cagip',
   subjectId: 's-forge' };
 
+/** Zahi, attendu par le chantier 3 (nœud posé par la disposition). */
+export const ZAHI: NodeRef = { kind: 'person', key: 'h-cagip:zahi', label: 'Zahi', clientKey: 'h-cagip' };
+
 /** Une scène F-234 telle que le lecteur la publie. */
 export function sceneOf(id: string, key: string, libelle: string, extra: Partial<SceneView> = {},
     data?: SceneData): SceneView {
@@ -44,6 +47,11 @@ export const BANC_SCENE_VIEWS: Readonly<Record<string, SceneView>> = {
     { libelle: 'Vérifier le TTL', state: 'TERMINEE' }, { libelle: 'Basculer la zone', state: 'TERMINEE' },
     { libelle: 'Prévenir Zahi', state: 'EN_COURS' }, { libelle: 'Surveiller 24 h', state: 'A_FAIRE' }] }),
   'le-point': sceneOf('S15', 'sujets_etat', 'Le point sur les sujets'),
+  // SF-236-11 — À envoyer (le corps n'est jamais lu : seuls destinataire et objet).
+  message: sceneOf('S1', 'block-mail', 'Mail en préparation', { entity: ZAHI, detail: 'À : Zahi · Objet : Bascule DNS' },
+    { envelope: 'mail', to: 'Zahi', subject: 'Bascule DNS samedi', finished: false }),
+  envoi: sceneOf('S1', 'block-mail', 'Mail prêt · à envoyer', { entity: ZAHI, detail: 'À : Zahi · Objet : Bascule DNS' },
+    { envelope: 'mail', to: 'Zahi', subject: 'Bascule DNS samedi', finished: true }),
 };
 
 /** SF-236-09 — une session de test : des fichiers lus et écrits dans trois dossiers (nuage du dépôt). */

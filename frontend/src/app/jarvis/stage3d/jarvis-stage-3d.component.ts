@@ -13,6 +13,8 @@ import { UniverseTouch } from './jarvis-layout-3d';
 import { SLEEP_AFTER_MS, SleepWatch } from './jarvis-heart';
 import { EMPTY_SESSION, SessionMemory, SessionSnapshot } from './scenes3d/jarvis-session-memory';
 import { clientKey } from '../scenes/jarvis-universe.models';
+import { ShowPlan3d, directShow } from './scenes3d/jarvis-show-3d';
+import { PANEL_POOL } from './jarvis-panels';
 import {
   IDLE_SCREEN, ScreenSignals, StagePlan, UniverseView, directStage, samePlan, stageScene, universeView,
 } from './jarvis-stage-director';
@@ -132,10 +134,23 @@ export class JarvisStage3dComponent implements OnDestroy {
     }
     const s = this.signals();
     const universe = this.universe();
-    return directStage({ state: s.state, frozen: s.frozen, waiting: s.waiting, asleep: this.asleep(),
+    const scene = this.sober() ? null : stageScene(s, universe, this.narrow, this.session());
+    const plan = directStage({ state: s.state, frozen: s.frozen, waiting: s.waiting, asleep: this.asleep(),
       wakes: this.wakes(), delegations: s.delegations, fastBrainOn: s.fastBrainOn, turnActive: s.turnActive,
-      brainEnd: s.brainEnd }, universe, this.sober() ? null : stageScene(s, universe, this.narrow, this.session()));
+      brainEnd: s.brainEnd }, universe, scene);
+    return { ...plan, show: this.show() };
   }, { equal: samePlan });
+
+  /** SF-236-11 — « Montrer » en 3D : recalculé seulement quand la demande résolue change (même objet sinon). */
+  private readonly show = computed<ShowPlan3d | null>(() => {
+    const plan = directShow(this.signals().showFocus);
+    if (!plan) {
+      return null;
+    }
+    // Les panneaux de « Montrer » prennent la place restante du pool après ceux de la scène (T6).
+    const limit = (this.narrow ? PANEL_POOL.narrow : PANEL_POOL.wide) - 1;
+    return { ...plan, panels: plan.panels.slice(0, Math.max(1, limit)) };
+  }, { equal: (a, b) => a === b || (!!a && !!b && JSON.stringify(a) === JSON.stringify(b)) });
 
   /** SF-236-09 — la mémoire de session de l'écran (tickets vus, nuage du dépôt) : noms seulement, aucun appel. */
   private readonly memory = new SessionMemory();

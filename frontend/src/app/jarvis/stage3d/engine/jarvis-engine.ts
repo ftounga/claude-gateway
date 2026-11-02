@@ -410,7 +410,10 @@ class ThreeJarvisEngine implements JarvisEngine {
     this.universe?.setView(plan.universe.layout, plan.universe.graph, opening);
     // SF-236-08 — la scène 3D : panneaux (T-P1 / T-P2) et effets ; au banc, tout part de t = 0.
     const replay = opening && this.options.replayFromZero;
-    this.panels?.set(plan.scene?.panels ?? [], replay ? 0 : now, replay && plan.bancPanelsOut === true);
+    // SF-236-11 — « Montrer » : teintes imposées et allumage en cascade (T-M), ses panneaux après ceux de la scène.
+    this.universe?.setShow(plan.show ?? null);
+    this.panels?.set([...(plan.scene?.panels ?? []), ...(plan.show?.panels ?? [])], replay ? 0 : now,
+      replay && plan.bancPanelsOut === true);
     this.effects?.set(plan.scene?.effects ?? [], replay ? 0 : now, replay);
     const travel = plan.scene?.travel;
     if (travel && travel.id !== this.travelId) {

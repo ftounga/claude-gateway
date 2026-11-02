@@ -11,6 +11,7 @@ import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRe
 import { Layout3d, Node3d, Node3dKind, UniverseTouch } from '../jarvis-layout-3d';
 import { CORE_KEY, Graph3d, LinkState, stateAlpha } from '../jarvis-link-graph';
 import { HOLO_COLORS, HoloRole, rgb } from '../jarvis-motion';
+import { SHOW_STAGGER_MS, ShowPlan3d } from '../scenes3d/jarvis-show-3d';
 import { QualityLevel } from '../jarvis-render-capability';
 
 /**
@@ -66,6 +67,8 @@ interface Live {
   label: CSS2DObject | null;
   /** Rang du client du nœud (cascade de l'entrée T-E1). */
   clientIndex: number;
+  /** SF-236-11 (T-M) — attente avant de s'allumer (ms), pour la cascade de « Montrer ». */
+  delay: number;
 }
 
 /** Un nœud projeté à l'écran (sélection en espace écran). */
@@ -97,6 +100,10 @@ export class Universe3d {
   private readonly color = new Color();
   private readonly palette = new Map<HoloRole, number[]>();
   private signature = '';
+  /** SF-236-11 — teintes imposées par « Montrer » (vert connecté, éteint, attente…). */
+  private tones = new Map<string, HoloRole>();
+  private showSignature = '';
+  private lastGraph: Graph3d | null = null;
   /** SF-236-05 — l'entrée en cascade : avancement d'un client selon son rang (1 = posé). */
   reveal: (clientIndex: number) => number = () => 1;
   private readonly projected = new Vector3();
@@ -123,7 +130,35 @@ export class Universe3d {
   }
 
   /** Une nouvelle disposition ou de nouveaux états : reconstruit seulement si l'ensemble des nœuds change. */
+  /**
+   * SF-236-11 — « Montrer » : chaque élément montré prend sa teinte et s'allume en cascade (50 ms d'écart, T-M) ;
+   * la fin de « Montrer » rend leurs teintes d'origine.
+   */
+  setShow(show: ShowPlan3d | null): void {
+    const signature = show ? `${show.filter}|${show.keys.join(',')}` : '';
+    if (signature === this.showSignature) {
+      return;
+    }
+    this.showSignature = signature;
+    this.tones = new Map(Object.entries(show?.tones ?? {}) as [string, HoloRole][]);
+    for (const l of this.live) {
+      l.role = this.tones.get(l.node.key) ?? nodeRole(l.node);
+      const index = show ? show.keys.indexOf(l.node.key) : -1;
+      l.delay = index >= 0 ? index * SHOW_STAGGER_MS : 0;
+    }
+    if (this.lastGraph) {
+      const links = new Map(this.lastGraph.links.map((k) => [k.key, k]));
+      for (const end of this.linkEnds) {
+        const link = links.get(end.key);
+        if (link) {
+          end.role = this.tones.get(link.to) ?? link.role;
+        }
+      }
+    }
+  }
+
   setView(layout: Layout3d, graph: Graph3d, instant: boolean): void {
+    this.lastGraph = graph;
     const signature = layout.nodes.map((n) => `${n.kind}:${n.key}`).join('|') + '#'
       + graph.links.map((l) => l.key).join('|');
     if (signature !== this.signature) {
@@ -135,7 +170,7 @@ export class Universe3d {
       if (live) {
         live.node = n;
         live.target = nodeAlpha(n, graph.nodes.get(n.key));
-        live.role = nodeRole(n);
+        live.role = this.tones.get(n.key) ?? nodeRole(n);
         if (instant) {
           live.x = n.x;
           live.y = n.y;
@@ -152,7 +187,7 @@ export class Universe3d {
         continue;
       }
       end.target = stateAlpha(link.state);
-      end.role = link.role;
+      end.role = this.tones.get(link.to) ?? link.role;
       if (instant) {
         end.alpha = end.target;
       }
@@ -174,7 +209,12 @@ export class Universe3d {
       l.x += (l.node.x - l.x) * kMove;
       l.y += (l.node.y - l.y) * kMove;
       l.z += (l.node.z - l.z) * kMove;
-      l.alpha += (l.target - l.alpha) * (l.target > l.alpha ? kUp : kDown);
+      if (l.delay > 0 && l.target > l.alpha) {
+        // T-M — l'élément montré attend son tour dans la cascade.
+        l.delay -= dt;
+      } else {
+        l.alpha += (l.target - l.alpha) * (l.target > l.alpha ? kUp : kDown);
+      }
       l.shown = l.alpha * this.reveal(l.clientIndex);
     }
     for (const e of this.linkEnds) {
@@ -220,7 +260,7 @@ export class Universe3d {
       const live: Live = {
         node: n, x: instant || !parent ? n.x : parent.x, y: instant || !parent ? n.y : parent.y,
         z: instant || !parent ? n.z : parent.z, alpha: instant ? nodeAlpha(n, graph.nodes.get(n.key)) : 0, target: 0,
-        shown: 0, role: nodeRole(n), label: null, clientIndex: 0,
+        shown: 0, role: this.tones.get(n.key) ?? nodeRole(n), label: null, clientIndex: 0, delay: 0,
       };
       live.label = this.makeLabel(live);
       return live;

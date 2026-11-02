@@ -5,6 +5,8 @@ import { EMPTY_VIEW, IDLE_SCREEN, ScreenSignals, StagePlan, UniverseView, stageS
 } from './jarvis-stage-director';
 import { BANC_SCENE_VIEWS, BANC_SESSION_FILES, sceneOf } from './scenes3d/jarvis-scene3d.fixture';
 import { SessionMemory } from './scenes3d/jarvis-session-memory';
+import { ShowFilter, resolveShow } from '../scenes/jarvis-show';
+import { directShow } from './scenes3d/jarvis-show-3d';
 import { baseName } from '../scenes/jarvis-scene-reader';
 import { ScenePlan3d } from './scenes3d/jarvis-scene3d.model';
 
@@ -38,6 +40,9 @@ function bancBrains(scene: string): { brains: BrainsState; fromDeployed: boolean
 
 /** Le plan que le banc pose, et le niveau de voix simulé (ondes ∝ niveau). */
 export function bancPlan(scene: string, narrow: boolean): { plan: StagePlan; voice: number } {
+  if (scene.startsWith('montrer-')) {
+    return { plan: bancShow(scene.slice('montrer-'.length) as ShowFilter, narrow), voice: 0 };
+  }
   const staged = bancScene(scene, narrow);
   if (staged) {
     return { plan: { mood: staged.mood, wakes: 0, brains: FOLDED, universe: staged.view, scene: staged.plan,
@@ -50,6 +55,15 @@ export function bancPlan(scene: string, narrow: boolean): { plan: StagePlan; voi
       bancCamera: scene === 'zoom' ? 'zoom' : scene === 'dezoom' ? 'dezoom' : undefined, scene: null },
     voice: mood === 'ecoute' || mood === 'parole' ? 0.7 : 0,
   };
+}
+
+/** SF-236-11 — « Montrer » au banc : la demande résolue sur l'univers de test, comme à l'écran. */
+function bancShow(filter: ShowFilter, narrow: boolean): StagePlan {
+  const focus = resolveShow(testUniverse(), { filter, client: null });
+  const signals: ScreenSignals = { ...IDLE_SCREEN, universe: testUniverse(), subjectId: 's-forge', showFocus: focus,
+    shown: focus?.items.map((i) => i.node.key) ?? null };
+  return { mood: 'parole', wakes: 0, brains: FOLDED, universe: universeView(signals, false, narrow), scene: null,
+    show: directShow(focus) };
 }
 
 /** SF-236-08 — les scènes 3D du banc (`scene-<nom>`, et les séquences des panneaux) sur l'univers de test. */

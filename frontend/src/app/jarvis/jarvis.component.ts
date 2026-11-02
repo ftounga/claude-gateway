@@ -67,6 +67,7 @@ import { UniverseTouch } from './stage3d/jarvis-layout-3d';
 import { ScreenSignals, sameScreen } from './stage3d/jarvis-stage-director';
 import { isShowDismiss, stripShowLines } from './scenes/jarvis-show';
 import { ticketKeys } from './scenes/jarvis-scene-reader';
+import { arrivalDelay } from './stage3d/jarvis-panels';
 import {
   ASK_SUBJECT, AnnouncementQueue, CORRECTION_WINDOW_MS, FastDelegation, FastDone, JarvisFastBrainClient,
   announcementText, isCorrection, isRepeatCommand,
@@ -332,6 +333,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    if (this.toSendTimer !== null) {
+      clearTimeout(this.toSendTimer);
+    }
     // F-236 / SF-236-06 — la mesure du rendu de cette ouverture (3D ou 2D, compteurs sans contenu).
     const render = this.stage3dRef?.report();
     if (render) {
@@ -1539,6 +1543,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
       spokenTickets: ticketKeys(this.spoken()),
       // SF-236-10 — les étapes cochées pendant le tour : la perle du chapelet se remplit avant la relecture.
       stepsDone: reader.stepsDone,
+      // SF-236-11 — « Montrer » résolu sur l'univers (même objet tant que la demande ne change pas).
+      showFocus: this.scenes.focus(),
     };
   }, { equal: sameScreen });
 
@@ -1546,6 +1552,35 @@ export class JarvisComponent implements OnInit, OnDestroy {
   readonly settingsOpen = signal(false);
   /** F-236 / SF-236-06 — le compteur « À envoyer » du HUD (univers + messages finis pendant le tour). */
   readonly toSendCount = computed(() => (this.scenes.universe()?.toSendCount ?? 0) + this.scenes.state().toSendAdded);
+  /**
+   * F-236 / SF-236-11 (T-P3) — le nombre affiché : en 3D, il ne prend +1 qu'à l'arrivée de l'enveloppe qui vole
+   * (1,1 s), et le compteur gonfle (`rebond`, 0,5 s). En 2D, immédiat.
+   */
+  readonly toSendShown = signal(0);
+  readonly toSendBump = signal(false);
+  private toSendTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly toSendFollow = effect(() => {
+    const next = this.toSendCount();
+    untracked(() => {
+      const delay = arrivalDelay(this.toSendShown(), next, this.stage3dRef?.rendering() === '3d');
+      if (this.toSendTimer !== null) {
+        clearTimeout(this.toSendTimer);
+        this.toSendTimer = null;
+      }
+      if (delay === 0) {
+        this.toSendShown.set(next);
+        return;
+      }
+      this.toSendTimer = setTimeout(() => {
+        this.toSendTimer = setTimeout(() => {
+          this.toSendBump.set(false);
+          this.toSendTimer = null;
+        }, 500);
+        this.toSendShown.set(next);
+        this.toSendBump.set(true);
+      }, delay);
+    });
+  });
   /** F-236 / SF-236-06 — plein écran proposé sur PC (pointeur fin, API disponible). */
   readonly canFullscreen = typeof document !== 'undefined' && document.fullscreenEnabled === true
     && typeof matchMedia === 'function' && matchMedia('(pointer: fine)').matches;

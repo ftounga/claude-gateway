@@ -181,6 +181,15 @@
   text-transform: uppercase;
 }
 
+/* F-236 / SF-236-11 (T-P3) — l'enveloppe arrive : le compteur gonfle 1 → 1,12 → 1 (`rebond`, 0,5 s). */
+@keyframes jv-count-bump {
+  50% { transform: scale(1.12); }
+}
+
+.jv__count--bump {
+  animation: jv-count-bump 500ms var(--jv-ease-rebond, ease-out);
+}
+
 .jv__fullscreen,
 .jv__settings-toggle {
   flex: none;

@@ -8,6 +8,8 @@ import { directScene } from './scenes3d';
 import { boundPanels } from './jarvis-panels';
 import { EMPTY_SESSION, SessionSnapshot } from './scenes3d/jarvis-session-memory';
 import { ScenePlan3d } from './scenes3d/jarvis-scene3d.model';
+import { ShowFocus } from '../scenes/jarvis-show';
+import { ShowPlan3d } from './scenes3d/jarvis-show-3d';
 
 /**
  * F-236 — **le directeur de scène** (cadrage §3). Fichier <b>pur</b> : il lit les signaux existants de l'écran et
@@ -63,12 +65,14 @@ export interface ScreenSignals {
   spokenTickets: readonly string[];
   /** H2 — SF-236-10 : étapes faites pendant le tour, par chantier (`ReaderState.stepsDone`). */
   stepsDone: Readonly<Record<string, number>>;
+  /** H3 — SF-236-11 : « Montrer » résolu sur l'univers (`resolveShow`), `null` sinon. */
+  showFocus: ShowFocus | null;
 }
 
 export const IDLE_SCREEN: ScreenSignals = { state: 'repos', frozen: false, waiting: false, conversing: false,
   wakeCalls: 0, delegations: 0, fastBrainOn: false, turnActive: false, brainEnd: 'normal', universe: null,
   subjectId: null, lit: [], said: [], shown: null, scene: null, pulses: 0, spokenTickets: [],
-  stepsDone: {} };
+  stepsDone: {}, showFocus: null };
 
 /** Deux relevés de l'écran identiques (évite de recalculer le plan pour rien). */
 export function sameScreen(a: ScreenSignals, b: ScreenSignals): boolean {
@@ -78,7 +82,7 @@ export function sameScreen(a: ScreenSignals, b: ScreenSignals): boolean {
     && a.subjectId === b.subjectId && sameKeys(a.lit, b.lit) && sameKeys(a.said, b.said)
     && (a.shown === b.shown || (!!a.shown && !!b.shown && sameKeys(a.shown, b.shown)))
     && a.scene === b.scene && a.pulses === b.pulses && sameKeys(a.spokenTickets, b.spokenTickets)
-    && a.stepsDone === b.stepsDone;
+    && a.stepsDone === b.stepsDone && a.showFocus === b.showFocus;
 }
 
 function sameKeys(a: readonly string[], b: readonly string[]): boolean {
@@ -135,6 +139,8 @@ export interface StagePlan {
   scene: ScenePlan3d | null;
   /** Banc seulement : les panneaux de la scène sortent depuis t = 0 (séquence T-P2). */
   bancPanelsOut?: boolean;
+  /** SF-236-11 — « Montrer » en 3D (S20, T-M), `null` sinon. */
+  show?: ShowPlan3d | null;
 }
 
 /** SF-236-08 — la scène F-234 en cours ⇒ son plan 3D, ancré sur l'univers posé. */
@@ -166,7 +172,7 @@ export function directStage(signals: StageSignals, universe: UniverseView = EMPT
 export function samePlan(a: StagePlan, b: StagePlan): boolean {
   return a.mood === b.mood && a.wakes === b.wakes && a.brains.target === b.brains.target
     && a.brains.variant === b.brains.variant && a.brains.pearls === b.brains.pearls && a.universe === b.universe
-    && sameScenePlan(a.scene, b.scene);
+    && sameScenePlan(a.scene, b.scene) && (a.show ?? null) === (b.show ?? null);
 }
 
 /** Deux plans de scène identiques (petits objets déclaratifs : comparaison de leur forme écrite). */
