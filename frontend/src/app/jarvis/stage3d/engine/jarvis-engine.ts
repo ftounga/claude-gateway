@@ -24,6 +24,7 @@ import { HEART_RADIUS } from './jarvis-heart-3d';
 import { Heart3d } from './jarvis-heart-3d';
 import { Universe3d } from './jarvis-universe-3d';
 import { Node3d } from '../jarvis-layout-3d';
+import { CORE_KEY } from '../jarvis-link-graph';
 import { JarvisPost } from './jarvis-post';
 import { Effects3d } from './jarvis-effects-3d';
 import { Panels3d } from './jarvis-panels-3d';
@@ -358,6 +359,9 @@ class ThreeJarvisEngine implements JarvisEngine {
   private focusNode(): Node3d | null {
     const key = this.plan.scene?.focus;
     const view = this.plan.universe;
+    if (key === CORE_KEY) {
+      return null; // scène centrée sur le cœur : vue d'ensemble
+    }
     return (key ? view.layout.nodes.find((n) => n.key === key) : undefined) ?? view.focus;
   }
 

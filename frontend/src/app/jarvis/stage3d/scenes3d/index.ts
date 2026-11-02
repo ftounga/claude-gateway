@@ -5,6 +5,9 @@ import { sceneGeneric } from './jarvis-scene-sgen';
 import { sceneCommande, sceneFichiers, sceneTickets } from './jarvis-scenes-poste';
 import { sceneAttente, sceneEtape, sceneLePoint, sceneOui, scenePointsDeRoute } from './jarvis-scenes-chantier';
 import { sceneMessage } from './jarvis-scene-message';
+import {
+  sceneCreation, sceneEssaim, sceneMemoire, scenePassation, sceneVeille, sceneVideo, sceneWeb,
+} from './jarvis-scenes-monde';
 
 /**
  * F-236 / SF-236-08 — **le registre des scènes 3D** (cadrage §3.2, prolonge F-234 D17).
@@ -27,6 +30,14 @@ export const SCENES_3D: Readonly<Record<string, Scene3d>> = {
   S15: sceneLePoint,
   // SF-236-11 — À envoyer.
   S1: sceneMessage,
+  // SF-236-12 — web, création, vidéo, passation, mémoire, essaim, veille.
+  S5b: sceneVideo,
+  S6: sceneWeb,
+  S7: sceneCreation,
+  S10: scenePassation,
+  S12: sceneMemoire,
+  S13: sceneEssaim,
+  S17: sceneVeille,
 };
 
 /**
@@ -34,8 +45,7 @@ export const SCENES_3D: Readonly<Record<string, Scene3d>> = {
  * une (SF-236-09 → 13) ; restent la vague D F-234 (S18 Radar, S19 Teams, D-PO-7) et S16 (« S-GEN libellée »).
  */
 export const SGEN_3D_IDS: ReadonlySet<string> = new Set([
-  'S5b', 'S6', 'S7', 'S10', 'S12', 'S13', 'S16', 'S17',
-  'S18', 'S19',
+  'S16', 'S18', 'S19',
 ]);
 
 /** Les scènes que le lecteur F-234 pose hors registre (S4 tickets, S1 messages, S2 autorisation, S5b vidéo). */

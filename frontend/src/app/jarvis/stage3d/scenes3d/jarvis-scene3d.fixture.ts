@@ -52,6 +52,21 @@ export const BANC_SCENE_VIEWS: Readonly<Record<string, SceneView>> = {
     { envelope: 'mail', to: 'Zahi', subject: 'Bascule DNS samedi', finished: false }),
   envoi: sceneOf('S1', 'block-mail', 'Mail prêt · à envoyer', { entity: ZAHI, detail: 'À : Zahi · Objet : Bascule DNS' },
     { envelope: 'mail', to: 'Zahi', subject: 'Bascule DNS samedi', finished: true }),
+  // SF-236-12 — web, création, vidéo, passation, mémoire, essaim, veille.
+  web: sceneOf('S6', 'web_search', 'Recherche sur le web', { detail: 'TTL DNS bascule Route53' },
+    { address: 'TTL DNS bascule Route53', web: 'search' }),
+  page: sceneOf('S7', 'page_publish', 'Page publiée', {}, { creation: 'page', title: 'Runbook de bascule DNS' }),
+  montage: sceneOf('S7', 'video-montage', 'Salle de montage', {}, { creation: 'video', title: 'Cours bascule',
+    checks: 3 }),
+  video: sceneOf('S5b', 'video-watch', 'Regarder une vidéo', {}, { film: 'demo-bascule.mp4',
+    extract: 'Extraction des plans · 12 images' }),
+  passation: sceneOf('S10', 'ouvrir_sujet', 'Passation vers un sujet', { detail: 'Doc archi' },
+    { fromLabel: 'Migration Forge', toLabel: 'Doc archi', toKey: 's-doc' }),
+  souvenir: sceneOf('S12', 'recall', 'Souvenir rappelé', { detail: 'bascule DNS' }, { repere: 'Tour 34' }),
+  carte: sceneOf('S12', 'carte_chercher', 'Carte du savoir', { detail: 'ingress forge' }),
+  essaim: sceneOf('S13', 'explore', '4 explorations déléguées', { count: 4 }, { satellites: [
+    'Où est défini le TTL ?', 'Qui consomme la zone ?', 'Quels ingress pointent ici ?', 'Le runbook existe ?'] }),
+  veille: sceneOf('S17', 'veille_poser', 'Veille posée', { detail: 'Jira FORGE · lun → ven 9 h' }),
 };
 
 /** SF-236-09 — une session de test : des fichiers lus et écrits dans trois dossiers (nuage du dépôt). */
