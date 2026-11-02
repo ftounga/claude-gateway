@@ -202,6 +202,23 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     fixture.destroy();
   }));
 
+  it('F-236 / SF-236-04 — toucher un sujet de l’univers 3D = le choisir ; un client ou un chantier ne navigue pas', fakeAsync(() => {
+    configure({});
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    const component = fixture.componentInstance;
+    const choose = spyOn(component, 'chooseSubject').and.callThrough();
+    component.touched3d({ key: 'h-cagip', kind: 'client' });
+    component.touched3d({ key: 'w-1#3', kind: 'chantier', subjectId: 'w-1' });
+    expect(choose).not.toHaveBeenCalled();
+    component.touched3d({ key: 'w-1', kind: 'subject', subjectId: 'w-1' });
+    expect(choose).toHaveBeenCalledOnceWith('w-1');
+    expect(jarvisApi.usage).toHaveBeenCalledWith('TOUCH');
+    component.ngOnDestroy();
+    fixture.destroy();
+  }));
+
   it('F-235 / SF-235-09 — humour : léger par défaut, bascule vers aucun, retour si l’enregistrement échoue', fakeAsync(() => {
     configure({});
     const fixture = TestBed.createComponent(JarvisComponent);

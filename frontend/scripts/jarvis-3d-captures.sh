@@ -33,13 +33,23 @@ for scene in $SCENES; do
     for size in "390,844:telephone:moyen" "1920,1080:pc:haut"; do
       IFS=: read -r window device level <<<"$size"
       png="$OUT/${scene}-t${t}-${device}.png"
-      log="$(mktemp)"
-      profile="$(mktemp -d)"
-      "$CHROME" --headless=old --disable-gpu-sandbox --use-angle=swiftshader --enable-unsafe-swiftshader \
-        --user-data-dir="$profile" --no-first-run --hide-scrollbars --window-size="$window" \
-        --virtual-time-budget=6000 --enable-logging=stderr --v=0 \
-        --screenshot="$png" "$BASE/jarvis-banc?banc=${scene}&t=${t}&niveau=${level}" >"$log" 2>&1 || true
-      rm -rf "$profile"
+      # SF-236-04 — le rendu logiciel est parfois en retard sur le temps virtuel (première image pas encore posée) :
+      # une capture vide est refaite, au plus trois fois, avant d'être déclarée en échec.
+      for attempt in 1 2 3; do
+        log="$(mktemp)"
+        profile="$(mktemp -d)"
+        rm -f "$png"
+        "$CHROME" --headless=old --disable-gpu-sandbox --use-angle=swiftshader --enable-unsafe-swiftshader \
+          --user-data-dir="$profile" --no-first-run --hide-scrollbars --window-size="$window" \
+          --virtual-time-budget=6000 --enable-logging=stderr --v=0 \
+          --screenshot="$png" "$BASE/jarvis-banc?banc=${scene}&t=${t}&niveau=${level}" >"$log" 2>&1 || true
+        rm -rf "$profile"
+        if [[ -s "$png" ]] && awk -v s="$(node "$HERE/png-coverage.mjs" "$png")" -v m="$MIN_COVERAGE" \
+            'BEGIN { exit !(s >= m) }'; then
+          break
+        fi
+        [[ $attempt -lt 3 ]] && rm -f "$log"
+      done
       if [[ ! -s "$png" ]]; then
         echo "ÉCHEC $png : aucune capture produite." >&2
         failed=1

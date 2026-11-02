@@ -1,0 +1,51 @@
+// F-236 / SF-236-04 — étiquettes de l'univers 3D de Jarvis (DOM, CSS2D, T5) : posées par le moteur dans le calque
+// `.jv3d-labels` au-dessus de l'écran (hors gabarit, d'où ::ng-deep). Space Grotesk 600 capitales espacées
+// (DESIGN_SYSTEM §23, goût PO V2), texte jamais flouté, contraste ≥ 5,8:1 ; un sujet est un vrai bouton (≥ 44 px).
+.jv3d-labels {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+:host ::ng-deep .jv3d-label {
+  font-family: var(--cg-font-heading);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--cg-holo-text, #F0954F);
+  text-shadow: 0 0 4px var(--cg-navy, #0B1020), 0 0 8px var(--cg-navy, #0B1020);
+  transition: color var(--jv-dur-fade, 400ms) var(--jv-ease-glisse, ease-in-out);
+
+  &[data-state='latent'] {
+    opacity: 0.8;
+  }
+
+  &[data-state='lit'] {
+    color: var(--cg-holo-core, #FFF3E4);
+  }
+
+  &--client {
+    font-size: 12px;
+    letter-spacing: 0.12em;
+  }
+}
+
+:host ::ng-deep button.jv3d-label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+
+  &:focus-visible {
+    outline: 2px solid var(--cg-holo-text, #F0954F);
+    outline-offset: 2px;
+  }
+}

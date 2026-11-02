@@ -1,14 +1,17 @@
 import {
   ChangeDetectionStrategy, Component, ElementRef, InjectionToken, NgZone, OnDestroy, computed, effect, inject, input,
-  isDevMode, signal, untracked,
+  isDevMode, output, signal, untracked,
 } from '@angular/core';
 
 import { BancParams, frozenClock, readBanc, realClock, seededRandom } from './jarvis-banc';
 import { JARVIS_3D_LOADER, JarvisEngine, JarvisEngineFactory } from './jarvis-engine.contract';
 import { FrameHost, browserFrameHost } from './jarvis-frame-loop';
 import { MOTION_DURATIONS } from './jarvis-motion';
+import { UniverseTouch } from './jarvis-layout-3d';
 import { SLEEP_AFTER_MS, SleepWatch } from './jarvis-heart';
-import { IDLE_SCREEN, ScreenSignals, StagePlan, directStage, samePlan } from './jarvis-stage-director';
+import {
+  IDLE_SCREEN, ScreenSignals, StagePlan, UniverseView, directStage, samePlan, universeView,
+} from './jarvis-stage-director';
 import {
   ContextLossPolicy, JARVIS_RENDER_PROBE, QualityLevel, RenderDecision, SESSION_CONTEXT_LOSS, canOffer3d, decideRender,
   readManual2d, writeManual2d,
@@ -76,6 +79,12 @@ export class JarvisStage3dComponent implements OnDestroy {
   readonly signals = input<ScreenSignals>(IDLE_SCREEN);
   /** Banc seulement : un plan imposé. */
   readonly planOverride = input<StagePlan | null>(null);
+  /** SF-236-04 — le calque des étiquettes (DOM, au-dessus de l'écran), fourni par la page. */
+  readonly labelLayer = input<HTMLElement | null>(null);
+  /** SF-236-04 — un nœud touché : sujet ⇒ « passe sur X » (l'écran décide), les autres ⇒ regarder. */
+  readonly touched = output<UniverseTouch>();
+  /** Téléphone (portrait étroit), relevé à l'ouverture. */
+  private readonly narrow = typeof matchMedia === 'function' && matchMedia('(max-width: 767px)').matches;
   /** SF-236-02 — le niveau du micro ou de la voix (0-1), lu à chaque image hors zone. */
   readonly voiceLevel = input<() => number>(() => 0);
 
@@ -114,8 +123,14 @@ export class JarvisStage3dComponent implements OnDestroy {
     const s = this.signals();
     return directStage({ state: s.state, frozen: s.frozen, waiting: s.waiting, asleep: this.asleep(),
       wakes: this.wakes(), delegations: s.delegations, fastBrainOn: s.fastBrainOn, turnActive: s.turnActive,
-      brainEnd: s.brainEnd });
+      brainEnd: s.brainEnd }, this.universe());
   }, { equal: samePlan });
+
+  /** SF-236-04 — l'univers : recalculé seulement quand ce qui le décide change. */
+  private readonly universe = computed<UniverseView>(() => {
+    const s = this.signals();
+    return universeView(s, this.asleep(), this.narrow);
+  }, { equal: (a, b) => a === b || (a.layout.nodes.length === 0 && b.layout.nodes.length === 0) });
 
   readonly decision = computed<RenderDecision>(() => {
     const decision = decideRender(this.probe, {
@@ -242,6 +257,8 @@ export class JarvisStage3dComponent implements OnDestroy {
         replayFromZero: this.banc !== null,
         onQualityChange: (next) => this.zone.run(() => this.level.set(next)),
         onLowPerf: () => this.zone.run(() => this.lowPerf.set(true)),
+        labelHost: untracked(() => this.labelLayer()),
+        onTouch: (touch) => this.zone.run(() => this.touched.emit(touch)),
         onFirstFrame: () => this.zone.run(() => {
           if (untracked(() => this.decision()).mode === '3d') {
             this.shown.set(true);
