@@ -84,7 +84,8 @@ public class JarvisInterviewService {
     // ---- Cadence (D13) ----
 
     /**
-     * Vrai si l'écran peut proposer l'entretien : aucun contenu au portrait, moins de 3 propositions, la dernière il y
+     * Vrai si l'écran peut proposer l'entretien : aucun entretien validé, aucun contenu au portrait, moins de 3
+     * propositions, la dernière il y
      * a 7 jours au moins. (Présentation et tâche en cours sont vérifiées par l'écran, qui seul les connaît.)
      */
     @Transactional(readOnly = true)
@@ -94,7 +95,10 @@ public class JarvisInterviewService {
             return new Offer(true, 0);
         }
         JarvisPortrait p = row.get();
-        boolean empty = portraits.snapshot(userId).map(s -> !s.hasContent()).orElse(true);
+        // F-241 / SF-241-06 (D4) — un entretien validé clôt la proposition, même si le portrait est vidé ensuite ;
+        // la mise à jour reste à la voix (D16).
+        boolean empty = p.getLastInterviewAt() == null
+                && portraits.snapshot(userId).map(s -> !s.hasContent()).orElse(true);
         return new Offer(eligible(empty, p.getInterviewOffers(), p.getInterviewOfferedAt(),
                 OffsetDateTime.now(clock)), p.getInterviewOffers());
     }

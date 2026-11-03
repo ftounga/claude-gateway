@@ -549,3 +549,37 @@
   font-size: 14px;
   overflow-wrap: anywhere;
 }
+
+/* F-241 / SF-241-06 (E6) — l'entretien en cours : même carte navy que la proposition (§22), aucune couleur nouvelle ;
+   à 360 px, les boutons passent sous le libellé (retour à la ligne, jamais de débordement). */
+.jv__interview-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--cg-space-4) + 72px);
+  margin-inline: auto;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--cg-space-2);
+  width: fit-content;
+  max-width: calc(100vw - 2 * var(--cg-space-4));
+  box-sizing: border-box;
+  padding: var(--cg-space-2) var(--cg-space-3);
+  border: 1px solid color-mix(in srgb, var(--cg-cream) 18%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--cg-navy-2) 70%, transparent);
+  color: var(--cg-cream);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.jv__interview-step {
+  font-weight: 500;
+}
+
+.jv__interview-stop {
+  color: var(--cg-cream);
+}
