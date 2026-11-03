@@ -1,7 +1,7 @@
 # Mini-spec — F-240 / SF-240-06 — Porte prod : promesses et dates relatives (consigne v11)
 
 ## Identifiant
-`F-240 / SF-240-06` · Feature parente `F-240` « Jarvis va à l'essentiel » · Statut `in progress` · 2026-11-03 ·
+`F-240 / SF-240-06` · Feature parente `F-240` « Jarvis va à l'essentiel » · Statut `done` · 2026-11-03 ·
 Branche `feat/SF-240-06-porte-prod-promesses-dates`
 
 ## Objectif
@@ -90,7 +90,7 @@ Seuils, juges, sévérité ; lire un agenda (F-243) ; l'écran ; déployer.
 ## Technique
 - Aucun endpoint, aucune table, aucune migration.
 - `JarvisFastBrainPrompt` (v11), `JarvisFastGuards` (`claimsIgnorance`, `namesMissingSource`), `JarvisFastBrainService`
-  (porte des phrases, `REASON_UNKNOWN`), `JarvisOralBench` (`dated`, `load(LocalDate)`), `JarvisOralBenchService`
+  (porte des phrases, `REASON_UNKNOWN`, note avant l'en-tête écartée), `JarvisOralNote` (v3), `JarvisOralBench` (`dated`, `load(LocalDate)`), `JarvisOralBenchService`
   (aujourd'hui), `oral-bench-scenarios.json` ; sonde live du scénario (portrait) dans `JarvisConversationBenchLiveTest`.
 - Isolation : aucun nouvel accès aux données ; rapports du banc toujours rangés et relus sous `user_id`.
 
@@ -108,7 +108,36 @@ Aucune (ni auth, ni tenant, ni plans/limites, ni routage).
 ## Dépendances
 SF-240-05 (#1547) mergée. Aucune question ouverte.
 
+## Relevé aux pré-bancs de cette SF (même périmètre : promesses et dates)
+- **Note avant l'en-tête (C21, 2 passages sur 2)** : le cerveau rapide écrivait parfois une ligne de raisonnement
+  AVANT « compris: » (« Phrase incompréhensible, je demande de répéter sans la citer. ») ; la porte ne retenait
+  l'en-tête qu'en première ligne : la note **et** la ligne « compris: » étaient dites (robotique, transcription citée).
+  Correctif déterministe (`SentenceGate.header`) : une première ligne qui n'est pas l'en-tête est retenue jusqu'à la
+  suivante ; si celle-ci est « compris: », la note est écartée. Une réponse sans en-tête reste dite (découpée en
+  phrases comme le reste). Pas de changement de consigne.
+- **O7, la confirmation (1 passage sur 2 après correction des dates)** : la consigne orale v2 se contredisait — un
+  message pour un tiers « prêt, à envoyer depuis le terminal » (F-231 D11 : aucun outil n'écrit à un tiers) **et**
+  « envoyer un courriel » parmi les actions à confirmer (D4). Opus choisissait l'une ou l'autre ; dans le second cas il
+  promettait un envoi qu'il ne sait pas faire (le défaut même de P02). **Consigne orale v3** (dans le message, préfixe
+  système intact) : demandé à **rédiger** ⇒ « Message pour X prêt, à envoyer depuis le terminal » ; demandé à
+  **envoyer** ⇒ action qui engage : la ligne 🎙 nomme l'objet et le destinataire, dit qu'il est préparé pour l'envoi
+  depuis le terminal et finit par « Vous confirmez ? » ; jamais « je l'envoie ». Le scénario O7 et la porte sont
+  inchangés.
+
+## Résultats des pré-bancs live (code de la passerelle, clé lue à la volée, 2026-11-03)
+| Banc | Version | Passage 1 | Passage 2 |
+|---|---|---|---|
+| CONVERSATION | v11 seule | 96,4 % ✗ (C21 note dite ; C24 délégation inutile) | 98,2 % ✗ (C21) |
+| CONVERSATION | **v11 + en-tête** | **100 % ✓** | **98,2 % ✓** |
+| PIECES | v11 + en-tête | **37/37 ✓** | **37/37 ✓** |
+| Parole | dates seules (note v2) | ✗ O7 « prêt, à envoyer depuis le terminal » | ✓ |
+| Parole | **dates + note v3** | **✓** (p90 25 mots, verdict d'abord 10/10) | **✓** (p90 27) |
+Sonde P02 ×6 (portrait du scénario) : 6/6 `deleguer`, annonce « Je cherche ce qui est prévu ce week-end, Monsieur. »
+O7 v3 : « Monsieur, je prépare le compte rendu du comité Helios du 2 novembre pour Paul Martin, à envoyer depuis le
+terminal. Vous confirmez ? » — objet + destinataire, sans invitation (2/2).
+
 ## Notes et décisions
-- Consigne changée **une fois** (v10 → v11) : une nouvelle entrée de cache.
+- Consigne du cerveau rapide changée **une fois** (v10 → v11) : une nouvelle entrée de cache. Consigne orale v2 → v3
+  (portée par le message : aucun effet sur le préfixe caché).
 - Le filet ne remplace pas la consigne : il garantit qu'une offre de source inexistante n'est **jamais dite**, même
   quand le modèle dévie (stabilité demandée).
