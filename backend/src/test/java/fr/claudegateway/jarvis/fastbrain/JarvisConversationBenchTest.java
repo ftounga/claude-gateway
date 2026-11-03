@@ -58,6 +58,25 @@ class JarvisConversationBenchTest {
     }
 
     @Test
+    void f240_05AnAnyTurnDelegatedStaysWithinBudgetButARepondreTurnDelegatedStillBlowsIt() {
+        JarvisConversationBench.TurnVerdict delegatedAny = new JarvisConversationBench.TurnVerdict("P", 1, "X",
+                "deleguer", "any", true, 4, true, false, false, true, false, false, false,
+                "Je regarde votre agenda du week-end, Monsieur.", "délégation justifiée");
+        JarvisConversationBench.ScenarioVerdict any = JarvisConversationBench.scenario(scenario("P", "any"),
+                List.of(delegatedAny), SET, List.of(new BigDecimal("0.01")));
+        assertThat(any.passed()).isTrue();
+        assertThat(any.budgetEur()).isEqualByComparingTo(SET.budgetEurPerTurn().add(SET.opusTurnEur()));
+
+        JarvisConversationBench.TurnVerdict delegatedChat = new JarvisConversationBench.TurnVerdict("R", 1, "X",
+                "deleguer", "repondre", true, 4, true, false, false, true, false, false, false,
+                "Je regarde votre agenda du week-end, Monsieur.", "ok");
+        JarvisConversationBench.ScenarioVerdict repondre = JarvisConversationBench.scenario(scenario("R", "repondre"),
+                List.of(delegatedChat), SET, List.of(new BigDecimal("0.01")));
+        assertThat(repondre.passed()).isFalse();
+        assertThat(repondre.reasons()).anyMatch(r -> r.contains("budget dépassé"));
+    }
+
+    @Test
     void moreThanOneReturnQuestionInAScenarioFails() {
         JarvisConversationBench.TurnVerdict asks = new JarvisConversationBench.TurnVerdict("S", 1, "X", "repondre",
                 "repondre", true, 4, true, false, false, true, true, false, false, "Et vous ?", "ok");

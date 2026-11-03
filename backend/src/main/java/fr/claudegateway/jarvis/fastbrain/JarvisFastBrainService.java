@@ -213,8 +213,17 @@ public class JarvisFastBrainService {
      */
     static final String AUTO_ANNOUNCE = "";
 
-    /** L'annonce d'une délégation demandée par le PO (« vérifie ») : elle répond à la demande elle-même. */
-    static final String FORCED_ANNOUNCE = "Je vérifie.";
+    /**
+     * L'annonce d'une délégation demandée par le PO (« vérifie »), à défaut d'objet nommable. F-240 / SF-240-05 :
+     * « Je vérifie. » seul était jugé creux ; l'annonce dit désormais ce qui est vérifié ({@link #forcedAnnounce}).
+     */
+    static final String FORCED_ANNOUNCE = "Je vérifie de nouveau ma dernière réponse, Monsieur.";
+
+    /** F-240 / SF-240-05 — au plus ce nombre de tickets nommés dans l'annonce d'office. */
+    static final int FORCED_MAX_TICKETS = 3;
+
+    private static final java.util.regex.Pattern FORCED_CHANTIER = java.util.regex.Pattern
+            .compile("(?iu)\\bchantier (\\d{1,4})\\b");
 
     private final AiAgentProvider provider;
     private final JarvisFastBrainProperties properties;
@@ -726,7 +735,7 @@ public class JarvisFastBrainService {
         // D9d : « vérifie », « demande à Opus », « c'est faux »… ⇒ Opus, sans appel au cerveau rapide.
         if (JarvisFastGuards.forcesDelegation(request.text())) {
             // F-240 / SF-240-04 — au banc (à blanc), la mémoire de session n'est pas lue.
-            return forced(request, !bench);
+            return forced(request, !bench, fixedContext);
         }
         // F-239 / SF-239-11 — jamais d'escalade de coût : au-delà du budget, le cerveau rapide CONTINUE (10 à 50 fois
         // moins cher qu'Opus) ; au plafond dur, une réponse fixe, aucun appel ; quota du compte atteint, de même.
@@ -1129,25 +1138,70 @@ public class JarvisFastBrainService {
      * parole elle-même), sans appel au cerveau rapide.
      */
     Outcome forced(Request request) {
-        return forced(request, true);
+        return forced(request, true, null);
     }
 
-    private Outcome forced(Request request, boolean withMemory) {
+    private Outcome forced(Request request, boolean withMemory, String fixedContext) {
         String previous = null;
+        String previousAnswer = null;
         if (memory != null && withMemory) {
             List<JarvisFastMemory.Exchange> recalled = memory.recall(request.userId());
             if (!recalled.isEmpty()) {
                 previous = recalled.get(recalled.size() - 1).said();
+                previousAnswer = recalled.get(recalled.size() - 1).answered();
             }
         }
+        // F-240 / SF-240-05 — l'annonce dit ce qui est vérifié : la dernière réponse (mémoire, sinon le fil).
+        String context;
+        try {
+            context = fixedContext != null ? fixedContext : context(request);
+        } catch (RuntimeException e) {
+            context = null;
+        }
+        String announce = forcedAnnounce(previousAnswer, JarvisFastGuards.lastOpusAnswer(context),
+                request.workspace() == null ? null : request.workspace().getName());
         String said = request.text() == null ? "" : request.text().strip();
         String demande = previous == null || previous.isBlank() ? said
                 : previous + "\n(L'utilisateur demande de vérifier : « " + said + " ». La réponse rapide précédente "
                         + "n'était pas vérifiée.)";
         UUID subject = request.workspace() == null ? null : request.workspace().getId();
-        return new Outcome(Kind.DELEGATE, "", new Delegation(UUID.randomUUID(), demande, "", FORCED_ANNOUNCE, subject,
+        return new Outcome(Kind.DELEGATE, "", new Delegation(UUID.randomUUID(), demande, "", announce, subject,
                 request.chantier(), true, REASON_FORCED), REASON_FORCED, properties.model(), -1L, null,
                 new Guards(0, 0, 0, true, false, 0));
+    }
+
+    /**
+     * F-240 / SF-240-05 — <b>l'annonce d'une délégation d'office dit ce qui est vérifié</b>, sans appel au modèle,
+     * d'après des faits déjà présents (donc ancrée) : les tickets de la dernière réponse (au plus
+     * {@value #FORCED_MAX_TICKETS}), sinon son chantier, sinon le sujet courant, sinon la dernière réponse elle-même.
+     *
+     * @param lastAnswer la dernière réponse de la session (mémoire), ou {@code null}
+     * @param opusAnswer la dernière réponse d'Opus des derniers échanges du fil, ou {@code null}
+     * @param subject    le nom du sujet courant, ou {@code null}
+     */
+    static String forcedAnnounce(String lastAnswer, String opusAnswer, String subject) {
+        for (String source : new String[] { lastAnswer, opusAnswer }) {
+            if (source == null || source.isBlank()) {
+                continue;
+            }
+            List<String> tickets = JarvisFastGuards.tickets(source).stream().limit(FORCED_MAX_TICKETS).toList();
+            if (tickets.size() == 1) {
+                return "Je regarde de nouveau où en est " + tickets.get(0) + ", Monsieur.";
+            }
+            if (tickets.size() > 1) {
+                String named = String.join(", ", tickets.subList(0, tickets.size() - 1)) + " et "
+                        + tickets.get(tickets.size() - 1);
+                return "Je regarde de nouveau où en sont " + named + ", Monsieur.";
+            }
+            java.util.regex.Matcher chantier = FORCED_CHANTIER.matcher(source);
+            if (chantier.find()) {
+                return "Je regarde de nouveau où en est le chantier " + chantier.group(1) + ", Monsieur.";
+            }
+        }
+        if (subject != null && !subject.isBlank()) {
+            return "Je vérifie de nouveau ce point sur " + subject.strip() + ", Monsieur.";
+        }
+        return FORCED_ANNOUNCE;
     }
 
     /**
@@ -1530,7 +1584,8 @@ public class JarvisFastBrainService {
                     abort(REASON_GROUNDING);
                     return;
                 }
-                if (JarvisFastGuards.isFillerAlone(sentence) || JarvisFastGuards.isListeningInvitation(sentence)) {
+                if (JarvisFastGuards.isFillerAlone(sentence) || JarvisFastGuards.isListeningInvitation(sentence)
+                        || (!saidNow.isEmpty() && JarvisFastGuards.isClosingPrompt(sentence, said))) {
                     fillersRemoved++; // F-239 (D3) : « Je vous écoute… » retiré, seul ou en conclusion
                     return;
                 }

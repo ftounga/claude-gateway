@@ -86,6 +86,9 @@ public final class JarvisFastGuards {
     private static final java.util.regex.Pattern OPUS_ANSWER = java.util.regex.Pattern
             .compile("(?m)^- (?:\\d{1,2}:\\d{2} )?Opus : \\S");
 
+    private static final java.util.regex.Pattern LAST_OPUS = java.util.regex.Pattern
+            .compile("(?m)^- (?:\\d{1,2}:\\d{2} )?Opus : (.+)$");
+
     /** Au-delà, la parole n'est plus « la suite » mais une nouvelle demande. */
     static final int MAX_MORE_WORDS = 8;
 
@@ -105,6 +108,35 @@ public final class JarvisFastGuards {
     /** F-240 / SF-240-04 (D8) — les derniers échanges du contexte portent une réponse d'Opus. */
     public static boolean hasOpusAnswer(String context) {
         return context != null && OPUS_ANSWER.matcher(context).find();
+    }
+
+    /**
+     * F-240 / SF-240-05 — la dernière réponse d'Opus des derniers échanges du fil (ce qui suit « Opus : »), ou
+     * {@code null}.
+     */
+    public static String lastOpusAnswer(String context) {
+        if (context == null) {
+            return null;
+        }
+        java.util.regex.Matcher m = LAST_OPUS.matcher(context);
+        String last = null;
+        while (m.find()) {
+            last = m.group(1).strip();
+        }
+        return last == null || last.isEmpty() ? null : last;
+    }
+
+    /** F-240 / SF-240-05 — les identifiants de tickets d'un texte, distincts, dans l'ordre d'apparition. */
+    public static List<String> tickets(String text) {
+        if (text == null) {
+            return List.of();
+        }
+        java.util.LinkedHashSet<String> found = new java.util.LinkedHashSet<>();
+        java.util.regex.Matcher m = TICKET.matcher(text);
+        while (m.find()) {
+            found.add(m.group());
+        }
+        return List.copyOf(found);
     }
 
     /** Le texte normalisé : minuscules, sans accents, ponctuation en espaces, espaces simples. */
@@ -147,6 +179,33 @@ public final class JarvisFastGuards {
             // F-239 / SF-239-08 — relevées au banc de conversation.
             "je reste pret", "je suis pret", "je reste a l affut", "que puis je faire pour vous",
             "que puis je pour vous");
+
+    /** F-240 / SF-240-05 — relevées au banc (« Dites-moi par où vous souhaitez commencer. »), en conclusion. */
+    static final List<String> CLOSING_PROMPTS = List.of("dites moi par ou", "dites moi par quoi",
+            "dites moi quand vous", "dites moi si vous", "je reste attentif", "je suis attentif");
+
+    private static final Pattern START_QUESTION = Pattern.compile(
+            "^(?:alors |et |bien )?(?:par (?:ou|quoi|lequel|laquelle)|avec quoi) (?:souhaitez|voulez|desirez|preferez)"
+                    + " vous (?:commencer|demarrer|attaquer)(?: .*)?$"
+                    + "|^(?:alors |et )?par (?:ou|quoi) (?:commencons nous|commencons|on commence)(?: .*)?$");
+    private static final Pattern ASKS_TO_START = Pattern.compile(
+            "\\b(?:commenc\\w*|on s y met|au travail|attaqu\\w*|demarr\\w*|par ou|par quoi|la suite|on passe|on y va)\\b");
+
+    /**
+     * F-240 / SF-240-05 — <b>une relance ajoutée en conclusion</b> : « Dites-moi par où vous souhaitez commencer. »,
+     * ou « Par quoi souhaitez-vous commencer ? » quand l'utilisateur ne parle ni de commencer ni d'enchaîner
+     * (« Journée chargée aujourd'hui. ») — jugées robotiques au banc (P03, 3 passages sur 7). La porte ne la retire
+     * qu'APRÈS une autre phrase dite : elle ne vide jamais une réponse (sinon délégation d'office, banc du 03/11).
+     */
+    public static boolean isClosingPrompt(String sentence, String said) {
+        String n = normalize(sentence).replaceAll("\\bmonsieur\\b", "").replaceAll("\\s+", " ").strip();
+        for (String prompt : CLOSING_PROMPTS) {
+            if (n.equals(prompt) || n.startsWith(prompt + " ")) {
+                return true;
+            }
+        }
+        return START_QUESTION.matcher(n).matches() && !ASKS_TO_START.matcher(normalize(said)).find();
+    }
 
     /** F-239 / SF-239-02 (D3) — vrai si la phrase n'est qu'une invitation à parler (« Je vous écoute pour la suite »). */
     public static boolean isListeningInvitation(String sentence) {

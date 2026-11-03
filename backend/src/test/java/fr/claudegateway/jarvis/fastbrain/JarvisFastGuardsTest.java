@@ -127,6 +127,32 @@ class JarvisFastGuardsTest {
     }
 
     @Test
+    void f240_05ClosingPromptsAreRecognisedButAQuestionAskedForIsNot() {
+        String chat = "Journée chargée aujourd'hui.";
+        assertThat(JarvisFastGuards.isClosingPrompt("Dites-moi par où vous souhaitez commencer.", chat)).isTrue();
+        assertThat(JarvisFastGuards.isClosingPrompt("Dites-moi quand vous souhaitez que je prépare l'envoi.", chat))
+                .isTrue();
+        assertThat(JarvisFastGuards.isClosingPrompt("Dites-moi lequel, Monsieur ?", chat)).isFalse();
+        assertThat(JarvisFastGuards.isClosingPrompt("Je reste attentif à ce qui se présente.", chat)).isTrue();
+        assertThat(JarvisFastGuards.isClosingPrompt("Par quoi souhaitez-vous commencer ?", chat)).isTrue();
+        assertThat(JarvisFastGuards.isClosingPrompt("Par où voulez-vous commencer, Monsieur ?", chat)).isTrue();
+        assertThat(JarvisFastGuards.isClosingPrompt("Par quoi souhaitez-vous commencer ?", "Commençons.")).isFalse();
+        assertThat(JarvisFastGuards.isClosingPrompt("Par où voulez-vous commencer ?", "On s'y met ?")).isFalse();
+        assertThat(JarvisFastGuards.isClosingPrompt("Le chantier 1 commence demain.", "Où en est Orion ?")).isFalse();
+        assertThat(JarvisFastGuards.isListeningInvitation("Dites-moi par où vous souhaitez commencer.")).isFalse();
+    }
+
+    @Test
+    void f240_05TheLastOpusAnswerAndItsTicketsAreRead() {
+        String context = "Univers : ORN-99\n- 09:10 Monsieur : Regarde.\n- 09:12 Opus : ORN-41 puis ORN-44.\n"
+                + "- 09:13 Monsieur : Bien.\n- 09:14 Opus : LDIC-223 et LDIC-223.";
+        assertThat(JarvisFastGuards.lastOpusAnswer(context)).isEqualTo("LDIC-223 et LDIC-223.");
+        assertThat(JarvisFastGuards.lastOpusAnswer("Maintenant : lundi")).isNull();
+        assertThat(JarvisFastGuards.lastOpusAnswer(null)).isNull();
+        assertThat(JarvisFastGuards.tickets("LDIC-223 et LDIC-223, ORN-4")).containsExactly("LDIC-223", "ORN-4");
+    }
+
+    @Test
     void f239GreetingsAndCourtesiesAreSmallTalkRequestsAreNot() {
         for (String said : List.of("Bonjour Jarvis.", "Bonjour, Monsieur", "Merci beaucoup !", "Bonjour Jarvis, ça va ?",
                 "Salut", "Au revoir, à demain", "Ok Jarvis", "Bonsoir", "Jarvis")) {

@@ -260,6 +260,19 @@ class JarvisFastBrainServiceTest {
     }
 
     @Test
+    void f240_05AClosingPromptIsRemovedAfterASentenceButNeverEmptiesTheAnswer() {
+        JarvisFastBrainService.Outcome trimmed = service(streaming("Je n'en doute pas, Monsieur. ",
+                "Par quoi souhaitez-vous commencer ?"), null, null).converse(ask("Journée chargée aujourd'hui."), null);
+        assertThat(trimmed.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(trimmed.spokenText()).isEqualTo("Je n'en doute pas, Monsieur.");
+
+        JarvisFastBrainService.Outcome alone = service(streaming("Dites-moi par où vous souhaitez commencer."), null,
+                null).converse(ask("C'est noté."), null);
+        assertThat(alone.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(alone.spokenText()).isEqualTo("Dites-moi par où vous souhaitez commencer.");
+    }
+
+    @Test
     void withoutASubjectTheQuestionIsSaid() {
         StringBuilder heard = new StringBuilder();
         service(delegating("""
@@ -605,6 +618,50 @@ class JarvisFastBrainServiceTest {
     }
 
     @Test
+    void f240_05TheForcedAnnounceSaysWhatIsVerifiedNeverAHollowJeVerifie() {
+        String opus = JarvisFastGuards.lastOpusAnswer("Univers : chantier 1, ORN-99\n"
+                + "## Derniers échanges du fil du sujet courant (état à 09:15)\n"
+                + "- 09:10 Monsieur : Regarde les tickets bloqués d'Orion-Run.\n"
+                + "- 09:12 Opus : Deux tickets sont bloqués : ORN-41 export PDF, ORN-44 droits, ORN-41 encore.");
+        assertThat(JarvisFastBrainService.forcedAnnounce(null, opus, null))
+                .isEqualTo("Je regarde de nouveau où en sont ORN-41 et ORN-44, Monsieur.");
+        assertThat(JarvisFastBrainService.forcedAnnounce("LDIC-223 est en revue.", opus, null))
+                .isEqualTo("Je regarde de nouveau où en est LDIC-223, Monsieur.");
+        assertThat(JarvisFastBrainService.forcedAnnounce("AB-1, BC-2, CD-3 et DE-4 attendent.", null, null))
+                .isEqualTo("Je regarde de nouveau où en sont AB-1, BC-2 et CD-3, Monsieur.");
+        assertThat(JarvisFastBrainService.forcedAnnounce("Le chantier 3 en est aux tests.", null, null))
+                .isEqualTo("Je regarde de nouveau où en est le chantier 3, Monsieur.");
+        assertThat(JarvisFastBrainService.forcedAnnounce("Tout va bien.", null, "Orion-Run"))
+                .isEqualTo("Je vérifie de nouveau ce point sur Orion-Run, Monsieur.");
+        assertThat(JarvisFastBrainService.forcedAnnounce(null, null, null))
+                .isEqualTo(JarvisFastBrainService.FORCED_ANNOUNCE).isNotEqualTo("Je vérifie.");
+    }
+
+    @Test
+    void f240_05VerifyAfterAnOpusAnswerAnnouncesItsTicketsWithoutCallingTheFastBrain() {
+        JarvisFastBrainService service = service(streaming("Oui."), null, null);
+        String context = "Maintenant : lundi\n## Derniers échanges du fil du sujet courant (état à 09:15)\n"
+                + "- 09:10 Monsieur : Regarde les tickets bloqués d'Orion-Run.\n"
+                + "- 09:12 Opus : Deux tickets sont bloqués sur Orion-Run : ORN-41 et ORN-44.";
+
+        JarvisFastBrainService.Outcome outcome = service.bench(ask("Vérifie."), "claude-sonnet-5-5", context);
+
+        assertThat(calls).isEmpty();
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.DELEGATE);
+        assertThat(outcome.delegation().reason()).isEqualTo("forced");
+        assertThat(outcome.delegation().annonce())
+                .isEqualTo("Je regarde de nouveau où en sont ORN-41 et ORN-44, Monsieur.");
+    }
+
+    @Test
+    void f240_05TheV10PromptForbidsNamingOpusAndSaysWhatToDoOnEtEnsuiteWithoutAnswer() {
+        assertThat(JarvisFastBrainPrompt.CORE).contains("Ne nomme jamais Opus")
+                .contains("enchaîne directement sur le prochain point qui attend")
+                .contains("compris: Et ensuite ?")
+                .doesNotContain("réponds avec ce que tu as, sans déléguer");
+    }
+
+    @Test
     void textImitatingAToolCallIsNeverSaid() {
         StringBuilder heard = new StringBuilder();
         JarvisFastBrainService.Outcome outcome = service(streaming("deleguer(", "{\"demande\": \"x\"})"), null, null)
@@ -791,7 +848,7 @@ class JarvisFastBrainServiceTest {
         assertThat(JSON.writeValueAsString(calls.get(1).tools())).isEqualTo(first);
         assertThat(JSON.writeValueAsString(calls.get(2).tools())).isEqualTo(first);
         assertThat(calls.get(0).system()).isEqualTo(calls.get(2).system());
-        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("9");
+        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("10");
         assertThat(first).doesNotContain("Kestrel").doesNotContain(subject.toString());
     }
 
