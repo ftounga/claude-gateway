@@ -405,7 +405,10 @@ final class JarvisConversationBench {
         if (returnQuestions > 1) {
             reasons.add(s.id() + " plus d'une question en retour");
         }
-        long expectedDelegations = s.turns().stream().filter(t -> "deleguer".equals(t.expect())).count();
+        // F-240 / SF-240-05 — un tour « any » admet une délégation (agenda absent, rappel à créer) : son budget compte
+        // un tour Opus. Une délégation inutile y reste un zéro obligatoire, jugé tour par tour.
+        long expectedDelegations = s.turns().stream()
+                .filter(t -> "deleguer".equals(t.expect()) || "any".equals(t.expect())).count();
         BigDecimal budget = set.budgetEurPerTurn().multiply(BigDecimal.valueOf(s.turns().size()))
                 .add(set.opusTurnEur().multiply(BigDecimal.valueOf(expectedDelegations)));
         if (cost.compareTo(budget) > 0) {
