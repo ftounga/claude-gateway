@@ -49,8 +49,12 @@ class JarvisFastBrainApiIntegrationTest {
     @Autowired private WorkspaceRepository workspaceRepository;
     @Autowired private RunnerHostRepository hostRepository;
     @Autowired private JwtService jwtService;
+    @Autowired private fr.claudegateway.atelier.AtelierMessageRepository messageRepository;
+    @Autowired private fr.claudegateway.jarvis.thread.JarvisThreadService threads;
     @MockitoBean private AiAgentProvider agentProvider;
 
+    private UUID aliceId;
+    private UUID bobId;
     private String aliceToken;
     private String bobToken;
     private UUID workspaceId;
@@ -59,6 +63,8 @@ class JarvisFastBrainApiIntegrationTest {
     void setUp() {
         User alice = seedUser("fast-alice-" + UUID.randomUUID() + "@ex.com");
         User bob = seedUser("fast-bob-" + UUID.randomUUID() + "@ex.com");
+        aliceId = alice.getId();
+        bobId = bob.getId();
         aliceToken = jwtService.generateToken(alice);
         bobToken = jwtService.generateToken(bob);
         UUID hostId = hostRepository.save(RunnerHost.builder().userId(alice.getId()).name("cagip").rootName("dev")
@@ -87,6 +93,27 @@ class JarvisFastBrainApiIntegrationTest {
 
         assertThat(body).contains("event:text").contains("Avec plaisir, Monsieur.")
                 .contains("event:done").contains("\"brain\":\"FAST\"");
+    }
+
+    @Test
+    @DisplayName("F-245 / SF-245-02 critères 1 et 6 : un « bonjour » avec un sujet en vue ne s'écrit que dans le fil "
+            + "Jarvis d'Alice — rien dans le sujet, rien chez Bob")
+    void aGreetingIsWrittenInTheJarvisThreadOnly() throws Exception {
+        MvcResult started = mockMvc.perform(post("/api/jarvis/converse").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"subjectId\":\"" + workspaceId + "\",\"text\":\"Bonjour Jarvis\"}"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+        mockMvc.perform(asyncDispatch(started)).andExpect(status().isOk());
+
+        assertThat(messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspaceId, aliceId)).isEmpty();
+        UUID thread = threads.find(aliceId).orElseThrow().getId();
+        assertThat(messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(thread, aliceId))
+                .extracting(fr.claudegateway.atelier.AtelierMessage::getContent)
+                .hasSize(2).first().isEqualTo("Bonjour Jarvis");
+        assertThat(messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(thread, bobId)).isEmpty();
+        assertThat(threads.find(bobId)).isEmpty();
     }
 
     @Test

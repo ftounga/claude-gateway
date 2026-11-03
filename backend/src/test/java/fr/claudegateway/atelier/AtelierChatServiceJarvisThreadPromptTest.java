@@ -106,6 +106,30 @@ class AtelierChatServiceJarvisThreadPromptTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void f245TheUniverseGoesInTheMessageOfAJarvisThreadTurnOnly() {
+        Workspace subject = hosted(workspaceId, false);
+        Workspace thread = hosted(UUID.randomUUID(), true);
+        fr.claudegateway.jarvis.fastbrain.JarvisFastContextBuilder builder =
+                org.mockito.Mockito.mock(fr.claudegateway.jarvis.fastbrain.JarvisFastContextBuilder.class);
+        when(builder.reference(userId)).thenReturn("Client CAGIP\n- Sujet Helios");
+        org.springframework.beans.factory.ObjectProvider<fr.claudegateway.jarvis.fastbrain.JarvisFastContextBuilder>
+                provider = org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(builder);
+        String systemBefore = service.buildSystemPrompt(userId, thread, AgentTurnMode.ACT);
+        service.setJarvisContext(provider);
+
+        String note = service.withJarvisUniverse(userId, thread, "Bonjour");
+        assertThat(note).startsWith(AtelierChatService.JARVIS_UNIVERSE_HEADER).contains("Sujet Helios")
+                .endsWith("Bonjour");
+        // Ailleurs : inchangé à l'octet près.
+        assertThat(service.withJarvisUniverse(userId, subject, "Bonjour")).isEqualTo("Bonjour");
+        // Critère 5 : l'univers n'est jamais dans la consigne système.
+        assertThat(service.buildSystemPrompt(userId, thread, AgentTurnMode.ACT)).isEqualTo(systemBefore)
+                .doesNotContain("Sujet Helios");
+    }
+
+    @Test
     void jarvisThreadToolBeltIsTheHostedOne() {
         Workspace subject = hosted(workspaceId, false);
         Workspace thread = hosted(UUID.randomUUID(), true);

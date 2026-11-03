@@ -61,6 +61,8 @@ public class JarvisFastContextBuilder {
     private JarvisReturnService returns;
     private JarvisWatchAlertRepository alerts;
     private AtelierMessageRepository messages;
+    /** F-245 / SF-245-02 (D11) — le fil Jarvis du compte. Facultatif. */
+    private fr.claudegateway.jarvis.thread.JarvisThreadService threads;
 
     public JarvisFastContextBuilder(Clock clock, JarvisDelegationRegistry delegations) {
         this.clock = clock;
@@ -75,6 +77,11 @@ public class JarvisFastContextBuilder {
         this.returns = returns;
         this.alerts = alerts;
         this.messages = messages;
+    }
+
+    @Autowired(required = false)
+    public void setThreads(fr.claudegateway.jarvis.thread.JarvisThreadService threads) {
+        this.threads = threads;
     }
 
     /** Le contexte d'un échange (univers compris — forme d'avant F-239, gardée pour le banc et les tests). */
@@ -128,6 +135,12 @@ public class JarvisFastContextBuilder {
         }
         block(out, "À envoyer (état à " + at + ")", MAX_BLOCK, () -> toSend(userId));
         block(out, "Délégations en cours à Opus (état à " + at + ")", MAX_BLOCK, () -> running(userId));
+        // F-245 / SF-245-02 (D11) — ce qui vient de se dire, où que ce soit : le fil Jarvis (6 au plus), puis le fil du
+        // sujet en vue (6 au plus), toujours dans le message. Le fil Jarvis n'est relu que s'il existe (jamais créé ici).
+        java.util.Optional<UUID> jarvisThread = jarvisThreadId(userId);
+        jarvisThread.filter(id -> workspace == null || !id.equals(workspace.getId()))
+                .ifPresent(id -> block(out, "Derniers échanges du fil Jarvis (état à " + at + ")", MAX_BLOCK + 1_000,
+                        () -> thread(userId, id, null)));
         if (workspace != null) {
             block(out, "Derniers échanges du fil du sujet courant (état à " + at + ")", MAX_BLOCK + 1_000,
                     () -> thread(userId, workspace.getId(), chantier));
@@ -258,6 +271,17 @@ public class JarvisFastContextBuilder {
         return b.toString();
     }
 
+    private java.util.Optional<UUID> jarvisThreadId(UUID userId) {
+        if (threads == null) {
+            return java.util.Optional.empty();
+        }
+        try {
+            return threads.idOf(userId);
+        } catch (RuntimeException e) {
+            return java.util.Optional.empty();
+        }
+    }
+
     String thread(UUID userId, UUID workspaceId, Integer chantier) {
         if (messages == null) {
             return "";
@@ -277,7 +301,9 @@ public class JarvisFastContextBuilder {
             boolean user = "USER".equals(m.getRole());
             String when = m.getCreatedAt() == null ? "" : HOUR.format(m.getCreatedAt().atZoneSameInstant(ZONE)) + " ";
             String content = user ? oneLine(m.getContent()) : assistantDigest(m.getContent());
-            b.append("- ").append(when).append(user ? "Monsieur : " : "Opus : ").append(cut(content, MAX_MESSAGE))
+            // F-245 / SF-245-02 : une réponse du cerveau rapide est celle de Jarvis, pas d'Opus.
+            String who = user ? "Monsieur : " : m.isFastBrain() ? "Jarvis : " : "Opus : ";
+            b.append("- ").append(when).append(who).append(cut(content, MAX_MESSAGE))
                     .append('\n');
         }
         return b.toString();
