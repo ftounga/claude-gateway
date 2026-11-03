@@ -276,7 +276,7 @@ class JarvisFastGuardsTest {
                 "Le compte rendu reste à envoyer parce que Claire doit valider.", P08, ""))
                 .isEqualTo("Le compte rendu reste à envoyer.");
         // Rien de dicible ne reste : chaîne vide.
-        assertThat(JarvisFastGuards.withoutInventedLink("Tout dépend de Claire.", P08, "")).isEmpty();
+        assertThat(JarvisFastGuards.withoutInventedLink("Tout dépend de Claire Dumas.", P08, "")).isEmpty();
         // Banc du 03/11, P08#5 : une condition prêtée à Monsieur (« votre feu vert ») que le contexte ne dit pas.
         assertThat(JarvisFastGuards.withoutInventedLink(
                 "Le compte rendu de recette pour Claire Dumas reste en attente de votre feu vert.", P08, "C'est noté."))
@@ -296,6 +296,12 @@ class JarvisFastGuardsTest {
                 CONTEXT, "")).isEqualTo("Le chantier 3 en est aux tests, en toute indépendance.");
         assertThat(JarvisFastGuards.withoutInventedLink("Ensuite, on attend la carte de Paul.", CONTEXT, ""))
                 .isEqualTo("Ensuite, on attend la carte de Paul.");
+        // Petite conversation, aucun fait nommé : jamais touchée (pré-banc du 03/11, P06).
+        assertThat(JarvisFastGuards.withoutInventedLink(
+                "Un lundi de novembre qui s'habille en conséquence, Monsieur.", CONTEXT, "Il fait gris aujourd'hui."))
+                .isEqualTo("Un lundi de novembre qui s'habille en conséquence, Monsieur.");
+        assertThat(JarvisFastGuards.withoutInventedLink("Tout dépend du point de vue, Monsieur.", CONTEXT,
+                "Il fait gris aujourd'hui.")).isEqualTo("Tout dépend du point de vue, Monsieur.");
     }
 
     @Test

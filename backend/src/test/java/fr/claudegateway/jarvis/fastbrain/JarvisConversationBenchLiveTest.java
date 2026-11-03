@@ -85,8 +85,9 @@ class JarvisConversationBenchLiveTest {
                 .createdAt(OffsetDateTime.now()).build());
         // JARVIS_LIVE_PROBE_PREV = « parole||réponse » : un échange précédent du scénario, comme au banc.
         String prev = System.getenv("JARVIS_LIVE_PROBE_PREV");
+        // Plusieurs échanges : séparés par « ## » (F-240 / SF-240-07).
         List<String[]> previous = prev == null || !prev.contains("||") ? List.of()
-                : List.<String[]>of(prev.split("\\|\\|", 2));
+                : java.util.Arrays.stream(prev.split("##")).map(e -> e.split("\\|\\|", 2)).toList();
         String context = JarvisConversationBench.contextFor(JarvisConversationBench.load().context(), previous, null);
         // F-240 / SF-240-06 — JARVIS_LIVE_PROBE_SCENARIO = l'identifiant d'un scénario du jeu : son portrait fictif.
         String scenarioId = System.getenv("JARVIS_LIVE_PROBE_SCENARIO");

@@ -115,8 +115,8 @@ public final class JarvisFastGuards {
      * commence au marqueur) ; groupe 2 : un verbe ou un nom de dépendance (le lien est toute la proposition).
      */
     private static final Pattern LINK = Pattern.compile("(?iu)(?<![\\p{L}])(?:"
-            + "(parce qu|puisqu|car(?![\\p{L}])|[àa] cause d|faute d|si bien qu|c['’]est pourquoi|en cons[ée]quence)"
-            + "|(d[ée]pend\\p{L}*|conditionn\\p{L}*|pr[ée]alable\\p{L}*|d[ée]coul\\p{L}*|feu vert|votre aval))");
+            + "(parce qu|puisqu|car(?![\\p{L}])|[àa] cause d|si bien qu|c['’]est pourquoi)"
+            + "|(d[ée]pend\\p{L}*|conditionn\\p{L}*|feu vert|votre aval))");
     private static final Pattern CLAUSE_BOUNDARY = Pattern.compile("[,;:—–]");
     private static final Pattern TRAILING_JOIN = Pattern.compile(
             "(?iu)(?:[\\s,;:—–-]|(?<![\\p{L}])(?:et|mais|donc|ou|qui|que|dont)(?![\\p{L}]))+$");
@@ -124,7 +124,7 @@ public final class JarvisFastGuards {
     /** La racine normalisée d'un marqueur, cherchée telle quelle dans le contexte. */
     private static String linkStem(String marker) {
         String n = normalize(marker);
-        for (String stem : List.of("depend", "conditionn", "prealable", "decoul")) {
+        for (String stem : List.of("depend", "conditionn")) {
             if (n.startsWith(stem)) {
                 return stem;
             }
@@ -140,7 +140,7 @@ public final class JarvisFastGuards {
      * permis) ; une chaîne vide si ce qui resterait n'a pas trois mots (hors « Monsieur »).
      */
     public static String withoutInventedLink(String sentence, String context, String said) {
-        if (sentence == null || sentence.isBlank()) {
+        if (sentence == null || sentence.isBlank() || !namesAFact(sentence)) {
             return sentence;
         }
         String known = " " + normalize(context) + " " + normalize(said) + " ";
@@ -166,6 +166,19 @@ public final class JarvisFastGuards {
             return kept + ".";
         }
         return sentence;
+    }
+
+    /**
+     * F-240 / SF-240-07 — la phrase nomme un fait du travail (un nom propre autre que « Monsieur » ou « Jarvis », un
+     * nombre, un chantier) : seul un tel fait peut être lié à tort à un autre. Une petite conversation (« le gris
+     * s'habille en conséquence ») n'en nomme aucun et n'est pas touchée (pré-banc du 03/11, P06).
+     */
+    static boolean namesAFact(String sentence) {
+        if (sentence.chars().anyMatch(Character::isDigit) || normalize(sentence).contains("chantier")) {
+            return true;
+        }
+        return properNouns(sentence).stream().map(JarvisFastGuards::normalize)
+                .anyMatch(w -> !w.equals("monsieur") && !w.equals("jarvis"));
     }
 
     /** F-240 / SF-240-07 — les questions de politesse ou de conversation, normalisées (règle F-239 : une seule). */
