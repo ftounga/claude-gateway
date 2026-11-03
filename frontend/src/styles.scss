@@ -358,3 +358,14 @@ code, pre { font-family: var(--cg-font-mono); }
   font-size: 13px;
   color: var(--cg-text-secondary);
 }
+
+// ---- Point de situation en pop-up (F-225 / SF-225-04) ----
+// La pop-up s'ouvre depuis le terminal sombre et en garde le fond (DESIGN_SYSTEM §21) : le détail réutilise la carte
+// du fil et ses encres claires. Bord orange discret, comme le panneau « Et maintenant ? ».
+.cg-situation-dialog .mat-mdc-dialog-surface {
+  --mdc-dialog-container-color: var(--cg-primary);
+  background: var(--cg-primary);
+  color: var(--cg-divider);
+  border: 1px solid color-mix(in srgb, var(--cg-accent) 35%, transparent);
+  border-radius: 12px;
+}
