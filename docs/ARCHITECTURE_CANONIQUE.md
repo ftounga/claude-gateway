@@ -591,6 +591,11 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     `model (varchar(64), nullable)`, `pricing_version (varchar(32), nullable)`,
     `pricing_fallback (boolean, défaut false)`, `web_search_requests (bigint, défaut 0)`,
     `sandbox_seconds (bigint, défaut 0)`, `occurred_at (timestamptz)`.
+    F-244 / SF-244-01 (migration `244-usage-turns-origin`) : `origin (varchar(8), défaut 'GATEWAY')` — `GATEWAY` ou
+    `JARVIS` — et `jarvis_part (varchar(16), nullable)` — `FAST`, `VOICE`, `STT_STREAM`, `STT_UTTERANCE`, `DICTATION`,
+    `OPUS`, `MAIL`, `AGENDA` (vocabulaire fermé, enums Java). Index `(user_id, origin, occurred_at)`. Une ligne
+    `JARVIS` n'entre **pas** dans `usage_counters` (SF-244-02) ; la consommation par client lue à côté du quota ne
+    compte que `GATEWAY` et montre « dont Jarvis » à part ; la dépense réelle par client la garde, ventilée.
     Index `(user_id, occurred_at)`.
   - **Ventilation, pas addition** : `input_tokens` porte le volume d'entrée **traité**, cache
     compris, comme depuis F-61 ; les deux colonnes de cache le **détaillent**. Les y ajouter ferait
@@ -1387,6 +1392,12 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   `changes_json`, `change_count`, `ai_written`, `cost_usd`, `opened_at` (mesure D8), `created_at`. Lue par
   Jarvis (F-231) via `GET /api/jarvis/alerts/{id}`. La dépense du mois d'une veille est la somme de
   `cost_usd` depuis le 1er (UTC).
+- **jarvis_budgets** — **le plafond de Jarvis d'un compte** (F-244 / SF-244-03, migration `244-jarvis-budgets`) :
+  `user_id` (clé), `monthly_cap_eur` (numeric(10,2) ; sans ligne : `app.jarvis.budget.monthly-cap-eur`, 150 €),
+  `apply_on_byok` (le plafond bloque aussi en BYOK), `alert_80_sent_month` (`YYYY-MM`, alerte 80 % unique par mois),
+  `updated_at`. États NONE / ALERT (80 %) / SOFT (100 % : « Je la lance ? ») / HARD (2 ×) sur le total du mois de
+  `jarvis_usage_days`. `GET|PUT /api/jarvis/budget`, `POST /api/jarvis/budget/confirm` sous le seul principal ; purge
+  nommée à la suppression du compte.
 - **jarvis_usage_days** — **une journée du mode Jarvis par compte** (F-231 / SF-231-01, migration `190`) : `user_id`,
   `usage_day` (unique avec `user_id`), `chars_spoken` + `speech_cost_usd` (la voix de Jarvis : sert le **plafond
   mensuel en euros** `app.jarvis.voice.monthly-budget-eur`), `sessions`, `spoken_seconds`, `wakes` (mesure d'adoption
@@ -1402,6 +1413,10 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   cerveau rapide de Jarvis, son **plafond mensuel propre** `app.jarvis.fast-brain.monthly-budget-eur` (20 €).
   F-239 / SF-239-12 (migration `239-jarvis-usage-opus`) : `opus_turns`, `opus_cost_usd` — les tours Opus nés de
   Jarvis (`via = JARVIS`), comptés à leur fin ; lus en euros par `GET /api/jarvis/costs` (compteur visible).
+  F-244 / SF-244-01 (migration `244-jarvis-usage-parts`) : `stt_utterance_seconds` + `stt_utterance_cost_usd` (la
+  retranscription, séparée du flux), `dictation_seconds` + `dictation_cost_usd` (la dictée de repli depuis `/jarvis`),
+  `mail_cost_usd`, `agenda_cost_usd` (F-242 / F-243). `totalCostUsd()` couvre tout ; l'assiette du plafond voix =
+  lecture + flux + retranscription + dictée. Les tours Opus Jarvis **coupés** y sont aussi comptés.
 - **jarvis_turn_timings** — **un tour vocal chronométré** (F-233 / SF-233-01, migration `196`) : `user_id`,
   `workspace_id` (nul si sujet d'autrui), `created_at`, `listen_mode` (`BATCH|STREAM|CONV_BATCH|CONV_STREAM`, SF-233-11), `stt_provider`, `tts_provider`,
   `tool_turn`, marques en ms depuis la fin de parole (`speech_ms`, `transcript_ms`, `reaction_ms`, `sent_ms`,
