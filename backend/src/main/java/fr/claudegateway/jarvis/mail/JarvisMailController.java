@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -27,15 +28,31 @@ public class JarvisMailController {
     public record LinkRequest(String address, String label, String password) {
     }
 
+    /** SF-242-03 — {@code {"triage": "A_TRAITER"}}. */
+    public record TriageRequest(String triage) {
+    }
+
     private final JarvisMailAccountService accounts;
     private final JarvisMailItemService items;
+    private final JarvisMailTriageService triage;
     private final CurrentUser currentUser;
 
     public JarvisMailController(JarvisMailAccountService accounts, JarvisMailItemService items,
-            CurrentUser currentUser) {
+            JarvisMailTriageService triage, CurrentUser currentUser) {
         this.accounts = accounts;
         this.items = items;
+        this.triage = triage;
         this.currentUser = currentUser;
+    }
+
+    /** SF-242-03 — corriger le tri au toucher (compté). */
+    @PatchMapping("/jarvis/mail/items/{id}")
+    public ResponseEntity<JarvisMailItemService.ItemView> correct(@PathVariable UUID id,
+            @RequestBody(required = false) TriageRequest body) {
+        if (body == null || body.triage() == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        return ResponseEntity.ok(triage.correct(currentUser.requireId(), id, body.triage()));
     }
 
     /** SF-242-02 — le cache du courrier, les plus récents d'abord ({@code triage} facultatif, 100 au plus). */

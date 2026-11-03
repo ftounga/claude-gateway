@@ -58,6 +58,18 @@ class JarvisMailPollIntegrationTest {
     @Autowired private JarvisMailPoller poller;
     @Autowired private JarvisMailItemRepository items;
     @Autowired private PushNotificationService realPush;
+    @Autowired private JarvisMailTriageService realTriage;
+
+    @org.junit.jupiter.api.BeforeEach
+    void withoutTriage() {
+        // La relève seule : le tri (SF-242-03, asynchrone) est testé à part.
+        poller.setTriage(null);
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void restoreTriage() {
+        poller.setTriage(realTriage);
+    }
 
     private record Box(User user, String address, String password, UUID accountId) {
         String bearer(JwtService jwt) {
