@@ -2012,6 +2012,22 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     jarvis.ngOnDestroy();
   }));
 
+  it('F-245 / SF-245-02 — une délégation au fil Jarvis part dans ce fil sans changer le sujet en vue', fakeAsync(() => {
+    const jarvis = fastOn();
+    const before = jarvis.subjectId();
+    void jarvis.handle('Fais-moi un tour d’horizon de mes clients');
+    flushMicrotasks();
+    fast!.onDelegated({ delegationId: 'd-1', subjectId: 'jt', chantier: null, label: 'tour d’horizon',
+      announce: 'Je fais le tour de vos clients, Monsieur.', demande: 'x', automatic: false, reason: null,
+      jarvisThread: true });
+    fastDone!('ok');
+    flushMicrotasks();
+    expect(atelier.streamChat).toHaveBeenCalledWith('jt', 'Fais-moi un tour d’horizon de mes clients',
+      jasmine.any(Object), 'ACT', false, [], null, false, 'JARVIS', null, false);
+    expect(jarvis.subjectId()).toBe(before);
+    jarvis.ngOnDestroy();
+  }));
+
   it('F-235 / SF-235-05 — délégation : annonce dite, tour Opus dans le fil cible, 🎙 intermédiaires muettes, fin annoncée avec son label',
     fakeAsync(() => {
       const jarvis = fastOn();

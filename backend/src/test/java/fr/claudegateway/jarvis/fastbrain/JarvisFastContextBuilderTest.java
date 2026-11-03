@@ -87,6 +87,40 @@ class JarvisFastContextBuilderTest {
     }
 
     @Test
+    void f245TheJarvisThreadExchangesComeBeforeTheSubjectThread() {
+        UUID thread = UUID.randomUUID();
+        fr.claudegateway.jarvis.thread.JarvisThreadService threads =
+                mock(fr.claudegateway.jarvis.thread.JarvisThreadService.class);
+        when(threads.idOf(alice)).thenReturn(java.util.Optional.of(thread));
+        builder.setThreads(threads);
+        when(messages.findTop12ByWorkspaceIdAndUserIdOrderByCreatedAtDesc(thread, alice)).thenReturn(List.of(
+                fr.claudegateway.atelier.AtelierMessage.builder().workspaceId(thread).userId(alice).role("ASSISTANT")
+                        .content("Bonjour, Monsieur.").brain(fr.claudegateway.atelier.AtelierMessage.BRAIN_FAST)
+                        .build(),
+                fr.claudegateway.atelier.AtelierMessage.builder().workspaceId(thread).userId(alice).role("USER")
+                        .content("Bonjour Jarvis").build()));
+
+        String context = builder.build(alice, workspace, 3, null, false);
+
+        assertThat(context).contains("## Derniers échanges du fil Jarvis");
+        assertThat(context).contains("Monsieur : Bonjour Jarvis").contains("Jarvis : Bonjour, Monsieur.");
+        assertThat(context.indexOf("fil Jarvis")).isLessThan(context.indexOf("fil du sujet courant") < 0
+                ? Integer.MAX_VALUE : context.indexOf("fil du sujet courant"));
+        verify(threads, org.mockito.Mockito.never()).open(any());
+    }
+
+    @Test
+    void f245WithoutAJarvisThreadNothingIsAddedNorCreated() {
+        fr.claudegateway.jarvis.thread.JarvisThreadService threads =
+                mock(fr.claudegateway.jarvis.thread.JarvisThreadService.class);
+        when(threads.idOf(alice)).thenReturn(java.util.Optional.empty());
+        builder.setThreads(threads);
+
+        assertThat(builder.build(alice, workspace, 3, null, false)).doesNotContain("fil Jarvis");
+        verify(threads, org.mockito.Mockito.never()).open(any());
+    }
+
+    @Test
     void carriesEveryBlockWithItsTime() {
         String context = builder.build(alice, workspace, 3, null);
 

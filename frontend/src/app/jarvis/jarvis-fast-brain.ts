@@ -21,6 +21,11 @@ export interface FastDelegation {
   demande: string;
   automatic: boolean;
   reason: string | null;
+  /**
+   * F-245 / SF-245-02 — la délégation part au **fil Jarvis** (demande générale, personnelle, tour d'horizon) : le
+   * « sujet en vue » ne change pas. Champ additif : absent d'un serveur antérieur ⇒ `false`.
+   */
+  jarvisThread?: boolean;
 }
 
 /** La fin d'un échange rapide. */

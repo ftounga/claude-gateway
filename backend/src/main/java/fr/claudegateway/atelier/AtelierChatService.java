@@ -1829,6 +1829,45 @@ public class AtelierChatService implements RelayInterruptTarget {
     static final fr.claudegateway.quota.UsageTag JARVIS_OPUS =
             fr.claudegateway.quota.UsageTag.jarvis(fr.claudegateway.quota.UsageTurn.JarvisPart.OPUS);
 
+    /** F-245 / SF-245-02 (D7) — l'univers de Jarvis, lu à la demande (aucune dépendance de construction). */
+    private org.springframework.beans.factory.ObjectProvider<fr.claudegateway.jarvis.fastbrain.JarvisFastContextBuilder>
+            jarvisContext;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJarvisContext(org.springframework.beans.factory.ObjectProvider<
+            fr.claudegateway.jarvis.fastbrain.JarvisFastContextBuilder> jarvisContext) {
+        this.jarvisContext = jarvisContext;
+    }
+
+    /** F-245 / SF-245-02 (D7) — l'en-tête de la note d'univers du fil Jarvis (texte fixe). */
+    static final String JARVIS_UNIVERSE_HEADER = "[Fil Jarvis — ce fil est commun à tous les sujets. Pour agir dans "
+            + "un sujet ou un chantier, ne le fais pas d'ici : dis que tu le confies à ce sujet (« Je le confie à "
+            + "Helios, chantier 3 »). L'univers du compte :]\n";
+
+    /** F-245 / SF-245-02 (D7) — la fin de la note d'univers. */
+    static final String JARVIS_UNIVERSE_FOOTER = "\n[Fin de l'univers]\n\n";
+
+    /**
+     * F-245 / SF-245-02 (D7) — la note d'univers jointe en tête du message d'un tour du fil Jarvis ; hors fil Jarvis, ou
+     * univers illisible : {@code consigne} inchangée à l'octet près. Best-effort, sous le {@code user_id} du tour.
+     */
+    String withJarvisUniverse(UUID userId, Workspace workspace, String consigne) {
+        if (workspace == null || !workspace.isJarvisThread() || jarvisContext == null) {
+            return consigne;
+        }
+        try {
+            fr.claudegateway.jarvis.fastbrain.JarvisFastContextBuilder builder = jarvisContext.getIfAvailable();
+            String universe = builder == null ? "" : builder.reference(userId);
+            if (universe == null || universe.isBlank()) {
+                return consigne;
+            }
+            return JARVIS_UNIVERSE_HEADER + universe.strip() + JARVIS_UNIVERSE_FOOTER + consigne;
+        } catch (RuntimeException e) {
+            log.debug("Fil Jarvis : univers non joint ({})", e.getClass().getSimpleName());
+            return consigne;
+        }
+    }
+
     /** F-235 / SF-235-04 (D12) — borne de la note des échanges rapides jointe au message du tour Opus suivant. */
     static final int FAST_EXCHANGES_NOTE_MAX = 1_500;
 
@@ -3339,8 +3378,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         // BYOK). Le budget propre de Jarvis le garde (SF-244-03), sans jamais couper un tour en cours.
         VoiceMark voiceMark = consumeVoiceMark(userId, workspaceId, chantier);
         boolean viaJarvis = voiceMark != null;
+        // F-245 / SF-245-02 — un tour du FIL JARVIS est d'origine JARVIS (F-244), même tapé : budget de Jarvis, coût
+        // étiqueté JARVIS / OPUS. La marque « via Jarvis » du message (et la mémoire du jour) reste réservée à la voix.
+        boolean jarvisOrigin = viaJarvis || workspace.isJarvisThread();
         AtelierTurnBudget turnBudget;
-        if (viaJarvis) {
+        if (jarvisOrigin) {
             // F-244 / SF-244-03 (D6) — la porte du budget de Jarvis, AVANT tout appel : plafond dur ⇒ refus ; plafond
             // atteint ⇒ refus sauf « oui » récent. Jamais pendant le tour : un tour parti n'est jamais coupé.
             if (jarvisBudget != null) {
@@ -3541,6 +3583,9 @@ public class AtelierChatService implements RelayInterruptTarget {
         // rejoués comme des tours, ils parviennent ici en NOTE du message (append-only, cache intact). Aucun échange
         // rapide : consigne inchangée à l'octet près.
         consigne = withFastExchanges(userId, workspace, consigne);
+        // F-245 / SF-245-02 (D7) — dans le fil Jarvis, l'univers (clients > sujets > chantiers, ≤ 9 000 caractères) est
+        // joint AU MESSAGE, jamais à la consigne système (préfixe stable). Ailleurs : consigne inchangée à l'octet près.
+        consigne = withJarvisUniverse(userId, workspace, consigne);
         messages.add(AgentMessage.userText(consigne));
         // F-229 / SF-229-01 : le ruban du premier appel comparé à celui du dernier appel du tour précédent
         // du même fil. Lecture seule : la requête n'en dépend pas. Best-effort.
@@ -4638,7 +4683,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         } catch (RuntimeException | Error cut) {
             recordCutTurn(userId, workspace, hosted, model, inputTokens, outputTokens, cacheReadTokens,
                     cacheWriteTokens, webSearchRequests, otherModelShares, lastServedModel[0], startedAt,
-                    iterationsUsed, cut, viaJarvis);
+                    iterationsUsed, cut, jarvisOrigin);
             throw cut;
         }
         // F-195 / SF-195-05 : arrêté sur son budget alors que plusieurs demandes sont arrivées — on dit
@@ -4668,7 +4713,7 @@ public class AtelierChatService implements RelayInterruptTarget {
             // Pas de temps de session ici : la boucle maison n'a pas de bac à sable
             // facturé, seuls les Managed Agents en ont un (F-133 / SF-133-08).
             TurnExtras recordedExtras = new TurnExtras(webSearchRequests, 0L);
-            if (viaJarvis) {
+            if (jarvisOrigin) {
                 // F-244 / SF-244-01 — un tour né de Jarvis porte son origine jusqu'au journal (poste OPUS).
                 quotaService.recordUsage(userId, recorded, recordedExtras, null, model,
                         otherModelShares.isEmpty() ? null : toTurnTokens(otherModelShares),
@@ -4796,7 +4841,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         AtelierTurnReport report = new AtelierTurnReport(inputTokens, outputTokens, activeSeconds,
                 interrupted, spendCapReached, planOfTurn.get(), List.copyOf(transcript), costUsd);
         // F-239 / SF-239-12 — un tour né de Jarvis compte dans le compteur de Jarvis (best-effort, jamais bloquant).
-        if (viaJarvis && jarvisUsage != null) {
+        if (jarvisOrigin && jarvisUsage != null) {
             try {
                 jarvisUsage.addOpus(userId, costUsd);
             } catch (RuntimeException e) {

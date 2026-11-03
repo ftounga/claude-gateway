@@ -456,12 +456,11 @@ public class JarvisFastBrainService {
             // F-239 / SF-239-02 — la question du sujet est dite (elle n'était jamais poussée au fil de l'eau).
             sink.text(outcome.spokenText() + " ");
         }
-        // SF-235-04 (D12) : un échange rapide est tracé dans le fil du sujet courant (jamais rejoué comme un tour).
+        // SF-235-04 (D12) : un échange rapide est tracé (jamais rejoué comme un tour) — F-245 / SF-245-02 (D2a) : dans le
+        // FIL JARVIS, jamais dans le sujet en vue, avec ou sans sujet en vue.
         // F-240 / SF-240-04 : « ⤵ » n'est pas une réponse à tracer (l'écran a lu la réponse d'Opus déjà au fil).
-        if (exchanges != null && outcome.kind() == Kind.ANSWER && request.workspace() != null && !isMore(outcome)) {
-            exchanges.write(request.userId(), request.workspace().getId(), request.chantier(),
-                    outcome.saidOr(request.text()),
-                    outcome.spokenText());
+        if (exchanges != null && outcome.kind() == Kind.ANSWER && !isMore(outcome)) {
+            exchanges.write(request.userId(), outcome.saidOr(request.text()), outcome.spokenText());
         }
         // SF-235-02 : la mémoire de session (mots seuls) et le registre des délégations en cours.
         if (memory != null && outcome.kind() != Kind.FALLBACK) {
@@ -482,6 +481,23 @@ public class JarvisFastBrainService {
     /** F-235 / SF-235-04 — la question posée quand la délégation n'a pas de sujet cible (D19 : jamais au hasard). */
     static final String ASK_SUBJECT = "Pour quel client ou quel sujet, Monsieur ?";
 
+    /** F-245 / SF-245-02 (D4) — la valeur de {@code sujet} qui désigne le fil Jarvis : une demande qui n'est à personne. */
+    static final String JARVIS_SUBJECT = "jarvis";
+
+    /**
+     * F-245 / SF-245-02 — la cible provisoire « fil Jarvis » d'une délégation, jusqu'au routage : le banc décide à blanc
+     * sans créer le fil ; {@link #route} la remplace par l'identifiant réel du fil du compte. Jamais transmise à l'écran.
+     */
+    static final UUID JARVIS_THREAD_TARGET = UUID.fromString("00000000-0000-0000-0000-000000000245");
+
+    /** F-245 / SF-245-01/02 — le fil Jarvis du compte. Facultatif (sans lui : comportement d'avant). */
+    private fr.claudegateway.jarvis.thread.JarvisThreadService threads;
+
+    @Autowired(required = false)
+    public void setThreads(fr.claudegateway.jarvis.thread.JarvisThreadService threads) {
+        this.threads = threads;
+    }
+
     /** F-235 / SF-235-04 — l'annonce d'une délégation qui devient une précision du tour vivant de son fil (D10). */
     static final String ADDED_TO_RUNNING = "J'ajoute ça à la recherche en cours";
 
@@ -495,12 +511,20 @@ public class JarvisFastBrainService {
             return outcome;
         }
         Delegation d = outcome.delegation();
+        if (JARVIS_THREAD_TARGET.equals(d.subjectId())) {
+            // F-245 / SF-245-02 (D2b, D4) — une demande générale va au fil Jarvis, sans question.
+            UUID thread = jarvisThreadOf(request.userId());
+            d = new Delegation(d.delegationId(), d.demande(), d.label(), d.annonce(), thread, null, d.automatic(),
+                    d.reason());
+        }
         if (d.subjectId() == null) {
             return new Outcome(Kind.ANSWER, ASK_SUBJECT, null, "no_subject", outcome.model(), outcome.firstTokenMs(),
                     outcome.costUsd(), outcome.guards());
         }
         if (delegations == null) {
-            return outcome;
+            return d == outcome.delegation() ? outcome : new Outcome(outcome.kind(), outcome.spokenText(), d,
+                    outcome.reason(), outcome.model(), outcome.firstTokenMs(), outcome.costUsd(), outcome.guards(),
+                    outcome.understood(), outcome.shows());
         }
         if (delegations.live(request.userId(), d.subjectId(), d.chantier())) {
             String label = d.label() == null || d.label().isBlank() ? "" : " : " + d.label().strip()
@@ -511,6 +535,19 @@ public class JarvisFastBrainService {
         delegations.offer(request.userId(), d.subjectId(), d.chantier(), d.delegationId(), d.demande(), d.label());
         return new Outcome(outcome.kind(), outcome.spokenText(), d, outcome.reason(), outcome.model(),
                 outcome.firstTokenMs(), outcome.costUsd(), outcome.guards());
+    }
+
+    /** F-245 / SF-245-02 — l'identifiant du fil Jarvis du compte (créé s'il manque), ou {@code null} sans service. */
+    UUID jarvisThreadOf(UUID userId) {
+        if (threads == null || userId == null) {
+            return null;
+        }
+        try {
+            return threads.open(userId).getId();
+        } catch (RuntimeException e) {
+            log.debug("Fil Jarvis indisponible ({})", e.getClass().getSimpleName());
+            return null;
+        }
     }
 
     /** F-237 / SF-237-08 — l'outil {@code pieces} et le bloc {@code ## Pièces}. */
@@ -1894,6 +1931,12 @@ public class JarvisFastBrainService {
         UUID subject = request.workspace() == null ? null : request.workspace().getId();
         Integer chantier = request.chantier();
         String asked = text(input, "sujet");
+        if (JARVIS_SUBJECT.equalsIgnoreCase(asked.strip())) {
+            // F-245 / SF-245-02 (D4) — la demande n'est à personne : elle part au fil Jarvis, fil commun (aucun chantier).
+            subject = JARVIS_THREAD_TARGET;
+            chantier = null;
+            asked = "";
+        }
         if (!asked.isEmpty()) {
             try {
                 UUID candidate = UUID.fromString(asked);
@@ -1908,7 +1951,7 @@ public class JarvisFastBrainService {
             }
         }
         JsonNode site = input == null ? null : input.get("chantier");
-        if (site != null && site.isIntegralNumber()) {
+        if (site != null && site.isIntegralNumber() && !JARVIS_THREAD_TARGET.equals(subject)) {
             chantier = site.asInt();
         }
         if (demande.isEmpty()) {

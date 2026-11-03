@@ -2153,9 +2153,13 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const label = (delegation.label ?? '').trim() || 'votre demande';
     const entry = { id: delegation.delegationId, label, subjectId };
     this.delegations.update((list) => [...list, entry]);
-    // Le sélecteur indique le dernier sujet engagé (D19).
-    this.subjectId.set(subjectId);
-    this.scenes.setSubject(subjectId);
+    // Le sélecteur indique le dernier sujet engagé (D19) — F-245 / SF-245-02 : le fil Jarvis n'est pas un sujet, le
+    // sujet en vue reste celui d'avant.
+    const toThread = delegation.jarvisThread === true;
+    if (!toThread) {
+      this.subjectId.set(subjectId);
+      this.scenes.setSubject(subjectId);
+    }
     this.brainEnd.set('normal');
     this.clearLocalShow();
     this.scenes.turnStarted();
@@ -2208,7 +2212,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
       },
       onConfirmRequest: (request) => this.zone.run(() => {
         this.scenes.confirm(request.detail, request.timeoutMs);
-        this.subjectId.set(subjectId);
+        if (!toThread) {
+          this.subjectId.set(subjectId);
+        }
         void this.askToolConfirmation(request);
       }),
       onConfirmResolved: (resolved) => this.zone.run(() => {

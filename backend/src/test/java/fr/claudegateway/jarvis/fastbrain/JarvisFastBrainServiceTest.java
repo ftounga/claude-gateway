@@ -768,6 +768,87 @@ class JarvisFastBrainServiceTest {
         assertThat(outcome.spokenText()).isEqualTo(JarvisFastBrainService.ASK_SUBJECT);
     }
 
+    // ------------------------------------------------------------- F-245 / SF-245-02 : le fil Jarvis
+
+    private fr.claudegateway.jarvis.thread.JarvisThreadService threadOf(UUID id) {
+        fr.claudegateway.jarvis.thread.JarvisThreadService threads =
+                mock(fr.claudegateway.jarvis.thread.JarvisThreadService.class);
+        when(threads.open(alice)).thenReturn(Workspace.builder().id(id).userId(alice).name("Jarvis")
+                .jarvisThreadUserId(alice).build());
+        return threads;
+    }
+
+    private static final String GENERAL = """
+            {"demande": "Faire le tour des clients", "label": "tour d'horizon", "annonce": "Je fais le tour.",
+             "sujet": "jarvis", "chantier": 4}
+            """;
+
+    @Test
+    void f245AGeneralRequestGoesToTheJarvisThreadWithoutAQuestion() {
+        UUID thread = UUID.randomUUID();
+        JarvisFastBrainService service = service(delegating(GENERAL), null, null);
+        service.setThreads(threadOf(thread));
+
+        JarvisFastBrainService.Outcome outcome = service.converse(new JarvisFastBrainService.Request(alice, null, null,
+                "Fais-moi un tour d'horizon de mes clients", null), null);
+
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.DELEGATE);
+        assertThat(outcome.delegation().subjectId()).isEqualTo(thread);
+        assertThat(outcome.delegation().chantier()).isNull();
+        assertThat(outcome.spokenText()).isNotEqualTo(JarvisFastBrainService.ASK_SUBJECT);
+    }
+
+    @Test
+    void f245AGeneralRequestWithASubjectInViewStillGoesToTheJarvisThread() {
+        UUID thread = UUID.randomUUID();
+        JarvisFastBrainService service = service(delegating(GENERAL), null, null);
+        service.setThreads(threadOf(thread));
+
+        JarvisFastBrainService.Outcome outcome = service.converse(ask("Fais-moi un tour d'horizon"), null);
+
+        assertThat(outcome.delegation().subjectId()).isEqualTo(thread);
+        assertThat(outcome.delegation().chantier()).isNull();
+    }
+
+    @Test
+    void f245ATargetedRequestWithASubjectInViewStaysOnThatSubject() {
+        JarvisFastBrainService service = service(delegating("""
+                {"demande": "Relancer le déploiement", "label": "déploiement", "annonce": "Je relance.",
+                 "sujet": "", "chantier": null}
+                """), null, null);
+        service.setThreads(threadOf(UUID.randomUUID()));
+
+        JarvisFastBrainService.Outcome outcome = service.converse(ask("Relance le déploiement"), null);
+
+        assertThat(outcome.delegation().subjectId()).isEqualTo(subject);
+        assertThat(outcome.delegation().chantier()).isEqualTo(3);
+    }
+
+    @Test
+    void f245WithoutTheThreadServiceAGeneralRequestAsksAsBefore() {
+        JarvisFastBrainService.Outcome outcome = service(delegating(GENERAL), null, null).converse(
+                new JarvisFastBrainService.Request(alice, null, null, "Tour d'horizon", null), null);
+        assertThat(outcome.spokenText()).isEqualTo(JarvisFastBrainService.ASK_SUBJECT);
+    }
+
+    @Test
+    void f245TheBenchDecidesWithoutCreatingTheThread() {
+        fr.claudegateway.jarvis.thread.JarvisThreadService threads = threadOf(UUID.randomUUID());
+        JarvisFastBrainService service = service(delegating(GENERAL), null, null);
+        service.setThreads(threads);
+
+        JarvisFastBrainService.Outcome outcome = service.bench(ask("Tour d'horizon"), null, "contexte");
+
+        assertThat(outcome.delegation().subjectId()).isEqualTo(JarvisFastBrainService.JARVIS_THREAD_TARGET);
+        org.mockito.Mockito.verifyNoInteractions(threads);
+    }
+
+    @Test
+    void f245TheToolNamesTheJarvisThread() {
+        assertThat(JarvisFastBrainPrompt.system()).contains("sujet « jarvis »");
+        assertThat(JarvisFastBrainPrompt.delegateTool().inputSchema().toString()).contains("« jarvis »");
+    }
+
     @Test
     void aDelegationOffersItsReformulationToTheTargetThread() {
         JarvisFastBrainService service = service(delegating("""
@@ -803,7 +884,8 @@ class JarvisFastBrainServiceTest {
         JarvisFastBrainService service = service(streaming("Le chantier en est aux tests."), null, null);
         service.setExchanges(writer);
         service.converse(ask("Et le chantier ?"), null);
-        verify(writer).write(alice, subject, 3, "Et le chantier ?", "Le chantier en est aux tests.");
+        // F-245 / SF-245-02 (D2a) : dans le fil Jarvis du compte, jamais dans le sujet en vue.
+        verify(writer).write(alice, "Et le chantier ?", "Le chantier en est aux tests.");
 
         JarvisFastExchangeWriter writer2 = mock(JarvisFastExchangeWriter.class);
         JarvisFastBrainService delegating = service(delegating("""
@@ -882,7 +964,7 @@ class JarvisFastBrainServiceTest {
         assertThat(JSON.writeValueAsString(calls.get(1).tools())).isEqualTo(first);
         assertThat(JSON.writeValueAsString(calls.get(2).tools())).isEqualTo(first);
         assertThat(calls.get(0).system()).isEqualTo(calls.get(2).system());
-        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("12");
+        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("13");
         assertThat(first).doesNotContain("Kestrel").doesNotContain(subject.toString());
     }
 

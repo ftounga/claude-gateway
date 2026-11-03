@@ -144,7 +144,8 @@ public class JarvisFastBrainController {
                 case DELEGATE -> {
                     JarvisFastBrainService.Delegation d = outcome.delegation();
                     send(emitter, "delegated", new DelegatedEvent(d.delegationId(), d.subjectId(), d.chantier(),
-                            d.label(), d.annonce(), d.demande(), d.automatic(), d.reason()));
+                            d.label(), d.annonce(), d.demande(), d.automatic(), d.reason(),
+                            isJarvisThread(call.userId(), d.subjectId())));
                 }
                 case ANSWER -> {
                     // La réponse a déjà été poussée au fil de l'eau.
@@ -184,8 +185,32 @@ public class JarvisFastBrainController {
     record TextEvent(String delta) {
     }
 
+    /**
+     * @param jarvisThread F-245 / SF-245-02 — la délégation part au fil Jarvis : l'écran ne change pas de « sujet en
+     *                     vue » (le fil Jarvis n'en est pas un)
+     */
     record DelegatedEvent(UUID delegationId, UUID subjectId, Integer chantier, String label, String announce,
-            String demande, boolean automatic, String reason) {
+            String demande, boolean automatic, String reason, boolean jarvisThread) {
+    }
+
+    /** F-245 / SF-245-02 — le fil Jarvis du compte (facultatif). */
+    private fr.claudegateway.jarvis.thread.JarvisThreadService threads;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setThreads(fr.claudegateway.jarvis.thread.JarvisThreadService threads) {
+        this.threads = threads;
+    }
+
+    /** Vrai si {@code subjectId} est le fil Jarvis du compte (isolation : lu sous le {@code user_id} du principal). */
+    boolean isJarvisThread(UUID userId, UUID subjectId) {
+        if (threads == null || subjectId == null) {
+            return false;
+        }
+        try {
+            return threads.idOf(userId).map(subjectId::equals).orElse(false);
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     record FallbackEvent(String reason) {

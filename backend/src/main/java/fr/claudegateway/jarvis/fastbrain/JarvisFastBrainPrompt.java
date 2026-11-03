@@ -20,7 +20,7 @@ import fr.claudegateway.agent.AgentTool;
 public final class JarvisFastBrainPrompt {
 
     /** Version de la consigne : à incrémenter à chaque modification du texte (une nouvelle entrée de cache). */
-    public static final String VERSION = "12";
+    public static final String VERSION = "13";
 
     /** L'outil qui confie une demande à Opus. */
     public static final String TOOL_NAME = "deleguer";
@@ -88,6 +88,11 @@ public final class JarvisFastBrainPrompt {
             - sujet : l'identifiant du sujet visé, tel qu'il figure dans le contexte ; chaîne vide pour le sujet \
             courant. Un autre sujet seulement s'il est NOMMÉ dans la parole et présent dans le contexte ; l'annonce \
             le dit alors (« Sur Edenred, je regarde… »).
+            - sujet « jarvis » quand la demande ne vise AUCUN sujet précis : un tour d'horizon de plusieurs clients, \
+            une question générale ou personnelle, « où en suis-je de la semaine ? » ; elle part au fil Jarvis, commun \
+            à tout, et chantier vaut null. Une demande qui vise UN sujet sans qu'on sache lequel (« relance le \
+            déploiement » sans sujet courant ni nom) : chaîne vide, et l'on te demandera lequel. Le sujet courant \
+            reste un indice fort : une action sur lui va à lui, jamais au fil Jarvis.
             - chantier : le numéro du chantier visé s'il est nommé, sinon null.
             Quand tu délègues, n'écris rien d'autre : l'annonce suffit.
 
@@ -217,6 +222,9 @@ public final class JarvisFastBrainPrompt {
             Réponse : « compris: Regarde les tickets bloqués d'Edenred. », puis deleguer(demande « Lister les tickets Jira bloqués du client Edenred et dire ce qui les \
             bloque », label « tickets bloqués d'Edenred », annonce « Je regarde les tickets bloqués d'Edenred, \
             Monsieur. », sujet « », chantier null).
+            Parole : « Fais-moi un tour d'horizon de mes clients. » — il faut regarder chaque client.
+            Réponse : deleguer(… label « tour d'horizon des clients », annonce « Je fais le tour de vos clients, \
+            Monsieur. », sujet « jarvis », chantier null).
             Parole : « Combien de tickets sont ouverts sur Edenred ? » — aucun décompte dans le contexte.
             Réponse : deleguer(… annonce « Je compte les tickets ouverts d'Edenred. » …).
             Parole : « Qu'est-ce que j'ai jeudi ? » — rien de prévu jeudi dans le contexte.
@@ -304,7 +312,8 @@ public final class JarvisFastBrainPrompt {
         properties.put("annonce", Map.of("type", "string",
                 "description", "La phrase dite à voix haute en déléguant : verbe + objet + sujet."));
         properties.put("sujet", Map.of("type", "string",
-                "description", "Identifiant du sujet visé tel que dans le contexte ; vide pour le sujet courant."));
+                "description", "Identifiant du sujet visé tel que dans le contexte ; vide pour le sujet courant ; "
+                        + "« jarvis » pour une demande qui ne vise aucun sujet précis (fil Jarvis)."));
         properties.put("chantier", Map.of("type", List.of("integer", "null"),
                 "description", "Numéro du chantier visé s'il est nommé, sinon null."));
         Map<String, Object> schema = new LinkedHashMap<>();
