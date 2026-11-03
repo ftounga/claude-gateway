@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-244 / SF-244-01 - ETIQUETER TOUT CE QUE COUTE JARVIS.
+
+      usage_turns.origin : 'GATEWAY' (defaut, toutes les lignes existantes) ou 'JARVIS'.
+      usage_turns.jarvis_part : le poste Jarvis (FAST, VOICE, STT_STREAM, STT_UTTERANCE, DICTATION, OPUS, MAIL,
+      AGENDA), NULL hors Jarvis. Vocabulaire ferme porte par des enums Java : aucun texte libre n'entre.
+      Index (user_id, origin, occurred_at) pour les agregats "dont Jarvis" (SF-244-02) et le plafond (SF-244-03).
+
+      Numero 244 = numero de la feature. Rollback : l'index puis les colonnes se retirent.
+    -->
+
+    <changeSet id="244-usage-turns-origin" author="claude-gateway">
+        <addColumn tableName="usage_turns">
+            <column name="origin" type="varchar(8)" defaultValue="GATEWAY"><constraints nullable="false"/></column>
+            <column name="jarvis_part" type="varchar(16)"/>
+        </addColumn>
+        <createIndex tableName="usage_turns" indexName="idx_usage_turns_user_origin_occurred">
+            <column name="user_id"/>
+            <column name="origin"/>
+            <column name="occurred_at"/>
+        </createIndex>
+        <rollback>
+            <dropIndex tableName="usage_turns" indexName="idx_usage_turns_user_origin_occurred"/>
+            <dropColumn tableName="usage_turns" columnName="jarvis_part"/>
+            <dropColumn tableName="usage_turns" columnName="origin"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

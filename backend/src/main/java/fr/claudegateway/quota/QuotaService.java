@@ -242,6 +242,18 @@ public class QuotaService {
     public void recordUsage(UUID userId, TurnTokens tokens, TurnExtras extras,
             BigDecimal providerCostUsd, String model, java.util.Map<String, TurnTokens> otherModels,
             String recordedModel, UUID workspaceId, UUID hostId) {
+        recordUsage(userId, tokens, extras, providerCostUsd, model, otherModels, recordedModel, workspaceId, hostId,
+                UsageTag.GATEWAY);
+    }
+
+    /**
+     * Même décompte, <b>étiqueté de son origine</b> (F-244 / SF-244-01) : un tour Opus né de Jarvis écrit sa ligne du
+     * journal avec {@code origin = JARVIS}, poste {@code OPUS}. L'étiquette ne change pas encore le quota (SF-244-02).
+     */
+    @Transactional
+    public void recordUsage(UUID userId, TurnTokens tokens, TurnExtras extras,
+            BigDecimal providerCostUsd, String model, java.util.Map<String, TurnTokens> otherModels,
+            String recordedModel, UUID workspaceId, UUID hostId, UsageTag tag) {
         TurnExtras spent = extras == null ? TurnExtras.NONE : extras;
         if (tokens.isEmpty() && spent.isEmpty()
                 && (providerCostUsd == null || providerCostUsd.signum() <= 0)) {
@@ -268,7 +280,12 @@ public class QuotaService {
         TurnCost cost = providerCostUsd == null || providerCostUsd.signum() <= 0
                 ? providerCostCalculator.calculate(tokens, spent, model, otherModels, recordedModel)
                 : providerCostCalculator.calculate(providerCostUsd, tokens, spent, model);
-        usageLedgerService.recordTurn(userId, workspaceId, hostId, tokens, spent, cost);
+        UsageTag label = UsageTag.orGateway(tag);
+        if (label.isJarvis()) {
+            usageLedgerService.recordTurn(userId, workspaceId, hostId, tokens, spent, cost, label);
+        } else {
+            usageLedgerService.recordTurn(userId, workspaceId, hostId, tokens, spent, cost);
+        }
     }
 
     /**

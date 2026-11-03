@@ -1860,13 +1860,17 @@ public class JarvisFastBrainService {
     }
 
 
-    /** Coût de l'appel : journal d'usage (annexe) et journée Jarvis. Best-effort. */
+    /** F-244 / SF-244-01 — l'étiquette du cerveau rapide au journal du coût. */
+    static final fr.claudegateway.quota.UsageTag JARVIS_FAST =
+            fr.claudegateway.quota.UsageTag.jarvis(fr.claudegateway.quota.UsageTurn.JarvisPart.FAST);
+
+    /** Coût de l'appel : journal d'usage (annexe, étiqueté JARVIS / FAST) et journée Jarvis. Best-effort. */
     void account(UUID userId, Workspace workspace, AgentTurn turn) {
         try {
             String model = turn.servedModel() != null ? turn.servedModel() : properties.model();
             if (ledger != null) {
                 ledger.recordAnnex(userId, workspace == null ? null : workspace.getId(), model, turn.inputTokens(),
-                        turn.outputTokens(), turn.cacheReadTokens(), turn.cacheWriteTokens());
+                        turn.outputTokens(), turn.cacheReadTokens(), turn.cacheWriteTokens(), JARVIS_FAST);
             }
             BigDecimal usd = BigDecimal.ZERO;
             if (costs != null) {

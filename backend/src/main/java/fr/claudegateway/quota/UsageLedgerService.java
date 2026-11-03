@@ -58,6 +58,13 @@ public class UsageLedgerService {
      */
     public void recordAnnex(UUID userId, UUID workspaceId, String model, long inputTokens, long outputTokens,
             long cacheReadTokens, long cacheWriteTokens) {
+        recordAnnex(userId, workspaceId, model, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens,
+                UsageTag.GATEWAY);
+    }
+
+    /** Même appel annexe, étiqueté de son origine (F-244 / SF-244-01 : le cerveau rapide de Jarvis). */
+    public void recordAnnex(UUID userId, UUID workspaceId, String model, long inputTokens, long outputTokens,
+            long cacheReadTokens, long cacheWriteTokens, UsageTag tag) {
         if (userId == null || inputTokens + outputTokens <= 0L) {
             return;
         }
@@ -65,9 +72,31 @@ public class UsageLedgerService {
             TurnTokens tokens = new TurnTokens(Math.max(0L, inputTokens - cacheReadTokens - cacheWriteTokens),
                     outputTokens, cacheReadTokens, cacheWriteTokens);
             TurnCost cost = calculator == null ? null : calculator.calculate(tokens, model);
-            writer.write(userId, workspaceId, null, tokens, TurnExtras.NONE, cost, UsageTurn.Kind.ANNEXE);
+            writer.write(userId, workspaceId, null, tokens, TurnExtras.NONE, cost, UsageTurn.Kind.ANNEXE, tag);
         } catch (RuntimeException failure) {
             log.warn("Appel annexe non inscrit au journal du coût ({})", failure.getClass().getSimpleName());
+        }
+    }
+
+    /**
+     * <b>Une dépense Jarvis hors jetons de modèle</b> (F-244 / SF-244-01) — la voix, l'écoute, la dictée — au coût déjà
+     * calculé par son service (tarif réel de son fournisseur), étiquetée {@code ANNEXE} + {@code JARVIS} + poste. Ne
+     * touche pas au quota. Best-effort, comme {@link #recordAnnex}.
+     *
+     * @param inputTokens jetons d'entrée estimés (la voix : caractères / 4), 0 sinon
+     * @param costUsd     le coût réel, en dollars
+     */
+    public void recordJarvisCost(UUID userId, UUID workspaceId, UUID hostId, UsageTurn.JarvisPart part, String model,
+            long inputTokens, java.math.BigDecimal costUsd, String pricingVersion) {
+        if (userId == null || part == null || costUsd == null || costUsd.signum() <= 0) {
+            return;
+        }
+        try {
+            writer.write(userId, workspaceId, hostId, TurnTokens.of(Math.max(0L, inputTokens), 0L), TurnExtras.NONE,
+                    new TurnCost(costUsd, TurnCost.Source.CALCULATED, model, pricingVersion, false),
+                    UsageTurn.Kind.ANNEXE, UsageTag.jarvis(part));
+        } catch (RuntimeException failure) {
+            log.warn("Dépense Jarvis non inscrite au journal du coût ({})", failure.getClass().getSimpleName());
         }
     }
 
@@ -92,6 +121,12 @@ public class UsageLedgerService {
      */
     public void recordTurn(UUID userId, UUID workspaceId, UUID hostId, TurnTokens tokens,
             TurnExtras extras, TurnCost cost) {
+        recordTurn(userId, workspaceId, hostId, tokens, extras, cost, UsageTag.GATEWAY);
+    }
+
+    /** Même relevé, étiqueté de son origine (F-244 / SF-244-01 : un tour Opus né de Jarvis porte {@code JARVIS}). */
+    public void recordTurn(UUID userId, UUID workspaceId, UUID hostId, TurnTokens tokens,
+            TurnExtras extras, TurnCost cost, UsageTag tag) {
         TurnExtras spent = extras == null ? TurnExtras.NONE : extras;
         if (userId == null || tokens == null || (tokens.isEmpty() && spent.isEmpty())) {
             // Un tour sans consommation n'est pas une ligne de facture : ne rien écrire évite un
@@ -99,7 +134,12 @@ public class UsageLedgerService {
             return;
         }
         try {
-            writer.write(userId, workspaceId, hostId, tokens, spent, cost);
+            UsageTag label = UsageTag.orGateway(tag);
+            if (label.isJarvis()) {
+                writer.write(userId, workspaceId, hostId, tokens, spent, cost, UsageTurn.Kind.TOUR, label);
+            } else {
+                writer.write(userId, workspaceId, hostId, tokens, spent, cost);
+            }
         } catch (RuntimeException failure) {
             log.warn("Relevé de consommation non enregistré pour l'utilisateur {} (projet {}) :"
                     + " la consommation reste comptée par les compteurs de période.",

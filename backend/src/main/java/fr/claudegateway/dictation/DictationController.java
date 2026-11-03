@@ -3,6 +3,7 @@ package fr.claudegateway.dictation;
 import java.io.IOException;
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -41,14 +42,34 @@ public class DictationController {
         this.properties = properties;
     }
 
+    /** F-244 / SF-244-01 (D3) — la marque d'une dictée de repli appelée depuis {@code /jarvis}. */
+    static final String JARVIS = "JARVIS";
+
+    private fr.claudegateway.jarvis.JarvisUsageService jarvisUsage;
+    private fr.claudegateway.auth.CurrentUser currentUser;
+
+    @Autowired(required = false)
+    public void setJarvisUsage(fr.claudegateway.jarvis.JarvisUsageService jarvisUsage,
+            fr.claudegateway.auth.CurrentUser currentUser) {
+        this.jarvisUsage = jarvisUsage;
+        this.currentUser = currentUser;
+    }
+
+    /** F-244 / SF-244-01 (D3) — une dictée de repli depuis {@code /jarvis} compte au budget de Jarvis. */
+    private void accountJarvis(int bytes, String contentType) {
+        if (jarvisUsage != null && currentUser != null && bytes >= DictationService.MIN_AUDIO_BYTES) {
+            jarvisUsage.addDictationClip(currentUser.requireId(), bytes, contentType);
+        }
+    }
+
     /**
      * Transcrit un extrait dicté, et rend son texte.
      *
      * @param audio l'extrait, au format produit par le micro du navigateur
      */
     @PostMapping("/transcription")
-    public ResponseEntity<Map<String, String>> transcribe(@RequestParam("audio") MultipartFile audio)
-            throws IOException {
+    public ResponseEntity<Map<String, String>> transcribe(@RequestParam("audio") MultipartFile audio,
+            @RequestParam(value = "via", required = false) String via) throws IOException {
         atelierAccess.requireAccess();
         if (audio == null || audio.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("error", "Aucun extrait reçu."));
@@ -60,7 +81,11 @@ public class DictationController {
                     .body(Map.of("error", "Extrait trop long pour être transcrit."));
         }
         try {
-            String text = dictationService.transcribe(audio.getBytes(), audio.getContentType());
+            byte[] bytes = audio.getBytes();
+            String text = dictationService.transcribe(bytes, audio.getContentType());
+            if (JARVIS.equalsIgnoreCase(via)) {
+                accountJarvis(bytes.length, audio.getContentType());
+            }
             return ResponseEntity.ok(Map.of("text", text));
         } catch (UnsupportedDictationAudioException ex) {
             return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)

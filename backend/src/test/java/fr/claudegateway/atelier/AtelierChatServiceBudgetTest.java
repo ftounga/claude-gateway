@@ -294,6 +294,69 @@ class AtelierChatServiceBudgetTest {
                 fr.claudegateway.quota.TurnExtras.NONE, null, "claude-opus-5", workspaceId, null);
     }
 
+    @Test
+    void aJarvisTurnIsLabelledJarvisOpusInTheLedger() {
+        // F-244 / SF-244-01 : un tour né de Jarvis porte son origine jusqu'au journal (poste OPUS).
+        hostedWithRemainingQuota(12_000_000L);
+        serviceWithTurnCap(null);
+        fr.claudegateway.jarvis.JarvisUsageService jarvisUsage =
+                org.mockito.Mockito.mock(fr.claudegateway.jarvis.JarvisUsageService.class);
+        service.setJarvisUsage(jarvisUsage);
+        agentProvider.enqueueToolCallCosting("read_file", 7, 3);
+        agentProvider.enqueueFinal("Fait.");
+        service.markVoiceTurn(userId, workspaceId, null);
+
+        service.chat(userId, workspaceId, "lis tout");
+
+        verify(quotaService).recordUsage(userId, new fr.claudegateway.quota.TurnTokens(12L, 8L, 0L, 0L),
+                fr.claudegateway.quota.TurnExtras.NONE, null, "claude-opus-5", null, null, workspaceId, null,
+                AtelierChatService.JARVIS_OPUS);
+        verify(jarvisUsage).addOpus(org.mockito.ArgumentMatchers.eq(userId), any());
+    }
+
+    @Test
+    void aCutJarvisTurnCountsInJarvisDayAndIsLabelled() {
+        // F-244 / SF-244-01 (D3) : un tour Jarvis coupé n'était pas compté à la journée de Jarvis.
+        hostedWithRemainingQuota(12_000_000L);
+        serviceWithTurnCap(null);
+        fr.claudegateway.jarvis.JarvisUsageService jarvisUsage =
+                org.mockito.Mockito.mock(fr.claudegateway.jarvis.JarvisUsageService.class);
+        service.setJarvisUsage(jarvisUsage);
+        agentProvider.enqueueToolCallCosting("read_file", 7, 3);
+        agentProvider.onTurn(() -> agentProvider.onTurn(() -> {
+            throw new IllegalStateException("coupure simulée");
+        }));
+        service.markVoiceTurn(userId, workspaceId, null);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.chat(userId, workspaceId, "lis tout"))
+                .hasMessageContaining("coupure simulée");
+
+        verify(jarvisUsage, org.mockito.Mockito.times(1)).addOpus(org.mockito.ArgumentMatchers.eq(userId), any());
+        verify(quotaService, org.mockito.Mockito.times(1)).recordUsage(userId,
+                new fr.claudegateway.quota.TurnTokens(7L, 3L, 0L, 0L),
+                fr.claudegateway.quota.TurnExtras.NONE, null, "claude-opus-5", null, null, workspaceId, null,
+                AtelierChatService.JARVIS_OPUS);
+    }
+
+    @Test
+    void aTypedCutTurnNeverTouchesJarvisDay() {
+        // F-244 / SF-244-01 — non-régression : un tour tapé coupé reste GATEWAY et hors journée Jarvis.
+        hostedWithRemainingQuota(12_000_000L);
+        serviceWithTurnCap(null);
+        fr.claudegateway.jarvis.JarvisUsageService jarvisUsage =
+                org.mockito.Mockito.mock(fr.claudegateway.jarvis.JarvisUsageService.class);
+        service.setJarvisUsage(jarvisUsage);
+        agentProvider.enqueueToolCallCosting("read_file", 7, 3);
+        agentProvider.onTurn(() -> agentProvider.onTurn(() -> {
+            throw new IllegalStateException("coupure simulée");
+        }));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.chat(userId, workspaceId, "lis tout"))
+                .hasMessageContaining("coupure simulée");
+
+        org.mockito.Mockito.verifyNoInteractions(jarvisUsage);
+    }
+
     // ------------------------------------------------------------ la consommation est visible
 
     @Test

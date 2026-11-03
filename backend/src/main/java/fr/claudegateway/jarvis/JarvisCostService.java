@@ -67,7 +67,9 @@ public class JarvisCostService {
             fast = fast.add(nz(d.getFastBrainCostUsd()));
             opus = opus.add(nz(d.getOpusCostUsd()));
             voice = voice.add(nz(d.getSpeechCostUsd()));
-            listening = listening.add(nz(d.getSttStreamCostUsd()));
+            // F-244 / SF-244-01 : l'écoute = flux + retranscription + dictée de repli (désormais en colonnes séparées).
+            listening = listening.add(nz(d.getSttStreamCostUsd())).add(nz(d.getSttUtteranceCostUsd()))
+                    .add(nz(d.getDictationCostUsd()));
             turns += d.getOpusTurns();
         }
         BigDecimal total = fast.add(opus).add(voice).add(listening);

@@ -1368,7 +1368,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
       }
       return final.text;
     }
-    return this.dictation.transcribe(clip, filename);
+    // F-244 / SF-244-01 — la dictée de repli appelée d'ici compte au budget de Jarvis.
+    return this.dictation.transcribe(clip, filename, 'JARVIS');
   }
 
   // ---- F-239 / SF-239-10 : laisser finir la phrase ----

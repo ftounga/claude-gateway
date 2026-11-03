@@ -87,8 +87,11 @@ class JarvisVoiceServiceTest {
 
         verify(provider).synthesizeStream(eq("C'est fait."), eq("onyx"), eq(JarvisVoiceProperties.DEFAULT_INSTRUCTIONS),
                 any());
-        verify(ledger).record(alice, ws, host, 11L, 0d);
-        verify(usage).addSpeech(eq(alice), eq(11L), eq(new BigDecimal("0.000165")));
+        // F-244 / SF-244-01 (D2) : plus de ligne TOUR au tarif OpenAI ; la journée Jarvis écrit la ligne ANNEXE
+        // étiquetée JARVIS / VOICE, au tarif réel du fournisseur de la voix, rattachée au sujet et au poste.
+        verify(ledger, never()).record(any(), any(), any(), org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyDouble());
+        verify(usage).addSpeech(eq(alice), eq(ws), eq(host), eq("openai"), eq(11L), eq(new BigDecimal("0.000165")));
     }
 
     @Test

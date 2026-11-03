@@ -127,12 +127,16 @@ export class DictationService {
    * F-233 / SF-233-08 — transcrit un extrait déjà capté (la parole qui a coupé Jarvis, captée par la détection de
    * voix), par la même route que la dictée.
    */
-  async transcribe(blob: Blob, filename = 'coupure.wav'): Promise<string> {
+  async transcribe(blob: Blob, filename = 'coupure.wav', via?: 'JARVIS'): Promise<string> {
     if (blob.size === 0) {
       return '';
     }
     const form = new FormData();
     form.append('audio', blob, filename);
+    // F-244 / SF-244-01 — appelée depuis /jarvis, la dictée compte au budget de Jarvis.
+    if (via) {
+      form.append('via', via);
+    }
     try {
       const answer = await firstValueFrom(
         this.http.post<{ text?: string }>('/api/atelier/transcription', form),

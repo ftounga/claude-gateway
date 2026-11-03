@@ -19,9 +19,10 @@ public interface JarvisUsageDayRepository extends JpaRepository<JarvisUsageDay, 
 
     /**
      * Le coût de la voix du compte depuis {@code from} (inclus), en dollars ; 0 sans ligne. F-233 / SF-233-04 :
-     * lecture <b>et</b> écoute en flux.
+     * lecture <b>et</b> écoute en flux ; F-244 / SF-244-01 : et retranscription et dictée de repli, désormais à part.
      */
-    @Query("select coalesce(sum(d.speechCostUsd + d.sttStreamCostUsd), 0) from JarvisUsageDay d"
+    @Query("select coalesce(sum(d.speechCostUsd + d.sttStreamCostUsd + d.sttUtteranceCostUsd + d.dictationCostUsd), 0)"
+            + " from JarvisUsageDay d"
             + " where d.userId = :userId and d.day >= :from")
     BigDecimal sumSpeechCostUsdSince(@Param("userId") UUID userId, @Param("from") LocalDate from);
 

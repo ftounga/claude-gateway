@@ -93,7 +93,8 @@ class JarvisUtteranceApiIntegrationTest {
         ArgumentCaptor<List<String>> vocabulary = ArgumentCaptor.forClass(List.class);
         verify(provider).transcribe(any(), any(), any(), vocabulary.capture());
         assertThat(vocabulary.getValue()).contains("Jarvis", "Kestrel-utt").doesNotContain("Secret-de-Bob");
-        assertThat(usage.lastDays(alice.getId(), 1).get(0).getSttStreamSeconds()).isEqualTo(2L);
+        assertThat(usage.lastDays(alice.getId(), 1).get(0).getSttUtteranceSeconds()).isEqualTo(2L);
+        assertThat(usage.lastDays(alice.getId(), 1).get(0).getSttStreamSeconds()).isZero();
     }
 
     @Test
