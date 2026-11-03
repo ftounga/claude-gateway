@@ -21,6 +21,8 @@ export function toThreadItem(message: AtelierMessage): AtelierThreadItem {
     ...(message.via === 'JARVIS' ? { viaJarvis: true } : {}),
     // F-235 / SF-235-06 : réponse rapide de Jarvis, ou tour Opus qu'il a délégué.
     ...(message.brain === 'FAST' || message.brain === 'DELEGATED' ? { brain: message.brain } : {}),
+    // F-246 / SF-246-02 : le fil du message, quand la gateway le dit (repli du passé commun dans un volet).
+    ...(message.chantier !== undefined ? { chantier: message.chantier } : {}),
   };
   const stored = message.terminal;
   if (!stored) {

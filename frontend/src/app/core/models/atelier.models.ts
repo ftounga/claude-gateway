@@ -557,6 +557,11 @@ export interface AtelierMessage {
    * `DELEGATED` (demande d'un tour Opus lancé par Jarvis) ; absent sinon.
    */
   brain?: 'FAST' | 'DELEGATED' | null;
+  /**
+   * Le fil du message (F-221 / SF-221-01, servi par la gateway) : le numéro du chantier, ou `null` pour le fil commun.
+   * F-246 / SF-246-02 : le volet d'un chantier replie le passé commun (messages d'autres fils). Absent d'un serveur d'avant.
+   */
+  chantier?: number | null;
 }
 
 /** Action de fichier réalisée par l'agent pendant un tour : `type` = `read` ou `write`. */

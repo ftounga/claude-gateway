@@ -804,7 +804,15 @@
         (click)="toggleHistory()"
       >
         <mat-icon aria-hidden="true">{{ historyRevealed() ? 'expand_less' : 'history' }}</mat-icon>
-        @if (historyRevealed()) {
+        @if (contextFold()) {
+          <!-- F-246 / SF-246-02 : le passé commun relu par l'agent, replié — le fil montré est celui du chantier. -->
+          @if (historyRevealed()) {
+            <span>Masquer le contexte d'avant le chantier {{ laneChantier }}</span>
+          } @else {
+            <span>Contexte d'avant le chantier {{ laneChantier }} ({{ foldedCount() }}
+              {{ foldedCount() > 1 ? 'messages' : 'message' }} d'autres fils)</span>
+          }
+        } @else if (historyRevealed()) {
           <span>Masquer l'historique</span>
         } @else {
           <span>Voir l'historique ({{ foldedCount() }}
