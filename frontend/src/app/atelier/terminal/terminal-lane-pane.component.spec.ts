@@ -3,7 +3,7 @@ import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
-import { of } from 'rxjs';
+import { NEVER, of } from 'rxjs';
 
 import {
   AtelierProofBlock,
@@ -53,6 +53,34 @@ describe('TerminalLanePaneComponent (F-221)', () => {
     expect(fixture.componentInstance.messages().length).toBe(1);
     expect(fixture.componentInstance.submitting()).toBeTrue();
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('Chantier 8');
+  });
+
+  it('F-246 : changer de chantier efface aussitôt le fil quitté (jamais le fil de 8 sous l\'en-tête de 9)', () => {
+    const fixture = create();
+    atelier.getHistory.and.returnValue(NEVER);
+    fixture.componentInstance.draft.set('brouillon du 8');
+
+    fixture.componentRef.setInput('chantier', 9);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.messages()).toEqual([]);
+    expect(fixture.componentInstance.draft()).toBe('');
+    expect(atelier.getHistory).toHaveBeenCalledWith('w1', 9);
+  });
+
+  it('F-246 : sendText envoie la reprise dans SON fil et garde le brouillon ; un autre chantier, rien', () => {
+    const fixture = create();
+    const pane = fixture.componentInstance;
+    pane.draft.set('mon brouillon');
+
+    pane.sendText('✓ Nouveau chantier ouvert — investigation lancée.', 7);
+    expect(atelier.streamChat).not.toHaveBeenCalled();
+
+    pane.sendText('✓ Nouveau chantier ouvert — investigation lancée.', 8);
+    const args = atelier.streamChat.calls.mostRecent().args;
+    expect(args[1]).toBe('✓ Nouveau chantier ouvert — investigation lancée.');
+    expect(args[6]).toBe(8);
+    expect(pane.draft()).toBe('mon brouillon');
   });
 
   it('envoie dans le fil 8 et n\'interrompt que lui', () => {

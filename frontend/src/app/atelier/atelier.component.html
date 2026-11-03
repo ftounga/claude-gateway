@@ -97,10 +97,20 @@
 }
 
 @if (activeWorkspaceId()) {
-  <!-- F-221 / SF-221-03 — LE SPLIT : deux chantiers actifs, deux volets (gauche = le chantier au focus,
-       droite = l'autre). Sur téléphone, des onglets : un volet à la fois, les deux restent branchés. -->
+  <!-- F-221 / F-246 — LES VOLETS : chaque chantier reste dans le volet où l'utilisateur l'a mis ; la carte des
+       volets dit toujours qui est où et rouvre n'importe quel chantier. Sur téléphone, des onglets : un volet à la
+       fois, les deux restent branchés. -->
   <div class="lane-split" [class.lane-split--on]="splitPane() !== null && !narrowScreen()"
-       [class.lane-split--tabs]="splitPane() !== null && narrowScreen()">
+       [class.lane-split--tabs]="splitPane() !== null && narrowScreen()"
+       [class.lane-split--map]="paneMapShown()">
+  @if (paneMapShown()) {
+    <app-terminal-pane-map class="lane-split__map"
+      [chantiers]="paneChantiers()"
+      [layout]="paneLayout()"
+      [activeLanes]="activeLanes()"
+      (placed)="onPanePlaced($event)"
+    ></app-terminal-pane-map>
+  }
   @if (splitPane() !== null && narrowScreen()) {
     <div class="lane-tabs" role="tablist" aria-label="Volets du sujet">
       <!-- F-226 / SF-226-02 : chaque onglet dit son chantier (titre) et son état (« tourne », « à vous »). -->
@@ -122,12 +132,16 @@
   }
   <div class="lane-split__pane" [hidden]="splitPane() !== null && narrowScreen() && shownPane() === 'right'">
   <app-atelier-terminal
+    [laneChantier]="paneLayout().left"
+    [primaryPane]="true"
     [paneTitle]="splitPane() !== null ? leftPaneTitle() : null"
     [activeLanes]="activeLanes()"
-    (chantiersChange)="paneChantiers.set($event)"
+    (chantiersChange)="onPaneChantiers($event)"
     (closePane)="closeLeftPane()"
     (focusChantierChange)="onFocusChantierChange($event)"
-    (parallelLaunch)="onParallelLaunch($event)"
+    (showChantier)="onShowChantier($event, 'left')"
+    (chantierOpened)="onChantierOpened($event, 'left')"
+    (parallelLaunch)="onParallelLaunch($event, 'left')"
     (lanesChanged)="refreshActiveLanes()"
     [projectName]="activeName()"
     [projectId]="activeWorkspaceId()"
@@ -229,7 +243,7 @@
         [projectId]="activeWorkspaceId()!"
         [chantier]="pane.chantier"
         [projectName]="activeName()"
-        [paneTitle]="laneLabel(pane.chantier)"
+        [paneTitle]="rightPaneTitle(pane.chantier)"
         [autonomous]="pane.autonomous"
         [hostName]="activeHostName()"
         [hostId]="activeHostId()"
@@ -238,7 +252,10 @@
         [runnerStatus]="displayedRunnerStatus()"
         [localFolder]="localFolder()"
         (closed)="closeRightPane()"
-        (parallelLaunch)="onParallelLaunch($event)"
+        (parallelLaunch)="onParallelLaunch($event, 'right')"
+        (chantiersChange)="onPaneChantiers($event)"
+        (showChantier)="onShowChantier($event, 'right')"
+        (chantierOpened)="onChantierOpened($event, 'right')"
         (lanesChanged)="refreshActiveLanes()"
       ></app-terminal-lane-pane>
     </div>

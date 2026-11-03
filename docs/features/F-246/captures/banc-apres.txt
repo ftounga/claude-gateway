@@ -1,0 +1,35 @@
+OK   [pc] arrivée : gauche=10 droite=11 (attendu 10 | 11)
+OK   [pc] lancer les deux : envois Go chantier 10→10, Go chantier 11→11
+OK   [pc] ouvrir 9 : le chantier 11 garde son volet de droite (droite=11)
+OK   [pc] ouvrir 9 : 9 est affiché (gauche=9 droite=11)
+OK   [pc] ouvrir 9 : 10 a DISPARU de l'écran
+OK   [pc] ouvrir 9 : aucun volet ne montre le fil de 9 sans être le volet de 9
+OK   [pc] repère « qui est où » visible : VOLETS Gauche Ch.9 · Runner GitLab ◧ ◨ Ch.10 · LDIC-323 recensement tourne ◧ ◨ Droite Ch.11 · LDIC-338 CFT prod tourne ◧ ◨
+OK   [pc] fermer le volet de droite (chantier 11) : droite=null
+OK   [pc] rouvrir le chantier 11 : droite=11
+OK   [pc] recharger : avant 9 | 11, après 9 | 11
+OK   [pc] chantier ouvert ailleurs (focus serveur → 12) : volets inchangés (9 | 11)
+OK   [pc] ouvrir un chantier depuis la gauche : gauche=9 droite=13 (attendu 9 | 13)
+OK   [pc] la reprise du nouveau chantier part dans son fil : « ✓ Mode guidé — investigation lancée. »→13
+OK   [pc] échanger pendant un tour : 9 | 13 → 13 | 9
+OK   [pc] le tour de 9 est suivi dans son nouveau volet (rebranchements : 5)
+OK   [pc] aucun fil d'un autre chantier dans un volet
+OK   [pc] aucun défilement horizontal de la page
+OK   [tel] arrivée : gauche=10 droite=11 (attendu 10 | 11)
+OK   [tel] lancer les deux : envois Go chantier 10→10, Go chantier 11→11
+OK   [tel] ouvrir 9 : le chantier 11 garde son volet de droite (droite=11)
+OK   [tel] ouvrir 9 : 9 est affiché (gauche=9 droite=11)
+OK   [tel] ouvrir 9 : 10 a DISPARU de l'écran
+OK   [tel] ouvrir 9 : aucun volet ne montre le fil de 9 sans être le volet de 9
+OK   [tel] repère « qui est où » visible : VOLETS Gauche Ch.9 ◧ ◨ Ch.10 tourne ◧ ◨ Droite Ch.11 tourne ◧ ◨
+OK   [tel] fermer le volet de droite (chantier 11) : droite=null
+OK   [tel] rouvrir le chantier 11 : droite=11
+OK   [tel] recharger : avant 9 | 11, après 9 | 11
+OK   [tel] chantier ouvert ailleurs (focus serveur → 12) : volets inchangés (9 | 11)
+OK   [tel] ouvrir un chantier depuis la gauche : gauche=9 droite=13 (attendu 9 | 13)
+OK   [tel] la reprise du nouveau chantier part dans son fil : « ✓ Mode guidé — investigation lancée. »→13
+OK   [tel] échanger pendant un tour : 9 | 13 → 13 | 9
+OK   [tel] le tour de 9 est suivi dans son nouveau volet (rebranchements : 5)
+OK   [tel] onglets : volets inchangés (13 | 9)
+OK   [tel] aucun fil d'un autre chantier dans un volet
+OK   [tel] aucun défilement horizontal de la page

@@ -54,6 +54,11 @@ import { AutonomyService } from '../core/services/autonomy.service';
 import { AutonomyMode } from '../core/models/autonomy.models';
 import { OpenChantier } from '../core/models/journey.models';
 import { laneLabelOf, laneStateOf } from './lane-tabs';
+import {
+  NO_PANES, PaneLayout, PaneSide, arrivalLayout, closeSide, otherSide, place, placeBeside, prune, readLayout, sideOf,
+  writeLayout,
+} from './pane-layout';
+import { TerminalPaneMapComponent } from './terminal/terminal-pane-map.component';
 import { ParallelLaunchRequest } from './terminal/atelier-terminal.component';
 import {
   ParallelLaunchDecision,
@@ -255,6 +260,7 @@ const DUPLICATE_SEND_WINDOW_MS = 3000;
     RouterLink,
     AtelierTerminalComponent,
     TerminalLanePaneComponent,
+    TerminalPaneMapComponent,
     AtelierFilesComponent,
     AtelierGuideComponent,
     WorkstationNoticeComponent,
@@ -388,25 +394,38 @@ export class AtelierComponent implements OnInit, OnDestroy {
    */
   @ViewChild(AtelierTerminalComponent) private terminalView?: AtelierTerminalComponent;
 
-  // ------------------------------------------------------------------ F-221 / SF-221-03 : le split
+  // ------------------------------------------------------------------ F-221 / F-246 : les volets
 
   private readonly journeyApi = inject(JourneyService);
 
   /**
-   * **Le fil de l'écran** (F-221 / SF-221-03) : le chantier au focus d'un sujet guidé, `null` sinon (fil
-   * commun). L'historique, l'envoi, le rebranchement, la précision, l'interruption et l'autorisation
-   * portent ce fil — ce que l'écran montre est exactement ce que le modèle relit.
+   * **Le fil de l'écran** (F-221 / SF-221-03) : le chantier du volet de gauche d'un sujet guidé, `null` sinon (fil
+   * commun). L'historique, l'envoi, le rebranchement, la précision, l'interruption et l'autorisation portent ce fil —
+   * ce que l'écran montre est exactement ce que le modèle relit. Toujours égal à `paneLayout().left`.
    */
   readonly chatLane = signal<number | null>(null);
 
-  /** Le volet de droite du split, ou `null` hors split. */
-  readonly splitPane = signal<{ chantier: number; autonomous: boolean } | null>(null);
+  /**
+   * **Quel chantier est dans quel volet** (F-246 / SF-246-01). La disposition appartient à l'écran : le focus du
+   * serveur ne la déplace plus ; seuls les gestes de l'utilisateur la changent (carte des volets, [Fermer ce volet],
+   * chantier ouvert ou lancé à côté, « Basculer » dans un volet). Gardée par sujet sur l'appareil.
+   */
+  readonly paneLayout = signal<PaneLayout>(NO_PANES);
 
-  /** Combien d'autres chantiers sont actifs au-delà des deux volets (renvoi au tableau). */
-  readonly otherActiveLanes = signal(0);
+  /** Les chantiers en course autonome (en-tête « en autonome » du volet). */
+  private readonly autonomousLanes = signal<number[]>([]);
+
+  /** Le volet de droite du split, ou `null` hors split. */
+  readonly splitPane = computed<{ chantier: number; autonomous: boolean } | null>(() => {
+    const right = this.paneLayout().right;
+    return right === null ? null : { chantier: right, autonomous: this.autonomousLanes().includes(right) };
+  });
 
   /** Les chantiers ouverts du sujet, lus par le terminal (F-226 / SF-226-02 : titres et états des onglets). */
   readonly paneChantiers = signal<OpenChantier[]>([]);
+
+  /** La carte des volets se montre dès que le sujet a deux chantiers ouverts, ou qu'un split est ouvert. */
+  readonly paneMapShown = computed(() => this.paneChantiers().length >= 2 || this.splitPane() !== null);
 
   /** « Chantier 2 · Logs » — l'onglet ou l'en-tête d'un volet (F-226 / SF-226-02). */
   laneLabel(number: number | null): string {
@@ -429,20 +448,18 @@ export class AtelierComponent implements OnInit, OnDestroy {
     typeof window !== 'undefined' && typeof window.matchMedia === 'function'
       ? window.matchMedia('(max-width: 819px)').matches : false);
 
-  /** Volets refermés à la main : ils ne se rouvrent pas tant que leur chantier reste actif. */
-  private readonly dismissedLanes = new Set<number>();
-
-  /** Un volet ouvert à la main (refus d'un lancement à côté) reste ouvert, même chantier inactif (SF-221-04). */
-  private pinnedPane: number | null = null;
+  /** Le volet de droite monté (F-246 : y envoyer la reprise d'un chantier qu'on vient d'ouvrir). */
+  @ViewChild(TerminalLanePaneComponent) private rightPaneView?: TerminalLanePaneComponent;
 
   private readonly autonomyApi = inject(AutonomyService);
 
   /**
    * **« Lancer le chantier N en parallèle ? »** (F-221 / SF-221-04) — demandé par le tableau des chantiers
    * ou une suite, depuis un volet. L'overlay lit le préflight, propose le mode (avancer jusqu'au blocage
-   * d'abord) ; valider fait partir le chantier à droite, SANS phrase dans le chat.
+   * d'abord) ; valider fait partir le chantier dans l'AUTRE volet que celui d'où on l'a demandé (F-246), SANS
+   * phrase dans le chat ; [Afficher ici] le met dans ce volet.
    */
-  onParallelLaunch(request: ParallelLaunchRequest): void {
+  onParallelLaunch(request: ParallelLaunchRequest, from: PaneSide = 'left'): void {
     const id = this.activeWorkspaceId();
     if (!id) {
       return;
@@ -462,27 +479,25 @@ export class AtelierComponent implements OnInit, OnDestroy {
           return;
         }
         if (decision === 'launch' && choice.mode) {
-          this.launchInParallel(id, request.number, choice.mode);
+          this.launchInParallel(id, request.number, choice.mode, from);
         } else if (decision === 'switch') {
-          this.journeyApi.focus(id, request.number).subscribe({
-            next: () => this.terminalView?.loadJourney(id),
-            error: () => this.notifyError("Le chantier n'a pas pu passer au premier plan."),
-          });
+          this.onShowChantier(request.number, from);
         }
       });
     });
   }
 
   /**
-   * Fait partir le chantier à droite (focus gardé à gauche) ; un refus ouvre quand même son volet. Dans les deux
-   * cas les fils actifs sont relus (F-226 / SF-226-03) ; un refus `409` masque en plus la suggestion de ce
-   * chantier — « tourne déjà » dit clairement qu'une course est en cours ailleurs.
+   * Fait partir le chantier dans l'autre volet (F-246) ; un refus ouvre quand même son volet. Dans les deux cas les
+   * fils actifs sont relus (F-226 / SF-226-03) ; un refus `409` masque en plus la suggestion de ce chantier.
    */
-  private launchInParallel(id: string, number: number, mode: AutonomyMode): void {
+  private launchInParallel(id: string, number: number, mode: AutonomyMode, from: PaneSide): void {
     this.autonomyApi.launch(id, number, mode, true).subscribe({
       next: () => {
         if (this.isDisplayed(id)) {
-          this.openRightPane(number, true);
+          // La course vient de partir : l'en-tête dit « en autonome » sans attendre la relecture des fils.
+          this.autonomousLanes.update((lanes) => (lanes.includes(number) ? lanes : [...lanes, number]));
+          this.showBeside(number, from);
           this.refreshActiveLanes(id);
         }
       },
@@ -494,10 +509,11 @@ export class AtelierComponent implements OnInit, OnDestroy {
         if (err.status === 409) {
           this.terminalView?.dismissSuggestion(number);
         }
+        const where = sideOf(this.paneLayout(), number) ?? otherSide(from);
         this.notifyError(body?.code === 'autonomy_subject_busy'
-          ? `Le chantier ${number} tourne déjà : il s'affiche à droite.`
+          ? `Le chantier ${number} tourne déjà : il s'affiche ${where === 'left' ? 'à gauche' : 'à droite'}.`
           : body?.message ?? `Le chantier ${number} n'a pas pu partir.`);
-        this.openRightPane(number, false);
+        this.showBeside(number, from);
         this.refreshActiveLanes(id);
       },
     });
@@ -505,8 +521,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
 
   /**
    * **Relit les fils actifs** (F-226 / SF-226-03) — à chaque fin de tour, après un lancement ou une reprise en
-   * main : la suggestion ne propose jamais un chantier déjà en course. Lecture seule : le split n'est pas
-   * réévalué (il ne bouge qu'au changement de focus). Un échec garde la dernière liste connue.
+   * main : la suggestion ne propose jamais un chantier déjà en course. Lecture seule : les volets ne bougent pas.
    */
   refreshActiveLanes(id: string | null = this.activeWorkspaceId()): void {
     if (!id) {
@@ -515,121 +530,174 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.atelier.getLanes(id).subscribe({
       next: ({ lanes }) => {
         if (this.isDisplayed(id)) {
-          this.activeLanes.set(activeLaneNumbers(lanes ?? []));
+          this.noteLanes(lanes ?? []);
         }
       },
       error: () => undefined,
     });
   }
 
-  /** Ouvre le volet de droite sur ce chantier (deux volets au plus : il remplace l'actuel). */
-  private openRightPane(number: number, autonomous: boolean): void {
-    this.dismissedLanes.delete(number);
-    this.pinnedPane = autonomous ? null : number;
-    this.splitPane.set({ chantier: number, autonomous });
-    if (this.narrowScreen()) {
-      this.shownPane.set('right');
-    }
+  private noteLanes(lanes: AtelierLane[]): void {
+    this.activeLanes.set(activeLaneNumbers(lanes));
+    this.autonomousLanes.set(lanes.filter((l) => l.chantier !== null && l.autonomy).map((l) => l.chantier as number));
   }
 
-  /** Titre du volet de gauche en split. */
+  /** Titre du volet de gauche en split : « Gauche — Chantier 9 · titre ». */
   leftPaneTitle(): string {
-    const lane = this.chatLane();
-    const base = lane ? `Chantier ${lane}` : 'Fil du sujet';
-    const more = this.otherActiveLanes();
-    return more > 0 ? `${base} · +${more} autre${more > 1 ? 's' : ''} actif${more > 1 ? 's' : ''}` : base;
+    return `Gauche — ${this.laneLabel(this.chatLane())}`;
+  }
+
+  /** Titre du volet de droite : « Droite — Chantier 10 · titre ». */
+  rightPaneTitle(number: number): string {
+    return `Droite — ${this.laneLabel(number)}`;
   }
 
   /**
-   * Le chantier au focus a changé (F-221 / SF-221-03) : l'écran suit son FIL — le fil est relu, le tour de
-   * ce fil est rejoint — puis le split est réévalué.
+   * Le chantier au focus du terminal NON épinglé (sujet qui devient guidé, arrivée sur le sujet) : la disposition
+   * gardée sur l'appareil revient si ses chantiers sont encore ouverts, sinon le focus à gauche et, si un autre
+   * chantier tourne, le plus ancien à droite (F-221). Une fois le volet de gauche épinglé, le focus du serveur
+   * ne déplace plus rien (F-246).
    */
   onFocusChantierChange(focus: number | null): void {
     const id = this.activeWorkspaceId();
-    if (!id) {
+    if (!id || focus === null || this.paneLayout().left !== null) {
       return;
     }
-    if (focus !== this.chatLane()) {
-      this.chatLane.set(focus);
-      this.resetTurnState();
-      this.messages.set([]);
-      this.loadHistory(id);
-      this.reloadOnIdleFor = id;
-      this.reattachTurn(id);
-    }
-    this.evaluateSplit(id);
-  }
-
-  /**
-   * **Deux chantiers actifs → deux volets** (F-221 / SF-221-03) : lit les fils actifs du sujet et ouvre
-   * le volet de droite sur un autre chantier actif. Best-effort : un échec laisse l'écran normal.
-   */
-  evaluateSplit(id: string): void {
+    const open = this.paneChantiers().length > 0 ? this.paneChantiers().map((c) => c.number) : null;
+    const saved = readLayout(id);
+    this.applyLayout(arrivalLayout(saved, focus, [], open));
     this.atelier.getLanes(id).subscribe({
       next: ({ lanes }) => {
         if (!this.isDisplayed(id)) {
           return;
         }
-        this.activeLanes.set(activeLaneNumbers(lanes ?? []));
-        const decision = splitFor(lanes ?? [], this.chatLane(), this.dismissedLanes);
-        const current = this.splitPane();
-        this.otherActiveLanes.set(decision.others);
-        if (current !== null && current.chantier === this.pinnedPane) {
-          return; // volet ouvert à la main : il reste jusqu'à ce qu'on le ferme
+        this.noteLanes(lanes ?? []);
+        const layout = this.paneLayout();
+        if (saved === null && layout.right === null && layout.left !== null) {
+          this.applyLayout(arrivalLayout(null, layout.left, lanes ?? [], open));
         }
-        if (decision.right === null) {
-          this.splitPane.set(null);
-        } else if (current?.chantier !== decision.right.chantier
-            || current.autonomous !== decision.right.autonomy) {
-          this.splitPane.set({ chantier: decision.right.chantier!, autonomous: decision.right.autonomy });
-        }
-        this.otherActiveLanes.set(decision.others);
       },
       error: () => undefined,
     });
   }
 
-  /** [Fermer ce volet] à droite : le chantier continue côté serveur, le volet ne revient pas tout seul. */
-  closeRightPane(): void {
-    const pane = this.splitPane();
-    if (pane) {
-      this.dismissedLanes.add(pane.chantier);
+  /**
+   * Les chantiers ouverts, relus par un volet : un chantier clos quitte son volet, les autres ne bougent pas
+   * (F-246). Un sujet revenu en Libre (plus aucun chantier) referme les volets.
+   */
+  onPaneChantiers(chantiers: OpenChantier[]): void {
+    this.paneChantiers.set(chantiers);
+    const layout = this.paneLayout();
+    if (layout.left === null && layout.right === null) {
+      return;
     }
-    this.pinnedPane = null;
-    this.splitPane.set(null);
-    this.shownPane.set('left');
+    const focus = chantiers.find((c) => c.focus)?.number ?? null;
+    this.applyLayout(prune(layout, chantiers.map((c) => c.number), focus));
+  }
+
+  /** La carte des volets : « mettre ce chantier à gauche / à droite ». */
+  onPanePlaced(event: { number: number; side: PaneSide }): void {
+    this.applyLayout(place(this.paneLayout(), event.number, event.side), true);
+  }
+
+  /** « Basculer sur le chantier N » / « Mettre au focus » dans un volet : le chantier vient dans CE volet. */
+  onShowChantier(number: number, from: PaneSide): void {
+    this.applyLayout(place(this.paneLayout(), number, from), true);
   }
 
   /**
-   * [Fermer ce volet] à gauche : le chantier de droite passe au focus et l'écran le suit ; celui de gauche
-   * continue côté serveur et ne revient pas tout seul.
+   * Un chantier vient d'être ouvert depuis un volet (« Ouvrir le chantier ») : il arrive dans l'AUTRE volet, et la
+   * reprise (« ✓ Nouveau chantier ouvert — investigation lancée. ») part dans SON fil — jamais dans celui d'où on
+   * l'a ouvert.
    */
-  closeLeftPane(): void {
+  onChantierOpened(event: { number: number; message: string | null }, from: PaneSide): void {
     const id = this.activeWorkspaceId();
-    const pane = this.splitPane();
-    if (!id || !pane) {
+    if (!id) {
       return;
     }
-    const left = this.chatLane();
-    if (left !== null) {
-      this.dismissedLanes.add(left);
+    const before = this.paneLayout();
+    this.showBeside(event.number, from);
+    const side = sideOf(this.paneLayout(), event.number);
+    if (!event.message || side === null) {
+      return;
     }
-    this.splitPane.set(null);
-    this.shownPane.set('left');
-    this.journeyApi.focus(id, pane.chantier).subscribe({
-      next: () => this.terminalView?.loadJourney(id),
-      error: () => this.notifyError("Le chantier n'a pas pu passer au premier plan."),
-    });
+    if (side === 'left') {
+      const draft = this.draft();
+      this.dispatchMessage(id, event.message);
+      this.draft.set(draft);
+      return;
+    }
+    // Le volet de droite vient d'être monté (ou change de chantier) : il reçoit la reprise une fois branché.
+    const message = event.message;
+    const deliver = () => this.rightPaneView?.sendText(message, event.number);
+    if (before.right === event.number && this.rightPaneView) {
+      deliver();
+    } else {
+      setTimeout(deliver, 0);
+    }
   }
 
-  /** Ferme le split et oublie les volets refermés : un autre sujet repart d'un écran normal. */
+  /** Met le chantier dans l'autre volet que {@code from}, s'il n'est pas déjà affiché. */
+  private showBeside(number: number, from: PaneSide): void {
+    this.applyLayout(placeBeside(this.paneLayout(), number, from));
+    if (this.narrowScreen()) {
+      this.shownPane.set(sideOf(this.paneLayout(), number) ?? this.shownPane());
+    }
+  }
+
+  /** [Fermer ce volet] à droite : le chantier continue côté serveur ; il se rouvre depuis la carte des volets. */
+  closeRightPane(): void {
+    this.applyLayout(closeSide(this.paneLayout(), 'right'));
+  }
+
+  /**
+   * [Fermer ce volet] à gauche : le chantier de droite reste seul à l'écran ; celui de gauche continue côté serveur
+   * et se rouvre depuis la carte des volets.
+   */
+  closeLeftPane(): void {
+    this.applyLayout(closeSide(this.paneLayout(), 'left'), true);
+  }
+
+  /**
+   * **Applique une disposition** (F-246) : la garde pour ce sujet, fait suivre le FIL de l'écran au volet de gauche
+   * (fil relu, tour de ce fil rejoint) et, sur un geste de l'utilisateur, met ce chantier au focus côté serveur —
+   * pour que les autres écrans (Cap, Jarvis) voient le même chantier principal. Sans effet si rien ne change.
+   */
+  private applyLayout(next: PaneLayout, userGesture = false): void {
+    const id = this.activeWorkspaceId();
+    const previous = this.paneLayout();
+    if (!id || (previous.left === next.left && previous.right === next.right)) {
+      return;
+    }
+    this.paneLayout.set(next);
+    writeLayout(id, next);
+    if (next.right === null || (this.shownPane() === 'right' && previous.right !== next.right
+        && sideOf(next, previous.right ?? -1) === 'left')) {
+      this.shownPane.set('left');
+    }
+    if (next.left === previous.left) {
+      return;
+    }
+    this.chatLane.set(next.left);
+    this.resetTurnState();
+    this.messages.set([]);
+    this.loadHistory(id);
+    this.reloadOnIdleFor = id;
+    this.reattachTurn(id);
+    // Le terminal de gauche relit SON parcours dès qu'il reçoit son nouveau fil (`laneChantier`).
+    if (userGesture && next.left !== null) {
+      this.journeyApi.focus(id, next.left).subscribe({ error: () => undefined });
+    }
+  }
+
+  /** Ferme le split : un autre sujet repart de SA disposition gardée (jamais celle du sujet quitté). */
   private resetSplit(): void {
     this.chatLane.set(null);
-    this.splitPane.set(null);
-    this.otherActiveLanes.set(0);
+    this.paneLayout.set(NO_PANES);
+    this.paneChantiers.set([]);
+    this.activeLanes.set([]);
+    this.autonomousLanes.set([]);
     this.shownPane.set('left');
-    this.dismissedLanes.clear();
-    this.pinnedPane = null;
   }
 
   /** Attribut `accept` du sélecteur de fichier PC (texte/code uniquement, SF-28-13). */
@@ -4923,24 +4991,4 @@ export function delayLabel(timeoutMs: number | null): string {
 export function activeLaneNumbers(lanes: AtelierLane[]): number[] {
   return lanes.filter((lane) => lane.chantier !== null && (lane.live || lane.autonomy))
     .map((lane) => lane.chantier as number);
-}
-
-/**
- * **Le split se décide ici** (F-221 / SF-221-03), en fonction pure : parmi les fils actifs du sujet, les
- * chantiers autres que celui que l'écran montre et que l'utilisateur n'a pas refermés ; le plus ancien
- * prend le volet de droite, les autres sont comptés. Un volet refermé dont le chantier n'est plus actif est
- * oublié (il pourra revenir à sa prochaine activité).
- */
-export function splitFor(lanes: AtelierLane[], shown: number | null, dismissed: Set<number>):
-    { right: AtelierLane | null; others: number } {
-  const active = lanes.filter((lane) => lane.chantier !== null && (lane.live || lane.autonomy));
-  for (const number of [...dismissed]) {
-    if (!active.some((lane) => lane.chantier === number)) {
-      dismissed.delete(number);
-    }
-  }
-  const candidates = active
-    .filter((lane) => lane.chantier !== shown && !dismissed.has(lane.chantier!))
-    .sort((a, b) => a.startedAt - b.startedAt);
-  return { right: candidates[0] ?? null, others: Math.max(0, candidates.length - 1) };
 }

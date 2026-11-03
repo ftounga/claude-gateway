@@ -1116,7 +1116,39 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * terminal ordinaire, qui suit le chantier au focus. Avec un fil, la bande du parcours montre CE
    * chantier (vue du fil, focus persisté intact) et ses gestes le visent.
    */
-  @Input() laneChantier: number | null = null;
+  @Input()
+  set laneChantier(value: number | null) {
+    const previous = this.laneChantierValue;
+    this.laneChantierValue = value ?? null;
+    // F-246 : le volet change de chantier — la bande, la barre et le tableau relisent CE chantier tout de suite ;
+    // jamais le parcours du chantier quitté sous le fil du nouveau.
+    const workspaceId = this.projectIdValue();
+    if (previous !== this.laneChantierValue && workspaceId) {
+      this.lastFocusEmitted = undefined;
+      this.journey.set(null);
+      this.loadJourney(workspaceId);
+    }
+  }
+  get laneChantier(): number | null {
+    return this.laneChantierValue;
+  }
+  private laneChantierValue: number | null = null;
+
+  /**
+   * **Le volet de gauche** (F-246 / SF-246-01) : l'écran principal, épinglé sur `laneChantier` (il ne suit plus le
+   * focus du serveur). Il garde ce qu'un volet de droite n'a pas : suggestion du chantier parallèle, carte de
+   * situation, chantiers ouverts relus pour la carte des volets.
+   */
+  @Input() primaryPane = false;
+
+  /** « Basculer sur le chantier N » dans un volet épinglé (F-246) : l'écran met N dans CE volet. */
+  @Output() showChantier = new EventEmitter<number>();
+
+  /**
+   * Un chantier vient d'être ouvert depuis ce volet épinglé (F-246) : l'écran le met dans l'AUTRE volet et y envoie
+   * la reprise — elle ne part jamais dans le fil d'où on l'a ouvert.
+   */
+  @Output() chantierOpened = new EventEmitter<{ number: number; message: string | null }>();
 
   /** Le fil de chantier affiché, pour ranger un ajout à la main (F-227 / SF-227-03) : le volet, sinon le focus. */
   actionsChantier(): number | null {
@@ -1164,7 +1196,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    */
   suggestion(): { number: number; title: string | null } | null {
     const j = this.journey();
-    if (!j || this.suggestOff() || this.readOnly || this.laneChantier !== null) {
+    if (!j || this.suggestOff() || this.readOnly || (this.laneChantier !== null && !this.primaryPane)) {
       return null;
     }
     const chantiers = j.chantiers ?? [];
@@ -1214,9 +1246,12 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   @Output() chantiersChange = new EventEmitter<OpenChantier[]>();
 
   private readonly emitChantiers = effect(() => {
-    const chantiers = this.journey()?.chantiers ?? [];
+    const journey = this.journey();
+    const chantiers = journey?.chantiers ?? [];
     untracked(() => {
-      if (this.laneChantier === null) {
+      // F-246 : tout volet relit les chantiers ouverts (un chantier clos quitte son volet) ; rien tant que le
+      // parcours n'est pas lu — une liste vide veut alors dire « plus aucun chantier », jamais « pas encore lu ».
+      if (journey !== null) {
         this.chantiersChange.emit(chantiers);
       }
     });
@@ -1390,7 +1425,16 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
           } else {
             this.journey.set(journey);
           }
-          this.resumeAfterGesture(gesture, before, draftAtClick);
+          // F-246 : « Ouvrir le chantier » depuis un volet épinglé — le nouveau chantier (rendu au focus) va dans
+          // l'autre volet et sa reprise part dans SON fil, pas dans celui-ci.
+          const opened = gesture === 'accept-guided' && this.laneChantier !== null
+            ? focusChantierNumber(journey) : null;
+          if (opened !== null && opened !== this.laneChantier) {
+            this.chantierOpened.emit({ number: opened,
+              message: this.readOnly || this.liveLimitReached ? null : journeyResumeMessage(gesture, before) });
+          } else {
+            this.resumeAfterGesture(gesture, before, draftAtClick);
+          }
           // F-226 / SF-226-01 : juste après « Valider et lancer », un moment creux — la suggestion peut paraître.
           if (gesture === 'validate-plan') {
             this.justLaunched.set(true);
@@ -1420,8 +1464,14 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    */
   onSwitchChantier(number: number): void {
     const workspaceId = this.projectId;
-    // F-221 / SF-221-03 : un volet à fil explicite ne déplace pas le focus — c'est le volet de gauche qui le porte.
-    if (!workspaceId || number === this.focusChantier() || this.laneChantier !== null) {
+    // F-246 : un volet épinglé ne déplace pas le focus du serveur — l'écran met le chantier dans CE volet.
+    if (this.laneChantier !== null) {
+      if (workspaceId && number !== this.laneChantier) {
+        this.showChantier.emit(number);
+      }
+      return;
+    }
+    if (!workspaceId || number === this.focusChantier()) {
       return;
     }
     this.journeyBusy.set(true);
@@ -3214,7 +3264,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   /** Un volet du split (F-221) : jamais d'ouverture d'elle-même, et ce n'est pas lui qui note la visite. */
   private isLanePane(): boolean {
-    return this.laneChantier !== null || this.paneTitle !== null;
+    return !this.primaryPane && (this.laneChantier !== null || this.paneTitle !== null);
   }
 
   /** Un tour, une autorisation ou une question déjà visibles ici : la carte ne s'impose pas par-dessus. */

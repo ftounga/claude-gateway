@@ -31,6 +31,7 @@ import {
   AtelierPendingQuestion,
   AtelierThreadItem,
 } from '../atelier.types';
+import { OpenChantier } from '../../core/models/journey.models';
 import { toThreadItem } from '../thread-item';
 import { AtelierTerminalComponent, ParallelLaunchRequest } from './atelier-terminal.component';
 import { chatStepsToBlocks } from './chat-steps';
@@ -74,6 +75,9 @@ import { audioBlock, videoBlock } from './video-block';
       (closePane)="closed.emit()"
       (parallelLaunch)="parallelLaunch.emit($event)"
       (lanesChanged)="lanesChanged.emit()"
+      (chantiersChange)="chantiersChange.emit($event)"
+      (showChantier)="showChantier.emit($event)"
+      (chantierOpened)="chantierOpened.emit($event)"
       [messages]="messages()"
       [streaming]="streaming()"
       [streamingActive]="streaming() !== null"
@@ -123,6 +127,15 @@ export class TerminalLanePaneComponent implements OnChanges, OnDestroy {
   /** Un chantier lancé ou repris en main au tableau de ce volet (F-226 / SF-226-03) : l'écran relit les fils actifs. */
   @Output() lanesChanged = new EventEmitter<void>();
 
+  /** Les chantiers ouverts, relus par ce volet (F-246 : un chantier clos quitte son volet). */
+  @Output() chantiersChange = new EventEmitter<OpenChantier[]>();
+
+  /** « Basculer sur le chantier N » dans ce volet (F-246) : l'écran met N dans CE volet. */
+  @Output() showChantier = new EventEmitter<number>();
+
+  /** Un chantier ouvert depuis ce volet (F-246) : l'écran le met dans l'autre volet et y envoie la reprise. */
+  @Output() chantierOpened = new EventEmitter<{ number: number; message: string | null }>();
+
   readonly messages = signal<AtelierThreadItem[]>([]);
   readonly streaming = signal<AtelierExecStreamingItem | null>(null);
   readonly submitting = signal(false);
@@ -170,6 +183,9 @@ export class TerminalLanePaneComponent implements OnChanges, OnDestroy {
     this.generation += 1;
     this.detach();
     this.resetTurn();
+    // F-246 : le fil du chantier quitté ne reste jamais affiché sous l'en-tête du nouveau.
+    this.messages.set([]);
+    this.draft.set('');
     this.loadHistory();
     const id = this.projectId;
     const generation = this.generation;
@@ -232,6 +248,20 @@ export class TerminalLanePaneComponent implements OnChanges, OnDestroy {
     this.beginTurn();
     void this.atelier.streamChat(this.projectId, content, this.handlers(this.generation, true), 'ACT', false,
       [], this.chantier, true);
+  }
+
+  /**
+   * Envoie un texte dans le fil de ce volet (F-246 : la reprise d'un chantier qu'on vient d'ouvrir à côté). Le
+   * brouillon en cours n'est pas touché ; un volet qui a changé de chantier entre-temps n'envoie rien.
+   */
+  sendText(text: string, chantier: number): void {
+    if (chantier !== this.chantier) {
+      return;
+    }
+    const draft = this.draft();
+    this.draft.set(text);
+    this.send();
+    this.draft.set(draft);
   }
 
   /** Interrompt le seul fil de ce volet (SF-221-01) : l'autre volet continue. */
