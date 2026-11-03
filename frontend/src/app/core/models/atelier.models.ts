@@ -87,6 +87,12 @@ export interface WorkspaceSummary {
    * « supprimer le projet ». Champ **additif** : absent d'un backend antérieur ⇒ `false`.</p>
    */
   teamsTerminal?: boolean;
+  /**
+   * Vrai si cette ligne est le **fil Jarvis** du compte (F-245 / SF-245-01) : le fil commun à ce qui n'appartient à
+   * aucun sujet. Le serveur le place **en tête** de la liste ; il n'a pas le geste « supprimer le projet » (le serveur
+   * le refuse, 400). Champ **additif** : absent d'un backend antérieur ⇒ `false`.
+   */
+  jarvisThread?: boolean;
 }
 
 /** Corps de `POST /api/workspaces/{id}/git/push` (F-31 / SF-31-04). Les deux champs sont facultatifs. */

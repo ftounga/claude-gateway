@@ -149,8 +149,10 @@ public class AtelierController {
                 .stream()
                 .collect(Collectors.toMap(fr.claudegateway.runner.host.RunnerHost::getId,
                         host -> host));
+        // F-245 / SF-245-01 (D9) : le fil Jarvis en tête de la liste (tri stable : l'ordre des autres est inchangé).
         return workspaceService.list(userId).stream()
                 .filter(workspace -> !vigie || workspace.isTeamsTerminal())
+                .sorted(java.util.Comparator.comparing((Workspace workspace) -> !workspace.isJarvisThread()))
                 .map(workspace -> {
                     fr.claudegateway.runner.host.RunnerHost host =
                             workspace.getHostId() == null ? null : hosts.get(workspace.getHostId());
@@ -347,6 +349,8 @@ public class AtelierController {
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
         atelierAccess.requireAccess();
         UUID userId = currentUser.requireId();
+        // F-245 / SF-245-01 : le fil Jarvis n'est pas supprimable (400) ; d'autrui ⇒ 404 (requireOwned d'abord).
+        workspaceService.requireNotJarvisThread(workspaceService.requireOwned(userId, id));
         try {
             sessionService.resetSession(userId, id);
         } catch (WorkspaceNotFoundException ex) {

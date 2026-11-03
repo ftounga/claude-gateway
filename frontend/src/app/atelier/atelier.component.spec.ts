@@ -1,5 +1,5 @@
 import { HttpErrorResponse, HttpEvent, HttpEventType, provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ApplicationRef } from '@angular/core';
 import { ComponentFixture, TestBed, discardPeriodicTasks, fakeAsync, flush, tick } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
@@ -189,6 +189,44 @@ describe('AtelierComponent', () => {
     component = fixture.componentInstance;
     fixture.detectChanges();
   }
+
+  // F-245 / SF-245-01 — le fil Jarvis : en tête, son icône, sans « Supprimer le projet » ; créé s'il manque.
+  describe('fil Jarvis (F-245 / SF-245-01)', () => {
+    const thread: WorkspaceSummary = {
+      id: 'jt', name: 'Jarvis', createdAt: '2026-11-03T00:00:00Z', source: 'ARCHIVE', gitRepo: null,
+      jarvisThread: true,
+    };
+
+    it('est affiché en tête, avec son icône, sans menu de suppression', () => {
+      setup();
+      component.workspaces.set([thread, summary]);
+      fixture.detectChanges();
+      const items = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('.workspace-list a'));
+      expect(items.length).toBe(2);
+      expect(items[0].textContent).toContain('Jarvis');
+      expect(items[0].textContent).toContain('record_voice_over');
+      expect(items[0].querySelector('.workspace-menu-trigger')).toBeNull();
+      expect(items[1].querySelector('.workspace-menu-trigger')).not.toBeNull();
+    });
+
+    it('absent de la liste : le demande au serveur puis relit la liste', () => {
+      setup();
+      const http = TestBed.inject(HttpTestingController);
+      service.listWorkspaces.calls.reset();
+      service.listWorkspaces.and.returnValue(of([thread, summary]));
+      http.expectOne('/api/jarvis/thread').flush({ id: 'jt', name: 'Jarvis' });
+      expect(service.listWorkspaces).toHaveBeenCalledTimes(1);
+      expect(component.workspaces()[0].id).toBe('jt');
+    });
+
+    it('déjà affiché quand le serveur répond : la liste n’est pas relue', () => {
+      setup();
+      component.workspaces.set([thread, summary]);
+      service.listWorkspaces.calls.reset();
+      TestBed.inject(HttpTestingController).expectOne('/api/jarvis/thread').flush({ id: 'jt', name: 'Jarvis' });
+      expect(service.listWorkspaces).not.toHaveBeenCalled();
+    });
+  });
 
   // F-185 / SF-185-05 — l'onglet dit ce qui attend : un plan soumis n'est pas « une réponse prête ».
   it('coupe tout débordement horizontal sur desktop : la page ne devient jamais défilable (F-207 / SF-207-06)', () => {

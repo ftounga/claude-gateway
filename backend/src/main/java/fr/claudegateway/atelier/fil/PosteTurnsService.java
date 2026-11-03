@@ -65,7 +65,9 @@ public class PosteTurnsService {
         Map<UUID, Workspace> byId = new HashMap<>();
         for (Workspace w : scope) {
             // Défense en profondeur : la requête filtre déjà, l'entité le redit.
-            if (userId.equals(w.getUserId()) && java.util.Objects.equals(hostId, w.getHostId())) {
+            // F-245 / SF-245-01 : le fil Jarvis n'est pas un terminal du poste « Hébergé » (sauf s'il est celui d'ici).
+            if (userId.equals(w.getUserId()) && java.util.Objects.equals(hostId, w.getHostId())
+                    && (!w.isJarvisThread() || w.getId().equals(here.getId()))) {
                 byId.put(w.getId(), w);
             }
         }

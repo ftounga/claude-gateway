@@ -188,8 +188,9 @@ public class RoutineService {
      * au poste » — le poste aiguille, il ne travaille pas).
      */
     public static boolean isRoutineCapable(Workspace workspace) {
+        // F-245 / SF-245-01 : aucune routine dans le fil Jarvis (déjà vrai : il n'a pas de poste ; dit explicitement).
         return workspace != null && workspace.isRunnerTarget() && workspace.getHostId() != null
-                && !workspace.isHostTerminal();
+                && !workspace.isHostTerminal() && !workspace.isJarvisThread();
     }
 
     private static void requireSubjectOnHost(Workspace workspace) {

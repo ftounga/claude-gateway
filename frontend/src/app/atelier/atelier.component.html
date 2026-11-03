@@ -296,8 +296,11 @@
             <!-- LE TERMINAL DU POSTE (F-74 / SF-74-02) se NOMME pour ce qu'il est : ce n'est ni un
                  dossier importé ni un dépôt, c'est le terminal de la machine. Même liste, même
                  ligne, même clic — seule l'icône change. -->
+            <!-- LE FIL JARVIS (F-245 / SF-245-01, D9) : épinglé en tête (ordre du serveur), son icône propre. -->
             <mat-icon matListItemIcon>{{
-              workspace.hostTerminal
+              workspace.jarvisThread
+                ? 'record_voice_over'
+                : workspace.hostTerminal
                 ? 'terminal'
                 : workspace.source === 'GIT'
                   ? 'hub'
@@ -332,7 +335,7 @@
             <!-- PAS pour le terminal du poste (F-74 / SF-74-02) : ce n'est pas un projet, et
                  « supprimer le projet » y produirait une recréation silencieuse au clic suivant —
                  un geste dont l'effet ne se comprendrait pas. Il se supprime AVEC SON POSTE. -->
-            @if (!workspace.hostTerminal) {
+            @if (!workspace.hostTerminal && !workspace.jarvisThread) {
             <button
               matListItemMeta
               mat-icon-button

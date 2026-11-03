@@ -836,7 +836,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.loadInterviewOffer();
     this.refreshCosts();
     this.atelier.listWorkspaces().subscribe({
-      next: (list) => {
+      next: (all) => {
+        // F-245 / SF-245-01 — le fil Jarvis n'est pas un sujet qu'on choisit : il reçoit ce qui n'est à personne.
+        const list = all.filter((s) => !s.jarvisThread);
         this.subjects.set(list);
         const stored = readStoredSubject();
         // F-235 / SF-235-05 (D19) — Jarvis est global : aucun « premier sujet » par défaut ; le sélecteur n'indique que

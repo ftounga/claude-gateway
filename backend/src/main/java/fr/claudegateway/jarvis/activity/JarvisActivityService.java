@@ -74,7 +74,8 @@ public class JarvisActivityService {
         // Les sujets du compte (le terminal Teams n'est pas un sujet de Jarvis), dans l'ordre de la liste.
         Map<UUID, int[]> counts = new LinkedHashMap<>();
         for (Workspace w : workspaces.list(userId)) {
-            if (userId.equals(w.getUserId()) && !w.isTeamsTerminal()) {
+            // F-245 / SF-245-01 : le fil Jarvis n'est pas un sujet de l'activité.
+            if (userId.equals(w.getUserId()) && !w.isTeamsTerminal() && !w.isJarvisThread()) {
                 counts.put(w.getId(), new int[days]);
             }
         }

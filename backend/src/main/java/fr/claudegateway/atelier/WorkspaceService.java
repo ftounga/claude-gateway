@@ -312,6 +312,7 @@ public class WorkspaceService {
     @Transactional
     public Workspace attachToHost(UUID userId, UUID id, UUID hostId, String projectPath) {
         Workspace workspace = requireOwned(userId, id);
+        requireNotJarvisThread(workspace);
         if (hostId == null) {
             workspace.setHostId(null);
             workspace.setProjectPath(null);
@@ -445,7 +446,23 @@ public class WorkspaceService {
      * <b>virtuel</b> — une vue, jamais une ligne en base.</p>
      */
     public List<Workspace> listWithoutHost(UUID userId) {
-        return workspaceRepository.findByUserIdAndHostIdIsNull(userId);
+        // F-245 / SF-245-01 : le fil Jarvis est sans poste, mais ce n'est pas un projet « Hébergé ».
+        return workspaceRepository.findByUserIdAndHostIdIsNull(userId).stream()
+                .filter(w -> !w.isJarvisThread())
+                .toList();
+    }
+
+    /** Message du refus d'un geste de projet sur le fil Jarvis (F-245 / SF-245-01). */
+    public static final String JARVIS_THREAD_FIXED = "Le fil Jarvis ne se renomme, ne se déplace ni ne se supprime.";
+
+    /**
+     * F-245 / SF-245-01 — refuse (400) un geste de projet sur le fil Jarvis : renommer, rattacher à un poste, changer
+     * de cible, supprimer depuis l'écran. La purge du compte, elle, passe par {@link #delete} sans cette garde.
+     */
+    public void requireNotJarvisThread(Workspace workspace) {
+        if (workspace != null && workspace.isJarvisThread()) {
+            throw new InvalidArchiveException(JARVIS_THREAD_FIXED);
+        }
     }
 
     /** Workspaces de l'utilisateur (isolation {@code user_id}). */
@@ -571,6 +588,7 @@ public class WorkspaceService {
     @Transactional
     public Workspace renameWorkspace(UUID userId, UUID id, String name) {
         Workspace workspace = requireOwned(userId, id);
+        requireNotJarvisThread(workspace);
         String trimmed = name == null ? "" : name.trim();
         if (trimmed.isEmpty()) {
             throw new InvalidArchiveException("Le nom du projet ne peut pas être vide.");
@@ -599,6 +617,7 @@ public class WorkspaceService {
     @Transactional
     public Workspace setExecutionTarget(UUID userId, UUID id, WorkspaceExecutionTarget target) {
         Workspace workspace = requireOwned(userId, id);
+        requireNotJarvisThread(workspace);
         if (target == null) {
             throw new InvalidArchiveException("Cible d'exécution requise.");
         }
