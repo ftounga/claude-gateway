@@ -285,6 +285,29 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     discardPeriodicTasks();
   }));
 
+  it('F-242 / SF-242-01 — « Mes boîtes » : bouton dans les réglages ; jamais en présentation, même ouvert', fakeAsync(() => {
+    configure({});
+    let fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    let el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.jv__mail-open')?.textContent).toContain('Mes boîtes');
+    fixture.componentInstance.ngOnDestroy();
+    fixture.destroy();
+
+    configure({ presentation: '1' });
+    fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.jv__mail-open')).toBeNull();
+    fixture.componentInstance.mailOpen.set(true);
+    fixture.detectChanges();
+    expect(el.querySelector('app-jarvis-mailboxes')).toBeNull();
+    fixture.componentInstance.ngOnDestroy();
+    fixture.destroy();
+  }));
+
   it('F-241 / SF-241-01 — « Mon portrait » : bouton dans les réglages ; jamais en présentation, même ouvert', fakeAsync(() => {
     configure({});
     let fixture = TestBed.createComponent(JarvisComponent);

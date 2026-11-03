@@ -184,6 +184,14 @@ public class AccountService {
         this.jarvisPortraitService = service;
     }
 
+    /** Les boîtes mail de Jarvis et ce qui en dépend (F-242) ; purge nommée à la suppression du compte. */
+    private fr.claudegateway.jarvis.mail.JarvisMailAccountService jarvisMailAccountService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJarvisMailAccountService(fr.claudegateway.jarvis.mail.JarvisMailAccountService service) {
+        this.jarvisMailAccountService = service;
+    }
+
     /** Les veilles Jarvis (F-230 / SF-230-01) ; purge nommée à la suppression du compte. */
     private fr.claudegateway.atelier.veille.JarvisWatchRepository jarvisWatchRepository;
 
@@ -530,6 +538,10 @@ public class AccountService {
         // Le portrait de Jarvis, ses souvenirs et (SF-241-04) son journal des allusions (F-241) : physique.
         if (jarvisPortraitService != null) {
             jarvisPortraitService.purgeUser(userId);
+        }
+        // Les boîtes mail de Jarvis, leurs courriers en cache et leurs actions (F-242) : physique.
+        if (jarvisMailAccountService != null) {
+            jarvisMailAccountService.purgeUser(userId);
         }
         // Les captures d'énoncés de Jarvis (F-239 / SF-239-03) : objets puis lignes.
         if (jarvisCaptureService != null) {

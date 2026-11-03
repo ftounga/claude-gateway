@@ -37,6 +37,12 @@ app:
   jarvis:
     watches:
       enabled: false
+    # F-242 : releve du courrier eteinte en tests (JarvisMailPoller.runOnce() appele directement) ; serveur de test
+    # GreenMail en clair (MailTestServer pose hotes et ports dynamiques).
+    mail:
+      enabled: false
+      ssl: false
+      timeout: PT5S
   # F-219 / SF-219-02 : fermeture des courses autonomes orphelines désactivée en tests ;
   # AutonomyService.closeStale() est appelé directement.
   autonomy:
