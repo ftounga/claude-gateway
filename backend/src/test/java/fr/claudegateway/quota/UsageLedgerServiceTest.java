@@ -55,7 +55,7 @@ class UsageLedgerServiceTest {
         verify(writer).write(org.mockito.ArgumentMatchers.eq(alice), org.mockito.ArgumentMatchers.isNull(),
                 org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.eq(new TurnTokens(1_000L, 200L, 500L, 0L)),
                 org.mockito.ArgumentMatchers.eq(TurnExtras.NONE), cost.capture(),
-                org.mockito.ArgumentMatchers.eq(UsageTurn.Kind.ANNEXE));
+                org.mockito.ArgumentMatchers.eq(UsageTurn.Kind.ANNEXE), org.mockito.ArgumentMatchers.eq(UsageTag.GATEWAY));
         // Haiku 4.5 : 1 000 × 1 + 200 × 5 + 500 × 0,10 ÷ 1e6 = 0,00205 $.
         org.assertj.core.api.Assertions.assertThat(cost.getValue().amountUsd()).isEqualByComparingTo("0.002050");
         // Rien consommé, ou pas d'utilisateur : rien d'écrit.

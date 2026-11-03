@@ -157,13 +157,13 @@ public class JarvisAdoptionService {
             showRequests += d.getShowRequests();
             SceneCounts.parse(d.getSceneCounts()).forEach((k, v) -> families.merge(k, v, Integer::sum));
             rows.add(new Day(d.getDay(), d.getSessions(), minutes(d.getSpokenSeconds()), d.getWakes(),
-                    d.getCharsSpoken(), eur(d.totalCostUsd())));
+                    d.getCharsSpoken(), eur(d.voiceCostUsd())));
             sessions += d.getSessions();
             spoken += d.getSpokenSeconds();
             wakes += d.getWakes();
             idleEnds += d.getConversationIdleEnds();
             chars += d.getCharsSpoken();
-            usd = usd.add(d.totalCostUsd());
+            usd = usd.add(d.voiceCostUsd());
         }
         int activeDays = (int) rows.stream().filter(r -> r.sessions() > 0).count();
         BigDecimal genericShare = scenesShown == 0 ? BigDecimal.ZERO

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-244 / SF-244-01 - LES POSTES MANQUANTS DE LA JOURNEE JARVIS.
+
+      jarvis_usage_days + retranscription (separee du flux, qui partageait ses colonnes), dictee de repli depuis
+      /jarvis, courrier et agenda (F-242 / F-243, prevus des maintenant). En DOLLARS (conversion a la lecture).
+      Colonnes additives, 0 par defaut.
+
+      Numero 244 = numero de la feature. Rollback : les colonnes se retirent.
+    -->
+
+    <changeSet id="244-jarvis-usage-parts" author="claude-gateway">
+        <addColumn tableName="jarvis_usage_days">
+            <column name="stt_utterance_seconds" type="bigint" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="stt_utterance_cost_usd" type="numeric(12,6)" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="dictation_seconds" type="bigint" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="dictation_cost_usd" type="numeric(12,6)" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="mail_cost_usd" type="numeric(12,6)" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="agenda_cost_usd" type="numeric(12,6)" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="jarvis_usage_days" columnName="agenda_cost_usd"/>
+            <dropColumn tableName="jarvis_usage_days" columnName="mail_cost_usd"/>
+            <dropColumn tableName="jarvis_usage_days" columnName="dictation_cost_usd"/>
+            <dropColumn tableName="jarvis_usage_days" columnName="dictation_seconds"/>
+            <dropColumn tableName="jarvis_usage_days" columnName="stt_utterance_cost_usd"/>
+            <dropColumn tableName="jarvis_usage_days" columnName="stt_utterance_seconds"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

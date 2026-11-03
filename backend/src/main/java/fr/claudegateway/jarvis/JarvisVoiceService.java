@@ -222,10 +222,15 @@ public class JarvisVoiceService {
         }
     }
 
-    /** Compte une lecture : journal d'usage et journée Jarvis. On journalise la LONGUEUR, jamais le texte. */
+    /**
+     * Compte une lecture : journée Jarvis et journal d'usage. On journalise la LONGUEUR, jamais le texte.
+     *
+     * <p>F-244 / SF-244-01 (D2) : la ligne du journal est écrite par la journée Jarvis, en {@code ANNEXE} étiquetée
+     * {@code JARVIS / VOICE}, <b>au tarif réel</b> du fournisseur de la voix — et non plus par {@link SpeechUsage} en
+     * {@code TOUR} au tarif OpenAI, qui chiffrait ElevenLabs faux et faisait entrer la voix dans les tours Gateway.</p>
+     */
     private void account(UUID userId, UUID workspaceId, UUID hostId, VoiceRef voice, long characters) {
-        ledger.record(userId, workspaceId, hostId, characters, 0d);
-        usage.addSpeech(userId, characters, costUsd(voice, characters));
+        usage.addSpeech(userId, workspaceId, hostId, voice.provider(), characters, costUsd(voice, characters));
         log.debug("Jarvis a parlé ({} caractères)", characters);
     }
 
