@@ -127,8 +127,9 @@ tours) tombe en revanche sur des défauts **chaque fois différents**, hors du p
 | + pièces absentes | 96,4 % ✗ | P06#4, P08#5 délégations vides (la porte vidait la réponse) |
 | + relance retirée seulement après une phrase | **100 % ✓** · 98,2 % ✗ | P09 allusion « dimanche sans course à pied » |
 | + nouvelle partagée sans greffe | 94,5 % ✗ · **98,2 % ✓** | C06 « Je reste attentif… » ; R03 « aucun écran ne me permet » |
-| + « je reste attentif » (dernier changement, non passé au banc) | — | — |
+| + « je reste attentif », appui/demande explicité, sans « pièces absentes » | 96,4 % ✗ (arrêté) | P03 « Je vois cela » + travail |
+| **+ « journée chargée » = petite conversation, « Je vois cela » interdite (`08779192`, finale)** | **100 % ✓ · 98,2 % ✓** | — |
 
-PIECES (version finale) : passage 1 ✗ (SHOW 11/13 : S04, S06 raison `demande` au lieu de `appui`), passage 2 ✓
-(13/13, accord 0,973). **Deux passages verts consécutifs non obtenus dans le budget de 20 € (≈ 19 € dépensés)** :
-PR non mergée, porte à repasser.
+PIECES : sur la v10 initiale, 11/13 ✗ puis 13/13 ✓ ; sonde S04/S06 ×6 : v9 12/12 `appui`, v10 6/12 ⇒ appui/demande
+explicité (sonde 18/18) ; **version finale : 100 % ✓ · 100 % ✓** (37/37 deux fois).
+**Porte franchie** : CONVERSATION et PIECES verts deux fois de suite sur la version finale (rallonge de budget de 12 € accordée).
