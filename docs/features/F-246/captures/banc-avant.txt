@@ -1,0 +1,13 @@
+Banc des volets sur origin/main 9e9866cd (avant F-246), 1366×768 puis 360×740 — premières étapes du scénario.
+(« lancer les deux » : le moteur simulé était alors le bac à sable, où une précision attend la fin du tour — artefact du banc, pas un défaut.)
+
+OK   [pc] arrivée : gauche=10 droite=11 (attendu 10 | 11)
+OK   [pc] ouvrir 9 : 9 est affiché (gauche=9 droite=10)
+BUG  [pc] ouvrir 9 : le chantier 11 garde son volet de droite (droite=10)      ← 10 passé à DROITE, 11 disparu
+BUG  [pc] repère « qui est où » visible : aucun
+OK   [pc] fermer le volet de droite (chantier 10) : droite=null
+BUG  [pc] rouvrir le chantier 10 : AUCUN moyen à l'écran
+BUG  [pc] recharger : avant 9 | null, après 9 | 10                             ← le volet fermé revient
+BUG  [pc] focus déplacé côté serveur (12) : gauche reste 9 (gauche=12)         ← la gauche suit le focus
+OK   [pc] aucun défilement horizontal de la page
+(mêmes résultats à 360×740)

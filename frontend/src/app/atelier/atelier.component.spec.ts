@@ -18,6 +18,8 @@ import { TabAlertService } from '../core/services/tab-alert.service';
 import { NotificationSoundService } from '../core/services/notification-sound.service';
 import { CurrentClientService } from '../core/services/current-client.service';
 import { AutonomyService } from '../core/services/autonomy.service';
+import { JourneyService } from '../core/services/journey.service';
+import { OpenChantier, SubjectJourney } from '../core/models/journey.models';
 import { AtelierComponent, delayLabel, toThreadItem } from './atelier.component';
 import { AtelierThreadItem } from './atelier.types';
 import { AtelierService } from '../core/services/atelier.service';
@@ -1923,6 +1925,7 @@ describe('AtelierComponent', () => {
 
   it('F-221 : l\'écran suit le fil du chantier au focus et s\'ouvre en split si un autre chantier est actif', () => {
     setup();
+    localStorage.removeItem('cg.atelier.panes.w1');
     service.getResume.and.returnValue(
       of({ turns: 0, lastMessageAt: null, threadStartedAt: null, prompt: 'NONE' as const }),
     );
@@ -1943,6 +1946,190 @@ describe('AtelierComponent', () => {
     component.closeRightPane();
     component.onFocusChantierChange(7);
     expect(component.splitPane()).withContext('un volet refermé ne revient pas tout seul').toBeNull();
+    localStorage.removeItem('cg.atelier.panes.w1');
+  });
+
+  describe('F-246 / SF-246-01 — chaque chantier garde son volet', () => {
+    let journeyApi: JourneyService;
+    let focus: jasmine.Spy;
+
+    function arrive(lanes: { chantier: number; live: boolean; autonomy: boolean; startedAt: number }[],
+                    focusNumber = 10): void {
+      setup();
+      service.getResume.and.returnValue(
+        of({ turns: 0, lastMessageAt: null, threadStartedAt: null, prompt: 'NONE' as const }),
+      );
+      service.getLanes.and.returnValue(of({ lanes }));
+      journeyApi = TestBed.inject(JourneyService);
+      focus = spyOn(journeyApi, 'focus').and.returnValue(of({} as never as SubjectJourney));
+      component.selectWorkspace(summary);
+      component.onPaneChantiers([9, 10, 11].map((n) => openChantier(n, n === focusNumber)));
+      component.onFocusChantierChange(focusNumber);
+    }
+
+    function openChantier(number: number, isFocus = false): OpenChantier {
+      return { number, title: `Titre ${number}`, openedAt: null, phase: 'EXECUTION', phaseLabel: 'Exécution',
+        focus: isFocus, planVersion: 1, validatedVersion: 1, awaitingValidation: false, diagnosisPending: false,
+        closeProposed: false, executing: true, done: 0, total: 3 };
+    }
+
+    const both = [
+      { chantier: 10, live: true, autonomy: false, startedAt: 1 },
+      { chantier: 11, live: true, autonomy: false, startedAt: 2 },
+    ];
+
+    beforeEach(() => localStorage.removeItem('cg.atelier.panes.w1'));
+    afterEach(() => localStorage.removeItem('cg.atelier.panes.w1'));
+
+    it('10 à gauche, 11 à droite ; le focus du serveur qui bouge ne déplace rien', () => {
+      arrive(both);
+      expect(component.paneLayout()).toEqual({ left: 10, right: 11 });
+
+      component.onFocusChantierChange(9);
+
+      expect(component.paneLayout()).toEqual({ left: 10, right: 11 });
+      expect(component.chatLane()).toBe(10);
+    });
+
+    it('ouvrir 9 à gauche : 11 reste à droite, le fil de gauche devient celui de 9, le focus suit', () => {
+      arrive(both);
+      service.getHistory.calls.reset();
+
+      component.onShowChantier(9, 'left');
+
+      expect(component.paneLayout()).toEqual({ left: 9, right: 11 });
+      expect(component.chatLane()).toBe(9);
+      expect(service.getHistory).toHaveBeenCalledWith('w1', 9);
+      expect(focus).toHaveBeenCalledWith('w1', 9);
+    });
+
+    it('« Basculer » dans le volet de droite : le chantier vient À DROITE, la gauche ne bouge pas', () => {
+      arrive(both);
+
+      component.onShowChantier(9, 'right');
+
+      expect(component.paneLayout()).toEqual({ left: 10, right: 9 });
+      expect(focus).not.toHaveBeenCalled();
+    });
+
+    it('fermer la droite puis rouvrir le même chantier depuis la carte', () => {
+      arrive(both);
+
+      component.closeRightPane();
+      expect(component.splitPane()).toBeNull();
+      component.onPanePlaced({ number: 11, side: 'right' });
+
+      expect(component.paneLayout()).toEqual({ left: 10, right: 11 });
+    });
+
+    it('fermer la gauche : 11 reste seul ; 10 se rouvre à droite', () => {
+      arrive(both);
+
+      component.closeLeftPane();
+      expect(component.paneLayout()).toEqual({ left: 11, right: null });
+      expect(component.chatLane()).toBe(11);
+      component.onPanePlaced({ number: 10, side: 'right' });
+
+      expect(component.paneLayout()).toEqual({ left: 11, right: 10 });
+    });
+
+    it('échanger les volets pendant un tour : chaque fil suit son chantier', () => {
+      arrive(both);
+      service.attachTurn.calls.reset();
+
+      component.onPanePlaced({ number: 10, side: 'right' });
+
+      expect(component.paneLayout()).toEqual({ left: 11, right: 10 });
+      expect(service.attachTurn.calls.mostRecent().args[3]).withContext('la gauche rejoint le tour de 11').toBe(11);
+    });
+
+    it('rechargement : la disposition revient telle quelle, même chantier inactif et focus déplacé', () => {
+      arrive(both);
+      component.onShowChantier(9, 'left');
+      expect(component.paneLayout()).toEqual({ left: 9, right: 11 });
+
+      // Recharger = repartir d'un écran vierge sur ce sujet (la disposition ne vit plus que sur l'appareil).
+      component.selectWorkspace({ ...summary, id: 'w9' });
+      service.getLanes.and.returnValue(of({ lanes: [] }));
+      component.selectWorkspace(summary);
+      component.onPaneChantiers([9, 10, 11, 12].map((n) => openChantier(n, n === 12)));
+      component.onFocusChantierChange(12);
+
+      expect(component.paneLayout()).toEqual({ left: 9, right: 11 });
+      expect(component.chatLane()).toBe(9);
+    });
+
+    it('un chantier clos quitte son volet ; les autres ne bougent pas', () => {
+      arrive(both);
+
+      component.onPaneChantiers([openChantier(9), openChantier(10, true)]);
+
+      expect(component.paneLayout()).toEqual({ left: 10, right: null });
+    });
+
+    it('un autre sujet repart de SA disposition, jamais celle du sujet quitté', () => {
+      arrive(both);
+      component.selectWorkspace({ ...summary, id: 'w9' });
+
+      expect(component.paneLayout()).toEqual({ left: null, right: null });
+      expect(component.chatLane()).toBeNull();
+      expect(localStorage.getItem('cg.atelier.panes.w1')).toContain('"left":10');
+    });
+
+    it('« Ouvrir le chantier » depuis la gauche : il arrive à droite et sa reprise part dans SON fil', fakeAsync(() => {
+      arrive([{ chantier: 10, live: true, autonomy: false, startedAt: 1 }]);
+      expect(component.paneLayout()).toEqual({ left: 10, right: null });
+      const pane = { sendText: jasmine.createSpy('sendText') };
+      (component as unknown as { rightPaneView: unknown }).rightPaneView = pane;
+      service.streamChat.calls.reset();
+
+      component.onChantierOpened({ number: 12, message: '✓ Nouveau chantier ouvert — investigation lancée.' }, 'left');
+      tick(1);
+
+      expect(component.paneLayout()).toEqual({ left: 10, right: 12 });
+      expect(pane.sendText).toHaveBeenCalledWith('✓ Nouveau chantier ouvert — investigation lancée.', 12);
+      expect(service.streamChat).withContext('rien dans le fil de 10').not.toHaveBeenCalled();
+    }));
+
+    it('« Ouvrir le chantier » depuis la droite : il arrive à gauche, la reprise part dans le fil de gauche', () => {
+      arrive(both);
+      component.engine.set('LOCAL_MACHINE');
+      service.streamChat.and.returnValue(Promise.resolve());
+      component.draft.set('mon brouillon');
+
+      component.onChantierOpened({ number: 12, message: '✓ Nouveau chantier ouvert — investigation lancée.' }, 'right');
+
+      expect(component.paneLayout()).toEqual({ left: 12, right: 11 });
+      const call = service.streamChat.calls.mostRecent().args;
+      expect(call[1]).toBe('✓ Nouveau chantier ouvert — investigation lancée.');
+      expect(call[6]).withContext('fil du nouveau chantier').toBe(12);
+      expect(component.draft()).withContext('le brouillon n\'est pas perdu').toBe('mon brouillon');
+    });
+
+    it('lancer un chantier en parallèle depuis la droite : il arrive à gauche, la droite ne bouge pas', () => {
+      arrive(both);
+      const autonomy = TestBed.inject(AutonomyService);
+      spyOn(autonomy, 'board').and.returnValue(of({ running: 0, maxParallel: 4, chantiers: [{
+        number: 9, title: null, run: null, estimate: null, preflight: { number: 9, ready: true, reasons: [] },
+      }] }));
+      spyOn(autonomy, 'launch').and.returnValue(of({} as never as import('../core/models/autonomy.models').AutonomyRun));
+      dialog.open.and.returnValue({ afterClosed: () => of('launch') } as never);
+
+      component.onParallelLaunch({ number: 9, mode: null, source: 'board' }, 'right');
+
+      expect(component.paneLayout()).toEqual({ left: 9, right: 11 });
+    });
+
+    it('[Afficher ici] depuis une suite du volet de droite : le chantier vient à droite', () => {
+      arrive(both);
+      const autonomy = TestBed.inject(AutonomyService);
+      spyOn(autonomy, 'board').and.returnValue(throwError(() => new Error('hors ligne')));
+      dialog.open.and.returnValue({ afterClosed: () => of('switch') } as never);
+
+      component.onParallelLaunch({ number: 9, mode: null, source: 'suite' }, 'right');
+
+      expect(component.paneLayout()).toEqual({ left: 10, right: 9 });
+    });
   });
 
   it('F-221 / SF-221-04 : « en parallèle » validé lance le chantier à droite, focus gardé, sans rien dire au chat', () => {
@@ -1955,6 +2142,7 @@ describe('AtelierComponent', () => {
     }] }));
     const launch = spyOn(autonomy, 'launch').and.returnValue(of({} as never as import('../core/models/autonomy.models').AutonomyRun));
     dialog.open.and.returnValue({ afterClosed: () => of('launch') } as never);
+    service.getLanes.and.returnValue(of({ lanes: [{ chantier: 8, live: false, autonomy: true, startedAt: 1 }] }));
     service.streamChat.calls.reset();
 
     component.onParallelLaunch({ number: 8, mode: null, source: 'board' });
