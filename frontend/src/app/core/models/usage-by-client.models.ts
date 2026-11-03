@@ -48,4 +48,9 @@ export interface UsageByClientView {
   totalTokens: number;
   estimatedCost: number;
   clients: ClientUsageView[];
+  /**
+   * F-244 / SF-244-02 — « dont Jarvis » : ce que Jarvis a consommé sur la même fenêtre, HORS des totaux ci-dessus
+   * (budget propre, hors quota), en euros. Absent d'une passerelle antérieure.
+   */
+  jarvis?: { inputTokens: number; outputTokens: number; totalTokens: number; costEur: number };
 }

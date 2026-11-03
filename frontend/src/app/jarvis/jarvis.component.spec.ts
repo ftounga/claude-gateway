@@ -865,6 +865,29 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     jarvis.ngOnDestroy();
   }));
 
+  it('F-244 / SF-244-04 — le compteur ouvre la ventilation en euros ; rien en présentation', fakeAsync(() => {
+    const zero = { fastBrain: 0, opus: 0, voice: 0, listening: 0, total: 0, opusTurns: 0, mail: 0, agenda: 0 };
+    jarvisApi.costs.and.returnValue(of({ today: { ...zero, total: 0.42, opus: 0.42 },
+      month: { ...zero, opus: 4.9, fastBrain: 1.2, total: 6.1, opusTurns: 5 },
+      budget: { monthlyCapEur: 150, applyOnByok: false, monthSpentEur: 6.1, percent: 4, state: 'NONE' as const,
+        applies: true } }));
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    jarvis.costOpen.set(true);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('app-jarvis-cost-panel')).not.toBeNull();
+    expect(el.querySelector('app-jarvis-cost-panel')!.textContent).toContain('Recherches Opus');
+    expect(el.querySelector('app-jarvis-cost-panel')!.textContent).not.toContain('$');
+
+    jarvis.presentation.set(true);
+    fixture.detectChanges();
+    expect(el.querySelector('app-jarvis-cost-panel')).toBeNull();
+    expect(el.querySelector('.jv__cost')).toBeNull();
+    jarvis.ngOnDestroy();
+  }));
+
   it('F-239 / SF-239-06 — un toucher sur le texte compris l’ouvre ; Entrée envoie la demande corrigée', fakeAsync(() => {
     const fixture = TestBed.createComponent(JarvisComponent);
     fixture.detectChanges();

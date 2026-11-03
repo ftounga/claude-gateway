@@ -43,7 +43,14 @@ public class JarvisCostService {
 
     /** Un poste par poste, en euros (au centime). */
     public record Costs(BigDecimal fastBrain, BigDecimal opus, BigDecimal voice, BigDecimal listening, BigDecimal total,
-            int opusTurns) {
+            int opusTurns, BigDecimal mail, BigDecimal agenda) {
+
+        /** Sans courrier ni agenda (avant F-242 / F-243). */
+        public Costs(BigDecimal fastBrain, BigDecimal opus, BigDecimal voice, BigDecimal listening, BigDecimal total,
+                int opusTurns) {
+            this(fastBrain, opus, voice, listening, total, opusTurns, BigDecimal.ZERO.setScale(2),
+                    BigDecimal.ZERO.setScale(2));
+        }
     }
 
     /** Aujourd'hui et le mois en cours. */
@@ -58,12 +65,21 @@ public class JarvisCostService {
     }
 
     Costs sum(List<JarvisUsageDay> days) {
+        return sum(days, usdToEur);
+    }
+
+    /** F-244 / SF-244-04 — la ventilation de journées, au taux donné (la mesure admin la reprend). */
+    static Costs sum(List<JarvisUsageDay> days, BigDecimal usdToEur) {
         BigDecimal fast = BigDecimal.ZERO;
         BigDecimal opus = BigDecimal.ZERO;
         BigDecimal voice = BigDecimal.ZERO;
         BigDecimal listening = BigDecimal.ZERO;
+        BigDecimal mail = BigDecimal.ZERO;
+        BigDecimal agenda = BigDecimal.ZERO;
         int turns = 0;
         for (JarvisUsageDay d : days) {
+            mail = mail.add(nz(d.getMailCostUsd()));
+            agenda = agenda.add(nz(d.getAgendaCostUsd()));
             fast = fast.add(nz(d.getFastBrainCostUsd()));
             opus = opus.add(nz(d.getOpusCostUsd()));
             voice = voice.add(nz(d.getSpeechCostUsd()));
@@ -72,11 +88,14 @@ public class JarvisCostService {
                     .add(nz(d.getDictationCostUsd()));
             turns += d.getOpusTurns();
         }
-        BigDecimal total = fast.add(opus).add(voice).add(listening);
-        return new Costs(eur(fast), eur(opus), eur(voice), eur(listening), eur(total), turns);
+        // F-244 / SF-244-04 : le total est la somme des postes AFFICHÉS (arrondis au centime) — l'écran additionne juste.
+        BigDecimal total = eur(fast, usdToEur).add(eur(opus, usdToEur)).add(eur(voice, usdToEur))
+                .add(eur(listening, usdToEur)).add(eur(mail, usdToEur)).add(eur(agenda, usdToEur));
+        return new Costs(eur(fast, usdToEur), eur(opus, usdToEur), eur(voice, usdToEur), eur(listening, usdToEur), total,
+                turns, eur(mail, usdToEur), eur(agenda, usdToEur));
     }
 
-    private BigDecimal eur(BigDecimal usd) {
+    private static BigDecimal eur(BigDecimal usd, BigDecimal usdToEur) {
         return usd.multiply(usdToEur).setScale(2, RoundingMode.HALF_UP);
     }
 
