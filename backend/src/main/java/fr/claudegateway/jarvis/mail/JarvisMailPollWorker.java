@@ -24,11 +24,14 @@ public class JarvisMailPollWorker {
 
     private final JarvisMailPoller poller;
     private final JarvisMailItemRepository items;
+    private final JarvisMailTriageService triage;
     private final Clock clock;
 
-    public JarvisMailPollWorker(JarvisMailPoller poller, JarvisMailItemRepository items, Clock clock) {
+    public JarvisMailPollWorker(JarvisMailPoller poller, JarvisMailItemRepository items,
+            JarvisMailTriageService triage, Clock clock) {
         this.poller = poller;
         this.items = items;
+        this.triage = triage;
         this.clock = clock;
     }
 
@@ -36,6 +39,8 @@ public class JarvisMailPollWorker {
     public void tick() {
         try {
             poller.runOnce();
+            // SF-242-03 — rattrapage : les courriers restés « en attente » (panne, redémarrage) sont triés.
+            triage.triagePending();
         } catch (RuntimeException e) {
             log.warn("Courrier : passage de relève interrompu ({})", e.getClass().getSimpleName());
         }
