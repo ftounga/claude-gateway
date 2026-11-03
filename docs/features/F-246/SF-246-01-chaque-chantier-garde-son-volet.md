@@ -7,7 +7,7 @@
 `F-246` — Les volets restent où on les met (cadrage `CADRAGE-F-246-les-volets-restent-ou-on-les-met.md`)
 
 ## Statut
-`in-review` · **Estimation :** 1,5 j · **Branche :** `feat/SF-246-01-volets-stables` · **Date :** 2026-11-03 · **Dépend de :** F-221 (volets), F-226 (onglets, états)
+`done` (2026-11-03) · **Estimation :** 1,5 j · **Branche :** `feat/SF-246-01-volets-stables` · **Date :** 2026-11-03 · **Dépend de :** F-221 (volets), F-226 (onglets, états)
 
 ## Objectif
 Un chantier reste dans le volet où l'utilisateur l'a mis — le focus du serveur ne le déplace plus —, tout chantier ouvert se rouvre d'un geste, et une carte toujours visible dit quel chantier occupe quel volet.
