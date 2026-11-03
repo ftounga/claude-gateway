@@ -613,14 +613,73 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       : `Ch.${chantier.number} · ${chantier.done}/${chantier.total}`;
   }
 
-  /** Les suites d'une carte : mêmes règles que « Et maintenant ? » — seulement sous la dernière réponse. */
+  /**
+   * Les suites d'une carte (F-210 / SF-210-05) : sous la **dernière réponse de l'agent** seulement — une
+   * réponse plus récente les rend caduques. Chaque question garde les siennes tant que le PO n'y a pas
+   * répondu : un message parti avec la suite de Q2 n'efface que celles de Q2, y compris pendant le tour qu'il
+   * lance et après un rechargement (dérivé du fil, rien de stocké).
+   */
   answerStepsOf(message: AtelierThreadItem, answer: AtelierQuestionAnswer): AtelierNextStep[] {
-    if (this.readOnly || this.submittingValue || this.streaming || this.pendingQuestion
-        || message.interrupted || message.budgetReached || !this.isLastAssistantMessage(message)) {
+    if (this.readOnly || this.pendingQuestion || message.interrupted || message.budgetReached
+        || !this.isLastAssistantMessage(message) || this.isAnswerAnswered(message, answer)) {
       return NO_NEXT_STEPS;
     }
-    const last = this.messages[this.messages.length - 1];
-    return last === message ? answer.nextSteps : NO_NEXT_STEPS;
+    return answer.nextSteps;
+  }
+
+  /**
+   * La question a-t-elle reçu sa réponse (F-210 / SF-210-05) ? Oui si un message du PO POSTÉRIEUR à la
+   * réponse reprend la demande d'une de ses suites (cochée, ou « Lancer » qui la compose avec ses prérequis).
+   */
+  isAnswerAnswered(message: AtelierThreadItem, answer: AtelierQuestionAnswer): boolean {
+    const index = this.messages.indexOf(message);
+    if (index < 0) {
+      return false;
+    }
+    const requests = answer.nextSteps.map((step) => (step.request ?? '').trim()).filter((r) => r.length > 0);
+    if (requests.length === 0) {
+      return false;
+    }
+    return this.messages.slice(index + 1)
+      .some((item) => item.role === 'USER' && requests.some((r) => item.content.includes(r)));
+  }
+
+  /**
+   * Ce que chaque panneau de carte a posé dans la saisie (F-210 / SF-210-05), par clé de panneau. La saisie
+   * est commune : sans ce registre, le texte posé par le panneau de Q2 passait, pour ceux de Q1 et Q3, pour
+   * une frappe de l'utilisateur — et ils se repliaient.
+   */
+  private readonly cardPicks = new Map<string, string>();
+
+  /** L'enchaînement des demandes posées par les panneaux des cartes, dans l'ordre des gestes. */
+  private cardPicksText(): string {
+    return [...this.cardPicks.values()].filter((t) => t.trim().length > 0).join('\n\n');
+  }
+
+  /**
+   * La saisie telle qu'un panneau de carte doit la voir : si elle ne contient que ce que les panneaux y ont
+   * posé, chacun n'y voit que SON texte (il reste ouvert) ; une frappe libre, elle, replie tout le monde.
+   */
+  cardDraft(key: string): string {
+    const draft = (this.draft ?? '').trim();
+    if (this.cardPicks.size > 0 && draft === this.cardPicksText().trim()) {
+      return this.cardPicks.get(key) ?? '';
+    }
+    return this.draft ?? '';
+  }
+
+  /** Un panneau de carte a coché/décoché : sa demande rejoint celles des autres cartes dans la saisie. */
+  onCardStepPick(key: string, text: string): void {
+    if ((this.draft ?? '').trim() !== this.cardPicksText().trim()) {
+      // La saisie a changé depuis (envoi, frappe) : on repart de zéro.
+      this.cardPicks.clear();
+    }
+    if (text.trim().length > 0) {
+      this.cardPicks.set(key, text);
+    } else {
+      this.cardPicks.delete(key);
+    }
+    this.onNextStepPick(this.cardPicksText());
   }
 
   /** L'avancement du chantier d'une carte ; le parcours en direct prime (comme `nextStepsChantierOfTurn`). */
