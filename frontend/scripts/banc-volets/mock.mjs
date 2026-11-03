@@ -76,7 +76,10 @@ export function createServer() {
         pending: null });
     }
     if (p === `/api/workspaces/${WS}/chat` && m === 'GET') {
-      return json(req, 200, lane ? state.history[lane] ?? [] : Object.values(state.history).flat());
+      // Comme `ChantierThread.visibleTo` : le fil de N relit le passé commun (ici le fil du 9, antérieur à
+      // l'ouverture des chantiers suivants), puis le sien. Chaque message dit son fil (`chantier`).
+      const past = lane && lane !== 9 ? state.history[9] : [];
+      return json(req, 200, lane ? [...past, ...(state.history[lane] ?? [])] : Object.values(state.history).flat());
     }
     if (p === `/api/workspaces/${WS}/chat/stream` && m === 'POST') {
       const body = JSON.parse(req.postData() ?? '{}');

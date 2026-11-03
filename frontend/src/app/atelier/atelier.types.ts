@@ -40,6 +40,11 @@ export interface AtelierThreadItem {
   viaJarvis?: boolean;
   /** F-235 / SF-235-06 — `FAST` : réponse rapide de Jarvis ; `DELEGATED` : tour Opus lancé par Jarvis. */
   brain?: 'FAST' | 'DELEGATED';
+  /**
+   * Le fil du message relu (F-246 / SF-246-02) : chantier N, ou `null` pour le fil commun. ABSENT pour un message
+   * pas encore relu (optimiste) — qui n'est donc jamais replié comme « passé commun ».
+   */
+  chantier?: number | null;
   /** Chemins des fichiers modifiés par une session d'exécution (mode « Terminal », SF-28-11). */
   changedFiles?: string[];
   /**

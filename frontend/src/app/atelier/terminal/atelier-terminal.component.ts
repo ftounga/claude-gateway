@@ -1120,12 +1120,14 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   set laneChantier(value: number | null) {
     const previous = this.laneChantierValue;
     this.laneChantierValue = value ?? null;
+    this.laneSignal.set(this.laneChantierValue);
     // F-246 : le volet change de chantier — la bande, la barre et le tableau relisent CE chantier tout de suite ;
     // jamais le parcours du chantier quitté sous le fil du nouveau.
     const workspaceId = this.projectIdValue();
     if (previous !== this.laneChantierValue && workspaceId) {
       this.lastFocusEmitted = undefined;
       this.journey.set(null);
+      this.historyRevealed.set(false); // F-246 / SF-246-02 : le contexte du nouveau chantier repart replié
       this.loadJourney(workspaceId);
     }
   }
@@ -1133,6 +1135,8 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     return this.laneChantierValue;
   }
   private laneChantierValue: number | null = null;
+  /** Le même fil, en signal, pour le repli du passé commun (F-246 / SF-246-02). */
+  private readonly laneSignal = signal<number | null>(null);
 
   /**
    * **Le volet de gauche** (F-246 / SF-246-01) : l'écran principal, épinglé sur `laneChantier` (il ne suit plus le
@@ -2460,7 +2464,21 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * Combien de messages sont effectivement repliés : jamais plus que ce que le fil chargé contient
    * (bornage — un `foldedTurns` en avance sur l'historique ne masque pas des messages absents).
    */
-  readonly foldedCount = computed(() => Math.min(this.foldedTurnsValue(), this.messagesValue().length));
+  readonly foldedCount = computed(() => Math.max(
+    Math.min(this.foldedTurnsValue(), this.messagesValue().length), this.contextFoldCount()));
+
+  /**
+   * **Le passé commun d'un chantier, replié** (F-246 / SF-246-02) : dans le fil du chantier N, les messages de tête
+   * venus d'un AUTRE fil (le fil commun ou un autre chantier, d'avant l'ouverture de N) — ce que l'agent relit comme
+   * contexte, mais qui n'est pas le fil de N. Un message sans fil connu (optimiste) n'est jamais replié.
+   */
+  readonly contextFoldCount = computed(() => leadingForeignCount(this.messagesValue(), this.laneSignal()));
+
+  /** Le repli en tête est celui du passé commun (libellé « Contexte d'avant le chantier N »), pas un nouveau départ. */
+  contextFold(): boolean {
+    const context = this.contextFoldCount();
+    return context > 0 && context >= Math.min(this.foldedTurnsValue(), this.messagesValue().length);
+  }
 
   /** Vrai si un historique replié existe et reste caché : c'est ce qui affiche « Voir l'historique ». */
   hasFoldedHistory(): boolean {
@@ -4280,4 +4298,22 @@ function writeFlag(key: string, on: boolean): void {
 /** La clé d'une suggestion masquée : elle revient quand l'état du chantier change. */
 function suggestionKey(c: { number: number; phase: string | null; done: number; unblocker?: { detail?: string | null } | null }): string {
   return `${c.number}|${c.phase}|${c.done}|${c.unblocker?.detail ?? ''}`;
+}
+
+/**
+ * Combien de messages de tête ne sont pas du fil {@code lane} (F-246 / SF-246-02) : on compte tant que le message
+ * porte un fil connu différent ; le premier message du chantier — ou sans fil connu — arrête le compte.
+ */
+export function leadingForeignCount(messages: readonly AtelierThreadItem[], lane: number | null): number {
+  if (lane === null) {
+    return 0;
+  }
+  let count = 0;
+  for (const message of messages) {
+    if (message.chantier === undefined || message.chantier === lane) {
+      break;
+    }
+    count += 1;
+  }
+  return count;
 }
