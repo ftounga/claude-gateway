@@ -35,6 +35,8 @@ sur la mécanique est robotique. Le scénario est cohérent : il n'est pas modif
     (P01 : « la première semaine » pour une naissance d'il y a sept semaines) ; « Dites-moi par où vous souhaitez
     commencer » ajoutée aux formules interdites (P03) ; une nouvelle partagée se salue sans y greffer un autre trait
     du portrait (P09 : « un dimanche… sans course à pied », 3 passages sur 12).
+  - « Journée chargée » est une petite conversation (une phrase humaine, sans enchaîner sur le travail) et « Je vois
+    cela » rejoint les formules interdites (P03, 5 passages sur 15).
   - **PIECES protégé** : la v10 faisait étiqueter `demande` au lieu de `appui` sur S04/S06 (sonde 6× : v9 12/12
     `appui`, v10 6/12). Une règle « chantier absent du bloc Pièces » (P15) a été essayée puis **retirée** ; la cause
     était l'ambiguïté question / demande : « Une question à laquelle la pièce répond (« qu'est-ce que je t'avais
