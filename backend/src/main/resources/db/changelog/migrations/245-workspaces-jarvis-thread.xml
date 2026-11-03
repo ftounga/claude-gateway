@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-245 / SF-245-01 - LE FIL JARVIS EXISTE.
+
+      workspaces.jarvis_thread_user_id : NULL pour toute ligne existante (un projet, un terminal du poste, un
+      terminal Teams) ; egal a user_id sur l'unique "fil Jarvis" du compte. La contrainte UNIQUE porte l'unicite
+      "un fil par utilisateur" en base, y compris sous deux creations concurrentes (H2 et PostgreSQL acceptent
+      plusieurs NULL sous une contrainte UNIQUE). Une colonne plutot qu'un booleen : un booleen ne peut pas porter
+      d'unicite par compte sans index partiel (absent de H2).
+
+      Numero 245 = numero de la feature. Rollback : la contrainte puis la colonne se retirent.
+    -->
+
+    <changeSet id="245-workspaces-jarvis-thread" author="claude-gateway">
+        <addColumn tableName="workspaces">
+            <column name="jarvis_thread_user_id" type="uuid"/>
+        </addColumn>
+        <addUniqueConstraint tableName="workspaces" columnNames="jarvis_thread_user_id"
+                             constraintName="uq_workspaces_jarvis_thread_user"/>
+        <rollback>
+            <dropUniqueConstraint tableName="workspaces" constraintName="uq_workspaces_jarvis_thread_user"/>
+            <dropColumn tableName="workspaces" columnName="jarvis_thread_user_id"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

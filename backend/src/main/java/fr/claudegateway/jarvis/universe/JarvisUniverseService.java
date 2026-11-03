@@ -84,8 +84,10 @@ public class JarvisUniverseService {
         Map<UUID, List<Workspace>> byHost = new LinkedHashMap<>();
         List<Workspace> hosted = new ArrayList<>();
         for (Workspace w : workspaces.list(userId)) {
-            if (!userId.equals(w.getUserId()) || w.isTeamsTerminal()) {
-                continue; // le terminal Teams n'est pas un sujet qu'on choisit à la voix
+            if (!userId.equals(w.getUserId()) || w.isTeamsTerminal() || w.isJarvisThread()) {
+                // le terminal Teams n'est pas un sujet qu'on choisit à la voix ; le fil Jarvis (F-245 / SF-245-01, D1)
+                // non plus : on ne s'y délègue pas « comme à un sujet ».
+                continue;
             }
             if (w.getHostId() == null) {
                 hosted.add(w);

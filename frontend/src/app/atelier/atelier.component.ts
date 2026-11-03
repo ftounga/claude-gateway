@@ -96,6 +96,7 @@ import {
 } from '../chat/library-picker/library-picker-dialog.component';
 import { ApiKeyService } from '../core/services/api-key.service';
 import { AtelierService, TURN_STREAM_PROBE_MS } from '../core/services/atelier.service';
+import { JarvisThreadService } from '../core/services/jarvis-thread.service';
 import { AtelierGuideService } from '../core/services/atelier-guide.service';
 import { HostPresenceService } from '../core/services/host-presence.service';
 import { LiveTerminalService } from '../core/services/live-terminal.service';
@@ -284,6 +285,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
   readonly projectsCrumbs: ForgeCrumb[] = [{ label: 'Projets', link: ['/atelier'] }];
 
   private readonly atelier = inject(AtelierService);
+  /** F-245 / SF-245-01 — le fil Jarvis du compte, créé à la première ouverture de l’Atelier. */
+  private readonly jarvisThreads = inject(JarvisThreadService);
   /** Relevé de la liaison Teams (F-87 / SF-87-03) — un service à part, pour un volet à part. */
   private readonly teamsLinkService = inject(TeamsLinkService);
   private readonly apiKeyService = inject(ApiKeyService);
@@ -1366,6 +1369,22 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.selectWorkspace(found);
   }
 
+  /** F-245 / SF-245-01 — crée (au besoin) le fil Jarvis puis relit la liste s'il n'y figurait pas. Jamais bloquant. */
+  private ensureJarvisThread(): void {
+    this.jarvisThreads.open().subscribe({
+      next: (thread) => {
+        if (this.workspaces().some((w) => w.id === thread.id)) {
+          return;
+        }
+        this.atelier.listWorkspaces().subscribe({
+          next: (list) => this.workspaces.set(list),
+          error: () => undefined,
+        });
+      },
+      error: () => undefined,
+    });
+  }
+
   private loadWorkspaces(space?: 'VIGIE'): void {
     const request = space === undefined
       ? this.atelier.listWorkspaces()
@@ -1380,6 +1399,11 @@ export class AtelierComponent implements OnInit, OnDestroy {
           return;
         }
         this.workspaces.set(list);
+        // F-245 / SF-245-01 — le fil Jarvis naît à la première ouverture de l'Atelier : absent de la liste ⇒ demandé
+        // au serveur (idempotent), puis la liste est relue pour qu'il apparaisse en tête. Best-effort.
+        if (space === undefined && !list.some((w) => w.jarvisThread)) {
+          this.ensureJarvisThread();
+        }
         // Étape 1 du guide (F-53) : elle se coche sur un fait — un projet EXISTE —, jamais sur le
         // clic qui a ouvert le dialogue de création.
         if (list.length > 0) {

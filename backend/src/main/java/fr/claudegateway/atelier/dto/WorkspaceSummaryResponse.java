@@ -38,7 +38,8 @@ import fr.claudegateway.runner.host.HostMissionStatus;
 public record WorkspaceSummaryResponse(
         UUID id, String name, OffsetDateTime createdAt, WorkspaceSource source, String gitRepo,
         WorkspaceExecutionTarget executionTarget, String hostName,
-        HostMissionStatus hostMissionStatus, boolean hostTerminal, boolean teamsTerminal, UUID hostId) {
+        HostMissionStatus hostMissionStatus, boolean hostTerminal, boolean teamsTerminal, UUID hostId,
+        boolean jarvisThread) {
 
     /** Résumé d'un projet dont on ne cherche pas à nommer le poste. */
     public static WorkspaceSummaryResponse from(Workspace workspace) {
@@ -73,6 +74,8 @@ public record WorkspaceSummaryResponse(
         return new WorkspaceSummaryResponse(workspace.getId(), workspace.getName(),
                 workspace.getCreatedAt(), workspace.sourceOrDefault(), fullName,
                 workspace.executionTargetOrDefault(), hostName, hostMissionStatus,
-                workspace.isHostTerminal(), workspace.isTeamsTerminal(), hostId);
+                workspace.isHostTerminal(), workspace.isTeamsTerminal(), hostId,
+                // F-245 / SF-245-01 : le fil Jarvis (épinglé en tête de l'Atelier, ni renommable ni supprimable).
+                workspace.isJarvisThread());
     }
 }

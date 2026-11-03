@@ -56,6 +56,12 @@ public interface WorkspaceRepository extends JpaRepository<Workspace, UUID> {
      */
     List<Workspace> findByUserIdAndHostId(UUID userId, UUID hostId);
 
+    /**
+     * Le <b>fil Jarvis</b> du compte (F-245 / SF-245-01), isolation {@code user_id} : au plus un, par la contrainte
+     * {@code UNIQUE} de {@code jarvis_thread_user_id}.
+     */
+    Optional<Workspace> findFirstByUserIdAndJarvisThreadUserId(UUID userId, UUID jarvisThreadUserId);
+
     /** Purge à la suppression du compte (SF-11-03), après effacement des fichiers du stockage. */
     void deleteByUserId(UUID userId);
 

@@ -164,6 +164,24 @@ public class Workspace {
     private boolean teamsTerminal = false;
 
     /**
+     * Le <b>fil Jarvis</b> du compte (F-245 / SF-245-01, D1) : égal à {@link #userId} sur l'unique espace de ce type
+     * du compte, {@code null} partout ailleurs (toute ligne existante). La contrainte {@code UNIQUE} de la migration
+     * 245 porte « un fil par utilisateur », y compris sous deux créations concurrentes.
+     *
+     * <p>Patron de {@link #hostTerminal} et {@link #teamsTerminal} : une ligne de {@code workspaces} hérite du rejeu,
+     * de la compaction, du cache et de l'écran du terminal. <b>Ce n'est pas un sujet</b> : l'univers de Jarvis, les
+     * projets sans poste (« Hébergé ») et les routines l'excluent ; il n'est ni supprimable ni renommable par
+     * l'utilisateur (la purge du compte, elle, le supprime comme le reste).</p>
+     */
+    @Column(name = "jarvis_thread_user_id", updatable = false)
+    private UUID jarvisThreadUserId;
+
+    /** Vrai si cette ligne est le fil Jarvis du compte (F-245 / SF-245-01). */
+    public boolean isJarvisThread() {
+        return jarvisThreadUserId != null;
+    }
+
+    /**
      * Vrai si le projet est adossé à un dépôt Git (F-31 / SF-31-02). Volontairement null-tolérant :
      * une entité construite hors du builder (tests, désérialisation partielle) n'est pas un projet
      * Git, et le chemin le plus sûr — celui de l'archive — reste le comportement par défaut.
