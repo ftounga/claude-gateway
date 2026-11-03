@@ -80,12 +80,13 @@ import { AtelierSlashQuotaComponent } from './atelier-slash-quota.component';
 import { AtelierSlashBudgetComponent } from './atelier-slash-budget.component';
 import { AtelierSlashPosteComponent } from './atelier-slash-poste.component';
 import { AtelierSlashSujetComponent } from './atelier-slash-sujet.component';
-import { TerminalSituationComponent } from './terminal-situation.component';
-import { MatDialog } from '@angular/material/dialog';
+import { SituationDialogData, SituationDialogResult, TerminalSituationDialogComponent } from './terminal-situation-dialog.component';
+import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { DepositPreviewData, DepositPreviewDialogComponent } from './deposit-preview-dialog.component';
 import { previewKindOf } from './deposit-preview';
 import { SituationService } from '../../core/services/situation.service';
 import {
+  Situation,
   readLastVisit,
   recordVisit,
   situationIdleThreshold,
@@ -314,7 +315,7 @@ export function plumeErrorMessage(failure: HttpErrorResponse | null | undefined)
     AtelierTerminalDemandeComponent,
     AtelierSlashPanelComponent, AtelierSlashHelpComponent, AtelierSlashCostComponent,
     AtelierSlashContexteComponent, AtelierSlashQuotaComponent, AtelierSlashBudgetComponent,
-    AtelierSlashPosteComponent, AtelierSlashSujetComponent, TerminalSituationComponent,
+    AtelierSlashPosteComponent, AtelierSlashSujetComponent,
     AtelierSlashRecallComponent, AtelierSlashActionComponent, AtelierSlashPassationComponent,
     AtelierSlashRoutinesComponent, TerminalRoutinesBandComponent, AtelierSlashCostRoutinesComponent,
     AtelierSlashVeillesComponent, TerminalVeillesBandComponent, TerminalJarvisAbsenceComponent,
@@ -443,6 +444,8 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       // F-211 / SF-211-02 : les encarts déjà marqués envoyés.
       this.loadSentBlocks(value);
       // F-225 / SF-225-02 : revenu après une longue absence, le point de situation s'ouvre de lui-même.
+      // SF-225-04 : la pop-up d'un autre sujet ne survit pas au changement de sujet.
+      this.situationDialog?.close();
       this.openSituationIfIdle(value);
       // F-175 / SF-175-07 : après la pose des entrées (lecture seule comprise), la reprise de l'existant.
       void Promise.resolve().then(() => this.checkReview(true));
@@ -2844,6 +2847,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     this.releaseClock();
     this.narrowQuery?.removeEventListener('change', this.onNarrowChange);
     this.barResize?.disconnect();
+    this.situationDialog?.close();
   }
 
   private startSpinner(): void {
@@ -3165,6 +3169,11 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     this.closeMentions();
     // Le brouillon a été consommé par la commande : on le vide (le parent applique).
     this.draftChange.emit('');
+    // F-225 / SF-225-04 : `/situation` ouvre la pop-up du point de situation, plus un panneau dans le fil.
+    if (command.panelKind === 'situation') {
+      this.openSituationPanel();
+      return;
+    }
     const id = `slash-${this.slashPanelSeq++}`;
     const panel = buildPanel(command, arg, id);
     this.slashPanels.update((panels) => [...panels, panel]);
@@ -3286,21 +3295,43 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   private readonly situations = inject(SituationService);
 
+  private readonly dialogs = inject(MatDialog);
+  private situationDialog: MatDialogRef<TerminalSituationDialogComponent, SituationDialogResult> | null = null;
+  /** La pop-up du point de situation est ouverte (F-225 / SF-225-04). */
+  readonly situationDialogOpen = signal(false);
+
   /**
-   * **Le point de situation** (F-225 / SF-225-02) — [Point de situation] du menu, `/situation`, ou de lui-même à
-   * l'entrée. Ouvert SANS toucher au brouillon (ce n'est pas une commande tapée), puis amené en vue.
+   * **Le point de situation en pop-up** (F-225 / SF-225-04) — bouton de la barre, entrée du menu ⋯, `/situation`, ou
+   * de lui-même à l'entrée. Une fenêtre modale (`MatDialog` : focus piégé puis rendu, Échap, croix, clic dehors) :
+   * « L'essentiel » en 3 à 5 lignes, puis « Détail » (la carte complète d'avant). Une seule à la fois. Ne touche pas
+   * au brouillon. Une ligne cliquée mène au chantier (bascule F-206) ou au bas du fil.
+   *
+   * @param situation la lecture déjà faite pour décider de l'ouverture à l'entrée — la pop-up ne relit pas.
    */
-  openSituationPanel(): void {
-    const command = findPanelCommand('situation');
-    if (!command || this.slashPanels().some((p) => p.panelKind === 'situation')) {
+  openSituationPanel(situation: Situation | null = null): void {
+    if (this.situationDialog) {
       return;
     }
-    const id = `slash-${this.slashPanelSeq++}`;
-    this.slashPanels.update((panels) => [...panels, buildPanel(command, '', id)]);
-    setTimeout(() => {
-      const panels = (this.hostElement.nativeElement as HTMLElement)
-        .querySelectorAll<HTMLElement>('app-atelier-slash-panel');
-      panels[panels.length - 1]?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    const data: SituationDialogData = {
+      workspaceId: this.projectId, readOnly: this.readOnly, chantier: this.laneChantier, situation,
+      onSendsChanged: () => this.onSituationSendsChanged(),
+    };
+    const ref = this.dialogs.open<TerminalSituationDialogComponent, SituationDialogData, SituationDialogResult>(
+      TerminalSituationDialogComponent, {
+        data, width: '640px', maxWidth: 'calc(100vw - 32px)', panelClass: 'cg-situation-dialog',
+        ariaLabelledBy: 'sitd-title', ariaModal: true, autoFocus: 'dialog', restoreFocus: true,
+      });
+    this.situationDialog = ref;
+    this.situationDialogOpen.set(true);
+    ref.afterClosed().subscribe((target) => {
+      this.situationDialog = null;
+      this.situationDialogOpen.set(false);
+      if (target?.kind === 'chantier') {
+        this.onSwitchChantier(target.number);
+        setTimeout(() => this.scrollToBottom());
+      } else if (target?.kind === 'thread') {
+        setTimeout(() => this.scrollToBottom());
+      }
     });
   }
 
@@ -3329,7 +3360,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
         next: (situation) => {
           if (this.projectId === workspaceId && !this.turnVisibleHere()
               && situationOpensOnEntry(situation, threshold, lastVisit)) {
-            this.openSituationPanel();
+            this.openSituationPanel(situation);
           }
         },
         error: () => {

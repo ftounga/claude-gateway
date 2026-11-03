@@ -7,6 +7,7 @@ import {
   fakeAsync,
   tick,
 } from '@angular/core/testing';
+import { MatDialog } from '@angular/material/dialog';
 import { MatTooltip } from '@angular/material/tooltip';
 import { By } from '@angular/platform-browser';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
@@ -17,6 +18,7 @@ import { HostPresenceService } from '../../core/services/host-presence.service';
 import { AtelierThreadItem } from '../atelier.types';
 import { AtelierTerminalBlock } from '../../core/models/atelier.models';
 import { AtelierFileDiffView } from './terminal-diff';
+import { findPanelCommand } from './slash-panel-commands';
 import { PushActivationService } from '../../core/services/push-activation.service';
 
 /**
@@ -3239,7 +3241,10 @@ describe('AtelierTerminalComponent — point de situation à l’entrée (SF-225
     localStorage.removeItem('cg.situation.idleHours');
   });
 
-  afterEach(() => localStorage.removeItem('cg.situation.visits'));
+  afterEach(() => {
+    localStorage.removeItem('cg.situation.visits');
+    TestBed.inject(MatDialog).closeAll();
+  });
 
   function situation(extra: Record<string, unknown> = {}) {
     return { generatedAt: new Date().toISOString(), lastActivityAt: new Date().toISOString(), idleHours: 0,
@@ -3247,8 +3252,9 @@ describe('AtelierTerminalComponent — point de situation à l’entrée (SF-225
       lastUserMessageAt: LONG_AGO, turnLive: false, ...extra };
   }
 
+  /** SF-225-04 : le point de situation est une pop-up, plus un panneau du fil. */
   function situationOpen(): boolean {
-    return component.slashPanels().some((p) => p.panelKind === 'situation');
+    return component.situationDialogOpen();
   }
 
   it('inactif depuis 30 h (dernier message écrit, aucune visite) : la carte s’ouvre et la visite est notée', async () => {
@@ -3273,6 +3279,34 @@ describe('AtelierTerminalComponent — point de situation à l’entrée (SF-225
     await Promise.resolve();
     http.match(URL).forEach((r) => r.flush(situation({ turnLive: true })));
     expect(situationOpen()).toBeFalse();
+  });
+
+  it('SF-225-04 : à l’entrée, la pop-up reçoit la lecture déjà faite (pas de seconde lecture)', async () => {
+    const open = spyOn(TestBed.inject(MatDialog), 'open').and.callThrough();
+    component.projectId = 'w-sit';
+    await Promise.resolve();
+    http.match(URL).forEach((r) => r.flush(situation()));
+    expect(open).toHaveBeenCalledTimes(1);
+    expect((open.calls.mostRecent().args[1]?.data as { situation: unknown }).situation).toBeTruthy();
+    expect(component.slashPanels().some((p) => p.panelKind === 'situation')).toBeFalse();
+  });
+
+  it('SF-225-04 : le bouton de la barre et /situation ouvrent la pop-up, une seule fois, sans panneau ni tour', () => {
+    component.projectId = 'w-sit';
+    localStorage.setItem('cg.situation.idleHours', '0');
+    const sent = jasmine.createSpy('send');
+    component.send.subscribe(sent);
+    fixture.detectChanges();
+    const open = spyOn(TestBed.inject(MatDialog), 'open').and.callThrough();
+
+    (fixture.nativeElement.querySelector('.terminal-situation-open') as HTMLButtonElement).click();
+    expect(situationOpen()).toBeTrue();
+    component.dispatchPanelCommand(findPanelCommand('situation')!, '');
+
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(component.slashPanels().some((p) => p.panelKind === 'situation')).toBeFalse();
+    expect(sent).not.toHaveBeenCalled();
+    localStorage.removeItem('cg.situation.idleHours');
   });
 
   it('dans un volet du split : aucune lecture, aucune ouverture, aucune visite notée', async () => {

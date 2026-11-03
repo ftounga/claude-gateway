@@ -226,6 +226,8 @@ export class TerminalSituationComponent {
   readonly readOnly = input(false);
   /** Le chantier du fil affiché (volet du split) : le filtre s'y place d'emblée (SF-225-03). */
   readonly chantier = input<number | null>(null);
+  /** La lecture déjà faite par la pop-up (F-225 / SF-225-04) : affichée telle quelle, sans seconde lecture. */
+  readonly preloaded = input<Situation | null>(null);
 
   /**
    * Un envoi vient d'être marqué ou annulé ICI (SF-225-03) : le terminal relit ses envois marqués et le compte
@@ -333,7 +335,13 @@ export class TerminalSituationComponent {
 
   private readonly load = effect(() => {
     const id = this.workspaceId();
+    const preloaded = this.preloaded();
     untracked(() => {
+      if (preloaded) {
+        this.data.set(preloaded);
+        this.state.set('ready');
+        return;
+      }
       if (!id) {
         this.state.set('error');
         return;

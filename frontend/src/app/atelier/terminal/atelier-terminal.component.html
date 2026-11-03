@@ -124,6 +124,11 @@
         <!-- PALIERS (F-200 / SF-200-01) : le bandeau complet n'est rendu que si l'en-tête a la place
              (`barTier()`, largeur RÉELLE de l'en-tête). Sinon : palier compact (actions primaires en
              clair, secondaires sous ⋯) ou téléphone (tout sous ⋯, F-158). -->
+        <!-- F-225 / SF-225-04 : rouvrir le point de situation à tout moment — visible à tous les paliers. -->
+        <button mat-icon-button type="button" class="terminal-situation-open" (click)="openSituationPanel()"
+          aria-label="Point de situation : où j'en suis" matTooltip="Point de situation" aria-haspopup="dialog">
+          <mat-icon>assignment</mat-icon>
+        </button>
         @if (barTier() === 'full') {
         @if (instructionsPath) {
           <!-- Instructions du projet (F-34 / SF-34-02) : l'agent les suit depuis l'ouverture de la
@@ -1604,11 +1609,6 @@
               [state]="panel.posteState ?? 'loading'"
               [poste]="panel.poste ?? null"
             />
-          }
-          @case ('situation') {
-            <!-- F-225 / SF-225-02 — LE POINT DE SITUATION : une lecture, aucun tour. -->
-            <app-terminal-situation [workspaceId]="projectId" [readOnly]="readOnly" [chantier]="laneChantier"
-              (sendsChanged)="onSituationSendsChanged()" />
           }
           @case ('sujet') {
             <app-atelier-slash-sujet
