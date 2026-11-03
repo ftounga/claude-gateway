@@ -22,6 +22,8 @@ import java.util.UUID;
  * @param totalTokens   total (entrée + sortie)
  * @param estimatedCost coût estimé au tarif configuré
  * @param clients       clients, du plus consommateur au moins ; « hors client » toujours en dernier
+ * @param jarvis        F-244 / SF-244-02 (D8) — « dont Jarvis » : ce que Jarvis a consommé sur la même fenêtre, HORS
+ *                      des totaux ci-dessus (budget propre, hors quota) mais montré à côté, pour que le total reste vrai
  */
 public record UsageByClient(
         String currency,
@@ -31,7 +33,19 @@ public record UsageByClient(
         long outputTokens,
         long totalTokens,
         BigDecimal estimatedCost,
-        List<ClientUsage> clients) {
+        List<ClientUsage> clients,
+        JarvisUsage jarvis) {
+
+    /** Sans ligne Jarvis (avant F-244, ou sans dépense). */
+    public UsageByClient(String currency, LocalDate from, LocalDate to, long inputTokens, long outputTokens,
+            long totalTokens, BigDecimal estimatedCost, List<ClientUsage> clients) {
+        this(currency, from, to, inputTokens, outputTokens, totalTokens, estimatedCost, clients, JarvisUsage.NONE);
+    }
+
+    /** F-244 / SF-244-02 — la ligne « dont Jarvis » : volumes et coût réel, en euros (au centime). */
+    public record JarvisUsage(long inputTokens, long outputTokens, long totalTokens, BigDecimal costEur) {
+        public static final JarvisUsage NONE = new JarvisUsage(0L, 0L, 0L, BigDecimal.ZERO);
+    }
 
     /**
      * Consommation d'un client — c'est-à-dire d'un <b>poste</b> — et de ses projets.

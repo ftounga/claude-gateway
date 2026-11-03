@@ -110,7 +110,37 @@ public class UsageByClientService {
                 totalOutput,
                 total,
                 costEstimator.estimate(totalInput, totalOutput),
-                List.copyOf(clients));
+                List.copyOf(clients),
+                jarvisOf(userId, window));
+    }
+
+    /** Le taux de conversion du coût réel (dollars ⇒ euros), réglage de la passerelle. */
+    private java.math.BigDecimal usdToEur = new java.math.BigDecimal("0.92");
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setPricing(ProviderPricingProperties pricing) {
+        if (pricing != null && pricing.usdToEur() != null) {
+            this.usdToEur = pricing.usdToEur();
+        }
+    }
+
+    /**
+     * F-244 / SF-244-02 (D8) — la ligne « dont Jarvis » : hors des totaux du quota, montrée à côté, en euros. Sous
+     * {@code user_id}. Une lecture qui échoue rend une ligne vide plutôt que de casser l'écran.
+     */
+    private UsageByClient.JarvisUsage jarvisOf(UUID userId, UsageWindow window) {
+        try {
+            OriginSpend spend = usageTurnRepository.spendOfOrigin(userId, UsageTurn.Origin.JARVIS,
+                    window.startInstant(), window.endInstant());
+            if (spend == null) {
+                return UsageByClient.JarvisUsage.NONE;
+            }
+            return new UsageByClient.JarvisUsage(spend.inputTokens(), spend.outputTokens(),
+                    spend.inputTokens() + spend.outputTokens(),
+                    spend.costUsd().multiply(usdToEur).setScale(2, java.math.RoundingMode.HALF_UP));
+        } catch (RuntimeException e) {
+            return UsageByClient.JarvisUsage.NONE;
+        }
     }
 
     /** Agrège les projets d'un poste et calcule sa part du total. */

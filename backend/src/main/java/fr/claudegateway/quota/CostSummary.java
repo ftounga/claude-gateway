@@ -20,6 +20,9 @@ import java.util.UUID;
  * @param budgetEur somme des budgets applicables, ou {@code null} si aucun client n'est budgété
  * @param percent   part consommée du total, ou {@code null} sans budget
  * @param clients   clients, du plus coûteux au moins ; « hors client » en dernier
+ * @param jarvisSpentEur F-244 / SF-244-02 (D8) — « dont Jarvis » : la part du total née de Jarvis. Le total reste
+ *                  VRAI (Jarvis compris) ; les budgets par client comptent les délégations Jarvis faites dans leurs
+ *                  sujets, signalées par {@link Client#jarvisSpentEur()}.
  */
 public record CostSummary(
         String period,
@@ -30,7 +33,16 @@ public record CostSummary(
         Integer percent,
         List<Client> clients,
         BigDecimal spentUsd,
-        BigDecimal usdToEur) {
+        BigDecimal usdToEur,
+        BigDecimal jarvisSpentEur) {
+
+    /**
+     * Sans ligne « dont Jarvis » (avant F-244).
+     */
+    public CostSummary(String period, LocalDate from, LocalDate to, BigDecimal spentEur, BigDecimal budgetEur,
+            Integer percent, List<Client> clients, BigDecimal spentUsd, BigDecimal usdToEur) {
+        this(period, from, to, spentEur, budgetEur, percent, clients, spentUsd, usdToEur, BigDecimal.ZERO.setScale(2));
+    }
 
     /**
      * Une ligne de l'écran.
@@ -51,6 +63,14 @@ public record CostSummary(
             Integer percent,
             boolean ownBudget,
             long totalTokens,
-            BigDecimal spentUsd) {
+            BigDecimal spentUsd,
+            BigDecimal jarvisSpentEur) {
+
+        /** Sans part Jarvis (avant F-244, ou client sans délégation Jarvis). */
+        public Client(UUID hostId, String hostName, BigDecimal spentEur, BigDecimal budgetEur, Integer percent,
+                boolean ownBudget, long totalTokens, BigDecimal spentUsd) {
+            this(hostId, hostName, spentEur, budgetEur, percent, ownBudget, totalTokens, spentUsd,
+                    BigDecimal.ZERO.setScale(2));
+        }
     }
 }

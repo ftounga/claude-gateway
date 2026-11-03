@@ -65,6 +65,15 @@ public class CostSummaryService {
         adminService.assertAdmin();
         CostWindow window = windowOf(period);
         HostCost costs = hostCostService.costs(userId, window);
+        // F-244 / SF-244-02 (D8) : la part « via Jarvis » de chaque client, et du total.
+        java.util.Map<UUID, BigDecimal> jarvisByHost = hostCostService.jarvisCostByHost(userId, window);
+        if (jarvisByHost == null) {
+            jarvisByHost = java.util.Map.of();
+        }
+        BigDecimal jarvisTotal = BigDecimal.ZERO.setScale(2);
+        for (BigDecimal usdPart : jarvisByHost.values()) {
+            jarvisTotal = jarvisTotal.add(costView.toEur(usdPart));
+        }
 
         List<CostSummary.Client> clients = new ArrayList<>();
         BigDecimal spentTotal = BigDecimal.ZERO;
@@ -91,7 +100,8 @@ public class CostSummaryService {
             }
             clients.add(new CostSummary.Client(client.hostId(), client.hostName(), spent,
                     budget.orElse(null), percentOf(spent, budget.orElse(null)),
-                    hasOwnBudget(userId, client.hostId()), client.totalTokens(), spentUsd));
+                    hasOwnBudget(userId, client.hostId()), client.totalTokens(), spentUsd,
+                    costView.toEur(jarvisByHost.getOrDefault(client.hostId(), BigDecimal.ZERO))));
         }
 
         // Puis TOUS LES AUTRES CLIENTS, à zéro (SF-133-13). Le budget est une décision d'avance :
@@ -129,7 +139,7 @@ public class CostSummaryService {
         BigDecimal totalBudget = anyBudget ? budgetTotal : null;
         return new CostSummary(period, window.firstDay(), window.lastDay(),
                 spentTotal, totalBudget, percentOf(spentTotal, totalBudget), List.copyOf(clients),
-                spentUsdTotal, costView.usdToEur());
+                spentUsdTotal, costView.usdToEur(), jarvisTotal);
     }
 
     /** Le montant en dollars, arrondi au centime (F-224 / SF-224-03). */
