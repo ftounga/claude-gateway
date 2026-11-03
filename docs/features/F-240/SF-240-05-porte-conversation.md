@@ -1,7 +1,7 @@
 # Mini-spec — F-240 / SF-240-05 — La porte du banc CONVERSATION (consigne v10)
 
 ## Identifiant
-`F-240 / SF-240-05` · Feature parente `F-240` « Jarvis va à l'essentiel » · Statut `in-review` · 2026-11-02 ·
+`F-240 / SF-240-05` · Feature parente `F-240` « Jarvis va à l'essentiel » · Statut `done` (PR #1547) · 2026-11-02 ·
 Branche `feat/SF-240-05-porte-conversation`
 
 ## Objectif
