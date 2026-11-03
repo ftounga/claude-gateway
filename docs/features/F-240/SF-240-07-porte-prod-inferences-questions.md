@@ -1,7 +1,7 @@
 # Mini-spec — F-240 / SF-240-07 — Porte prod : inférences et questions en retour (consigne v12)
 
 ## Identifiant
-`F-240 / SF-240-07` · Feature parente `F-240` « Jarvis va à l'essentiel » · Statut `in-progress` · 2026-11-03 ·
+`F-240 / SF-240-07` · Feature parente `F-240` « Jarvis va à l'essentiel » · Statut `done` · 2026-11-03 ·
 Branche `feat/SF-240-07-porte-prod-inferences-questions`
 
 ## Objectif
@@ -25,8 +25,9 @@ Branche `feat/SF-240-07-porte-prod-inferences-questions`
   - « Converser » : « Question de politesse déjà posée : oui » vaut pour toute la conversation, même quand une note
     propose une relance.
 - **Filet déterministe « lien inventé »** (porte des phrases) : une phrase qui porte un marqueur de cause ou de
-  dépendance (`dépend…`, `conditionne…`, `parce que`, `puisque`, `car`, `à cause de`, `faute de`, `si bien que`,
-  `c'est pourquoi`, `préalable`, `découle…`, `en conséquence`) **absent du contexte et de la parole** :
+  dépendance (`dépend…`, `conditionne…`, `parce que`, `puisque`, `car`, `à cause de`, `si bien que`,
+  `c'est pourquoi`, `feu vert`, `votre aval`) **absent du contexte et de la parole**, dans une phrase qui nomme un fait
+  (nom propre autre que « Monsieur », nombre, chantier) :
   - la partie liée est **retirée** (à partir de la conjonction, ou de la proposition qui porte le verbe de
     dépendance) et le reste est dit s'il garde au moins trois mots : « … : il reste à envoyer, et sa validation … en
     dépend. » ⇒ « … : il reste à envoyer. » ;
@@ -74,7 +75,8 @@ Seuils, juges, sévérité, scénarios du banc ; l'écran ; déployer ; escalade
 
 ## Technique
 - Aucun endpoint, aucune table, aucune migration.
-- `JarvisFastBrainPrompt` (v12), `JarvisFastGuards` (`withoutInventedLink`, `isCourtesyQuestion`),
+- `JarvisFastBrainPrompt` (v12), `JarvisFastGuards` (`withoutInventedLink`, `namesAFact`, `isCourtesyQuestion`,
+  `withoutMissingSource`, `isRemark`, `CLOSING_PROMPTS`),
   `JarvisFastBrainService` (porte des phrases : lien inventé, question déjà posée ; note de relance).
 - Isolation : aucun nouvel accès aux données ; la mémoire du jour reste lue sous `user_id` (inchangé).
 
@@ -90,3 +92,38 @@ Aucune (ni auth, ni tenant, ni plans/limites, ni routage).
 
 ## Dépendances
 SF-240-06 (#1554) mergée. Aucune question ouverte.
+
+## Relevé aux pré-bancs de cette SF (même périmètre : inférences, questions, délégations inutiles)
+Chaque passage rouge est tombé sur UN défaut isolé, chacun vérifié (sonde ×6 à ×12) avant correction :
+- **P08#5 « C'est noté. » (passage 2)** : « … reste en attente de votre feu vert » — une condition prêtée à Monsieur que
+  le contexte ne dit pas (même famille que « en dépend ») ⇒ marqueurs `feu vert`, `votre aval` ajoutés au filet.
+- **P03#1 « Journée chargée aujourd'hui. » (passage 2)** : « Nous avançons dès que vous le souhaitez. » jugée robotique
+  ⇒ ajoutée aux relances de conclusion retirées après une autre phrase (`CLOSING_PROMPTS`, SF-240-05).
+- **P06#3 « Il fait gris aujourd'hui. » (passage 3)** : faux positif du filet lui-même — « qui s'habille en
+  conséquence » coupé (sonde : 3/10). Correctif : marqueurs idiomatiques retirés (`en conséquence`, `faute de`,
+  `préalable`, `découle`) et filet limité aux phrases qui **nomment un fait** ; la petite conversation n'est jamais
+  touchée.
+- **C06#2 « Grosse journée qui s'annonce. » (passage 5)** : le filet SF-240-06 « source absente » déléguait une
+  remarque (« … ; l'agenda, lui, n'a pas encore rendu son verdict », sonde : 1/12) ⇒ sur une **remarque** (parole
+  sans « ? »), la proposition qui nomme la source est retirée, ou la phrase après une autre ; une question reste
+  déléguée (P02 inchangé), un aveu d'ignorance aussi.
+
+## Résultats des pré-bancs live (code de la passerelle, clé lue à la volée, 2026-11-03)
+| Banc | Code | Résultat |
+|---|---|---|
+| CONVERSATION 1 | v12 + filets | **100 % ✓** |
+| CONVERSATION 2 | idem | 94,5 % ✗ (P08#5 feu vert ; P03#1 robotique ; P15#1 sens faux) |
+| CONVERSATION 3 | + feu vert, relance | 98,2 % ✗ (P06#3 délégation inutile : faux positif du filet) |
+| CONVERSATION 4 | + filet limité aux faits | **100 % ✓** |
+| CONVERSATION 5 | idem | 98,2 % ✗ (C06#2 délégation inutile : filet « agenda » SF-240-06) |
+| CONVERSATION 6 | + remarque ⇒ source retirée (final) | **100 % ✓** |
+| CONVERSATION 7 | final | **100 % ✓** |
+| PIECES 1 / 2 | final | **✓ 37/37** / **✓** (accord 0,973) |
+| Parole 1 / 2 | final | **✓** (p90 25) / **✓** (p90 26) |
+P08#4 et P16#2 sur le code final : « Ensuite, il y a le compte rendu de recette à envoyer à Claire Dumas. », « Tant
+mieux, Monsieur : une matinée paisible est précieuse un lundi. » (aucune seconde question).
+
+## Notes et décisions
+- Consigne du cerveau rapide changée **une fois** (v11 → v12). Les filets n'appellent aucun modèle et n'escaladent
+  jamais : retrait de phrase ou délégation ordinaire.
+- Sonde du pré-banc : `JARVIS_LIVE_PROBE_PREV` accepte plusieurs échanges séparés par `##`.
