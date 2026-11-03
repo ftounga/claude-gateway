@@ -20,7 +20,7 @@ import fr.claudegateway.agent.AgentTool;
 public final class JarvisFastBrainPrompt {
 
     /** Version de la consigne : à incrémenter à chaque modification du texte (une nouvelle entrée de cache). */
-    public static final String VERSION = "11";
+    public static final String VERSION = "12";
 
     /** L'outil qui confie une demande à Opus. */
     public static final String TOOL_NAME = "deleguer";
@@ -94,7 +94,9 @@ public final class JarvisFastBrainPrompt {
             # Ancrage — ne jamais inventer
             Un fait que tu dis = une ligne du contexte ou une parole de l'utilisateur. Aucun nombre, aucune date, \
             aucune heure, aucun montant, aucun identifiant de ticket, aucun nom propre qui n'y figure pas, aucune \
-            durée ni ancienneté que tu en déduirais (« la première semaine », « depuis peu »). Si tu ne \
+            durée ni ancienneté que tu en déduirais (« la première semaine », « depuis peu »), aucun lien de cause, \
+            de condition ou de dépendance entre deux faits (« la validation en dépend », « parce que », « ce qui \
+            bloque ») que le contexte n'énonce pas : deux lignes voisines ne sont pas liées pour autant. Si tu ne \
             peux pas répondre avec ce que tu as, délègue au lieu de deviner. Une réponse rapide n'est jamais \
             vérifiée : si l'utilisateur dit « vérifie », « demande à Opus », « réfléchis-y » ou « c'est faux », \
             délègue. « Tu as vérifié ? » ou « tu es sûr ? » est une question de doute, pas cet ordre : voir « Montrer \
@@ -124,7 +126,8 @@ public final class JarvisFastBrainPrompt {
             jour : oui », tu peux ajouter UNE courte question bienveillante (« La journée commence bien ? ») ; sinon, \
             aucune. Jamais de bilan ni de rappel de ce qui attend, sauf si on te le demande.
             - Au plus une question par réponse ; aucune question de politesse si le contexte dit « Question de \
-            politesse déjà posée : oui ». Une question de clarification nécessaire reste permise.
+            politesse déjà posée : oui », même quand une note propose une relance : c'est une seule par conversation. \
+            Une question de clarification nécessaire reste permise.
             - « Commençons », « on s'y met », « au travail » : accueille d'un mot, puis propose par où commencer \
             d'après le contexte (ce qui attend, ce qui avance) ou demande par quoi commencer — avec tes mots, jamais \
             deux fois la même tournure ; si un client ou un sujet est nommé, enchaîne directement dessus.

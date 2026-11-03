@@ -110,6 +110,143 @@ public final class JarvisFastGuards {
         return MISSING_SOURCES.stream().anyMatch(s -> n.contains(" " + s + " ") && !known.contains(" " + s + " "));
     }
 
+    /**
+     * F-240 / SF-240-07 — les marqueurs d'un lien de cause ou de dépendance. Groupe 1 : une conjonction (le lien
+     * commence au marqueur) ; groupe 2 : un verbe ou un nom de dépendance (le lien est toute la proposition).
+     */
+    private static final Pattern LINK = Pattern.compile("(?iu)(?<![\\p{L}])(?:"
+            + "(parce qu|puisqu|car(?![\\p{L}])|[àa] cause d|si bien qu|c['’]est pourquoi)"
+            + "|(d[ée]pend\\p{L}*|conditionn\\p{L}*|feu vert|votre aval))");
+    private static final Pattern CLAUSE_BOUNDARY = Pattern.compile("[,;:—–]");
+    private static final Pattern TRAILING_JOIN = Pattern.compile(
+            "(?iu)(?:[\\s,;:—–-]|(?<![\\p{L}])(?:et|mais|donc|ou|qui|que|dont)(?![\\p{L}]))+$");
+
+    /** La racine normalisée d'un marqueur, cherchée telle quelle dans le contexte. */
+    private static String linkStem(String marker) {
+        String n = normalize(marker);
+        for (String stem : List.of("depend", "conditionn")) {
+            if (n.startsWith(stem)) {
+                return stem;
+            }
+        }
+        return n;
+    }
+
+    /**
+     * F-240 / SF-240-07 — <b>un lien de cause ou de dépendance inventé</b> (banc prod du 03/11, P08 : « il reste à
+     * envoyer, et sa validation du portail en dépend » quand le contexte ne lie pas les deux) : rend la phrase sans
+     * la partie liée (à partir de la conjonction, ou de la proposition qui porte le verbe de dépendance), terminée par
+     * un point ; la phrase telle quelle si aucun marqueur n'est inventé (présent dans le contexte ou la parole, il est
+     * permis) ; une chaîne vide si ce qui resterait n'a pas trois mots (hors « Monsieur »).
+     */
+    public static String withoutInventedLink(String sentence, String context, String said) {
+        if (sentence == null || sentence.isBlank() || !namesAFact(sentence)) {
+            return sentence;
+        }
+        String known = " " + normalize(context) + " " + normalize(said) + " ";
+        Matcher m = LINK.matcher(sentence);
+        while (m.find()) {
+            String stem = linkStem(m.group());
+            if (known.contains("car".equals(stem) ? " car " : " " + stem)) {
+                continue;
+            }
+            return m.group(2) != null ? beforeClauseOf(sentence, m.start()) : keptBefore(sentence, m.start());
+        }
+        return sentence;
+    }
+
+    /** Ce qui précède la proposition qui contient la position {@code at}, ou une chaîne vide (moins de trois mots). */
+    static String beforeClauseOf(String sentence, int at) {
+        int cut = 0;
+        Matcher b = CLAUSE_BOUNDARY.matcher(sentence.substring(0, at));
+        while (b.find()) {
+            cut = b.start();
+        }
+        return keptBefore(sentence, cut);
+    }
+
+    /** Ce qui précède {@code cut}, sans liaison pendante, terminé par un point ; vide sous trois mots (hors Monsieur). */
+    private static String keptBefore(String sentence, int cut) {
+        String kept = TRAILING_JOIN.matcher(sentence.substring(0, cut)).replaceAll("").strip();
+        String words = normalize(kept).replaceAll("\\bmonsieur\\b", " ").strip();
+        if (words.isEmpty() || words.split("\\s+").length < 3) {
+            return "";
+        }
+        return kept + ".";
+    }
+
+    /**
+     * F-240 / SF-240-07 — une <b>remarque</b> de l'utilisateur (« Grosse journée qui s'annonce. ») à laquelle la phrase
+     * répond en nommant une source absente (« … ; l'agenda, lui, n'a pas encore rendu son verdict », pré-banc du 03/11,
+     * C06) : rien n'est à chercher, donc rien à déléguer. Rend la phrase sans la proposition qui nomme la source, ou
+     * une chaîne vide. Un aveu d'ignorance n'est jamais récupéré.
+     */
+    public static String withoutMissingSource(String sentence, String context) {
+        if (sentence == null || claimsIgnorance(sentence)) {
+            return "";
+        }
+        String known = " " + normalize(context) + " ";
+        Matcher w = WORD.matcher(sentence);
+        while (w.find()) {
+            String n = normalize(w.group()).replaceFirst("^[a-z] ", ""); // « l'agenda » ⇒ « agenda »
+            boolean source = MISSING_SOURCES.contains(n) || ("emploi".equals(n)
+                    && normalize(sentence.substring(w.start())).startsWith("emploi du temps"));
+            String named = "emploi".equals(n) ? "emploi du temps" : n;
+            if (source && !known.contains(" " + named + " ")) {
+                return beforeClauseOf(sentence, w.start());
+            }
+        }
+        return sentence;
+    }
+
+    /** F-240 / SF-240-07 — la parole est une remarque, pas une question ni une demande (aucun « ? »). */
+    public static boolean isRemark(String said) {
+        return said != null && !said.isBlank() && !said.contains("?");
+    }
+
+    /**
+     * F-240 / SF-240-07 — la phrase nomme un fait du travail (un nom propre autre que « Monsieur » ou « Jarvis », un
+     * nombre, un chantier) : seul un tel fait peut être lié à tort à un autre. Une petite conversation (« le gris
+     * s'habille en conséquence ») n'en nomme aucun et n'est pas touchée (pré-banc du 03/11, P06).
+     */
+    static boolean namesAFact(String sentence) {
+        if (sentence.chars().anyMatch(Character::isDigit) || normalize(sentence).contains("chantier")) {
+            return true;
+        }
+        return properNouns(sentence).stream().map(JarvisFastGuards::normalize)
+                .anyMatch(w -> !w.equals("monsieur") && !w.equals("jarvis"));
+    }
+
+    /** F-240 / SF-240-07 — les questions de politesse ou de conversation, normalisées (règle F-239 : une seule). */
+    static final List<String> COURTESY_QUESTIONS = List.of("du nouveau", "quoi de neuf", "bien dormi", "bien repose",
+            "bien reposee", "et vous", "comment allez vous", "comment vas tu", "ca va", "vous allez bien", "en forme",
+            "la forme", "commence bien", "commence t elle bien", "commence t il bien", "s annonce bien",
+            "se passe bien", "s est bien passe", "s est bien passee", "bon week end", "passe un bon", "bonne nuit");
+    private static final List<String> NOT_COURTESY = List.of("confirm", "lequel", "laquelle", "lesquels",
+            "lesquelles", "voulez vous que", "souhaitez vous que", "desirez vous que", "pardon", "repeter", "je la lance",
+            "je le lance", "je les lance", "dois je", "s agit il", "est ce bien");
+
+    /**
+     * F-240 / SF-240-07 — une question de politesse ou de conversation (« Du nouveau depuis notre dernier
+     * entretien ? », « Bien dormi ? », « Et vous ? ») — jamais une clarification ni une confirmation (« Lequel,
+     * Monsieur ? », « Vous confirmez ? », « Voulez-vous que je génère la preuve ? »).
+     */
+    public static boolean isCourtesyQuestion(String sentence) {
+        if (sentence == null || !sentence.strip().replaceAll("[»\"')\\s]+$", "").endsWith("?")) {
+            return false;
+        }
+        String n = " " + normalize(sentence) + " ";
+        if (NOT_COURTESY.stream().anyMatch(w -> n.contains(" " + w))) {
+            return false;
+        }
+        return COURTESY_QUESTIONS.stream().anyMatch(q -> n.contains(" " + q + " "));
+    }
+
+    /** F-240 / SF-240-07 — vrai si le contexte dit qu'une question de politesse a déjà été posée aujourd'hui. */
+    public static boolean courtesyAlreadyAsked(String context) {
+        return context != null && context.contains("Question de politesse déjà posée : oui");
+    }
+
     private static final java.util.regex.Pattern MORE_REQUEST =java.util.regex.Pattern.compile(
             "\\b(dis m en|dites m en|dis moi en|dites moi en|m en dire|en dire|me dire) (un peu )?plus\\b"
                     + "|\\bdevelopp|\\bdetaill|\\bplus de details?\\b|\\bdavantage de details?\\b"
@@ -213,7 +350,10 @@ public final class JarvisFastGuards {
 
     /** F-240 / SF-240-05 — relevées au banc (« Dites-moi par où vous souhaitez commencer. »), en conclusion. */
     static final List<String> CLOSING_PROMPTS = List.of("dites moi par ou", "dites moi par quoi",
-            "dites moi quand vous", "dites moi si vous", "je reste attentif", "je suis attentif");
+            "dites moi quand vous", "dites moi si vous", "je reste attentif", "je suis attentif",
+            // F-240 / SF-240-07 — relevées au banc (P03 : « Nous avançons dès que vous le souhaitez. »).
+            "nous avancons des que", "nous avancerons des que", "on avance des que", "des que vous le souhaitez",
+            "quand vous le souhaitez", "quand vous voudrez");
 
     private static final Pattern START_QUESTION = Pattern.compile(
             "^(?:alors |et |bien )?(?:par (?:ou|quoi|lequel|laquelle)|avec quoi) (?:souhaitez|voulez|desirez|preferez)"

@@ -895,7 +895,8 @@ public class JarvisFastBrainService {
             gate.allusions(fr.claudegateway.jarvis.portrait.JarvisPortraitNote.allusionTerms(portrait),
                     fr.claudegateway.jarvis.portrait.JarvisPortraitNote.personalSaid(request.text(), portrait), spontaneousToday, topics);
             // F-241 / SF-241-05 (D15) — la relance « Du nouveau ? » : cadence bornée ici, moment choisi par Jarvis.
-            if (!bench && checkinEligible(request, portrait, now)) {
+            // F-240 / SF-240-07 — pas de relance quand une question de politesse a déjà été posée.
+            if (!bench && !JarvisFastGuards.courtesyAlreadyAsked(context) && checkinEligible(request, portrait, now)) {
                 notes = notes + "\n\n" + fr.claudegateway.jarvis.portrait.JarvisPortraitNote.CHECKIN_NOTE;
             }
         }
@@ -1441,7 +1442,11 @@ public class JarvisFastBrainService {
             this.recent = recent == null ? List.of() : recent;
             this.out = out;
             this.smallTalk = smallTalk;
+            this.courtesyAsked = JarvisFastGuards.courtesyAlreadyAsked(this.context);
         }
+
+        /** F-240 / SF-240-07 — le contexte dit qu'une question de politesse a déjà été posée. */
+        private final boolean courtesyAsked;
 
         // ---- F-239 / SF-239-05 : la ligne « compris: » (jamais dite) ----
         private static final java.util.regex.Pattern UNDERSTOOD = java.util.regex.Pattern
@@ -1605,6 +1610,21 @@ public class JarvisFastBrainService {
                     imitationsRemoved++; // D18 : aucune imitation de l'œuvre — la phrase est retirée
                     return;
                 }
+                // F-240 / SF-240-07 — un lien de cause ou de dépendance que le contexte n'énonce pas (« … et sa
+                // validation en dépend ») : la partie liée est retirée ; si rien de dicible ne reste, la phrase est
+                // retirée (une autre a été dite) ou traitée comme un fait non ancré.
+                String unlinked = JarvisFastGuards.withoutInventedLink(sentence, context, said);
+                if (!sentence.equals(unlinked)) {
+                    groundingTrips++;
+                    if (unlinked.isEmpty()) {
+                        if (smallTalk || !saidNow.isEmpty()) {
+                            return;
+                        }
+                        abort(REASON_GROUNDING);
+                        return;
+                    }
+                    sentence = unlinked;
+                }
                 if (ungrounded(sentence) != null) {
                     groundingTrips++;
                     if (smallTalk) {
@@ -1617,8 +1637,19 @@ public class JarvisFastBrainService {
                 // agenda ») : une information absente se délègue (hors petite conversation).
                 if (!smallTalk && (JarvisFastGuards.claimsIgnorance(sentence)
                         || JarvisFastGuards.namesMissingSource(sentence, context))) {
-                    abort(REASON_UNKNOWN);
-                    return;
+                    // F-240 / SF-240-07 — sur une remarque (« Grosse journée qui s'annonce. »), rien n'est à chercher :
+                    // la source est retirée de la phrase, ou la phrase après une autre ; jamais de délégation inutile.
+                    String kept = JarvisFastGuards.isRemark(said)
+                            ? JarvisFastGuards.withoutMissingSource(sentence, context) : "";
+                    if (kept.isEmpty() && JarvisFastGuards.isRemark(said) && !saidNow.isEmpty()) {
+                        fillersRemoved++;
+                        return;
+                    }
+                    if (kept.isEmpty()) {
+                        abort(REASON_UNKNOWN);
+                        return;
+                    }
+                    sentence = kept;
                 }
                 if (JarvisFastGuards.isFillerAlone(sentence) || JarvisFastGuards.isListeningInvitation(sentence)
                         || (!saidNow.isEmpty() && JarvisFastGuards.isClosingPrompt(sentence, said))) {
@@ -1634,6 +1665,12 @@ public class JarvisFastBrainService {
                 }
                 if (repeats(sentence)) {
                     repeatsRemoved++;
+                    return;
+                }
+                // F-240 / SF-240-07 — au plus une question de politesse par conversation (banc prod du 03/11, P16) :
+                // déjà posée ⇒ la nouvelle est retirée, pourvu qu'une autre phrase ait été dite.
+                if (courtesyAsked && !saidNow.isEmpty() && JarvisFastGuards.isCourtesyQuestion(sentence)) {
+                    fillersRemoved++;
                     return;
                 }
                 // F-241 / SF-241-04 (D12 b, c) — une allusion spontanée : une seule par jour, jamais un sujet récent.
