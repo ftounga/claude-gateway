@@ -1817,6 +1817,14 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.jarvisUsage = jarvisUsage;
     }
 
+    /** F-244 / SF-244-03 — le plafond de Jarvis : la porte d'une délégation. Facultatif. */
+    private fr.claudegateway.jarvis.budget.JarvisBudgetService jarvisBudget;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJarvisBudget(fr.claudegateway.jarvis.budget.JarvisBudgetService jarvisBudget) {
+        this.jarvisBudget = jarvisBudget;
+    }
+
     /** F-244 / SF-244-01 — l'étiquette d'un tour Opus né de Jarvis au journal du coût. */
     static final fr.claudegateway.quota.UsageTag JARVIS_OPUS =
             fr.claudegateway.quota.UsageTag.jarvis(fr.claudegateway.quota.UsageTurn.JarvisPart.OPUS);
@@ -3333,6 +3341,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         boolean viaJarvis = voiceMark != null;
         AtelierTurnBudget turnBudget;
         if (viaJarvis) {
+            // F-244 / SF-244-03 (D6) — la porte du budget de Jarvis, AVANT tout appel : plafond dur ⇒ refus ; plafond
+            // atteint ⇒ refus sauf « oui » récent. Jamais pendant le tour : un tour parti n'est jamais coupé.
+            if (jarvisBudget != null) {
+                jarvisBudget.gateDelegation(userId, hosted);
+            }
             turnBudget = AtelierTurnBudget.byok(maxTurnTokens);
         } else if (hosted) {
             quotaService.assertWithinQuota(userId);

@@ -352,6 +352,38 @@ class JarvisFastBrainServiceTest {
         org.mockito.Mockito.verifyNoInteractions(quota);
     }
 
+    @Test
+    void f244AtTwiceTheJarvisCapAFixedPhraseAndNoCall() {
+        // F-244 / SF-244-03 (D6) — plafond global dur : une phrase fixe, aucun appel au modèle.
+        JarvisFastBrainService service = service(answering("Oui."), null, null);
+        fr.claudegateway.jarvis.budget.JarvisBudgetService budget =
+                mock(fr.claudegateway.jarvis.budget.JarvisBudgetService.class);
+        when(budget.hardStop(alice)).thenReturn(true);
+        service.setJarvisBudget(budget);
+
+        JarvisFastBrainService.Outcome outcome = service.converse(ask("Où en est Kestrel ?"), null);
+
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(outcome.spokenText()).isEqualTo(fr.claudegateway.jarvis.budget.JarvisBudgetService.HARD_REPLY);
+        assertThat(calls).isEmpty();
+    }
+
+    @Test
+    void f244OverTheJarvisCapTheFastBrainKeepsAnsweringAndNeverEscalates() {
+        // F-244 / SF-244-03 (D6) — souple : le cerveau rapide répond toujours ; le dépassement ne délègue jamais.
+        JarvisFastBrainService service = service(answering("Oui."), null, null);
+        fr.claudegateway.jarvis.budget.JarvisBudgetService budget =
+                mock(fr.claudegateway.jarvis.budget.JarvisBudgetService.class);
+        when(budget.hardStop(alice)).thenReturn(false);
+        service.setJarvisBudget(budget);
+
+        JarvisFastBrainService.Outcome outcome = service.converse(ask("Où en est Kestrel ?"), null);
+
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(outcome.delegation()).isNull();
+        assertThat(calls).isNotEmpty();
+    }
+
     // ------------------------------------------------------------- SF-235-02 : mémoire, contexte, pré-chauffage
 
     @Test

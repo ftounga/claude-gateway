@@ -937,6 +937,50 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     jarvis.ngOnDestroy();
   }));
 
+  it('F-244 / SF-244-03 — budget atteint : « Je la lance ? » est dit, et seul un « oui » confirme puis relance', fakeAsync(() => {
+    jarvisApi = Object.assign(jarvisApi, { confirmBudget: jasmine.createSpy('confirmBudget').and.returnValue(of(undefined)) });
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    jarvis.send('w-2', 'Cherche la cause');
+    const phrase = 'Budget Jarvis du mois atteint ; cette recherche coûte environ 1 €. Je la lance ?';
+
+    handlers!.onError('jarvis_budget_confirm', phrase);
+    flushMicrotasks();
+    expect(voice.speak).toHaveBeenCalledWith(phrase, 'w-2');
+    expect(jarvis.notice()).not.toBe('Le tour n’a pas abouti.');
+
+    void jarvis.handle('oui');
+    flushMicrotasks();
+    expect((jarvisApi as unknown as { confirmBudget: jasmine.Spy }).confirmBudget).toHaveBeenCalledTimes(1);
+    expect(atelier.streamChat).toHaveBeenCalledTimes(2);
+    expect(atelier.streamChat.calls.mostRecent().args[1]).toBe('Cherche la cause');
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-244 / SF-244-03 — budget atteint : « non » ne lance rien ; plafond dur : la phrase fixe, rien ne repart', fakeAsync(() => {
+    jarvisApi = Object.assign(jarvisApi, { confirmBudget: jasmine.createSpy('confirmBudget').and.returnValue(of(undefined)) });
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    jarvis.send('w-2', 'Cherche la cause');
+
+    handlers!.onError('jarvis_budget_confirm', 'Je la lance ?');
+    flushMicrotasks();
+    void jarvis.handle('non');
+    flushMicrotasks();
+    expect(voice.speak).toHaveBeenCalledWith('Entendu, je ne lance rien.', 'w-2');
+    expect((jarvisApi as unknown as { confirmBudget: jasmine.Spy }).confirmBudget).not.toHaveBeenCalled();
+    expect(atelier.streamChat).toHaveBeenCalledTimes(1);
+
+    jarvis.send('w-2', 'Cherche encore');
+    handlers!.onError('jarvis_budget_hard', 'Monsieur, le budget de Jarvis de ce mois est épuisé.');
+    flushMicrotasks();
+    expect(voice.speak).toHaveBeenCalledWith('Monsieur, le budget de Jarvis de ce mois est épuisé.', 'w-2');
+    expect(atelier.streamChat).toHaveBeenCalledTimes(2);
+    jarvis.ngOnDestroy();
+  }));
+
   it('SF-231-04 — un doute n’accorde rien et n’envoie rien', fakeAsync(() => {
     const fixture = TestBed.createComponent(JarvisComponent);
     fixture.detectChanges();
