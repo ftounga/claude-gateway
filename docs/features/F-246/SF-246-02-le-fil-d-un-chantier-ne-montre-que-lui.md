@@ -7,7 +7,7 @@
 `F-246` — Les volets restent où on les met (cadrage `CADRAGE-F-246-les-volets-restent-ou-on-les-met.md`, cause 8)
 
 ## Statut
-`in-review` · **Estimation :** ½ j · **Branche :** `feat/SF-246-02-passe-commun-replie` · **Date :** 2026-11-03 · **Dépend de :** SF-246-01, SF-221-01 (fil par chantier)
+`done` (2026-11-03) · **Estimation :** ½ j · **Branche :** `feat/SF-246-02-passe-commun-replie` · **Date :** 2026-11-03 · **Dépend de :** SF-246-01, SF-221-01 (fil par chantier)
 
 ## Objectif
 Le volet d'un chantier n'affiche d'emblée que les messages de ce chantier : le passé commun qu'il relit (messages d'autres fils d'avant son ouverture) est replié derrière « Contexte d'avant le chantier N (k messages) ».
