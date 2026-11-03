@@ -167,6 +167,48 @@ public class UsageTurn {
     @Builder.Default
     private Kind kind = Kind.TOUR;
 
+    /**
+     * D'où vient la dépense (F-244 / SF-244-01) : {@code GATEWAY} (défaut, tout l'historique) ou {@code JARVIS} — le
+     * cerveau rapide, la voix, l'écoute, la dictée depuis {@code /jarvis}, les tours Opus nés de Jarvis.
+     */
+    @Column(name = "origin", nullable = false, length = 8, updatable = false)
+    @jakarta.persistence.Enumerated(jakarta.persistence.EnumType.STRING)
+    @Builder.Default
+    private Origin origin = Origin.GATEWAY;
+
+    /** Le poste Jarvis de la dépense (F-244 / SF-244-01), {@code null} hors Jarvis. */
+    @Column(name = "jarvis_part", length = 16, updatable = false)
+    @jakarta.persistence.Enumerated(jakarta.persistence.EnumType.STRING)
+    private JarvisPart jarvisPart;
+
+    /** L'origine d'une ligne du journal (F-244 / SF-244-01). */
+    public enum Origin {
+        /** Une dépense de la passerelle (tour tapé, routine, appel annexe de la plateforme). */
+        GATEWAY,
+        /** Une dépense née de Jarvis : comptée à son budget propre. */
+        JARVIS
+    }
+
+    /** Le poste d'une dépense Jarvis (F-244 / SF-244-01). Vocabulaire fermé : aucun texte libre n'entre. */
+    public enum JarvisPart {
+        /** Le cerveau rapide (échanges, pré-chauffages, appels annexes). */
+        FAST,
+        /** La voix (synthèse), au tarif réel de son fournisseur. */
+        VOICE,
+        /** L'écoute en flux. */
+        STT_STREAM,
+        /** La retranscription d'un énoncé. */
+        STT_UTTERANCE,
+        /** La dictée de repli appelée depuis {@code /jarvis}. */
+        DICTATION,
+        /** Un tour Opus né de Jarvis (délégation ou tour vocal), coupé ou non. */
+        OPUS,
+        /** Le courrier (F-242). */
+        MAIL,
+        /** L'agenda (F-243). */
+        AGENDA
+    }
+
     /** La nature d'une ligne du journal (F-224 / SF-224-03). */
     public enum Kind {
         /** Un tour d'agent. */

@@ -59,7 +59,8 @@ public class JarvisUtteranceService {
         String text = provider.transcribe(audio, contentType, properties.language(), vocabulary.of(userId));
         long ms = (System.nanoTime() - started) / 1_000_000L;
         long billed = billedSeconds(audio.length, contentType, seconds);
-        usage.addStream(userId, billed, costUsd(billed));
+        // F-244 / SF-244-01 (D3) : la retranscription a ses propres colonnes (elle partageait celles du flux).
+        usage.addUtterance(userId, billed, costUsd(billed));
         return new Result(text == null ? "" : text.strip(), provider.name() + "-batch", ms);
     }
 

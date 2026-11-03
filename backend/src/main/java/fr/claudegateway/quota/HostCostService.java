@@ -68,6 +68,24 @@ public class HostCostService {
     }
 
     /**
+     * F-244 / SF-244-02 (D8) — la part de la dépense née de <b>Jarvis</b>, par poste (clé {@code null} = « hors
+     * client »), en dollars, sur la fenêtre. Comprise dans {@link #costs} : c'est une ventilation, pas un ajout.
+     * Isolation {@code user_id} dans la requête.
+     */
+    @Transactional(readOnly = true)
+    public Map<UUID, BigDecimal> jarvisCostByHost(UUID userId, CostWindow window) {
+        Map<UUID, BigDecimal> parts = new java.util.HashMap<>();
+        for (HostCostAggregate row : usageTurnRepository.aggregateCostByHostOfOrigin(userId, window.start(),
+                window.end(), UsageTurn.Origin.JARVIS)) {
+            BigDecimal cost = row.getCostUsd() == null ? BigDecimal.ZERO : row.getCostUsd();
+            if (cost.signum() > 0) {
+                parts.merge(row.getHostId(), cost, BigDecimal::add);
+            }
+        }
+        return parts;
+    }
+
+    /**
      * Ce qu'un client précis a coûté sur la fenêtre. Zéro s'il n'a rien coûté — un client sans
      * dépense n'est pas une erreur.
      */

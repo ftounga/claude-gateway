@@ -42,19 +42,52 @@ public interface UsageTurnRepository extends JpaRepository<UsageTurn, UUID> {
                    sum(t.inputTokens) as inputTokens, sum(t.outputTokens) as outputTokens
             from UsageTurn t
             where t.userId = :userId and t.occurredAt >= :from and t.occurredAt < :to and t.kind = :kind
+                  and t.origin = :origin
             group by t.hostId, t.workspaceId
             """)
-    List<UsageTurnAggregate> aggregateByHostAndWorkspaceOfKind(@Param("userId") UUID userId,
-            @Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to, @Param("kind") UsageTurn.Kind kind);
+    List<UsageTurnAggregate> aggregateByHostAndWorkspaceOfKindAndOrigin(@Param("userId") UUID userId,
+            @Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to, @Param("kind") UsageTurn.Kind kind,
+            @Param("origin") UsageTurn.Origin origin);
 
     /**
-     * Les TOURS seulement (F-224 / SF-224-06) : la consommation par client se lit à côté du quota, et les appels
-     * annexes ({@code ANNEXE}) sont hors quota — les compter ici ferait dépasser la somme des lignes du compteur.
+     * Les TOURS de la passerelle seulement (F-224 / SF-224-06, F-244 / SF-244-02) : la consommation par client se lit à
+     * côté du quota, et ni les appels annexes ({@code ANNEXE}) ni les tours nés de Jarvis ({@code origin = JARVIS},
+     * budget propre) n'y entrent — les compter ici ferait dépasser la somme des lignes du compteur.
      */
     default List<UsageTurnAggregate> aggregateByHostAndWorkspace(UUID userId, OffsetDateTime from,
             OffsetDateTime to) {
-        return aggregateByHostAndWorkspaceOfKind(userId, from, to, UsageTurn.Kind.TOUR);
+        return aggregateByHostAndWorkspaceOfKindAndOrigin(userId, from, to, UsageTurn.Kind.TOUR,
+                UsageTurn.Origin.GATEWAY);
     }
+
+    /**
+     * <b>Ce qu'une origine a dépensé</b> sur une fenêtre (F-244 / SF-244-02) — la ligne « dont Jarvis » des écrans de
+     * coût : tokens et coût réel, toutes natures (tours et annexes). Isolation {@code user_id} dans la requête.
+     */
+    @Query("""
+            select coalesce(sum(t.inputTokens), 0) as inputTokens, coalesce(sum(t.outputTokens), 0) as outputTokens,
+                   coalesce(sum(t.providerCostUsd), 0) as costUsd
+            from UsageTurn t
+            where t.userId = :userId and t.origin = :origin and t.occurredAt >= :from and t.occurredAt < :to
+            """)
+    OriginSpend spendOfOrigin(@Param("userId") UUID userId, @Param("origin") UsageTurn.Origin origin,
+            @Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to);
+
+    /**
+     * <b>Dépense réelle d'une origine, par poste</b> (F-244 / SF-244-02) : la part « via Jarvis » de chaque client
+     * (une délégation faite dans un sujet client). Isolation {@code user_id} dans la requête.
+     */
+    @Query("""
+            select t.hostId as hostId,
+                   coalesce(sum(t.providerCostUsd), 0) as costUsd,
+                   sum(t.inputTokens) as inputTokens, sum(t.outputTokens) as outputTokens
+            from UsageTurn t
+            where t.userId = :userId and t.origin = :origin and t.occurredAt >= :from and t.occurredAt < :to
+            group by t.hostId
+            """)
+    List<HostCostAggregate> aggregateCostByHostOfOrigin(@Param("userId") UUID userId,
+            @Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to,
+            @Param("origin") UsageTurn.Origin origin);
 
     /**
      * <b>Dépense réelle</b> d'un utilisateur sur une fenêtre, agrégée par <b>poste</b>

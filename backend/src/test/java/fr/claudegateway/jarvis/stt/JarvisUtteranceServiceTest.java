@@ -61,7 +61,8 @@ class JarvisUtteranceServiceTest {
         assertThat(result.text()).isEqualTo("Où en est CAGIP ?");
         assertThat(result.provider()).isEqualTo("elevenlabs-batch");
         // 64 000 octets de PCM 16 kHz = 2 s ; 0,27 $/h ⇒ 0,000150 $.
-        verify(usage).addStream(alice, 2L, new BigDecimal("0.000150"));
+        // F-244 / SF-244-01 (D3) : la retranscription a ses propres colonnes, séparées du flux.
+        verify(usage).addUtterance(alice, 2L, new BigDecimal("0.000150"));
     }
 
     @Test

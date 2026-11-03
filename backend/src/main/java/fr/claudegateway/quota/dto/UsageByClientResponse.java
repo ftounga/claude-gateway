@@ -24,7 +24,8 @@ public record UsageByClientResponse(
         long outputTokens,
         long totalTokens,
         BigDecimal estimatedCost,
-        List<ClientResponse> clients) {
+        List<ClientResponse> clients,
+        UsageByClient.JarvisUsage jarvis) {
 
     /** Un client (poste) et ses projets. {@code hostId} nul = seau « hors client ». */
     public record ClientResponse(
@@ -79,6 +80,7 @@ public record UsageByClientResponse(
                 usage.outputTokens(),
                 usage.totalTokens(),
                 usage.estimatedCost(),
-                clients);
+                clients,
+                usage.jarvis() == null ? UsageByClient.JarvisUsage.NONE : usage.jarvis());
     }
 }

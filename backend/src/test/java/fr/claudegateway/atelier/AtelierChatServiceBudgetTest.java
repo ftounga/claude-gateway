@@ -226,6 +226,46 @@ class AtelierChatServiceBudgetTest {
     }
 
     @Test
+    void aJarvisTurnIsNeitherBlockedNorCappedByTheGatewayQuota() {
+        // F-244 / SF-244-02 (D4) : quota Gateway épuisé ⇒ un tour né de Jarvis passe quand même, et son plafond par
+        // message est la borne de configuration (pas le quota restant, ici 20 tokens).
+        hostedWithRemainingQuota(20L);
+        lenient().doThrow(new fr.claudegateway.quota.QuotaExceededException("quota"))
+                .when(quotaService).assertWithinQuota(userId);
+        serviceWithTurnCap(1_500_000L);
+        for (int i = 0; i < 4; i++) {
+            agentProvider.enqueueToolCallCosting("read_file", 5, 5);
+        }
+        agentProvider.enqueueFinal("Fait.");
+        service.markVoiceTurn(userId, workspaceId, null);
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "lis tout");
+
+        assertThat(result.reply()).isEqualTo("Fait.");
+        assertThat(result.budgetReached()).isFalse();
+        assertThat(result.inputTokens() + result.outputTokens()).isEqualTo(50L);
+        verify(quotaService, org.mockito.Mockito.never()).assertWithinQuota(userId);
+        verify(quotaService, org.mockito.Mockito.never()).currentUsage(userId);
+        verify(quotaService).recordUsage(org.mockito.ArgumentMatchers.eq(userId), any(), any(), any(), any(), any(),
+                any(), org.mockito.ArgumentMatchers.eq(workspaceId), any(),
+                org.mockito.ArgumentMatchers.eq(AtelierChatService.JARVIS_OPUS));
+    }
+
+    @Test
+    void aTypedTurnInTheSameStateIsStillRefusedByTheGatewayQuota() {
+        // F-244 / SF-244-02 — non-régression : sans marque Jarvis, le quota épuisé refuse le tour, avant tout appel.
+        hostedWithRemainingQuota(20L);
+        org.mockito.Mockito.doThrow(new fr.claudegateway.quota.QuotaExceededException("quota"))
+                .when(quotaService).assertWithinQuota(userId);
+        serviceWithTurnCap(1_500_000L);
+        agentProvider.enqueueFinal("Jamais dit.");
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.chat(userId, workspaceId, "lis tout"))
+                .isInstanceOf(fr.claudegateway.quota.QuotaExceededException.class);
+        assertThat(agentProvider.remaining()).isEqualTo(1);
+    }
+
+    @Test
     void alwaysRunsTheFirstIterationEvenWithAnExhaustedQuota() {
         // D-L8-3 : un tour qui n'a rien fait, rien dit et rien coûté se lirait comme une panne.
         hostedWithRemainingQuota(0L);
@@ -292,6 +332,69 @@ class AtelierChatServiceBudgetTest {
         verify(quotaService, org.mockito.Mockito.times(1)).recordUsage(userId,
                 new fr.claudegateway.quota.TurnTokens(7L, 3L, 0L, 0L),
                 fr.claudegateway.quota.TurnExtras.NONE, null, "claude-opus-5", workspaceId, null);
+    }
+
+    @Test
+    void aJarvisTurnIsLabelledJarvisOpusInTheLedger() {
+        // F-244 / SF-244-01 : un tour né de Jarvis porte son origine jusqu'au journal (poste OPUS).
+        hostedWithRemainingQuota(12_000_000L);
+        serviceWithTurnCap(null);
+        fr.claudegateway.jarvis.JarvisUsageService jarvisUsage =
+                org.mockito.Mockito.mock(fr.claudegateway.jarvis.JarvisUsageService.class);
+        service.setJarvisUsage(jarvisUsage);
+        agentProvider.enqueueToolCallCosting("read_file", 7, 3);
+        agentProvider.enqueueFinal("Fait.");
+        service.markVoiceTurn(userId, workspaceId, null);
+
+        service.chat(userId, workspaceId, "lis tout");
+
+        verify(quotaService).recordUsage(userId, new fr.claudegateway.quota.TurnTokens(12L, 8L, 0L, 0L),
+                fr.claudegateway.quota.TurnExtras.NONE, null, "claude-opus-5", null, null, workspaceId, null,
+                AtelierChatService.JARVIS_OPUS);
+        verify(jarvisUsage).addOpus(org.mockito.ArgumentMatchers.eq(userId), any());
+    }
+
+    @Test
+    void aCutJarvisTurnCountsInJarvisDayAndIsLabelled() {
+        // F-244 / SF-244-01 (D3) : un tour Jarvis coupé n'était pas compté à la journée de Jarvis.
+        hostedWithRemainingQuota(12_000_000L);
+        serviceWithTurnCap(null);
+        fr.claudegateway.jarvis.JarvisUsageService jarvisUsage =
+                org.mockito.Mockito.mock(fr.claudegateway.jarvis.JarvisUsageService.class);
+        service.setJarvisUsage(jarvisUsage);
+        agentProvider.enqueueToolCallCosting("read_file", 7, 3);
+        agentProvider.onTurn(() -> agentProvider.onTurn(() -> {
+            throw new IllegalStateException("coupure simulée");
+        }));
+        service.markVoiceTurn(userId, workspaceId, null);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.chat(userId, workspaceId, "lis tout"))
+                .hasMessageContaining("coupure simulée");
+
+        verify(jarvisUsage, org.mockito.Mockito.times(1)).addOpus(org.mockito.ArgumentMatchers.eq(userId), any());
+        verify(quotaService, org.mockito.Mockito.times(1)).recordUsage(userId,
+                new fr.claudegateway.quota.TurnTokens(7L, 3L, 0L, 0L),
+                fr.claudegateway.quota.TurnExtras.NONE, null, "claude-opus-5", null, null, workspaceId, null,
+                AtelierChatService.JARVIS_OPUS);
+    }
+
+    @Test
+    void aTypedCutTurnNeverTouchesJarvisDay() {
+        // F-244 / SF-244-01 — non-régression : un tour tapé coupé reste GATEWAY et hors journée Jarvis.
+        hostedWithRemainingQuota(12_000_000L);
+        serviceWithTurnCap(null);
+        fr.claudegateway.jarvis.JarvisUsageService jarvisUsage =
+                org.mockito.Mockito.mock(fr.claudegateway.jarvis.JarvisUsageService.class);
+        service.setJarvisUsage(jarvisUsage);
+        agentProvider.enqueueToolCallCosting("read_file", 7, 3);
+        agentProvider.onTurn(() -> agentProvider.onTurn(() -> {
+            throw new IllegalStateException("coupure simulée");
+        }));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.chat(userId, workspaceId, "lis tout"))
+                .hasMessageContaining("coupure simulée");
+
+        org.mockito.Mockito.verifyNoInteractions(jarvisUsage);
     }
 
     // ------------------------------------------------------------ la consommation est visible

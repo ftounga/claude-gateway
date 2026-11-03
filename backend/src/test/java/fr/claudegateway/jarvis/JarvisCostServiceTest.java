@@ -28,7 +28,9 @@ class JarvisCostServiceTest {
                 .speechCostUsd(new BigDecimal("0.5")).sttStreamCostUsd(new BigDecimal("0.1")).build();
         JarvisUsageDay today = JarvisUsageDay.builder().userId(alice).day(LocalDate.of(2026, 11, 2))
                 .fastBrainCostUsd(new BigDecimal("0.10")).opusCostUsd(new BigDecimal("1.06")).opusTurns(1)
-                .speechCostUsd(BigDecimal.ZERO).sttStreamCostUsd(new BigDecimal("0.01")).build();
+                .speechCostUsd(BigDecimal.ZERO).sttStreamCostUsd(new BigDecimal("0.004"))
+                // F-244 / SF-244-01 : retranscription et dictée, en colonnes séparées, comptent dans l'écoute.
+                .sttUtteranceCostUsd(new BigDecimal("0.004")).dictationCostUsd(new BigDecimal("0.002")).build();
         when(repository.findByUserIdAndDayGreaterThanEqualOrderByDayAsc(eq(alice), any()))
                 .thenReturn(List.of(yesterday, today));
         JarvisCostService service = new JarvisCostService(repository,

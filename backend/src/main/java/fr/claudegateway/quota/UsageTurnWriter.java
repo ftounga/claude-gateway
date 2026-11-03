@@ -51,8 +51,18 @@ class UsageTurnWriter {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     void write(UUID userId, UUID workspaceId, UUID hostId, TurnTokens tokens, TurnExtras extras,
             TurnCost cost, UsageTurn.Kind kind) {
+        write(userId, workspaceId, hostId, tokens, extras, cost, kind, UsageTag.GATEWAY);
+    }
+
+    /** Même ligne, étiquetée de son origine et de son poste Jarvis (F-244 / SF-244-01). */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    void write(UUID userId, UUID workspaceId, UUID hostId, TurnTokens tokens, TurnExtras extras,
+            TurnCost cost, UsageTurn.Kind kind, UsageTag tag) {
+        UsageTag label = UsageTag.orGateway(tag);
         usageTurnRepository.save(UsageTurn.builder()
                 .kind(kind)
+                .origin(label.origin())
+                .jarvisPart(label.jarvisPart())
                 .userId(userId)
                 .workspaceId(workspaceId)
                 .hostId(hostId)

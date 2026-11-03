@@ -1817,6 +1817,10 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.jarvisUsage = jarvisUsage;
     }
 
+    /** F-244 / SF-244-01 — l'étiquette d'un tour Opus né de Jarvis au journal du coût. */
+    static final fr.claudegateway.quota.UsageTag JARVIS_OPUS =
+            fr.claudegateway.quota.UsageTag.jarvis(fr.claudegateway.quota.UsageTurn.JarvisPart.OPUS);
+
     /** F-235 / SF-235-04 (D12) — borne de la note des échanges rapides jointe au message du tour Opus suivant. */
     static final int FAST_EXCHANGES_NOTE_MAX = 1_500;
 
@@ -3321,8 +3325,16 @@ public class AtelierChatService implements RelayInterruptTarget {
         // plus que ce qui a été payé, règle de F-36 transposée à la boucle maison. En BYOK, les
         // tokens sont sur le compte du client et aucun quota n'est tenu (SF-28-06) : seul le
         // réglage s'applique.
+        // F-231 / SF-231-06 : ce tour est-il né à la voix (écran Jarvis) ? La marque est consommée ici, une fois.
+        // F-244 / SF-244-02 (D4) : lue AVANT le contrôle de quota — un tour né de Jarvis n'est ni bloqué par le quota
+        // Gateway, ni décompté de ce quota ; son plafond par message est la borne de configuration seule (comme un tour
+        // BYOK). Le budget propre de Jarvis le garde (SF-244-03), sans jamais couper un tour en cours.
+        VoiceMark voiceMark = consumeVoiceMark(userId, workspaceId, chantier);
+        boolean viaJarvis = voiceMark != null;
         AtelierTurnBudget turnBudget;
-        if (hosted) {
+        if (viaJarvis) {
+            turnBudget = AtelierTurnBudget.byok(maxTurnTokens);
+        } else if (hosted) {
             quotaService.assertWithinQuota(userId);
             turnBudget = AtelierTurnBudget.hosted(maxTurnTokens,
                     quotaService.currentUsage(userId).remainingTokens());
@@ -3346,9 +3358,6 @@ public class AtelierChatService implements RelayInterruptTarget {
         // interjection prise en compte, sans jamais dépasser le plafond absolu.
         int iterationCap = maxIterations;
         String userText = rawMessage.trim();
-        // F-231 / SF-231-06 : ce tour est-il né à la voix (écran Jarvis) ? La marque est consommée ici, une fois.
-        VoiceMark voiceMark = consumeVoiceMark(userId, workspaceId, chantier);
-        boolean viaJarvis = voiceMark != null;
 
         // Compaction automatique du fil (F-117 / SF-117-01), AVANT de bâtir la requête : si le texte
         // rejoué dépasse le seuil de sécurité sous la fenêtre du modèle, les tours anciens sont
@@ -4616,7 +4625,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         } catch (RuntimeException | Error cut) {
             recordCutTurn(userId, workspace, hosted, model, inputTokens, outputTokens, cacheReadTokens,
                     cacheWriteTokens, webSearchRequests, otherModelShares, lastServedModel[0], startedAt,
-                    iterationsUsed, cut);
+                    iterationsUsed, cut, viaJarvis);
             throw cut;
         }
         // F-195 / SF-195-05 : arrêté sur son budget alors que plusieurs demandes sont arrivées — on dit
@@ -4646,7 +4655,13 @@ public class AtelierChatService implements RelayInterruptTarget {
             // Pas de temps de session ici : la boucle maison n'a pas de bac à sable
             // facturé, seuls les Managed Agents en ont un (F-133 / SF-133-08).
             TurnExtras recordedExtras = new TurnExtras(webSearchRequests, 0L);
-            if (otherModelShares.isEmpty()) {
+            if (viaJarvis) {
+                // F-244 / SF-244-01 — un tour né de Jarvis porte son origine jusqu'au journal (poste OPUS).
+                quotaService.recordUsage(userId, recorded, recordedExtras, null, model,
+                        otherModelShares.isEmpty() ? null : toTurnTokens(otherModelShares),
+                        otherModelShares.isEmpty() ? null : lastServedModel[0], workspaceId, workspace.getHostId(),
+                        JARVIS_OPUS);
+            } else if (otherModelShares.isEmpty()) {
                 quotaService.recordUsage(userId, recorded, recordedExtras, null, model, workspaceId,
                         workspace.getHostId());
             } else {
@@ -6808,16 +6823,31 @@ public class AtelierChatService implements RelayInterruptTarget {
     private void recordCutTurn(UUID userId, Workspace workspace, boolean hosted, String model, int inputTokens,
             int outputTokens, int cacheReadTokens, int cacheWriteTokens, int webSearchRequests,
             java.util.Map<String, long[]> otherModelShares, String lastServedModel, long startedAt, int iterationsUsed,
-            Throwable cut) {
+            Throwable cut, boolean viaJarvis) {
         if (inputTokens + outputTokens <= 0) {
             return;
         }
         try {
+            TurnTokens recorded = new TurnTokens(Math.max(0, inputTokens - cacheReadTokens - cacheWriteTokens),
+                    outputTokens, cacheReadTokens, cacheWriteTokens);
+            TurnExtras extras = new TurnExtras(webSearchRequests, 0L);
+            // F-244 / SF-244-01 (D3) — un tour Jarvis coupé compte aussi à la journée de Jarvis (il manquait).
+            if (viaJarvis && jarvisUsage != null) {
+                try {
+                    jarvisUsage.addOpus(userId, otherModelShares.isEmpty()
+                            ? quotaService.costOf(recorded, extras, model)
+                            : quotaService.costOf(recorded, extras, model, toTurnTokens(otherModelShares)));
+                } catch (RuntimeException e) {
+                    log.debug("Compteur Jarvis : tour coupé non compté ({})", e.getClass().getSimpleName());
+                }
+            }
             if (hosted) {
-                TurnTokens recorded = new TurnTokens(Math.max(0, inputTokens - cacheReadTokens - cacheWriteTokens),
-                        outputTokens, cacheReadTokens, cacheWriteTokens);
-                TurnExtras extras = new TurnExtras(webSearchRequests, 0L);
-                if (otherModelShares.isEmpty()) {
+                if (viaJarvis) {
+                    quotaService.recordUsage(userId, recorded, extras, null, model,
+                            otherModelShares.isEmpty() ? null : toTurnTokens(otherModelShares),
+                            otherModelShares.isEmpty() ? null : lastServedModel, workspace.getId(),
+                            workspace.getHostId(), JARVIS_OPUS);
+                } else if (otherModelShares.isEmpty()) {
                     quotaService.recordUsage(userId, recorded, extras, null, model, workspace.getId(),
                             workspace.getHostId());
                 } else {

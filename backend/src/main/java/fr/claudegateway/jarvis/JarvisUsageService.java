@@ -9,11 +9,15 @@ import java.util.function.Consumer;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
+
+import fr.claudegateway.quota.UsageLedgerService;
+import fr.claudegateway.quota.UsageTurn;
 
 /**
  * <b>Le cumul du jour de Jarvis</b> (F-231 / SF-231-01, mesure SF-231-05) : une ligne par compte et par jour, mise à
@@ -40,12 +44,34 @@ public class JarvisUsageService {
         this.clock = clock;
     }
 
+    /** F-244 / SF-244-01 — le journal du coût, où chaque dépense Jarvis est aussi étiquetée. Facultatif. */
+    private UsageLedgerService ledger;
+
+    @Autowired(required = false)
+    public void setLedger(UsageLedgerService ledger) {
+        this.ledger = ledger;
+    }
+
+    /** Date de la grille des tarifs de la voix et de l'écoute de Jarvis (réglages de déploiement). */
+    static final String PRICING_VERSION = "jarvis-voice";
+
     /** Une lecture de la voix : caractères lus et coût en dollars. */
     public void addSpeech(UUID userId, long characters, BigDecimal costUsd) {
+        addSpeech(userId, null, null, null, characters, costUsd);
+    }
+
+    /**
+     * F-244 / SF-244-01 (D2) — une lecture de la voix, au <b>tarif réel</b> de son fournisseur (OpenAI ou ElevenLabs),
+     * inscrite à la journée <b>et</b> au journal ({@code ANNEXE}, {@code JARVIS}, poste {@code VOICE}).
+     */
+    public void addSpeech(UUID userId, UUID workspaceId, UUID hostId, String model, long characters,
+            BigDecimal costUsd) {
         bump(userId, day -> {
             day.setCharsSpoken(day.getCharsSpoken() + Math.max(0L, characters));
             day.setSpeechCostUsd(day.getSpeechCostUsd().add(costUsd == null ? BigDecimal.ZERO : costUsd));
         });
+        ledger(userId, workspaceId, hostId, UsageTurn.JarvisPart.VOICE, model, (Math.max(0L, characters) + 3) / 4,
+                costUsd);
     }
 
     /** F-233 / SF-233-04 — une session d'écoute en flux : secondes et coût en dollars. */
@@ -54,6 +80,72 @@ public class JarvisUsageService {
             day.setSttStreamSeconds(day.getSttStreamSeconds() + Math.max(0L, seconds));
             day.setSttStreamCostUsd(day.getSttStreamCostUsd().add(costUsd == null ? BigDecimal.ZERO : costUsd));
         });
+        ledger(userId, null, null, UsageTurn.JarvisPart.STT_STREAM, null, 0L, costUsd);
+    }
+
+    /** F-244 / SF-244-01 (D3) — une retranscription d'énoncé : secondes et coût, à part de l'écoute en flux. */
+    public void addUtterance(UUID userId, long seconds, BigDecimal costUsd) {
+        bump(userId, day -> {
+            day.setSttUtteranceSeconds(day.getSttUtteranceSeconds() + Math.max(0L, seconds));
+            day.setSttUtteranceCostUsd(day.getSttUtteranceCostUsd().add(costUsd == null ? BigDecimal.ZERO : costUsd));
+        });
+        ledger(userId, null, null, UsageTurn.JarvisPart.STT_UTTERANCE, null, 0L, costUsd);
+    }
+
+    /** F-244 / SF-244-01 (D3) — une dictée de repli appelée depuis {@code /jarvis} : secondes et coût en dollars. */
+    public void addDictation(UUID userId, long seconds, BigDecimal costUsd) {
+        bump(userId, day -> {
+            day.setDictationSeconds(day.getDictationSeconds() + Math.max(0L, seconds));
+            day.setDictationCostUsd(day.getDictationCostUsd().add(costUsd == null ? BigDecimal.ZERO : costUsd));
+        });
+        ledger(userId, null, null, UsageTurn.JarvisPart.DICTATION, null, 0L, costUsd);
+    }
+
+    /** Tarif de la dictée de repli (whisper-1 : 0,006 $ la minute), réglable ; sert seulement au budget de Jarvis. */
+    private BigDecimal dictationCostUsdPerMinute = new BigDecimal("0.006");
+
+    @Autowired(required = false)
+    public void setDictationCost(
+            @org.springframework.beans.factory.annotation.Value("${app.jarvis.dictation.cost-usd-per-minute:0.006}")
+            BigDecimal perMinute) {
+        if (perMinute != null && perMinute.signum() >= 0) {
+            this.dictationCostUsdPerMinute = perMinute;
+        }
+    }
+
+    /**
+     * F-244 / SF-244-01 (D3) — un extrait de dictée de repli envoyé depuis {@code /jarvis} : la durée est estimée de la
+     * taille (WAV PCM 16 kHz, sinon ≈ 32 kb/s), bornée à 1-120 s comme la retranscription, puis comptée au tarif de la
+     * dictée. Best-effort : jamais au point de casser la dictée.
+     */
+    public void addDictationClip(UUID userId, int bytes, String contentType) {
+        try {
+            long seconds = dictationSeconds(bytes, contentType);
+            addDictation(userId, seconds, dictationCostUsdPerMinute.multiply(BigDecimal.valueOf(seconds))
+                    .divide(BigDecimal.valueOf(60), 6, java.math.RoundingMode.HALF_UP));
+        } catch (RuntimeException e) {
+            log.warn("Dictée Jarvis non comptée ({})", e.getClass().getSimpleName());
+        }
+    }
+
+    /** Les secondes estimées d'un extrait de dictée (1 à 120 s). */
+    static long dictationSeconds(int bytes, String contentType) {
+        boolean wav = contentType != null && contentType.contains("wav");
+        long estimate = wav ? Math.round(Math.ceil(bytes / 32_000.0)) : Math.round(Math.ceil(bytes / 4_000.0));
+        return Math.max(1L, Math.min(120L, estimate));
+    }
+
+    /** F-244 / SF-244-01 — la ligne du journal d'une dépense Jarvis hors jetons ; best-effort. */
+    private void ledger(UUID userId, UUID workspaceId, UUID hostId, UsageTurn.JarvisPart part, String model,
+            long inputTokens, BigDecimal costUsd) {
+        if (ledger == null || userId == null) {
+            return;
+        }
+        try {
+            ledger.recordJarvisCost(userId, workspaceId, hostId, part, model, inputTokens, costUsd, PRICING_VERSION);
+        } catch (RuntimeException e) {
+            log.warn("Dépense Jarvis non inscrite au journal ({})", e.getClass().getSimpleName());
+        }
     }
 
     /** F-235 / SF-235-01 (D15) — un appel au cerveau rapide et son coût en dollars. */

@@ -142,12 +142,51 @@ public class JarvisUsageDay {
     @Column(name = "render_counts", nullable = false, length = 1000)
     private String renderCounts = "";
 
+    /** F-244 / SF-244-01 (D3) — la retranscription d'énoncés, séparée de l'écoute en flux. */
+    @Builder.Default
+    @Column(name = "stt_utterance_seconds", nullable = false)
+    private long sttUtteranceSeconds = 0L;
+
+    @Builder.Default
+    @Column(name = "stt_utterance_cost_usd", nullable = false, precision = 12, scale = 6)
+    private BigDecimal sttUtteranceCostUsd = BigDecimal.ZERO;
+
+    /** F-244 / SF-244-01 (D3) — la dictée de repli appelée depuis {@code /jarvis}. */
+    @Builder.Default
+    @Column(name = "dictation_seconds", nullable = false)
+    private long dictationSeconds = 0L;
+
+    @Builder.Default
+    @Column(name = "dictation_cost_usd", nullable = false, precision = 12, scale = 6)
+    private BigDecimal dictationCostUsd = BigDecimal.ZERO;
+
+    /** F-244 / SF-244-01 — le courrier (F-242) et l'agenda (F-243), prévus dès maintenant. */
+    @Builder.Default
+    @Column(name = "mail_cost_usd", nullable = false, precision = 12, scale = 6)
+    private BigDecimal mailCostUsd = BigDecimal.ZERO;
+
+    @Builder.Default
+    @Column(name = "agenda_cost_usd", nullable = false, precision = 12, scale = 6)
+    private BigDecimal agendaCostUsd = BigDecimal.ZERO;
+
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 
-    /** F-233 / SF-233-04 — ce que la voix de Jarvis a coûté ce jour-là : lecture + écoute en flux, en dollars. */
+    /**
+     * Ce que la <b>voix</b> de Jarvis a coûté ce jour-là, en dollars : lecture, écoute en flux, retranscription et dictée
+     * de repli (F-233 / SF-233-04, complété par F-244 / SF-244-01). C'est l'assiette du plafond voix.
+     */
+    public BigDecimal voiceCostUsd() {
+        return nz(speechCostUsd).add(nz(sttStreamCostUsd)).add(nz(sttUtteranceCostUsd)).add(nz(dictationCostUsd));
+    }
+
+    /** F-244 / SF-244-01 — <b>tout</b> ce que Jarvis a coûté ce jour-là, en dollars : voix, cerveau rapide, Opus, courrier, agenda. */
     public BigDecimal totalCostUsd() {
-        BigDecimal speech = speechCostUsd == null ? BigDecimal.ZERO : speechCostUsd;
-        return sttStreamCostUsd == null ? speech : speech.add(sttStreamCostUsd);
+        return voiceCostUsd().add(nz(fastBrainCostUsd)).add(nz(opusCostUsd)).add(nz(mailCostUsd))
+                .add(nz(agendaCostUsd));
+    }
+
+    private static BigDecimal nz(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
     }
 }

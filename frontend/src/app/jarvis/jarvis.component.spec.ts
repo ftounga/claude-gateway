@@ -1592,7 +1592,8 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
 
       vad!.onSpeechEnd(new Float32Array(8000));
       flushMicrotasks();
-      expect(dictation.transcribe).toHaveBeenCalled();
+      // F-244 / SF-244-01 — la dictée de repli appelée depuis /jarvis porte la marque JARVIS (budget de Jarvis).
+      expect(dictation.transcribe).toHaveBeenCalledWith(jasmine.any(Blob), jasmine.any(String), 'JARVIS');
       expect(vadStop).toHaveBeenCalled();
       expect(atelier.streamChat).toHaveBeenCalledWith('w-2', 'Et les tests ?', jasmine.any(Object), 'ACT', false, [],
         null, false, 'JARVIS', 'La migration est', false);
