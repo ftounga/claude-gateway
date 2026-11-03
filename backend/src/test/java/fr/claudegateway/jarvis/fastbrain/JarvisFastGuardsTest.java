@@ -277,6 +277,12 @@ class JarvisFastGuardsTest {
                 .isEqualTo("Le compte rendu reste à envoyer.");
         // Rien de dicible ne reste : chaîne vide.
         assertThat(JarvisFastGuards.withoutInventedLink("Tout dépend de Claire.", P08, "")).isEmpty();
+        // Banc du 03/11, P08#5 : une condition prêtée à Monsieur (« votre feu vert ») que le contexte ne dit pas.
+        assertThat(JarvisFastGuards.withoutInventedLink(
+                "Le compte rendu de recette pour Claire Dumas reste en attente de votre feu vert.", P08, "C'est noté."))
+                .isEmpty();
+        assertThat(JarvisFastGuards.isClosingPrompt("Nous avançons dès que vous le souhaitez.",
+                "Journée chargée aujourd'hui.")).isTrue();
     }
 
     @Test

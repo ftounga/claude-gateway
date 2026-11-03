@@ -116,7 +116,7 @@ public final class JarvisFastGuards {
      */
     private static final Pattern LINK = Pattern.compile("(?iu)(?<![\\p{L}])(?:"
             + "(parce qu|puisqu|car(?![\\p{L}])|[àa] cause d|faute d|si bien qu|c['’]est pourquoi|en cons[ée]quence)"
-            + "|(d[ée]pend\\p{L}*|conditionn\\p{L}*|pr[ée]alable\\p{L}*|d[ée]coul\\p{L}*))");
+            + "|(d[ée]pend\\p{L}*|conditionn\\p{L}*|pr[ée]alable\\p{L}*|d[ée]coul\\p{L}*|feu vert|votre aval))");
     private static final Pattern CLAUSE_BOUNDARY = Pattern.compile("[,;:—–]");
     private static final Pattern TRAILING_JOIN = Pattern.compile(
             "(?iu)(?:[\\s,;:—–-]|(?<![\\p{L}])(?:et|mais|donc|ou|qui|que|dont)(?![\\p{L}]))+$");
@@ -301,7 +301,10 @@ public final class JarvisFastGuards {
 
     /** F-240 / SF-240-05 — relevées au banc (« Dites-moi par où vous souhaitez commencer. »), en conclusion. */
     static final List<String> CLOSING_PROMPTS = List.of("dites moi par ou", "dites moi par quoi",
-            "dites moi quand vous", "dites moi si vous", "je reste attentif", "je suis attentif");
+            "dites moi quand vous", "dites moi si vous", "je reste attentif", "je suis attentif",
+            // F-240 / SF-240-07 — relevées au banc (P03 : « Nous avançons dès que vous le souhaitez. »).
+            "nous avancons des que", "nous avancerons des que", "on avance des que", "des que vous le souhaitez",
+            "quand vous le souhaitez", "quand vous voudrez");
 
     private static final Pattern START_QUESTION = Pattern.compile(
             "^(?:alors |et |bien )?(?:par (?:ou|quoi|lequel|laquelle)|avec quoi) (?:souhaitez|voulez|desirez|preferez)"
