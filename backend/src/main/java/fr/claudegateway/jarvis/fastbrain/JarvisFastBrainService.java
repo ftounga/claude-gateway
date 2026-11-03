@@ -203,6 +203,8 @@ public class JarvisFastBrainService {
     public static final String REASON_GROUNDING = "grounding";
     public static final String REASON_TOOL_TEXT = "tool_text";
     public static final String REASON_FORCED = "forced";
+    /** F-240 / SF-240-06 — une réponse qui avouait ignorer ou offrait une source inexistante : déléguée. */
+    public static final String REASON_UNKNOWN = "unknown";
     /** Nombre de réponses précédentes de la session dont les phrases ne doivent pas revenir (D11c). */
     static final int REPEAT_WINDOW = 5;
 
@@ -1444,6 +1446,7 @@ public class JarvisFastBrainService {
         // ---- F-239 / SF-239-05 : la ligne « compris: » (jamais dite) ----
         private static final java.util.regex.Pattern UNDERSTOOD = java.util.regex.Pattern
                 .compile("(?is)^\\s*compris\\s*:\\s*(.*)$");
+        private static final java.util.regex.Pattern LEAKED_HEADER = java.util.regex.Pattern.compile("compris\\s*:");
         private final StringBuilder header = new StringBuilder();
         private boolean headerDone;
         private boolean headerSeen;
@@ -1473,6 +1476,24 @@ public class JarvisFastBrainService {
             boolean maybe = "compris:".startsWith(start.length() >= 8 ? start.substring(0, 8) : start)
                     || start.startsWith("compris");
             if (!maybe) {
+                // F-240 / SF-240-06 — une note du modèle écrite AVANT la ligne « compris: » (« Phrase
+                // incompréhensible, je demande de répéter sans la citer. », banc prod) n'est jamais dite : la
+                // première ligne est retenue jusqu'à la suivante ; si celle-ci est l'en-tête, la note est écartée.
+                int nl = text.indexOf('\n');
+                if (nl < 0 && !last && text.length() < 1_200) {
+                    return "";
+                }
+                if (nl >= 0) {
+                    String after = text.substring(nl + 1);
+                    String next = after.stripLeading().toLowerCase(java.util.Locale.ROOT);
+                    if (!last && next.length() < 8 && "compris:".startsWith(next) && text.length() < 1_200) {
+                        return "";
+                    }
+                    if (LEAKED_HEADER.matcher(next).lookingAt()) {
+                        header.setLength(0);
+                        return header(after, last);
+                    }
+                }
                 headerDone = true;
                 header.setLength(0);
                 return text;
@@ -1510,6 +1531,11 @@ public class JarvisFastBrainService {
             if (delta.isEmpty()) {
                 return;
             }
+            feed(delta);
+        }
+
+        /** Ce qui suit l'en-tête : découpé en phrases, chacune passée aux gardes. */
+        private void feed(String delta) {
             streamed = true;
             pending.append(delta);
             // F-241 / SF-241-04 — les lignes-marques (✦, 📌) sortent du flux avant le découpage en phrases.
@@ -1532,8 +1558,7 @@ public class JarvisFastBrainService {
             if (!headerDone) {
                 String rest = header("", true);
                 if (!rest.isEmpty() && abortReason == null) {
-                    streamed = true;
-                    pending.append(rest);
+                    feed(rest); // F-240 / SF-240-06 — une première ligne retenue : découpée comme le reste
                 }
             }
             extractMarks(true);
@@ -1586,6 +1611,13 @@ public class JarvisFastBrainService {
                         return; // F-239 (D3) : sur une salutation, la partie non ancrée est retirée, sans délégation
                     }
                     abort(REASON_GROUNDING);
+                    return;
+                }
+                // F-240 / SF-240-06 — ni aveu d'ignorance, ni source inexistante offerte (« je peux consulter votre
+                // agenda ») : une information absente se délègue (hors petite conversation).
+                if (!smallTalk && (JarvisFastGuards.claimsIgnorance(sentence)
+                        || JarvisFastGuards.namesMissingSource(sentence, context))) {
+                    abort(REASON_UNKNOWN);
                     return;
                 }
                 if (JarvisFastGuards.isFillerAlone(sentence) || JarvisFastGuards.isListeningInvitation(sentence)

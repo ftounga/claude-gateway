@@ -111,4 +111,54 @@ class JarvisOralBenchTest {
         assertThat(JarvisOralBench.gate(SET, green().subList(0, 5), 5, 5)).anyMatch(f -> f.contains("non joué"));
         assertThat(JarvisOralBench.gate(SET, green(), 7, 7)).anyMatch(f -> f.contains("non jugé"));
     }
+
+    // ---- F-240 / SF-240-06 : un banc indépendant de la date du jour ----
+
+    @Test
+    void theSetCarriesNoAbsoluteDateOnlyTokensRelativeToTheDayOfTheRun() {
+        java.util.regex.Pattern absolute = java.util.regex.Pattern.compile(
+                "\\b\\d{1,2}/\\d{1,2}\\b|\\b(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|"
+                        + "novembre|décembre)\\b");
+        for (JarvisOralBench.Scenario s : SET) {
+            assertThat(absolute.matcher(s.said()).find()).as(s.id() + " demande").isFalse();
+            assertThat(absolute.matcher(s.context()).find()).as(s.id() + " contexte").isFalse();
+        }
+    }
+
+    @Test
+    void o7OnTheThirdOfNovemberSpeaksOfYesterdaysMeeting() {
+        JarvisOralBench.Scenario o7 = JarvisOralBench.load(java.time.LocalDate.of(2026, 11, 3)).get(6);
+        assertThat(o7.said()).contains("réunion d'hier");
+        assertThat(o7.context()).contains("réunion du lundi 02/11").contains("avant le vendredi 06/11")
+                .doesNotContain("{");
+        // Un autre jour : la même relation (hier), d'autres dates.
+        JarvisOralBench.Scenario later = JarvisOralBench.load(java.time.LocalDate.of(2026, 12, 15)).get(6);
+        assertThat(later.context()).contains("réunion du lundi 14/12");
+    }
+
+    @Test
+    void tokensResolveAgainstTodayCalendarWorkingDaysAndMonths() {
+        java.time.LocalDate monday = java.time.LocalDate.of(2026, 11, 2);
+        assertThat(JarvisOralBench.dated("{J-1:jour} {J-1}, {J} et {J+3}", monday))
+                .isEqualTo("dimanche 01/11, 02/11 et 05/11");
+        assertThat(JarvisOralBench.dated("{O-1:jour} {O-1} puis {O+1:jour} {O+5}", monday))
+                .isEqualTo("vendredi 30/10 puis mardi 09/11");
+        assertThat(JarvisOralBench.dated("{M-1}, {M-2} et le {M-1:14}", monday))
+                .isEqualTo("octobre, septembre et le 14/10");
+        assertThat(JarvisOralBench.dated("{M+1:31}", java.time.LocalDate.of(2027, 1, 20))).isEqualTo("28/02");
+        assertThat(JarvisOralBench.dated("sans jeton", monday)).isEqualTo("sans jeton");
+    }
+
+    @Test
+    void anUnknownTokenIsRefusedNeverSpokenAsIs() {
+        java.time.LocalDate today = java.time.LocalDate.of(2026, 11, 3);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> JarvisOralBench.dated("le {X+1}", today))
+                .isInstanceOf(IllegalStateException.class);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> JarvisOralBench.dated("le {J+1:mois}", today))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(JarvisOralBench.load(today)).allSatisfy(s -> {
+            assertThat(s.said()).doesNotContain("{");
+            assertThat(s.context()).doesNotContain("{");
+        });
+    }
 }

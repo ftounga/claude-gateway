@@ -55,6 +55,10 @@ class JarvisFastBrainPortraitTest {
     }
 
     private JarvisFastBrainService service(String reply) {
+        return service(reply, "2026-11-02T08:00:00Z");
+    }
+
+    private JarvisFastBrainService service(String reply, String now) {
         JarvisUsageService usage = mock(JarvisUsageService.class);
         when(usage.monthFastBrainCostUsd(any())).thenReturn(BigDecimal.ZERO);
         JarvisFastBrainService s = new JarvisFastBrainService(new AiAgentProvider() {
@@ -71,7 +75,7 @@ class JarvisFastBrainPortraitTest {
                 return new AgentTurn(reply, List.of(), true, 100, 10);
             }
         }, new JarvisFastBrainProperties(true, null, null, null, null, null), usage, mock(WorkspaceRepository.class),
-                Clock.fixed(Instant.parse("2026-11-02T08:00:00Z"), ZoneOffset.UTC));
+                Clock.fixed(Instant.parse(now), ZoneOffset.UTC));
         s.setPortraits(portraits);
         return s;
     }
@@ -152,6 +156,30 @@ class JarvisFastBrainPortraitTest {
         verify(portraits, never()).snapshot(any());
         s.benchWithPortrait(ask(alice, "Bonjour", false), "claude-sonnet-5-5", "Maintenant : lundi", alicePortrait);
         assertThat(calls.get(1).system()).endsWith(JarvisPortraitNote.block(alicePortrait) + JarvisPortraitNote.FAST_MARKS);
+    }
+
+    /**
+     * F-240 / SF-240-06 — les bancs CONVERSATION et PIECES ne dépendent pas du jour où ils tournent : sous deux horloges
+     * (dont le jour même d'une date qui compte du portrait), la requête au modèle est identique à l'octet.
+     */
+    @Test
+    void benchRequestsDoNotDependOnTheDayTheyRun() {
+        JarvisPortraitService.Snapshot dated = JarvisPortraitNote.fixture(Map.of("DATES", "03/11 — anniversaire de Monsieur",
+                "GOUTS", "Le jazz manouche."), List.of(), OffsetDateTime.parse("2026-10-01T09:00:00Z"));
+        String context = "Maintenant : lundi 2 novembre 2026, 09:15";
+        service("Bonjour, Monsieur.", "2026-11-03T08:00:00Z").benchWithPortrait(ask(alice, "Bonjour", false),
+                "claude-sonnet-5-5", context, dated, List.of());
+        service("Bonjour, Monsieur.", "2027-03-15T20:00:00Z").benchWithPortrait(ask(alice, "Bonjour", false),
+                "claude-sonnet-5-5", context, dated, List.of());
+        service("Bonjour, Monsieur.", "2026-11-03T08:00:00Z").benchWithPieces(ask(alice, "Où en est le chantier 3 ?",
+                false), "claude-sonnet-5-5", context, "0 pièce");
+        service("Bonjour, Monsieur.", "2027-03-15T20:00:00Z").benchWithPieces(ask(alice, "Où en est le chantier 3 ?",
+                false), "claude-sonnet-5-5", context, "0 pièce");
+        assertThat(calls).hasSize(4);
+        assertThat(calls.get(1).system()).isEqualTo(calls.get(0).system());
+        assertThat(lastMessage(calls.get(1))).isEqualTo(lastMessage(calls.get(0))).doesNotContain("anniversaire");
+        assertThat(calls.get(3).system()).isEqualTo(calls.get(2).system());
+        assertThat(lastMessage(calls.get(3))).isEqualTo(lastMessage(calls.get(2)));
     }
 
     @Test

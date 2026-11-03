@@ -185,7 +185,10 @@ public class JarvisOralBenchService {
 
     /** Un passage, de bout en bout (synchrone : appelé en tâche de fond, et directement par les tests). */
     Report run(UUID userId, UUID runId, UUID workspaceId, OffsetDateTime startedAt) {
-        List<JarvisOralBench.Scenario> scenarios = JarvisOralBench.load();
+        // F-240 / SF-240-06 — le jeu daté par rapport au jour même du passage, dans le fuseau du pod : celui de la
+        // « Date du jour » que porte la consigne système du terminal (jamais un « hier » périmé).
+        List<JarvisOralBench.Scenario> scenarios = JarvisOralBench
+                .load(java.time.LocalDate.now(clock.withZone(java.time.ZoneId.systemDefault())));
         String system = chat.terminalSystemPrompt(userId, workspaceId);
         String apiKey = byok == null ? null : byok.resolveActiveApiKey(userId).orElse(null);
         List<ScenarioVerdict> verdicts = new ArrayList<>();

@@ -41,7 +41,10 @@ class JarvisRepliesTest {
     @Test
     void SF_240_02_laConsigneOraleV2EstFigeeEtBorneeEnMots() {
         String text = JarvisOralNote.TEXT;
-        assertThat(JarvisOralNote.VERSION).isEqualTo("2");
+        assertThat(JarvisOralNote.VERSION).isEqualTo("3");
+        // SF-240-06 — rédiger ⇒ « prêt » ; ENVOYER ⇒ objet + destinataire + « Vous confirmez ? », jamais envoyé soi-même.
+        assertThat(text).contains("Demandé à ENVOYER, c'est une action").contains("nomme l'objet et le destinataire")
+                .contains("ne promets jamais de l'envoyer toi-même");
         assertThat(text).contains("UNE phrase, UNE idée, d'environ 25 mots").contains("30 au plus")
                 .contains("jamais le chemin parcouru").contains("3 à 5 lignes courtes").contains("« ↪ »")
                 .contains("Jamais d'invitation générique").contains("12 mots au plus").contains("« Vous confirmez ? »")

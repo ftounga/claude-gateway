@@ -88,12 +88,21 @@ class JarvisConversationBenchLiveTest {
         List<String[]> previous = prev == null || !prev.contains("||") ? List.of()
                 : List.<String[]>of(prev.split("\\|\\|", 2));
         String context = JarvisConversationBench.contextFor(JarvisConversationBench.load().context(), previous, null);
-        for (int i = 0; i < 5; i++) {
+        // F-240 / SF-240-06 — JARVIS_LIVE_PROBE_SCENARIO = l'identifiant d'un scénario du jeu : son portrait fictif.
+        String scenarioId = System.getenv("JARVIS_LIVE_PROBE_SCENARIO");
+        JarvisConversationBench.Scenario scenario = scenarioId == null ? null : JarvisConversationBench.load()
+                .scenarios().stream().filter(s -> s.id().equals(scenarioId)).findFirst().orElseThrow();
+        int n = Integer.parseInt(System.getenv().getOrDefault("JARVIS_LIVE_PROBE_RUNS", "5"));
+        for (int i = 0; i < n; i++) {
             StringBuilder streamed = new StringBuilder();
-            JarvisFastBrainService.Outcome o = fastBrain.decideForProbe(new JarvisFastBrainService.Request(
-                    admin.getId(), null, null, said, null), model, context, streamed);
+            JarvisFastBrainService.Outcome o = scenario == null ? fastBrain.decideForProbe(
+                    new JarvisFastBrainService.Request(admin.getId(), null, null, said, null), model, context, streamed)
+                    : fastBrain.benchWithPortrait(new JarvisFastBrainService.Request(admin.getId(), null, null, said,
+                            null, null, scenario.presentation()), model, context, scenario.portrait(),
+                            scenario.personal() == null ? List.of() : scenario.personal().recentAllusions());
             System.out.println("[SONDE] " + o.kind() + " raison=" + o.reason() + " gardes=" + o.guards()
-                    + " dit=« " + o.spokenText() + " » brut=« " + streamed + " »");
+                    + " dit=« " + o.spokenText() + " » annonce=« "
+                    + (o.delegation() == null ? "" : o.delegation().annonce()) + " » brut=« " + streamed + " »");
         }
     }
 }

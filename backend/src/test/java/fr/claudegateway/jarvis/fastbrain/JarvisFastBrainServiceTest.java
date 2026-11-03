@@ -882,7 +882,7 @@ class JarvisFastBrainServiceTest {
         assertThat(JSON.writeValueAsString(calls.get(1).tools())).isEqualTo(first);
         assertThat(JSON.writeValueAsString(calls.get(2).tools())).isEqualTo(first);
         assertThat(calls.get(0).system()).isEqualTo(calls.get(2).system());
-        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("10");
+        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("11");
         assertThat(first).doesNotContain("Kestrel").doesNotContain(subject.toString());
     }
 
@@ -1194,5 +1194,63 @@ class JarvisFastBrainServiceTest {
         assertThat(JarvisFastBrainPrompt.system()).contains("# La suite d'une réponse d'Opus")
                 .contains("écris seulement la ligne « ⤵ »").contains("environ 25 mots en tout (30 au plus)")
                 .doesNotContain("Une à trois phrases orales");
+    }
+
+    // ---- F-240 / SF-240-06 : jamais une source inexistante offerte, jamais un aveu d'ignorance ----
+
+    @Test
+    void f240_06ThePromptForbidsOfferingAnAgendaAndCarriesTheThursdayExample() {
+        assertThat(JarvisFastBrainPrompt.system()).contains("Tu n'as ni agenda, ni calendrier")
+                .contains("Qu'est-ce que j'ai jeudi ?").contains("Je cherche ce qui est prévu jeudi, Monsieur.");
+    }
+
+    @Test
+    void f240_06TheProdAnswerOfP02IsDelegatedNeverSpoken() {
+        JarvisFastBrainService.Outcome outcome = service(streaming(
+                "Je l'ignore, Monsieur : rien dans vos dossiers ne mentionne ce week-end. ",
+                "Je peux consulter votre agenda si vous le souhaitez."), null, null)
+                .bench(ask("Qu'est-ce que je fais ce week-end ?"), "claude-sonnet-5-5", "Maintenant : lundi");
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.DELEGATE);
+        assertThat(outcome.reason()).isEqualTo(JarvisFastBrainService.REASON_UNKNOWN);
+        assertThat(outcome.delegation().demande()).isEqualTo("Qu'est-ce que je fais ce week-end ?");
+
+        // L'offre seule, sans aveu : déléguée aussi ; rien n'en est dit.
+        StringBuilder heard = new StringBuilder();
+        JarvisFastBrainService.Outcome offer = service(streaming("Je peux consulter votre agenda, Monsieur."), null,
+                null).converse(ask("J'ai quoi demain ?"), heard::append);
+        assertThat(offer.kind()).isEqualTo(JarvisFastBrainService.Kind.DELEGATE);
+        assertThat(heard.toString()).doesNotContain("agenda");
+    }
+
+    @Test
+    void f240_06ANoteWrittenBeforeTheHeaderIsNeverSpoken() {
+        StringBuilder heard = new StringBuilder();
+        JarvisFastBrainService.Outcome outcome = service(streaming("Phrase incompréhensible, je ne la ",
+                "cite pas.\ncomp", "ris: Vente chez le via Helios.\n", "Pardon, Monsieur, je n'ai pas bien compris."),
+                null, null).converse(ask("Vente chez le via Helios."), heard::append);
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(outcome.spokenText()).isEqualTo("Pardon, Monsieur, je n'ai pas bien compris.");
+        assertThat(heard.toString()).doesNotContain("incompréhensible").doesNotContain("compris:");
+        assertThat(outcome.understood()).isEqualTo("Vente chez le via Helios.");
+
+        // Sans en-tête du tout : la réponse reste dite, sur une ou deux lignes.
+        assertThat(service(streaming("Le chantier en est ", "aux tests."), null, null).converse(ask("Et le chantier ?"),
+                null).spokenText()).isEqualTo("Le chantier en est aux tests.");
+        assertThat(service(streaming("Le chantier en est aux tests.\n", "La recette suit."), null, null)
+                .converse(ask("Et le chantier ?"), null).spokenText())
+                .isEqualTo("Le chantier en est aux tests. La recette suit.");
+    }
+
+    @Test
+    void f240_06SmallTalkAndAKnownAgendaAreNotCaught() {
+        JarvisFastBrainService.Outcome smallTalk = service(streaming("Je ne sais pas, Monsieur, mais merci."), null,
+                null).converse(ask("Merci Jarvis"), null);
+        assertThat(smallTalk.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+
+        JarvisFastBrainService.Outcome known = service(streaming("Votre agenda est libre samedi."), null, null)
+                .bench(ask("Qu'est-ce que je fais samedi ?"), "claude-sonnet-5-5",
+                        "Maintenant : lundi\nAgenda : samedi libre");
+        assertThat(known.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(known.spokenText()).isEqualTo("Votre agenda est libre samedi.");
     }
 }
