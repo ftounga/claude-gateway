@@ -83,6 +83,23 @@ class JarvisBudgetApiIntegrationTest {
                 .andExpect(jsonPath("$.monthlyCapEur").value(50));
     }
 
+    @Autowired private fr.claudegateway.account.AccountService accounts;
+    @Autowired private JarvisBudgetRepository budgets;
+
+    @Test
+    @DisplayName("la suppression du compte efface son plafond (et seulement le sien)")
+    void theAccountDeletionPurgesItsBudget() throws Exception {
+        mockMvc.perform(put("/api/jarvis/budget").contextPath("/api").header("Authorization", token(alice))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"monthlyCapEur\": 80}")).andExpect(status().isOk());
+        mockMvc.perform(put("/api/jarvis/budget").contextPath("/api").header("Authorization", token(bob))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"monthlyCapEur\": 90}")).andExpect(status().isOk());
+
+        accounts.deleteAccount(alice.getId());
+
+        org.assertj.core.api.Assertions.assertThat(budgets.existsById(alice.getId())).isFalse();
+        org.assertj.core.api.Assertions.assertThat(budgets.existsById(bob.getId())).isTrue();
+    }
+
     @Test
     @DisplayName("400 hors bornes ; 204 sur le « oui » ; 401 sans jeton")
     void errorsAndConfirm() throws Exception {
