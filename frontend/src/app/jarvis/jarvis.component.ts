@@ -93,6 +93,7 @@ import { JarvisOrbComponent, JarvisState } from './jarvis-orb.component';
 import { JarvisAppUpdate } from './jarvis-app-update';
 import { JarvisCompanionsComponent } from './jarvis-companions.component';
 import { JarvisPortraitComponent } from './jarvis-portrait.component';
+import { JarvisMailboxesComponent } from './jarvis-mailboxes.component';
 import { JarvisCostPanelComponent } from './jarvis-cost-panel.component';
 import {
   INTERVIEW_END, INTERVIEW_END_MS, INTERVIEW_INTRO, INTERVIEW_NOTHING, INTERVIEW_OFFER, INTERVIEW_QUESTIONS,
@@ -173,7 +174,7 @@ export function companionOffer(version: JarvisCompanionVersion, installed: numbe
  */
 @Component({
   selector: 'app-jarvis',
-  imports: [JarvisPieceGalleryComponent, JarvisCockpitComponent, JarvisCompanionsComponent, JarvisCostPanelComponent, JarvisPortraitComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatMenuModule],
+  imports: [JarvisPieceGalleryComponent, JarvisCockpitComponent, JarvisCompanionsComponent, JarvisCostPanelComponent, JarvisPortraitComponent, JarvisMailboxesComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatMenuModule],
   templateUrl: './jarvis.component.html',
   styleUrl: './jarvis.component.scss',
   providers: [JarvisAppUpdate],
@@ -358,6 +359,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
   // ---- F-241 / SF-241-01 : le portrait (volet « Mon portrait »), jamais en présentation ----
   /** Le volet « Mon portrait » est ouvert. */
   readonly portraitOpen = signal(false);
+  /** F-242 / SF-242-01 — le volet « Mes boîtes » (jamais en présentation). */
+  readonly mailOpen = signal(false);
 
   // ---- F-241 / SF-241-02 : l'entretien oral (sur l'appareil ; rien d'enregistré avant « Valider ») ----
   private readonly interviewClient = inject(JarvisInterviewClient);

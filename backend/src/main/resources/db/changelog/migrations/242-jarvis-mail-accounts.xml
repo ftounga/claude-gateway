@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-242 / SF-242-01 - LES BOITES MAIL DE JARVIS (mot de passe d'application Google, chiffre au repos).
+
+      jarvis_mail_accounts : une ligne par boite reliee (2 au plus par compte, borne applicative). Le mot de passe
+      d'application est chiffre par ByokKeyCipher (patron user_git_credentials : encrypted_data_key, cipher_iv,
+      ciphertext, base64) ; seuls les 4 derniers caracteres (secret_last4) sont lisibles. Jamais de clair en base.
+      Colonnes de releve (inbox_uidvalidity, inbox_last_uid, next_poll_at, lease_until, auth_failures) posees des
+      maintenant : SF-242-02 les utilise (une seule migration de table). Filtre user_id sur tout acces ;
+      unicite (user_id, address).
+
+      Numero 242 = numero de la feature. Rollback : table retiree (nouvelle, sans donnee existante).
+    -->
+
+    <changeSet id="242-jarvis-mail-accounts" author="claude-gateway">
+        <createTable tableName="jarvis_mail_accounts">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="address" type="varchar(254)"><constraints nullable="false"/></column>
+            <column name="label" type="varchar(40)"><constraints nullable="false"/></column>
+            <column name="provider" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="encrypted_data_key" type="varchar(1024)"><constraints nullable="false"/></column>
+            <column name="cipher_iv" type="varchar(1024)"><constraints nullable="false"/></column>
+            <column name="ciphertext" type="varchar(1024)"><constraints nullable="false"/></column>
+            <column name="secret_last4" type="varchar(4)"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="last_ok_at" type="timestamp with time zone"/>
+            <column name="last_error" type="varchar(300)"/>
+            <column name="auth_failures" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="inbox_uidvalidity" type="bigint"/>
+            <column name="inbox_last_uid" type="bigint"/>
+            <column name="next_poll_at" type="timestamp with time zone"/>
+            <column name="lease_until" type="timestamp with time zone"/>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="jarvis_mail_accounts" columnNames="user_id, address"
+                             constraintName="uq_jarvis_mail_accounts_user_address"/>
+        <createIndex tableName="jarvis_mail_accounts" indexName="idx_jarvis_mail_accounts_next_poll">
+            <column name="next_poll_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="jarvis_mail_accounts"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

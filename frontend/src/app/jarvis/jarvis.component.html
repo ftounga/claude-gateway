@@ -102,6 +102,13 @@
           <mat-icon aria-hidden="true">badge</mat-icon> Mon portrait
         </button>
       }
+      @if (!presentation()) {
+        <!-- F-242 / SF-242-01 — les boîtes mail reliées à Jarvis (jamais en présentation). -->
+        <button mat-button type="button" class="jv__mail-open" [attr.aria-expanded]="mailOpen()"
+                (click)="mailOpen.set(!mailOpen()); portraitOpen.set(false); settingsOpen.set(false)">
+          <mat-icon aria-hidden="true">mail</mat-icon> Mes boîtes
+        </button>
+      }
       @if (!presentation() && costLine(); as line) {
         <!-- F-239 / SF-239-12 — le compteur visible ; F-244 / SF-244-04 — il ouvre la ventilation (jamais en présentation). -->
         <button mat-button type="button" class="jv__cost" [attr.title]="costDetail()" [attr.aria-expanded]="costOpen()"
@@ -238,6 +245,13 @@
           <mat-icon aria-hidden="true">badge</mat-icon> Mon portrait
         </button>
       }
+      @if (!presentation()) {
+        <!-- F-242 / SF-242-01 — les boîtes mail reliées à Jarvis (jamais en présentation). -->
+        <button mat-button type="button" class="jv__wake-button jv__mail-open" [attr.aria-expanded]="mailOpen()"
+                (click)="mailOpen.set(!mailOpen()); portraitOpen.set(false)">
+          <mat-icon aria-hidden="true">mail</mat-icon> Mes boîtes
+        </button>
+      }
       @if (!presentation() && costLine(); as line) {
         <!-- F-239 / SF-239-12 — le compteur visible ; F-244 / SF-244-04 — il ouvre la ventilation (jamais en présentation). -->
         <button mat-button type="button" class="jv__cost" [attr.title]="costDetail()" [attr.aria-expanded]="costOpen()"
@@ -308,6 +322,10 @@
 }
 @if (portraitOpen() && !presentation()) {
   <app-jarvis-portrait [draft]="interviewDraft()" (draftDone)="interviewDraftDone()" (closed)="portraitOpen.set(false)" />
+}
+<!-- F-242 / SF-242-01 — le volet « Mes boîtes » : jamais en présentation (aucune adresse montrée). -->
+@if (mailOpen() && !presentation()) {
+  <app-jarvis-mailboxes (closed)="mailOpen.set(false)" />
 }
 <!-- F-241 / SF-241-02 (D13) — la proposition d'entretien : jamais en présentation ; « oui » à la voix ou ici. -->
 @if (interviewOffer() && !presentation()) {
