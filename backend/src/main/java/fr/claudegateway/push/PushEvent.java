@@ -93,7 +93,14 @@ public enum PushEvent {
      * Une veille Jarvis a vu bouger quelque chose (F-230 / SF-230-03, D4). Corps neutre : la phrase reste dans
      * l'application ; le clic ouvre Jarvis (F-231) ou, avant lui, le fil du sujet. Émise même terminal regardé.
      */
-    WATCH_CHANGED("Une veille a vu du changement", "Ouvrez Jarvis pour l'écouter.", true);
+    WATCH_CHANGED("Une veille a vu du changement", "Ouvrez Jarvis pour l'écouter.", true),
+
+    /**
+     * F-244 / SF-244-03 (D6) — le budget de Jarvis du mois a atteint 80 % de son plafond. Une seule par mois ; émise
+     * même terminal regardé. Corps neutre, sans montant.
+     */
+    JARVIS_BUDGET_ALERT("Le budget de Jarvis approche de son plafond",
+            "80 % du plafond du mois est atteint : ouvrez Jarvis pour le voir ou le relever.", true);
 
     private final String title;
     private final String body;

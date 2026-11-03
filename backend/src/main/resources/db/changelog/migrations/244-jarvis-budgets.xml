@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-244 / SF-244-03 - LE PLAFOND DE JARVIS.
+
+      jarvis_budgets : une ligne par compte (cle = user_id), creee au premier reglage ou a la premiere alerte. Sans
+      ligne, le plafond par defaut de la configuration s'applique (app.jarvis.budget.monthly-cap-eur, 150 EUR).
+      monthly_cap_eur : plafond mensuel global de Jarvis, en euros. apply_on_byok : le plafond bloque aussi en BYOK.
+      alert_80_sent_month : 'YYYY-MM' du dernier mois ou l'alerte 80 % est partie (une seule par mois).
+
+      Numero 244 = numero de la feature. Rollback : la table se retire.
+    -->
+
+    <changeSet id="244-jarvis-budgets" author="claude-gateway">
+        <createTable tableName="jarvis_budgets">
+            <column name="user_id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="monthly_cap_eur" type="numeric(10,2)"><constraints nullable="false"/></column>
+            <column name="apply_on_byok" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="alert_80_sent_month" type="varchar(7)"/>
+            <column name="updated_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <rollback>
+            <dropTable tableName="jarvis_budgets"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -4,7 +4,7 @@ import { Observable } from 'rxjs';
 
 import {
   JarvisAbsence, JarvisCompanionDevice, JarvisCompanionPairingCode, JarvisCompanionVersion, JarvisHumour,
-  JarvisCaptureMeta, JarvisCostSummary, JarvisPreferences, JarvisToSendList, JarvisSttTicket, JarvisUtterance, TurnTimingReport,
+  JarvisBudgetStatus, JarvisCaptureMeta, JarvisCostSummary, JarvisPreferences, JarvisToSendList, JarvisSttTicket, JarvisUtterance, TurnTimingReport,
 } from '../models/jarvis.models';
 
 /** F-232 / SF-232-02 — l'APK du compagnon Android, servi par le chemin des paquets du runner (F-44). */
@@ -136,6 +136,21 @@ export class JarvisService {
   /** F-239 / SF-239-12 — ce que Jarvis a coûté aujourd'hui et ce mois-ci, en euros, par poste. */
   costs(): Observable<JarvisCostSummary> {
     return this.http.get<JarvisCostSummary>('/api/jarvis/costs');
+  }
+
+  /** F-244 / SF-244-03 — le plafond de Jarvis du compte : montant, option BYOK, dépense du mois, état. */
+  budget(): Observable<JarvisBudgetStatus> {
+    return this.http.get<JarvisBudgetStatus>('/api/jarvis/budget');
+  }
+
+  /** F-244 / SF-244-03 — règle le plafond (en euros) et/ou l'option « appliquer aussi en BYOK ». */
+  updateBudget(change: { monthlyCapEur?: number; applyOnByok?: boolean }): Observable<JarvisBudgetStatus> {
+    return this.http.put<JarvisBudgetStatus>('/api/jarvis/budget', change);
+  }
+
+  /** F-244 / SF-244-03 — le « oui » à une délégation au-delà du plafond (vaut pour la suivante, deux minutes). */
+  confirmBudget(): Observable<void> {
+    return this.http.post<void>('/api/jarvis/budget/confirm', {});
   }
 
   /** F-239 / SF-239-03 — allume ou éteint la capture des énoncés (ADMIN ; l'éteindre efface les captures). */

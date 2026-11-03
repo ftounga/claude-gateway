@@ -252,6 +252,29 @@ class AtelierChatServiceBudgetTest {
     }
 
     @Test
+    void theJarvisCapStopsADelegationBeforeAnyCallAndNeverATypedTurn() {
+        // F-244 / SF-244-03 (D6) — la porte du budget Jarvis refuse AVANT tout appel ; un tour tapé ne la voit pas.
+        hostedWithRemainingQuota(12_000_000L);
+        serviceWithTurnCap(1_500_000L);
+        fr.claudegateway.jarvis.budget.JarvisBudgetService budget =
+                org.mockito.Mockito.mock(fr.claudegateway.jarvis.budget.JarvisBudgetService.class);
+        org.mockito.Mockito.doThrow(new fr.claudegateway.jarvis.budget.JarvisBudgetException(
+                fr.claudegateway.jarvis.budget.JarvisBudgetException.CONFIRM, "Je la lance ?"))
+                .when(budget).gateDelegation(userId, true);
+        service.setJarvisBudget(budget);
+        agentProvider.enqueueFinal("Fait.");
+        service.markVoiceTurn(userId, workspaceId, null);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.chat(userId, workspaceId, "cherche"))
+                .isInstanceOf(fr.claudegateway.jarvis.budget.JarvisBudgetException.class);
+        assertThat(agentProvider.remaining()).isEqualTo(1);
+
+        AtelierChatResult typed = service.chat(userId, workspaceId, "cherche");
+        assertThat(typed.reply()).isEqualTo("Fait.");
+        verify(budget, org.mockito.Mockito.times(1)).gateDelegation(any(), org.mockito.ArgumentMatchers.anyBoolean());
+    }
+
+    @Test
     void aTypedTurnInTheSameStateIsStillRefusedByTheGatewayQuota() {
         // F-244 / SF-244-02 — non-régression : sans marque Jarvis, le quota épuisé refuse le tour, avant tout appel.
         hostedWithRemainingQuota(20L);
