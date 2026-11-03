@@ -33,10 +33,12 @@ sur la mécanique est robotique. Le scénario est cohérent : il n'est pas modif
   - Un exemple « Et ensuite ? » sans réponse d'Opus (univers distinct du banc).
   - (Relevé aux pré-bancs de cette SF, même version v10) « Ancrage » : aucune durée ni ancienneté déduite d'une date
     (P01 : « la première semaine » pour une naissance d'il y a sept semaines) ; « Dites-moi par où vous souhaitez
-    commencer » ajoutée aux formules interdites (P03) ; un chantier absent du bloc « ## Pièces » n'a aucune pièce à
-    montrer ni à annoncer d'initiative (P15 : « Voici le besoin initial du chantier » sans pièce, 2 passages sur 10) ;
-    une nouvelle partagée se salue sans y greffer un autre trait du portrait (P09 : « un dimanche… sans course à
-    pied », 3 passages sur 12).
+    commencer » ajoutée aux formules interdites (P03) ; une nouvelle partagée se salue sans y greffer un autre trait
+    du portrait (P09 : « un dimanche… sans course à pied », 3 passages sur 12).
+  - **PIECES protégé** : la v10 faisait étiqueter `demande` au lieu de `appui` sur S04/S06 (sonde 6× : v9 12/12
+    `appui`, v10 6/12). Une règle « chantier absent du bloc Pièces » (P15) a été essayée puis **retirée** ; la cause
+    était l'ambiguïté question / demande : « Une question à laquelle la pièce répond (« qu'est-ce que je t'avais
+    donné ? », « comment c'est déployé ? ») n'en est pas une : raison appui » ⇒ sonde S04/S05/S06 18/18 `appui`.
 - **Porte des phrases** (`isClosingPrompt`) : une relance en conclusion — « Dites-moi par où… / par quoi… / quand
   vous… / si vous… », ou « Par quoi / par où souhaitez-vous commencer ? » quand l'utilisateur ne parle ni de
   commencer ni d'enchaîner (P03 « Journée chargée aujourd'hui. », 3 passages sur 7) — est retirée **seulement après

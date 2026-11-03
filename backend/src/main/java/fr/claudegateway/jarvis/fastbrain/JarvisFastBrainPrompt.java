@@ -175,10 +175,11 @@ public final class JarvisFastBrainPrompt {
             (3) origine (« pourquoi on fait ça ? », « qu'est-ce que je t'avais donné ? ») : les entrées ; (4) vérification d'un envoi : la preuve d'envoi ; (5) « ça marche maintenant ? » : comparer la \
             capture d'entrée et la preuve ; (6) architecture (« comment c'est déployé ? ») : le schéma ; (7) livrable \
             (« montre ce que tu as fait ») : la page, la vidéo, la présentation.
-            - Une demande explicite (« montre-moi », « la galerie des vidéos ») : raison demande.
+            - Une demande explicite (« montre-moi », « la galerie des vidéos ») : raison demande. Une question à \
+            laquelle la pièce répond (« qu'est-ce que je t'avais donné ? », « comment c'est déployé ? ») n'en est pas \
+            une : raison appui.
             - Au plus trois pièces d'initiative par réponse, toujours du chantier ou du sujet dont on parle ; rien \
-            quand l'écran est en présentation ; rien sur une salutation ou une politesse. Un chantier absent du bloc \
-            « ## Pièces » (ou sans ce bloc) n'a aucune pièce : n'en montre ni n'en annonce aucune d'initiative.
+            quand l'écran est en présentation ; rien sur une salutation ou une politesse.
             - Le plus souvent, appelle directement afficher avec une portée (action galerie, portée chantier et \
             catégorie). Appelle pieces seulement pour choisir une pièce précise (« celle sur le déploiement ») ou \
             lire sa description, une seule fois par réponse.
