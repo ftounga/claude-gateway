@@ -177,13 +177,34 @@ export interface JarvisCosts {
   listening: number;
   total: number;
   opusTurns: number;
+  /** F-244 / SF-244-04 — le courrier (F-242) et l'agenda (F-243) ; absents d'une passerelle antérieure. */
+  mail?: number;
+  agenda?: number;
 }
 
-/** F-239 / SF-239-12 — aujourd'hui et le mois en cours. */
+/** F-239 / SF-239-12 — aujourd'hui et le mois en cours ; F-244 / SF-244-04 — et le plafond (jauge). */
 export interface JarvisCostSummary {
   today: JarvisCosts;
   month: JarvisCosts;
+  budget?: JarvisBudgetStatus | null;
 }
+
+/** F-244 / SF-244-03 — l'état du budget de Jarvis : 80 % (ALERT), 100 % (SOFT), 2 × (HARD). */
+export type JarvisBudgetState = 'NONE' | 'ALERT' | 'SOFT' | 'HARD';
+
+/** F-244 / SF-244-03 — le plafond de Jarvis du compte, en euros. */
+export interface JarvisBudgetStatus {
+  monthlyCapEur: number;
+  applyOnByok: boolean;
+  monthSpentEur: number;
+  percent: number;
+  state: JarvisBudgetState;
+  applies: boolean;
+}
+
+/** F-244 / SF-244-03 — les refus nommés du budget de Jarvis, émis dans le flux d'un tour avant tout appel. */
+export const JARVIS_BUDGET_CONFIRM = 'jarvis_budget_confirm';
+export const JARVIS_BUDGET_HARD = 'jarvis_budget_hard';
 
 /** F-239 / SF-239-04 — un énoncé retranscrit par la passerelle (Scribe v2 batch + vocabulaire). */
 export interface JarvisUtterance {

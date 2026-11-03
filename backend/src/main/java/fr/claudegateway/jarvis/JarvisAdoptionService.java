@@ -145,7 +145,8 @@ public class JarvisAdoptionService {
         int render3d = 0;
         int render2d = 0;
         java.util.Map<String, Integer> renderCounts = new java.util.TreeMap<>();
-        for (JarvisUsageDay d : usage.lastDays(userId, window)) {
+        List<JarvisUsageDay> usageDays = usage.lastDays(userId, window);
+        for (JarvisUsageDay d : usageDays) {
             render3d += d.getRender3d();
             render2d += d.getRender2d();
             RenderCounts.parse(d.getRenderCounts()).forEach((k, v) -> renderCounts.merge(k, v, Integer::sum));
@@ -173,7 +174,9 @@ public class JarvisAdoptionService {
                 : BigDecimal.valueOf(100L * render3d).divide(BigDecimal.valueOf(renderSessions), 1, RoundingMode.HALF_UP);
         return new Measure(window, activeDays, sessions, minutes(spoken), wakes, chars, eur(usd), rows, idleEnds,
                 new SceneMeasure(scenesShown, genericShare, families, nodesLit, nodeTouches, soberOn, showRequests),
-                new RenderMeasure(render3d, render2d, share3d, renderCounts));
+                new RenderMeasure(render3d, render2d, share3d, renderCounts),
+                // F-244 / SF-244-04 (D10) — la même ventilation en € que l'écran /jarvis, sur la fenêtre.
+                JarvisCostService.sum(usageDays, usdToEur));
     }
 
     private BigDecimal eur(BigDecimal usd) {
@@ -192,7 +195,7 @@ public class JarvisAdoptionService {
     /** La mesure d'adoption : totaux de la fenêtre et détail par jour. */
     public record Measure(int days, int activeDays, int sessions, BigDecimal spokenMinutes, int wakes,
             long charsSpoken, BigDecimal voiceCostEur, List<Day> perDay, int idleEnds, SceneMeasure scenes,
-            RenderMeasure render) {
+            RenderMeasure render, JarvisCostService.Costs costs) {
     }
 
     /**

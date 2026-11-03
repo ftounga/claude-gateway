@@ -208,6 +208,12 @@ describe('ReportsComponent', () => {
     expect(text).toContain('Hors client');
   });
 
+  it('F-244 / SF-244-02 — Jarvis à part : budget propre, hors quota, en euros', () => {
+    setup(report, { ...byClient, jarvis: { inputTokens: 9000, outputTokens: 1000, totalTokens: 10000, costEur: 1.84 } });
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Jarvis (budget propre, hors quota) : 1,84 €');
+  });
+
   it('écrit le nom du poste : la couleur ne porte jamais seule l’information', () => {
     setup();
 

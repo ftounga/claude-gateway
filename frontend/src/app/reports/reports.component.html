@@ -199,5 +199,13 @@
         }
       </div>
     }
+    @if (byClient()?.jarvis; as jarvis) {
+      @if (jarvis.totalTokens > 0) {
+        <!-- F-244 / SF-244-02 (D8) — Jarvis a son budget propre : hors des totaux du quota, montré à côté. -->
+        <p class="reports__stat-hint reports__jarvis">
+          Jarvis (budget propre, hors quota) : {{ formatEuros(jarvis.costEur) }} · {{ formatTokens(jarvis.totalTokens) }} jetons
+        </p>
+      }
+    }
   </mat-card>
 </section>

@@ -894,6 +894,9 @@ public class AtelierChatController {
             outcome = failTurn(turn, "forbidden");
         } catch (QuotaExceededException ex) {
             outcome = failTurn(turn, "quota_exceeded");
+        } catch (fr.claudegateway.jarvis.budget.JarvisBudgetException ex) {
+            // F-244 / SF-244-03 — refus NOMMÉ avant tout appel ; la raison est la phrase que Jarvis dit.
+            outcome = failTurn(turn, ex.code(), ex.getMessage());
         } catch (ByokKeyRequiredException ex) {
             // Offre BYOK sans clé (F-41 / SF-41-02) : refus nommé dans le flux, jamais `internal_error`.
             outcome = failTurn(turn, "byok_key_required");

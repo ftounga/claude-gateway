@@ -40,7 +40,12 @@ import { CutSnapshot } from '../core/services/jarvis-voice.service';
 import { JarvisStreamOpener, LISTEN_AUDIO, LiveListening } from './jarvis-stream-listener';
 import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { JarvisCostSummary, JarvisHumour, JarvisSttTicket, JarvisUtterance } from '../core/models/jarvis.models';
+import {
+  JARVIS_BUDGET_CONFIRM, JARVIS_BUDGET_HARD, JarvisCostSummary, JarvisHumour, JarvisSttTicket, JarvisUtterance,
+} from '../core/models/jarvis.models';
+
+/** F-244 / SF-244-03 — la question « Je la lance ? » attend sa réponse au plus ce délai (le « oui » serveur : 2 min). */
+const BUDGET_CONFIRM_MS = 90_000;
 import { MarkdownPipe } from '../shared/markdown.pipe';
 import { EndOfSpeech, MicMeter, SPEECH_LEVEL, silenceMs } from './jarvis-mic-meter';
 import { asksConfirmation, classifyConfirmation, confirmationQuestion } from './jarvis-confirm';
@@ -88,6 +93,7 @@ import { JarvisOrbComponent, JarvisState } from './jarvis-orb.component';
 import { JarvisAppUpdate } from './jarvis-app-update';
 import { JarvisCompanionsComponent } from './jarvis-companions.component';
 import { JarvisPortraitComponent } from './jarvis-portrait.component';
+import { JarvisCostPanelComponent } from './jarvis-cost-panel.component';
 import {
   INTERVIEW_END, INTERVIEW_END_MS, INTERVIEW_INTRO, INTERVIEW_NOTHING, INTERVIEW_OFFER, INTERVIEW_QUESTIONS,
   INTERVIEW_REOPENED, INTERVIEW_RESUME_AGAIN, INTERVIEW_SET_ASIDE, INTERVIEW_UPDATE_INTRO,
@@ -167,7 +173,7 @@ export function companionOffer(version: JarvisCompanionVersion, installed: numbe
  */
 @Component({
   selector: 'app-jarvis',
-  imports: [JarvisPieceGalleryComponent, JarvisCockpitComponent, JarvisCompanionsComponent, JarvisPortraitComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatMenuModule],
+  imports: [JarvisPieceGalleryComponent, JarvisCockpitComponent, JarvisCompanionsComponent, JarvisCostPanelComponent, JarvisPortraitComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatMenuModule],
   templateUrl: './jarvis.component.html',
   styleUrl: './jarvis.component.scss',
   providers: [JarvisAppUpdate],
@@ -695,6 +701,17 @@ export class JarvisComponent implements OnInit, OnDestroy {
     return m ? `Ce mois : conversation ${euros(m.fastBrain)}, Opus ${euros(m.opus)} (${m.opusTurns} tour${
       m.opusTurns > 1 ? 's' : ''}), voix ${euros(m.voice)}, écoute ${euros(m.listening)}` : '';
   });
+  /** F-244 / SF-244-04 — le volet de la ventilation en euros (jamais en présentation). */
+  readonly costOpen = signal(false);
+
+  /** F-244 / SF-244-04 — le plafond vient d'être réglé : le compteur (et la jauge) sont relus tout de suite. */
+  costSaved(): void {
+    if (this.costTimer) {
+      clearTimeout(this.costTimer);
+      this.costTimer = null;
+    }
+    this.refreshCosts();
+  }
   private costTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** Relit le compteur (au plus une fois toutes les 5 s). Best-effort. */
@@ -1759,6 +1776,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
       await this.answerToolConfirmation(this.pendingConfirm, text);
       return;
     }
+    // F-244 / SF-244-03 (D6) — « Budget Jarvis du mois atteint… Je la lance ? » : seul un « oui » net relance la
+    // délégation ; une phrase ambiguë repart au cerveau comme toute parole (rien n'est lancé).
+    if (await this.answerBudget(text)) {
+      return;
+    }
     // F-237 / SF-237-09 (§6.4, §14 idée 6) — « Voulez-vous que je génère la preuve ? » : un « oui » net délègue
     // capturer_preuves à Opus ; « non » clôt ; une phrase ambiguë repart au cerveau comme toute parole.
     // F-237 / SF-237-12 — « Je note à 0:42 : … Vous confirmez ? » : seul un « oui » net écrit le retour.
@@ -2168,8 +2190,18 @@ export class JarvisComponent implements OnInit, OnDestroy {
         this.scenes.done(done.costEur ?? null);
         finish(done.reply ?? null, false);
       },
-      onError: (code) => {
+      onError: (code, reason) => {
         this.scenes.aborted(code);
+        // F-244 / SF-244-03 — arrêtée par le budget AVANT tout appel : ni échec annoncé, ni perle rouge ; la question
+        // (ou la phrase fixe) est dite, et un « oui » la relance telle quelle.
+        if (code === JARVIS_BUDGET_CONFIRM || code === JARVIS_BUDGET_HARD) {
+          this.zone.run(() => {
+            finished = true;
+            this.delegations.update((list) => list.filter((d) => d.id !== entry.id));
+            this.budgetRefused(code, reason, () => this.startDelegation(delegation, text, heardBeforeCut));
+          });
+          return;
+        }
         finish(null, true);
       },
       onConfirmRequest: (request) => this.zone.run(() => {
@@ -2311,7 +2343,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
         if (latest()) {
           this.brainEnd.set('fail');
           this.scenes.aborted(code);
-          this.onTurnError(code, reason);
+          this.onTurnError(code, reason, () => this.send(subjectId, text));
         }
       }),
       // SF-231-04 — une autorisation d'outil (`ask`) : reformulée à l'oral, « oui » requis.
@@ -3000,6 +3032,59 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   /** F-237 / SF-237-09 (§14 idée 6) — la proposition de preuve en attente d'un « oui ». */
   private proofOffer: { closed: ClosedChantier; at: number } | null = null;
+
+  /**
+   * F-244 / SF-244-03 (D6) — une délégation arrêtée par le budget de Jarvis, en attente d'un « oui » : elle ne repart
+   * (`retry`) qu'après un « oui » net, confirmé à la passerelle. « non » ou le silence : rien ne part.
+   */
+  private pendingBudget: { at: number; retry: () => void } | null = null;
+
+  /**
+   * F-244 / SF-244-03 — un refus du budget de Jarvis (avant tout appel) : au plafond, la question (« Je la lance ? »)
+   * puis l'écoute ; au plafond dur, la phrase fixe. Rend vrai si `code` en est un.
+   */
+  private budgetRefused(code: string, reason: string | undefined, retry: () => void): boolean {
+    if (code === JARVIS_BUDGET_CONFIRM) {
+      this.pendingBudget = { at: Date.now(), retry };
+      void this.say(reason ?? 'Budget Jarvis du mois atteint. Je la lance ?').then(() => {
+        if (this.pendingBudget) {
+          void this.listen();
+        }
+      });
+      return true;
+    }
+    if (code === JARVIS_BUDGET_HARD) {
+      this.pendingBudget = null;
+      void this.say(reason ?? 'Monsieur, le budget de Jarvis de ce mois est épuisé.');
+      return true;
+    }
+    return false;
+  }
+
+  /** F-244 / SF-244-03 — la réponse à « Je la lance ? » : rend vrai si elle a été traitée. */
+  private async answerBudget(text: string): Promise<boolean> {
+    const pending = this.pendingBudget;
+    this.pendingBudget = null;
+    if (!pending || Date.now() - pending.at > BUDGET_CONFIRM_MS) {
+      return false;
+    }
+    const answer = classifyConfirmation(text);
+    if (answer === 'oui') {
+      try {
+        await firstValueFrom(this.jarvis.confirmBudget());
+      } catch {
+        await this.say('Je n’ai pas pu enregistrer votre accord ; rien n’est lancé.');
+        return true;
+      }
+      pending.retry();
+      return true;
+    }
+    if (answer === 'non') {
+      await this.say('Entendu, je ne lance rien.');
+      return true;
+    }
+    return false;
+  }
   private previousUniverse: JarvisUniverse | null = null;
   private readonly missingProofAtClosure = effect(() => {
     const universe = this.scenes.universe();
@@ -3329,12 +3414,17 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.state.set(this.turnRunning ? 'reflexion' : 'repos');
   }
 
-  private onTurnError(code: string, reason?: string): void {
+  private onTurnError(code: string, reason?: string, retry?: () => void): void {
     this.reportClock();
     this.oral = null;
     this.streamedText = '';
     this.endTurn();
     this.state.set('repos');
+    // F-244 / SF-244-03 — un refus du budget de Jarvis se DIT (question ou phrase fixe), il ne s'affiche pas en échec.
+    if (retry && this.budgetRefused(code, reason, retry)) {
+      this.brainEnd.set('normal');
+      return;
+    }
     this.notice.set(reason ?? (code === 'forbidden' ? 'Ce sujet ne t’est pas ouvert.' : 'Le tour n’a pas abouti.'));
   }
 

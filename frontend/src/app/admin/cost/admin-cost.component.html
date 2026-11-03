@@ -67,6 +67,10 @@
           @if (rateNote(data.usdToEur); as note) {
             <p class="cost-admin__total-eur num">{{ note }}</p>
           }
+          @if (data.jarvisSpentEur) {
+            <!-- F-244 / SF-244-02 (D8) — le total reste vrai ; la part née de Jarvis est dite à côté. -->
+            <p class="cost-admin__total-eur cost-admin__jarvis num">dont Jarvis {{ euros(data.jarvisSpentEur) }}</p>
+          }
         </div>
         @if (data.budgetEur !== null) {
           <p class="cost-admin__total-budget">
@@ -112,6 +116,9 @@
                 <span class="cost-admin__client-name">{{ clientName(client) }}</span>
                 <span class="cost-admin__client-spent num">{{ euros(client.spentEur) }}</span>
               </div>
+              @if (client.jarvisSpentEur) {
+                <p class="cost-admin__client-budget cost-admin__jarvis num">dont {{ euros(client.jarvisSpentEur) }} via Jarvis</p>
+              }
 
               @if (client.budgetEur !== null) {
                 <p class="cost-admin__client-budget">

@@ -751,6 +751,11 @@ public class JarvisFastBrainService {
         if (budget == Budget.HARD) {
             return fixed(out, BUDGET_HARD_REPLY, REASON_BUDGET_HARD);
         }
+        // F-244 / SF-244-03 (D6) — le plafond global de Jarvis à 2 × : une phrase fixe, aucun appel. Au-delà de 100 %
+        // (souple), le cerveau rapide CONTINUE : c'est la délégation qui demande un « oui », jamais une escalade.
+        if (!bench && jarvisBudget != null && jarvisBudget.hardStop(userId)) {
+            return fixed(out, fr.claudegateway.jarvis.budget.JarvisBudgetService.HARD_REPLY, REASON_BUDGET_HARD);
+        }
         Outcome decided = decideCall(request, out, benchModel, fixedContext, understood);
         if (budget == Budget.SOFT && decided.kind() == Kind.ANSWER && decided.reason() == null) {
             return new Outcome(decided.kind(), decided.spokenText(), decided.delegation(), REASON_BUDGET_SOFT,
@@ -1890,6 +1895,14 @@ public class JarvisFastBrainService {
                 request.chantier(), true, reason), reason, properties.model(), firstMs, null, guards);
     }
 
+
+    /** F-244 / SF-244-03 — le plafond global de Jarvis (dur à 2 ×). Facultatif. */
+    private fr.claudegateway.jarvis.budget.JarvisBudgetService jarvisBudget;
+
+    @Autowired(required = false)
+    public void setJarvisBudget(fr.claudegateway.jarvis.budget.JarvisBudgetService jarvisBudget) {
+        this.jarvisBudget = jarvisBudget;
+    }
 
     /** F-244 / SF-244-01 — l'étiquette du cerveau rapide au journal du coût. */
     static final fr.claudegateway.quota.UsageTag JARVIS_FAST =

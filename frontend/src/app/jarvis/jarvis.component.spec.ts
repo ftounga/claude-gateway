@@ -865,6 +865,29 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     jarvis.ngOnDestroy();
   }));
 
+  it('F-244 / SF-244-04 — le compteur ouvre la ventilation en euros ; rien en présentation', fakeAsync(() => {
+    const zero = { fastBrain: 0, opus: 0, voice: 0, listening: 0, total: 0, opusTurns: 0, mail: 0, agenda: 0 };
+    jarvisApi.costs.and.returnValue(of({ today: { ...zero, total: 0.42, opus: 0.42 },
+      month: { ...zero, opus: 4.9, fastBrain: 1.2, total: 6.1, opusTurns: 5 },
+      budget: { monthlyCapEur: 150, applyOnByok: false, monthSpentEur: 6.1, percent: 4, state: 'NONE' as const,
+        applies: true } }));
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    jarvis.costOpen.set(true);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('app-jarvis-cost-panel')).not.toBeNull();
+    expect(el.querySelector('app-jarvis-cost-panel')!.textContent).toContain('Recherches Opus');
+    expect(el.querySelector('app-jarvis-cost-panel')!.textContent).not.toContain('$');
+
+    jarvis.presentation.set(true);
+    fixture.detectChanges();
+    expect(el.querySelector('app-jarvis-cost-panel')).toBeNull();
+    expect(el.querySelector('.jv__cost')).toBeNull();
+    jarvis.ngOnDestroy();
+  }));
+
   it('F-239 / SF-239-06 — un toucher sur le texte compris l’ouvre ; Entrée envoie la demande corrigée', fakeAsync(() => {
     const fixture = TestBed.createComponent(JarvisComponent);
     fixture.detectChanges();
@@ -934,6 +957,50 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     void jarvis.finishListening();
     flushMicrotasks();
     expect(atelier.confirmChatToolUse).toHaveBeenCalledWith('w-2', { toolUseId: 't-1', decision: 'allow' });
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-244 / SF-244-03 — budget atteint : « Je la lance ? » est dit, et seul un « oui » confirme puis relance', fakeAsync(() => {
+    jarvisApi = Object.assign(jarvisApi, { confirmBudget: jasmine.createSpy('confirmBudget').and.returnValue(of(undefined)) });
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    jarvis.send('w-2', 'Cherche la cause');
+    const phrase = 'Budget Jarvis du mois atteint ; cette recherche coûte environ 1 €. Je la lance ?';
+
+    handlers!.onError('jarvis_budget_confirm', phrase);
+    flushMicrotasks();
+    expect(voice.speak).toHaveBeenCalledWith(phrase, 'w-2');
+    expect(jarvis.notice()).not.toBe('Le tour n’a pas abouti.');
+
+    void jarvis.handle('oui');
+    flushMicrotasks();
+    expect((jarvisApi as unknown as { confirmBudget: jasmine.Spy }).confirmBudget).toHaveBeenCalledTimes(1);
+    expect(atelier.streamChat).toHaveBeenCalledTimes(2);
+    expect(atelier.streamChat.calls.mostRecent().args[1]).toBe('Cherche la cause');
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-244 / SF-244-03 — budget atteint : « non » ne lance rien ; plafond dur : la phrase fixe, rien ne repart', fakeAsync(() => {
+    jarvisApi = Object.assign(jarvisApi, { confirmBudget: jasmine.createSpy('confirmBudget').and.returnValue(of(undefined)) });
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    jarvis.send('w-2', 'Cherche la cause');
+
+    handlers!.onError('jarvis_budget_confirm', 'Je la lance ?');
+    flushMicrotasks();
+    void jarvis.handle('non');
+    flushMicrotasks();
+    expect(voice.speak).toHaveBeenCalledWith('Entendu, je ne lance rien.', 'w-2');
+    expect((jarvisApi as unknown as { confirmBudget: jasmine.Spy }).confirmBudget).not.toHaveBeenCalled();
+    expect(atelier.streamChat).toHaveBeenCalledTimes(1);
+
+    jarvis.send('w-2', 'Cherche encore');
+    handlers!.onError('jarvis_budget_hard', 'Monsieur, le budget de Jarvis de ce mois est épuisé.');
+    flushMicrotasks();
+    expect(voice.speak).toHaveBeenCalledWith('Monsieur, le budget de Jarvis de ce mois est épuisé.', 'w-2');
+    expect(atelier.streamChat).toHaveBeenCalledTimes(2);
     jarvis.ngOnDestroy();
   }));
 
