@@ -56,4 +56,34 @@ class JarvisCostApiIntegrationTest {
                 .andExpect(jsonPath("$.month.total").value(0.0));
         mockMvc.perform(get("/api/jarvis/costs").contextPath("/api")).andExpect(status().isUnauthorized());
     }
+
+    @Test
+    void f244EveryItemTheTotalAsTheirSumAndTheCapGauge() throws Exception {
+        // F-244 / SF-244-04 (D10) — six postes en euros, total = somme des postes affichés, plafond et état (jauge).
+        User alice = user("cost-f244-alice");
+        User bob = user("cost-f244-bob");
+        usage.addOpus(alice.getId(), new BigDecimal("1.06"));
+        usage.addFastBrain(alice.getId(), new BigDecimal("0.10"));
+        usage.addSpeech(alice.getId(), 1_000L, new BigDecimal("0.30"));
+        usage.addStream(alice.getId(), 60L, new BigDecimal("0.01"));
+        usage.addUtterance(alice.getId(), 2L, new BigDecimal("0.01"));
+        usage.addDictation(alice.getId(), 3L, new BigDecimal("0.01"));
+
+        mockMvc.perform(get("/api/jarvis/costs").contextPath("/api")
+                        .header("Authorization", "Bearer " + jwtService.generateToken(alice)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.month.fastBrain").value(0.09))
+                .andExpect(jsonPath("$.month.opus").value(0.98))
+                .andExpect(jsonPath("$.month.voice").value(0.28))
+                .andExpect(jsonPath("$.month.listening").value(0.03))
+                .andExpect(jsonPath("$.month.mail").value(0.0))
+                .andExpect(jsonPath("$.month.agenda").value(0.0))
+                .andExpect(jsonPath("$.month.total").value(1.38))
+                .andExpect(jsonPath("$.budget.monthlyCapEur").value(150))
+                .andExpect(jsonPath("$.budget.state").value("NONE"));
+        mockMvc.perform(get("/api/jarvis/costs").contextPath("/api")
+                        .header("Authorization", "Bearer " + jwtService.generateToken(bob)))
+                .andExpect(jsonPath("$.month.total").value(0.0))
+                .andExpect(jsonPath("$.budget.monthSpentEur").value(0.0));
+    }
 }

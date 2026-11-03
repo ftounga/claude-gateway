@@ -289,6 +289,19 @@ describe('AdminCostComponent', () => {
       .toBe(1);
   });
 
+  it('F-244 / SF-244-02 : « dont Jarvis » au total et par client, en euros', () => {
+    setup();
+    service.summary.and.returnValue(of(summary({
+      jarvisSpentEur: 3.5,
+      clients: summary().clients.map((c, i) => (i === 0 ? { ...c, jarvisSpentEur: 2.25 } : c)),
+    })));
+    fixture.componentInstance.reload();
+    fixture.detectChanges();
+
+    expect(text()).toContain('dont Jarvis 3,50 €');
+    expect(text()).toContain('dont 2,25 € via Jarvis');
+  });
+
   it('affiche le total et les clients en euros', () => {
     setup();
 

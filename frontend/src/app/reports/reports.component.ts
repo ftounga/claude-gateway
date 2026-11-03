@@ -16,6 +16,7 @@ import { UsageService } from '../core/services/usage.service';
 import { UsageView } from '../core/models/usage.models';
 import { ClientUsageView, UsageByClientView } from '../core/models/usage-by-client.models';
 import { HostBadgeComponent } from '../shared/host-badge/host-badge.component';
+import { formatEuros } from '../shared/euros';
 
 /** Noms de mois FR (index 0 = janvier) pour un libellé de période sans dépendance de locale. */
 const MONTHS_FR = [
@@ -196,6 +197,11 @@ export class ReportsComponent implements OnInit, AfterViewInit {
   /** Part exprimée en pourcentage entier (0–100), pour la barre comme pour le texte. */
   sharePercent(share: number): number {
     return Math.round((share ?? 0) * 100);
+  }
+
+  /** F-244 / SF-244-02 — un montant en euros (la ligne « Jarvis »). */
+  formatEuros(amount: number | null | undefined): string {
+    return formatEuros(amount);
   }
 
   /** Formate un coût de la section « Par client » (devise propre à cette réponse). */

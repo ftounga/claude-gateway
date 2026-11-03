@@ -93,6 +93,7 @@ import { JarvisOrbComponent, JarvisState } from './jarvis-orb.component';
 import { JarvisAppUpdate } from './jarvis-app-update';
 import { JarvisCompanionsComponent } from './jarvis-companions.component';
 import { JarvisPortraitComponent } from './jarvis-portrait.component';
+import { JarvisCostPanelComponent } from './jarvis-cost-panel.component';
 import {
   INTERVIEW_END, INTERVIEW_END_MS, INTERVIEW_INTRO, INTERVIEW_NOTHING, INTERVIEW_OFFER, INTERVIEW_QUESTIONS,
   INTERVIEW_REOPENED, INTERVIEW_RESUME_AGAIN, INTERVIEW_SET_ASIDE, INTERVIEW_UPDATE_INTRO,
@@ -172,7 +173,7 @@ export function companionOffer(version: JarvisCompanionVersion, installed: numbe
  */
 @Component({
   selector: 'app-jarvis',
-  imports: [JarvisPieceGalleryComponent, JarvisCockpitComponent, JarvisCompanionsComponent, JarvisPortraitComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatMenuModule],
+  imports: [JarvisPieceGalleryComponent, JarvisCockpitComponent, JarvisCompanionsComponent, JarvisCostPanelComponent, JarvisPortraitComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatMenuModule],
   templateUrl: './jarvis.component.html',
   styleUrl: './jarvis.component.scss',
   providers: [JarvisAppUpdate],
@@ -700,6 +701,17 @@ export class JarvisComponent implements OnInit, OnDestroy {
     return m ? `Ce mois : conversation ${euros(m.fastBrain)}, Opus ${euros(m.opus)} (${m.opusTurns} tour${
       m.opusTurns > 1 ? 's' : ''}), voix ${euros(m.voice)}, écoute ${euros(m.listening)}` : '';
   });
+  /** F-244 / SF-244-04 — le volet de la ventilation en euros (jamais en présentation). */
+  readonly costOpen = signal(false);
+
+  /** F-244 / SF-244-04 — le plafond vient d'être réglé : le compteur (et la jauge) sont relus tout de suite. */
+  costSaved(): void {
+    if (this.costTimer) {
+      clearTimeout(this.costTimer);
+      this.costTimer = null;
+    }
+    this.refreshCosts();
+  }
   private costTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** Relit le compteur (au plus une fois toutes les 5 s). Best-effort. */

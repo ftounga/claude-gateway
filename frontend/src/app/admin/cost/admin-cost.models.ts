@@ -23,6 +23,8 @@ export interface AdminCostClient {
   totalTokens: number;
   /** La dépense en dollars, la devise de la facture (F-224) — absente d'une passerelle antérieure. */
   spentUsd?: number;
+  /** F-244 / SF-244-02 — la part de ce client née de Jarvis (délégations faites dans ses sujets), en euros. */
+  jarvisSpentEur?: number;
 }
 
 /** La synthèse d'une période. */
@@ -38,6 +40,8 @@ export interface AdminCostSummary {
   spentUsd?: number;
   /** Le taux dollar → euro appliqué, écrit à côté des montants. */
   usdToEur?: number;
+  /** F-244 / SF-244-02 — « dont Jarvis » : la part du total née de Jarvis (budget propre), en euros. */
+  jarvisSpentEur?: number;
 }
 
 /**
