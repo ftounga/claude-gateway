@@ -336,18 +336,20 @@ class JarvisFastBrainServiceTest {
     }
 
     @Test
-    void f239TheAccountQuotaReachedIsSaidNeverEscalated() {
+    void f244TheGatewayQuotaReachedNoLongerSilencesJarvis() {
+        // F-244 / SF-244-02 (D4) — amende SF-239-11 : un quota Gateway épuisé ne coupe plus le cerveau rapide.
         JarvisFastBrainService service = service(answering("Oui."), null, null);
         QuotaService quota = mock(QuotaService.class);
-        org.mockito.Mockito.doThrow(new QuotaExceededException("quota")).when(quota).assertWithinQuota(alice);
+        org.mockito.Mockito.lenient().doThrow(new QuotaExceededException("quota")).when(quota).assertWithinQuota(alice);
         service.setAccounting(null, null, null, quota);
 
         JarvisFastBrainService.Outcome outcome = service.converse(ask("Où en est Kestrel ?"), null);
 
         assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
-        assertThat(outcome.reason()).isEqualTo("quota");
-        assertThat(outcome.spokenText()).isEqualTo(JarvisFastBrainService.QUOTA_REPLY);
-        assertThat(calls).isEmpty();
+        assertThat(outcome.reason()).isNotEqualTo(JarvisFastBrainService.REASON_QUOTA);
+        assertThat(outcome.spokenText()).isNotEqualTo(JarvisFastBrainService.QUOTA_REPLY);
+        assertThat(calls).isNotEmpty();
+        org.mockito.Mockito.verifyNoInteractions(quota);
     }
 
     // ------------------------------------------------------------- SF-235-02 : mémoire, contexte, pré-chauffage

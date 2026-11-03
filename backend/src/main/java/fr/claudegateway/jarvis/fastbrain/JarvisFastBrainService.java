@@ -234,7 +234,6 @@ public class JarvisFastBrainService {
     private ByokKeyService byok;
     private UsageLedgerService ledger;
     private ProviderCostCalculator costs;
-    private QuotaService quota;
     private BigDecimal usdToEur = DEFAULT_USD_TO_EUR;
     private JarvisFastContextBuilder contextBuilder;
     private JarvisFastMemory memory;
@@ -257,13 +256,19 @@ public class JarvisFastBrainService {
         this.clock = clock;
     }
 
+    /**
+     * La clé, le journal et la grille du coût.
+     *
+     * <p>F-244 / SF-244-02 (D4) : le quota Gateway ne garde plus le cerveau rapide — un quota épuisé ne rend plus
+     * Jarvis muet ; son seul garde est le budget de Jarvis. Le paramètre {@code quota} est conservé pour la signature,
+     * il n'est plus lu (amende SF-239-11, explicitement).</p>
+     */
     @Autowired(required = false)
     public void setAccounting(ByokKeyService byok, UsageLedgerService ledger, ProviderCostCalculator costs,
             QuotaService quota) {
         this.byok = byok;
         this.ledger = ledger;
         this.costs = costs;
-        this.quota = quota;
     }
 
     /** F-235 / SF-235-02 — le contexte compact, la mémoire de session, les délégations en cours. */
@@ -738,17 +743,11 @@ public class JarvisFastBrainService {
             return forced(request, !bench, fixedContext);
         }
         // F-239 / SF-239-11 — jamais d'escalade de coût : au-delà du budget, le cerveau rapide CONTINUE (10 à 50 fois
-        // moins cher qu'Opus) ; au plafond dur, une réponse fixe, aucun appel ; quota du compte atteint, de même.
+        // moins cher qu'Opus) ; au plafond dur, une réponse fixe, aucun appel. F-244 / SF-244-02 (D4) : le quota Gateway
+        // ne garde plus Jarvis (un quota épuisé ne le rend plus muet) ; seul son budget propre le garde.
         Budget budget = bench ? Budget.NONE : budgetState(userId);
         if (budget == Budget.HARD) {
             return fixed(out, BUDGET_HARD_REPLY, REASON_BUDGET_HARD);
-        }
-        if (quota != null) {
-            try {
-                quota.assertWithinQuota(userId);
-            } catch (RuntimeException e) {
-                return fixed(out, QUOTA_REPLY, REASON_QUOTA);
-            }
         }
         Outcome decided = decideCall(request, out, benchModel, fixedContext, understood);
         if (budget == Budget.SOFT && decided.kind() == Kind.ANSWER && decided.reason() == null) {

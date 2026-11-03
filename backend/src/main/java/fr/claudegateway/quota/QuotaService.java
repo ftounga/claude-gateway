@@ -248,7 +248,8 @@ public class QuotaService {
 
     /**
      * Même décompte, <b>étiqueté de son origine</b> (F-244 / SF-244-01) : un tour Opus né de Jarvis écrit sa ligne du
-     * journal avec {@code origin = JARVIS}, poste {@code OPUS}. L'étiquette ne change pas encore le quota (SF-244-02).
+     * journal avec {@code origin = JARVIS}, poste {@code OPUS}. SF-244-02 (D4) : une dépense Jarvis n'incrémente pas
+     * {@code usage_counters} — elle ne consomme pas le quota Gateway.
      */
     @Transactional
     public void recordUsage(UUID userId, TurnTokens tokens, TurnExtras extras,
@@ -259,19 +260,24 @@ public class QuotaService {
                 && (providerCostUsd == null || providerCostUsd.signum() <= 0)) {
             return;
         }
-        long input = tokens.processedInputTokens();
-        long output = tokens.outputTokens();
-        long billed = providerCostUsd == null
-                ? billedTokensCalculator.billedTokens(tokens)
-                : billedTokensCalculator.billedTokensFromCost(providerCostUsd);
-        LocalDate periodStart = currentPeriodStart();
-        UsageCounter counter = usageCounterRepository.findByUserIdAndPeriodStart(userId, periodStart)
-                .orElseGet(() -> createCounter(userId, periodStart));
-        counter.setInputTokens(counter.getInputTokens() + input);
-        counter.setOutputTokens(counter.getOutputTokens() + output);
-        counter.setBilledTokens(counter.getBilledTokens() + billed);
-        raiseQuotaAlertIfNeeded(userId, counter);
-        usageCounterRepository.save(counter);
+        UsageTag label = UsageTag.orGateway(tag);
+        // F-244 / SF-244-02 (D4) : une dépense Jarvis a son budget propre — elle n'entre PAS dans le quota Gateway
+        // (ni compteur, ni alerte de quota). Elle reste écrite au journal, étiquetée, plus bas.
+        if (!label.isJarvis()) {
+            long input = tokens.processedInputTokens();
+            long output = tokens.outputTokens();
+            long billed = providerCostUsd == null
+                    ? billedTokensCalculator.billedTokens(tokens)
+                    : billedTokensCalculator.billedTokensFromCost(providerCostUsd);
+            LocalDate periodStart = currentPeriodStart();
+            UsageCounter counter = usageCounterRepository.findByUserIdAndPeriodStart(userId, periodStart)
+                    .orElseGet(() -> createCounter(userId, periodStart));
+            counter.setInputTokens(counter.getInputTokens() + input);
+            counter.setOutputTokens(counter.getOutputTokens() + output);
+            counter.setBilledTokens(counter.getBilledTokens() + billed);
+            raiseQuotaAlertIfNeeded(userId, counter);
+            usageCounterRepository.save(counter);
+        }
         // Après le compteur, et jamais avant : si quelque chose doit manquer, c'est le relevé
         // d'attribution, pas la consommation opposable au quota. Le journal enregistre des VOLUMES
         // (il sert à refacturer un client) et, depuis F-133, le COÛT RÉEL du tour — les deux
@@ -280,7 +286,6 @@ public class QuotaService {
         TurnCost cost = providerCostUsd == null || providerCostUsd.signum() <= 0
                 ? providerCostCalculator.calculate(tokens, spent, model, otherModels, recordedModel)
                 : providerCostCalculator.calculate(providerCostUsd, tokens, spent, model);
-        UsageTag label = UsageTag.orGateway(tag);
         if (label.isJarvis()) {
             usageLedgerService.recordTurn(userId, workspaceId, hostId, tokens, spent, cost, label);
         } else {

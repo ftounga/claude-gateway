@@ -3325,8 +3325,16 @@ public class AtelierChatService implements RelayInterruptTarget {
         // plus que ce qui a été payé, règle de F-36 transposée à la boucle maison. En BYOK, les
         // tokens sont sur le compte du client et aucun quota n'est tenu (SF-28-06) : seul le
         // réglage s'applique.
+        // F-231 / SF-231-06 : ce tour est-il né à la voix (écran Jarvis) ? La marque est consommée ici, une fois.
+        // F-244 / SF-244-02 (D4) : lue AVANT le contrôle de quota — un tour né de Jarvis n'est ni bloqué par le quota
+        // Gateway, ni décompté de ce quota ; son plafond par message est la borne de configuration seule (comme un tour
+        // BYOK). Le budget propre de Jarvis le garde (SF-244-03), sans jamais couper un tour en cours.
+        VoiceMark voiceMark = consumeVoiceMark(userId, workspaceId, chantier);
+        boolean viaJarvis = voiceMark != null;
         AtelierTurnBudget turnBudget;
-        if (hosted) {
+        if (viaJarvis) {
+            turnBudget = AtelierTurnBudget.byok(maxTurnTokens);
+        } else if (hosted) {
             quotaService.assertWithinQuota(userId);
             turnBudget = AtelierTurnBudget.hosted(maxTurnTokens,
                     quotaService.currentUsage(userId).remainingTokens());
@@ -3350,9 +3358,6 @@ public class AtelierChatService implements RelayInterruptTarget {
         // interjection prise en compte, sans jamais dépasser le plafond absolu.
         int iterationCap = maxIterations;
         String userText = rawMessage.trim();
-        // F-231 / SF-231-06 : ce tour est-il né à la voix (écran Jarvis) ? La marque est consommée ici, une fois.
-        VoiceMark voiceMark = consumeVoiceMark(userId, workspaceId, chantier);
-        boolean viaJarvis = voiceMark != null;
 
         // Compaction automatique du fil (F-117 / SF-117-01), AVANT de bâtir la requête : si le texte
         // rejoué dépasse le seuil de sécurité sous la fenêtre du modèle, les tours anciens sont
