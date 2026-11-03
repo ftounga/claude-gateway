@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import fr.claudegateway.auth.CurrentUser;
@@ -27,11 +28,21 @@ public class JarvisMailController {
     }
 
     private final JarvisMailAccountService accounts;
+    private final JarvisMailItemService items;
     private final CurrentUser currentUser;
 
-    public JarvisMailController(JarvisMailAccountService accounts, CurrentUser currentUser) {
+    public JarvisMailController(JarvisMailAccountService accounts, JarvisMailItemService items,
+            CurrentUser currentUser) {
         this.accounts = accounts;
+        this.items = items;
         this.currentUser = currentUser;
+    }
+
+    /** SF-242-02 — le cache du courrier, les plus récents d'abord ({@code triage} facultatif, 100 au plus). */
+    @GetMapping("/jarvis/mail/items")
+    public List<JarvisMailItemService.ItemView> items(@RequestParam(required = false) String triage,
+            @RequestParam(required = false) Integer limit) {
+        return items.list(currentUser.requireId(), triage, limit);
     }
 
     @GetMapping("/jarvis/mail/accounts")

@@ -100,7 +100,14 @@ public enum PushEvent {
      * même terminal regardé. Corps neutre, sans montant.
      */
     JARVIS_BUDGET_ALERT("Le budget de Jarvis approche de son plafond",
-            "80 % du plafond du mois est atteint : ouvrez Jarvis pour le voir ou le relever.", true);
+            "80 % du plafond du mois est atteint : ouvrez Jarvis pour le voir ou le relever.", true),
+
+    /**
+     * F-242 / SF-242-02 — Google refuse le mot de passe d'application d'une boîte reliée à Jarvis : la relève est
+     * suspendue. Une seule par passage OK → refus ; corps neutre, sans adresse.
+     */
+    MAIL_AUTH_FAILED("Une boîte mail ne répond plus à Jarvis",
+            "Google refuse son mot de passe d'application : ouvrez Jarvis, « Mes boîtes ».", true);
 
     private final String title;
     private final String body;

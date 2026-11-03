@@ -232,6 +232,27 @@ public class JarvisUsageService {
         bump(userId, day -> day.setSpokenSeconds(day.getSpokenSeconds() + Math.max(0L, seconds)));
     }
 
+    /** F-242 / SF-242-02 — une relève de boîte ; {@code empty} : rien de neuf (aucun FETCH, aucune IA). */
+    public void addMailPoll(UUID userId, boolean empty, int fetched) {
+        bump(userId, day -> {
+            day.setMailPolls(day.getMailPolls() + 1);
+            if (empty) {
+                day.setMailPollsEmpty(day.getMailPollsEmpty() + 1);
+            }
+            day.setMailFetched(day.getMailFetched() + Math.max(0, fetched));
+        });
+    }
+
+    /** F-242 / SF-242-03 — le coût d'un appel de tri du courrier (dollars, ligne « Courrier » du budget Jarvis). */
+    public void addMailCost(UUID userId, BigDecimal costUsd) {
+        bump(userId, day -> day.setMailCostUsd(day.getMailCostUsd().add(costUsd == null ? BigDecimal.ZERO : costUsd)));
+    }
+
+    /** F-242 / SF-242-03 — une correction du tri au toucher. */
+    public void addMailTriageCorrected(UUID userId) {
+        bump(userId, day -> day.setMailTriageCorrected(day.getMailTriageCorrected() + 1));
+    }
+
     /** SF-231-05 — un réveil par le mot « Jarvis ». */
     public void addWake(UUID userId) {
         bump(userId, day -> day.setWakes(day.getWakes() + 1));

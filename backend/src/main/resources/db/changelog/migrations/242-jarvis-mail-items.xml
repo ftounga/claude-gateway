@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-242 / SF-242-02 - LE CACHE DU COURRIER (D5). Les en-tetes et un extrait de 2 000 caracteres au plus, SCELLES
+      (sealed = dataKey.iv.ciphertext, ByokKeyCipher, patron PortraitSeal) ; le corps complet n'est JAMAIS stocke (relu
+      a la demande par IMAP). Purge a 30 jours. Filtre user_id sur tout acces ; ecrit sous le user_id de la boite.
+      Unicite (account_id, uidvalidity, uid) : la releve suivante ne cree jamais de doublon.
+
+      Numero 242 = numero de la feature. Rollback : table retiree (nouvelle).
+    -->
+
+    <changeSet id="242-jarvis-mail-items" author="claude-gateway">
+        <createTable tableName="jarvis_mail_items">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="account_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="uid" type="bigint"><constraints nullable="false"/></column>
+            <column name="uidvalidity" type="bigint"><constraints nullable="false"/></column>
+            <column name="message_id" type="varchar(500)"/>
+            <column name="thread_ref" type="varchar(500)"/>
+            <column name="sealed" type="varchar(16000)"><constraints nullable="false"/></column>
+            <column name="received_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="has_calendar" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="bulk" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="flags" type="varchar(200)"/>
+            <column name="triage" type="varchar(16)" defaultValue="EN_ATTENTE"><constraints nullable="false"/></column>
+            <column name="triage_reason" type="varchar(120)"/>
+            <column name="triaged_at" type="timestamp with time zone"/>
+            <column name="briefed_at" type="timestamp with time zone"/>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="jarvis_mail_items" columnNames="account_id, uidvalidity, uid"
+                             constraintName="uq_jarvis_mail_items_account_uid"/>
+        <createIndex tableName="jarvis_mail_items" indexName="idx_jarvis_mail_items_user_received">
+            <column name="user_id"/>
+            <column name="received_at"/>
+        </createIndex>
+        <createIndex tableName="jarvis_mail_items" indexName="idx_jarvis_mail_items_account_message">
+            <column name="account_id"/>
+            <column name="message_id"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="jarvis_mail_items"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
