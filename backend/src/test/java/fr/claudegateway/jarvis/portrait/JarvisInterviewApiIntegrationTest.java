@@ -94,6 +94,13 @@ class JarvisInterviewApiIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"sections\":{\"QUI\":\"Chef de projet\"},\"interviewed\":true}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.lastInterviewAt").isNotEmpty());
+
+        // F-241 / SF-241-06 (D4) — un entretien validé clôt la proposition, même portrait vidé ensuite.
+        mockMvc.perform(put("/api/jarvis/portrait").contextPath("/api").header("Authorization", a.bearer())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"sections\":{\"QUI\":\"\"}}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/jarvis/portrait/interview").contextPath("/api").header("Authorization", a.bearer()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.offer").value(false));
     }
 
     @Test

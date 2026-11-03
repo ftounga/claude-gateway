@@ -311,6 +311,16 @@
     <button mat-button type="button" class="jv__interview-later" (click)="postponeInterview()">Plus tard</button>
   </aside>
 }
+<!-- F-241 / SF-241-06 (E6) — l'entretien se voit, et s'arrête au toucher ; suspendu, il ne reprend que sur demande. -->
+@if (interviewView(); as iv) {
+  <aside class="jv__interview-bar" role="status" aria-live="polite">
+    <span class="jv__interview-step">{{ iv.suspended ? 'Entretien en pause' : 'Entretien' }} — question {{ iv.n }}/{{ iv.total }}</span>
+    @if (iv.suspended) {
+      <button mat-flat-button color="primary" type="button" class="jv__interview-resume" (click)="resumeInterview()">Reprendre</button>
+    }
+    <button mat-button type="button" class="jv__interview-stop" (click)="stopInterview()">Arrêter</button>
+  </aside>
+}
 @if (night()) {
   <app-jarvis-night [ambient]="ambientNow()" (exit)="night.set(false)" />
 }

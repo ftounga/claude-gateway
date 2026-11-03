@@ -16,7 +16,7 @@ import { isPieceShow } from './scenes/jarvis-show';
 import { JarvisPieceClient } from './pieces/jarvis-piece-client';
 import { JarvisUniverse } from './scenes/jarvis-universe.models';
 import {
-  Component, DestroyRef, InjectionToken, NgZone, OnDestroy, OnInit, ViewChild, computed, effect, inject, signal, viewChild,
+  Component, DestroyRef, HostListener, InjectionToken, NgZone, OnDestroy, OnInit, ViewChild, computed, effect, inject, signal, viewChild,
   untracked,
 } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
@@ -76,10 +76,10 @@ import {
   stripInvitationLines, subjectSwitch, withEndAnnouncement,
 } from './jarvis-oral';
 import {
-  Conversation, IDLE_PHRASE, IDLE_WAKE_HINT, PAUSE_PHRASE, RELISTEN_DELAY_MS, isPauseCommand,
+  Conversation, IDLE_PHRASE, IDLE_WAKE_HINT, PAUSE_PHRASE, RELISTEN_DELAY_MS, isNoise, isPauseCommand,
 } from './jarvis-conversation';
 import { ExchangeFiller, FORMULA_CLIPS, FormulaPicker, LINKED_FILLER_DELAY_MS, linkedFiller } from './jarvis-phrases';
-import { MAX_LISTEN_MS, SpeechRejection, speechGate } from './jarvis-speech-gate';
+import { MAX_LISTEN_MS, MIN_VOICED_MS, NoiseFloor, SpeechRejection, speechGate } from './jarvis-speech-gate';
 import { STREAM_FALLBACK_MS, SUSPENDED_EXTRA_MS, isSuspended } from './jarvis-turn-end';
 import { CORRECTION_WINDOW_MS as VOICE_CORRECTION_WINDOW_MS, applyCorrection, parseVoiceCorrection } from './jarvis-correction';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -89,8 +89,10 @@ import { JarvisAppUpdate } from './jarvis-app-update';
 import { JarvisCompanionsComponent } from './jarvis-companions.component';
 import { JarvisPortraitComponent } from './jarvis-portrait.component';
 import {
-  INTERVIEW_END, INTERVIEW_INTRO, INTERVIEW_NOTHING, INTERVIEW_OFFER, INTERVIEW_QUESTIONS, INTERVIEW_UPDATE_INTRO,
-  InterviewDraft, JarvisInterview, JarvisInterviewClient, isInterviewCommand, updateQuestions,
+  INTERVIEW_END, INTERVIEW_END_MS, INTERVIEW_INTRO, INTERVIEW_NOTHING, INTERVIEW_OFFER, INTERVIEW_QUESTIONS,
+  INTERVIEW_REOPENED, INTERVIEW_RESUME_AGAIN, INTERVIEW_SET_ASIDE, INTERVIEW_UPDATE_INTRO,
+  InterviewDraft, JarvisInterview, JarvisInterviewClient, isInterviewCommand, isResumeYes, isWakeOnly, resumePrompt,
+  updateQuestions,
 } from './jarvis-interview';
 import {
   JarvisPortraitClient, MEMORY_FULL_PHRASE, PORTRAIT_ANSWER_WINDOW_MS, isPortraitMark, isUndoNote, portraitBlocks,
@@ -367,6 +369,108 @@ export class JarvisComponent implements OnInit, OnDestroy {
     return this.interview !== null;
   }
 
+  // ---- F-241 / SF-241-06 : l'entretien qui écoute (réponses longues, suspension, reprise jamais implicite) ----
+  /** E6 — le bandeau : « Entretien — question n/N » (ou en pause), avec « Arrêter » / « Reprendre ». */
+  readonly interviewView = signal<{ n: number; total: number; suspended: boolean } | null>(null);
+  /** E5 — la question « On reprend l'entretien ? » a été posée et attend sa réponse. */
+  private resumeAsked = false;
+
+  private syncInterview(): void {
+    const i = this.interview;
+    this.interviewView.set(i ? { n: Math.min(i.position + 1, i.total), total: i.total, suspended: i.suspended } : null);
+  }
+
+  /** E4 — pause, veille, écran masqué : l'entretien attend ; aucune parole ne sera une réponse. */
+  private suspendInterview(): void {
+    if (!this.interview || this.interview.suspended) {
+      return;
+    }
+    this.interview.suspend();
+    this.resumeAsked = false;
+    this.syncInterview();
+  }
+
+  /** E5 — au réveil, un entretien suspendu ne reprend jamais seul : Jarvis dit où on en était et le demande. */
+  private async askResume(): Promise<boolean> {
+    const interview = this.interview;
+    if (!interview?.suspended) {
+      return false;
+    }
+    this.resumeAsked = true;
+    await this.say(resumePrompt(interview.position, interview.total));
+    return true;
+  }
+
+  /** E5 — la réponse à « On reprend l'entretien ? ». */
+  private async answerResume(interview: JarvisInterview, text: string): Promise<void> {
+    if (isResumeYes(text)) {
+      await this.resumeInterview();
+      return;
+    }
+    if (isWakeOnly(text) || isNoise(text) || !this.resumeAsked) {
+      // Un réveil, une salutation : jamais une réponse ; la question de reprise est (re)posée.
+      const asked = this.resumeAsked;
+      this.resumeAsked = true;
+      await this.say(asked ? INTERVIEW_RESUME_AGAIN : resumePrompt(interview.position, interview.total));
+      return;
+    }
+    // « non » ou une autre demande : l'entretien est mis de côté (réponses au brouillon), la parole traitée normalement.
+    this.resumeAsked = false;
+    await this.closeInterview(interview, false);
+    if (classifyConfirmation(text) === 'non') {
+      await this.say(INTERVIEW_SET_ASIDE);
+      return;
+    }
+    await this.handle(text);
+  }
+
+  /** E5 / E6 — reprend l'entretien à la question en cours (« oui », ou « Reprendre » au toucher). */
+  async resumeInterview(): Promise<void> {
+    const interview = this.interview;
+    if (!interview) {
+      return;
+    }
+    interview.resume();
+    this.resumeAsked = false;
+    this.syncInterview();
+    if (!this.conversation.active) {
+      this.voice.unlock();
+      this.startConversation();
+    }
+    await this.say(interview.current() ?? '');
+  }
+
+  /** E6 — « Arrêter » au toucher : les réponses déjà données vont au brouillon. */
+  async stopInterview(): Promise<void> {
+    const interview = this.interview;
+    if (!interview) {
+      return;
+    }
+    this.cancelListening();
+    if (this.state() === 'parole') {
+      this.voice.stop();
+      this.state.set('repos');
+    }
+    this.resumeAsked = false;
+    await this.closeInterview(interview, true);
+  }
+
+  /** E1 — pendant un entretien actif, la fin de tour attend {@link INTERVIEW_END_MS} (le réglage ne peut que l'allonger). */
+  private interviewListening(): boolean {
+    return !!this.interview && !this.interview.suspended;
+  }
+
+  /** E2 — l'écoute en cours a été close par son plafond : le segment n'est pas une réponse finie. */
+  private listenCapped = false;
+
+  /** E4 — l'écran masqué (application en arrière-plan, autre onglet) suspend l'entretien. */
+  @HostListener('document:visibilitychange')
+  onVisibilityChange(): void {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden' && this.interviewListening()) {
+      void this.pauseConversation(false);
+    }
+  }
+
   /** F-241 / SF-241-03 (D12 a) — les termes « À ne pas aborder » : filet des lignes 🎙 d'Opus avant de les dire. */
   private portraitTerms: string[] = [];
 
@@ -415,6 +519,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
       questions = updateQuestions(portrait);
     }
     this.interview = new JarvisInterview(mode, questions);
+    this.resumeAsked = false;
+    this.syncInterview();
     await this.say(mode === 'UPDATE' ? INTERVIEW_UPDATE_INTRO : INTERVIEW_INTRO);
     const first = this.interview?.current();
     if (first) {
@@ -422,23 +528,61 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** Une parole pendant l'entretien : réponse, « je passe », « on arrête là ». */
-  private async interviewHears(text: string): Promise<void> {
+  /**
+   * Une parole pendant l'entretien : réponse, segment (`cut`), « je passe », « on arrête là », « je n'avais pas
+   * fini » ; SF-241-06 — un réveil / une salutation n'est jamais une réponse, « Jarvis, pause » suspend.
+   */
+  private async interviewHears(text: string, cut = false): Promise<void> {
     const interview = this.interview;
     if (!interview) {
       return;
     }
-    const done = interview.hear(text);
-    if (!done) {
-      await this.say(interview.current() ?? '');
+    if (interview.suspended) {
+      await this.answerResume(interview, text);
       return;
     }
-    this.interview = null;
+    if (isPauseCommand(text)) {
+      await this.pauseConversation(true);
+      return;
+    }
+    const step = interview.hear(text, cut);
+    switch (step) {
+      case 'more':
+        // E2 — la réponse continue : l'écoute rouvre sans un mot (la conversation la rouvre d'elle-même).
+        this.conversation.touch();
+        this.state.set(this.turnRunning ? 'reflexion' : 'repos');
+        if (!this.conversation.active) {
+          await this.listen();
+        }
+        return;
+      case 'reopened':
+        await this.say(INTERVIEW_REOPENED);
+        return;
+      case 'ignored':
+      case 'next':
+        this.syncInterview();
+        await this.say(interview.current() ?? '');
+        return;
+      default:
+        await this.closeInterview(interview, true);
+    }
+  }
+
+  /** Clôt l'entretien : ses réponses partent au rangement (rien n'est enregistré avant « Valider »). */
+  private async closeInterview(interview: JarvisInterview, speak: boolean): Promise<void> {
+    if (this.interview === interview) {
+      this.interview = null;
+    }
+    this.syncInterview();
     if (!interview.hasAnswers()) {
-      await this.say(INTERVIEW_NOTHING);
+      if (speak) {
+        await this.say(INTERVIEW_NOTHING);
+      }
       return;
     }
-    await this.say(INTERVIEW_END);
+    if (speak) {
+      await this.say(INTERVIEW_END);
+    }
     this.interviewClient.draft(interview.answers()).subscribe({
       next: (draft) => {
         this.interviewDraft.set(draft);
@@ -887,6 +1031,14 @@ export class JarvisComponent implements OnInit, OnDestroy {
     if (this.state() === 'parole') {
       this.voice.stop();
     }
+    // F-241 / SF-241-06 (E5) — un entretien suspendu ne reprend jamais seul : Jarvis dit où on en était et le demande ;
+    // la phrase du réveil (« Bonjour Jarvis ») n'est pas transmise — elle n'est ni une réponse ni une demande.
+    if (this.interview?.suspended) {
+      this.startConversation();
+      await this.askResume();
+      await this.listen();
+      return;
+    }
     let inPhrase = !!event?.precededBySpeech;
     if (event && !inPhrase) {
       await new Promise<void>((resolve) => setTimeout(resolve, JarvisComponent.WAKE_CONTINUE_MS));
@@ -997,6 +1149,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.listenStartedAt = performance.now();
     this.voicedMs = null;
     this.listenPreRoll = false;
+    this.listenCapped = false;
     // F-233 / SF-233-05 — l'écoute en flux d'abord ; sinon (non configurée, refus, réseau) la dictée batch.
     const streaming = await this.startStreaming(preRoll ? () => {
       const audio = preRoll.takeAudio();
@@ -1021,20 +1174,31 @@ export class JarvisComponent implements OnInit, OnDestroy {
       this.meter = new MicMeter(stream);
       this.voicedMs = this.meter.available ? 0 : null;
       // F-239 / SF-239-10 — en flux, le fournisseur décide de la fin ; le silence mesuré par l'écran n'est qu'un filet.
-      const endMs = () => (this.live ? silenceMs() + STREAM_FALLBACK_MS : silenceMs());
+      // F-241 / SF-241-06 (E1) — pendant un entretien actif, l'écran tient la fin : 3,5 s de silence au moins.
+      const endMs = () => (this.interviewListening() ? Math.max(silenceMs(), INTERVIEW_END_MS)
+        : this.live ? silenceMs() + STREAM_FALLBACK_MS : silenceMs());
       let end = new EndOfSpeech(performance.now(), endMs());
       let lastFrame = performance.now();
+      // F-241 / SF-241-06 — la voix se compte au-dessus du bruit de fond mesuré (micro à gain bas, contrôle de gain).
+      const floor = new NoiseFloor(SPEECH_LEVEL);
+      let windowVoicedMs = 0;
       this.zone.runOutsideAngular(() => {
         const tick = () => {
           this.micLevel = this.meter?.level() ?? 0;
           const now = performance.now();
           // F-239 / SF-239-01 (D3b) — le temps de voix réellement entendu au micro (porte de parole réelle).
-          if (this.voicedMs !== null && this.micLevel >= SPEECH_LEVEL) {
-            this.voicedMs += Math.min(100, now - lastFrame);
+          if (floor.update(this.micLevel)) {
+            const frame = Math.min(100, now - lastFrame);
+            windowVoicedMs += frame;
+            if (this.voicedMs !== null) {
+              this.voicedMs += frame;
+            }
           }
           lastFrame = now;
           // F-239 — une écoute ne dure jamais plus de MAX_LISTEN_MS : elle se clôt, et la porte décide.
           if (now - this.listenStartedAt >= MAX_LISTEN_MS) {
+            // F-241 / SF-241-06 (E2) — en entretien, ce n'est qu'un segment : la réponse continue.
+            this.listenCapped = this.interviewListening();
             this.zone.run(() => void this.finishListening());
             return;
           }
@@ -1052,10 +1216,15 @@ export class JarvisComponent implements OnInit, OnDestroy {
                 return;
               }
               end = new EndOfSpeech(performance.now(), endMs());
-              // Les secondes parlées et la durée de parole ne comptent pas le silence.
-              this.listenStartedAt = performance.now();
-              this.voicedMs = this.voicedMs === null ? null : 0;
-            } else if (this.zone.run(() => this.holdIfSuspended())) {
+              // Les secondes parlées et la durée de parole ne comptent pas le silence. F-241 / SF-241-06 — mais
+              // seulement s'il n'y a vraiment eu aucune voix (une voix faible n'est pas du silence), et le temps de
+              // voix n'est jamais remis à zéro au milieu d'une parole.
+              if (windowVoicedMs < MIN_VOICED_MS) {
+                this.listenStartedAt = performance.now();
+                this.voicedMs = this.voicedMs === null ? null : 0;
+              }
+              windowVoicedMs = 0;
+            } else if (!this.interviewListening() && this.zone.run(() => this.holdIfSuspended())) {
               // F-239 / SF-239-10 — phrase en suspens : on laisse le PO finir.
               end = new EndOfSpeech(performance.now(), endMs());
             } else {
@@ -1215,7 +1384,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
       return false;
     }
     const text = [...live.committed, live.lastPartial].join(' ').trim();
-    if (!isSuspended(text)) {
+    // F-241 / SF-241-06 (E1) — en entretien, la fin de tour du fournisseur ne clôt jamais seule : 3,5 s de plus sans
+    // reprise (l'écran, qui mesure le silence, clôt souvent avant).
+    const interviewing = this.interviewListening();
+    if (!interviewing && !isSuspended(text)) {
       return false;
     }
     if (!this.suspendTimer) {
@@ -1224,7 +1396,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
         if (this.live === live && this.state() === 'ecoute') {
           void this.finishListening();
         }
-      }, SUSPENDED_EXTRA_MS);
+      }, interviewing ? INTERVIEW_END_MS : SUSPENDED_EXTRA_MS);
     }
     return true;
   }
@@ -1479,7 +1651,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
     // F-239 / SF-239-01 (D3b) — la porte de parole réelle : sans parole réelle, AUCUN tour (ni cerveau rapide, ni
     // Opus) ; la mesure garde la raison et la longueur, jamais le texte.
     const confirming = !!this.pendingConfirm || this.awaitingVerbal;
-    const rejection = speechGate(text, { voicedMs: this.voicedMs, preRoll: this.listenPreRoll });
+    // F-241 / SF-241-06 — le débit « implausible » se juge sur la durée de l'écoute (speech_ms), pas sur le temps de voix.
+    const rejection = speechGate(text, {
+      voicedMs: this.voicedMs, listenedMs: clock.speechMs, preRoll: this.listenPreRoll,
+    });
     if (!text || (rejection && !confirming)) {
       this.state.set(this.turnRunning ? 'reflexion' : 'repos');
       if (!text && confirming) {
@@ -1552,7 +1727,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
   async handle(text: string): Promise<void> {
     // F-241 / SF-241-02 — pendant l'entretien, la parole est une réponse : elle ne part nulle part ailleurs.
     if (this.interview) {
-      await this.interviewHears(text);
+      const cut = this.listenCapped;
+      this.listenCapped = false;
+      await this.interviewHears(text, cut);
       return;
     }
     // F-241 / SF-241-05 (D8) — « oui » à « Voulez-vous que je retienne… ? », ou « non, oublie ça » après une note.
@@ -3249,6 +3426,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
     this.voice.unlock();
     this.startConversation();
+    // F-241 / SF-241-06 (E5) — un entretien suspendu : la question de reprise d'abord.
+    if (await this.askResume()) {
+      return;
+    }
     if (this.pendingAlert && this.state() === 'repos') {
       await this.talk();
     }
@@ -3263,6 +3444,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   /** La pause : micro coupé, voix coupée ; le tour en cours continue. `say` : Jarvis le dit (ordre vocal). */
   async pauseConversation(say: boolean): Promise<void> {
+    // F-241 / SF-241-06 (E4) — la pause suspend l'entretien.
+    this.suspendInterview();
     this.conversation.pause();
     this.clearRelisten();
     this.cancelListening();
@@ -3279,6 +3462,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
     if (!this.conversation.active) {
       return;
     }
+    // F-241 / SF-241-06 (E4) — la mise en veille suspend l'entretien.
+    this.suspendInterview();
     this.conversation.rest();
     this.clearRelisten();
     this.jarvis.usage('IDLE_END');
