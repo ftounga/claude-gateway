@@ -29,7 +29,7 @@ import { AuthService } from '../core/services/auth.service';
 import { JarvisVadService, VadHandlers } from './jarvis-barge-in';
 import { FORMULAS, FORMULA_CLIPS, tutoie } from './jarvis-phrases';
 import { JARVIS_3D_LOADER, JarvisEngineFactory } from './stage3d/jarvis-engine.contract';
-import { JarvisInterviewClient } from './jarvis-interview';
+import { INTERVIEW_END_MS, INTERVIEW_QUESTIONS, JarvisInterviewClient } from './jarvis-interview';
 import { JarvisPortraitClient } from './jarvis-portrait';
 import { JARVIS_RENDER_PROBE, RenderProbe } from './stage3d/jarvis-render-capability';
 import { FakeEngine, NO_WEBGL_PROBE, PC_PROBE, fakeEngineFactory } from './stage3d/jarvis-stage3d.testing';
@@ -368,6 +368,162 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(interviewClient.offered).toHaveBeenCalled();
     expect(jarvis.interviewOffer()).toBeFalse();
     expect(jarvis.interviewing()).toBeFalse();
+    jarvis.ngOnDestroy();
+    fixture.destroy();
+  }));
+
+  /** SF-241-06 — un entretien lancé par « oui » à la proposition ; la voix est remplacée par un relevé. */
+  function startedInterview(params: Record<string, string> = {}) {
+    interviewClient.offer.and.returnValue(of({ offer: true, offers: 0 }));
+    interviewClient.draft.and.returnValue(of({ sections: { QUI: 'Chef de projet' }, souvenirs: [] }));
+    configure(params);
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    const jarvis = fixture.componentInstance;
+    const spoken: string[] = [];
+    spyOn(jarvis, 'say').and.callFake(async (phrase: string) => { spoken.push(phrase); });
+    const listen = spyOn(jarvis, 'listen').and.resolveTo();
+    void jarvis.handle('oui');
+    flushMicrotasks();
+    return { fixture, jarvis, spoken, listen };
+  }
+
+  it('F-241 / SF-241-06 (E2) — réponse longue en plusieurs segments : pas de question suivante, une seule réponse concaténée', fakeAsync(() => {
+    const { fixture, jarvis, spoken } = startedInterview();
+    const internals = jarvis as unknown as { listenCapped: boolean };
+    void jarvis.handle('Franck');
+    flushMicrotasks();
+    expect(spoken[spoken.length - 1]).toBe(INTERVIEW_QUESTIONS[1]);
+    const before = spoken.length;
+    // L'écoute a été close par son plafond : ce n'est qu'un segment.
+    internals.listenCapped = true;
+    void jarvis.handle('Je suis chef de projet chez Orion depuis six ans,');
+    flushMicrotasks();
+    expect(spoken.length).toBe(before);
+    expect(jarvis.interviewView()?.n).toBe(2);
+    void jarvis.handle('et je forme les nouveaux.');
+    flushMicrotasks();
+    expect(spoken[spoken.length - 1]).toBe(INTERVIEW_QUESTIONS[2]);
+    void jarvis.handle('Attendez, je n’avais pas fini.');
+    flushMicrotasks();
+    expect(spoken[spoken.length - 1]).toBe('Je vous écoute.');
+    void jarvis.handle('Et j’aime ça.');
+    flushMicrotasks();
+    expect(spoken[spoken.length - 1]).toBe(INTERVIEW_QUESTIONS[2]);
+    void jarvis.handle('on arrête là');
+    flushMicrotasks();
+    const sent = interviewClient.draft.calls.mostRecent().args[0];
+    expect(sent.map((a) => a.answer)).toEqual(['Franck',
+      'Je suis chef de projet chez Orion depuis six ans, et je forme les nouveaux. Et j’aime ça.']);
+    expect(fastBrain.converse).not.toHaveBeenCalled();
+    expect(atelier.streamChat).not.toHaveBeenCalled();
+    jarvis.ngOnDestroy();
+    fixture.destroy();
+  }));
+
+  it('F-241 / SF-241-06 (E1) — en entretien, la fin de tour du fournisseur attend 3,5 s même sur une phrase close', fakeAsync(() => {
+    const { fixture, jarvis } = startedInterview();
+    const internals = jarvis as unknown as {
+      live: { committed: string[]; lastPartial: string } | null; holdIfSuspended(): boolean; clearSuspendTimer(): void;
+    };
+    const finish = spyOn(jarvis, 'finishListening').and.resolveTo();
+    internals.live = { committed: ['Chef de projet.'], lastPartial: '' };
+    jarvis.state.set('ecoute');
+    expect(internals.holdIfSuspended()).toBeTrue();
+    tick(INTERVIEW_END_MS - 1);
+    expect(finish).not.toHaveBeenCalled();
+    tick(1);
+    expect(finish).toHaveBeenCalledTimes(1);
+    // Hors entretien : une phrase close n'est pas retenue.
+    jarvis.state.set('repos');
+    void jarvis.stopInterview();
+    flushMicrotasks();
+    expect(internals.holdIfSuspended()).toBeFalse();
+    internals.live = null;
+    jarvis.ngOnDestroy();
+    fixture.destroy();
+  }));
+
+  it('F-241 / SF-241-06 (E3-E5) — veille ⇒ réveil ⇒ « Bonjour Jarvis » jamais compté ; « On reprend l’entretien ? » ; « oui » reprend à la question en cours', fakeAsync(() => {
+    const { fixture, jarvis, spoken, listen } = startedInterview();
+    void jarvis.handle('Franck');
+    flushMicrotasks();
+    // « Bonjour Jarvis » en plein entretien : la question est redite, rien n'est compté.
+    void jarvis.handle('Bonjour Jarvis.');
+    flushMicrotasks();
+    expect(spoken[spoken.length - 1]).toBe(INTERVIEW_QUESTIONS[1]);
+    expect(jarvis.interviewView()?.n).toBe(2);
+    // La veille au silence suspend l'entretien.
+    jarvis.startConversation();
+    void (jarvis as unknown as { endConversation(): Promise<void> }).endConversation();
+    flushMicrotasks();
+    expect(jarvis.interviewView()?.suspended).toBeTrue();
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).querySelector('.jv__interview-bar')?.textContent)
+      .toContain('Entretien en pause — question 2/10');
+    // Le réveil : la question de reprise, et l'écoute sans la phrase du réveil.
+    listen.calls.reset();
+    void (jarvis as unknown as { wakeUpOn(): Promise<void> }).wakeUpOn();
+    flushMicrotasks();
+    expect(spoken[spoken.length - 1]).toBe('Nous en étions à la question 2 sur 10 de l’entretien. On reprend l’entretien ?');
+    expect(listen).toHaveBeenCalledWith();
+    void jarvis.handle('Bonjour Jarvis');
+    flushMicrotasks();
+    expect(spoken[spoken.length - 1]).toBe('On reprend l’entretien ? Oui ou non.');
+    expect(jarvis.interviewView()?.suspended).toBeTrue();
+    void jarvis.handle('Oui.');
+    flushMicrotasks();
+    expect(jarvis.interviewView()?.suspended).toBeFalse();
+    expect(spoken[spoken.length - 1]).toBe(INTERVIEW_QUESTIONS[1]);
+    void jarvis.handle('Chef de projet');
+    flushMicrotasks();
+    void jarvis.handle('on arrête là');
+    flushMicrotasks();
+    const sent = interviewClient.draft.calls.mostRecent().args[0];
+    expect(sent.map((a) => a.answer)).toEqual(['Franck', 'Chef de projet']);
+    expect(JSON.stringify(sent)).not.toContain('Bonjour');
+    expect(atelier.streamChat).not.toHaveBeenCalled();
+    jarvis.ngOnDestroy();
+    fixture.destroy();
+  }));
+
+  it('F-241 / SF-241-06 (E5) — après la reprise proposée, une autre demande clôt l’entretien (brouillon) et part normalement ; « Jarvis, pause » n’est pas une réponse', fakeAsync(() => {
+    const { fixture, jarvis, spoken } = startedInterview({ sujet: 'w-2' });
+    void jarvis.handle('Franck');
+    flushMicrotasks();
+    void jarvis.handle('Jarvis, pause');
+    flushMicrotasks();
+    expect(spoken[spoken.length - 1]).toBe('Je me mets en pause.');
+    expect(jarvis.interviewView()?.suspended).toBeTrue();
+    void jarvis.toggleConversation();
+    flushMicrotasks();
+    expect(spoken[spoken.length - 1]).toContain('On reprend l’entretien ?');
+    void jarvis.handle('Où en est la migration ?');
+    flushMicrotasks();
+    expect(jarvis.interviewing()).toBeFalse();
+    expect(jarvis.interviewView()).toBeNull();
+    expect(interviewClient.draft.calls.mostRecent().args[0].map((a) => a.answer)).toEqual(['Franck']);
+    expect(jarvis.interviewDraft()?.sections.QUI).toBe('Chef de projet');
+    expect(atelier.streamChat.calls.mostRecent().args[1]).toBe('Où en est la migration ?');
+    jarvis.ngOnDestroy();
+    fixture.destroy();
+  }));
+
+  it('F-241 / SF-241-06 (E6) — le bandeau « Entretien — question n/N » et « Arrêter » au toucher (réponses gardées)', fakeAsync(() => {
+    const { fixture, jarvis } = startedInterview();
+    void jarvis.handle('Franck');
+    flushMicrotasks();
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.jv__interview-bar')?.textContent).toContain('Entretien — question 2/10');
+    expect(el.querySelector('.jv__interview-resume')).toBeNull();
+    (el.querySelector('.jv__interview-stop') as HTMLButtonElement).click();
+    flushMicrotasks();
+    fixture.detectChanges();
+    expect(jarvis.interviewing()).toBeFalse();
+    expect(el.querySelector('.jv__interview-bar')).toBeNull();
+    expect(interviewClient.draft.calls.mostRecent().args[0].map((a) => a.answer)).toEqual(['Franck']);
     jarvis.ngOnDestroy();
     fixture.destroy();
   }));
