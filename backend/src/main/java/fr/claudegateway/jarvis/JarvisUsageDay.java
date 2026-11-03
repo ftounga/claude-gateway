@@ -169,6 +169,24 @@ public class JarvisUsageDay {
     @Column(name = "agenda_cost_usd", nullable = false, precision = 12, scale = 6)
     private BigDecimal agendaCostUsd = BigDecimal.ZERO;
 
+    /** F-242 / SF-242-02 — les relèves du courrier, les relèves sans rien de neuf (0 FETCH, 0 IA), les courriers
+     * mis en cache ; SF-242-03 — les corrections du tri au toucher. Compteurs seuls, aucun contenu. */
+    @Builder.Default
+    @Column(name = "mail_polls", nullable = false)
+    private int mailPolls = 0;
+
+    @Builder.Default
+    @Column(name = "mail_polls_empty", nullable = false)
+    private int mailPollsEmpty = 0;
+
+    @Builder.Default
+    @Column(name = "mail_fetched", nullable = false)
+    private int mailFetched = 0;
+
+    @Builder.Default
+    @Column(name = "mail_triage_corrected", nullable = false)
+    private int mailTriageCorrected = 0;
+
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 

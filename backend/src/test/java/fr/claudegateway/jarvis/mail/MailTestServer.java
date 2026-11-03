@@ -43,4 +43,26 @@ public final class MailTestServer {
         get().setUser(address, address, password);
         return address;
     }
+
+    /** Dépose un courrier brut (RFC 822) dans la boîte de réception de {@code address}. */
+    public static void deliver(String address, String raw) {
+        jakarta.mail.internet.MimeMessage message = com.icegreen.greenmail.util.GreenMailUtil.newMimeMessage(raw);
+        get().getUserManager().getUserByEmail(address).deliver(message);
+    }
+
+    /** Un courrier texte simple ; {@code extraHeaders} : lignes « Nom: valeur » ajoutées. */
+    public static String raw(String from, String to, String subject, String body, String... extraHeaders) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("From: ").append(from).append("\r\n");
+        sb.append("To: ").append(to).append("\r\n");
+        sb.append("Subject: ").append(subject).append("\r\n");
+        sb.append("Message-ID: <").append(java.util.UUID.randomUUID()).append("@test>\r\n");
+        sb.append("Date: ").append(new jakarta.mail.internet.MailDateFormat().format(new java.util.Date())).append("\r\n");
+        for (String h : extraHeaders) {
+            sb.append(h).append("\r\n");
+        }
+        sb.append("MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n");
+        sb.append(body).append("\r\n");
+        return sb.toString();
+    }
 }

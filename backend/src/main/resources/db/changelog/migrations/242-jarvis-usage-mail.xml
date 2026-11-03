@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-242 / SF-242-02 - LA MESURE DU COURRIER (compteurs, AUCUN contenu) dans la journee Jarvis : mail_polls (releves),
+      mail_polls_empty (releves sans rien de neuf : 0 FETCH, 0 IA), mail_fetched (courriers mis en cache),
+      mail_triage_corrected (corrections du tri au toucher, SF-242-03). Le cout du tri va dans mail_cost_usd (F-244).
+
+      Rollback : colonnes retirees.
+    -->
+
+    <changeSet id="242-jarvis-usage-mail" author="claude-gateway">
+        <addColumn tableName="jarvis_usage_days">
+            <column name="mail_polls" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="mail_polls_empty" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="mail_fetched" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="mail_triage_corrected" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="jarvis_usage_days" columnName="mail_triage_corrected"/>
+            <dropColumn tableName="jarvis_usage_days" columnName="mail_fetched"/>
+            <dropColumn tableName="jarvis_usage_days" columnName="mail_polls_empty"/>
+            <dropColumn tableName="jarvis_usage_days" columnName="mail_polls"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
