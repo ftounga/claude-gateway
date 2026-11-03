@@ -1,11 +1,11 @@
 {
-  "description": "F-240 / SF-240-02 (D12) — le banc de la parole : 8 scénarios de délégation, contexte figé (les résultats que les outils d'Opus auraient rendus). Jeu FICTIF : aucune donnée de compte.",
+  "description": "F-240 / SF-240-02 (D12) — le banc de la parole : scénarios de délégation, contexte figé (les résultats que les outils d'Opus auraient rendus). Jeu FICTIF : aucune donnée de compte. SF-240-06 : aucune date absolue ; les dates sont des jetons relatifs au jour du passage, résolus par le banc (J±n jour calendaire, O±n jour ouvré, suffixe jour ; M±n mois, M±n:jj).",
   "scenarios": [
     {
       "id": "O1",
       "category": "POINT_CLIENT",
       "said": "Fais-moi le point sur CAGIP.",
-      "context": "Client CAGIP. Chantier 2 « Exposition du BFF » : déployé en recette le 30/10, attend les chemins réseau d'Iheb pour la production. Chantier 3 « Migration Keycloak » : tests d'intégration en cours, 41 tests sur 44 passent ; les 3 échecs portent sur le renouvellement des jetons. Chantier 4 « Runner Snowflake » : relance à Marc envoyée le 28/10, sans réponse. Mail de passation à Iheb préparé, pas encore envoyé.",
+      "context": "Client CAGIP. Chantier 2 « Exposition du BFF » : déployé en recette le {O-3}, attend les chemins réseau d'Iheb pour la production. Chantier 3 « Migration Keycloak » : tests d'intégration en cours, 41 tests sur 44 passent ; les 3 échecs portent sur le renouvellement des jetons. Chantier 4 « Runner Snowflake » : relance à Marc envoyée le {O-4}, sans réponse. Mail de passation à Iheb préparé, pas encore envoyé.",
       "invitation": "any",
       "confirmation": false
     },
@@ -13,7 +13,7 @@
       "id": "O2",
       "category": "ETAT_CHANTIER",
       "said": "Où en est le chantier 3 ?",
-      "context": "Chantier 3 « Migration Keycloak » (CAGIP), étape 4 sur 6 : tests d'intégration. 41 tests sur 44 passent. Les 3 échecs : renouvellement du jeton de rafraîchissement (realm ca-savings), délai d'expiration à 300 s au lieu de 1 800 s dans la configuration Terraform. Prochaine étape : recette utilisateur, prévue jeudi.",
+      "context": "Chantier 3 « Migration Keycloak » (CAGIP), étape 4 sur 6 : tests d'intégration. 41 tests sur 44 passent. Les 3 échecs : renouvellement du jeton de rafraîchissement (realm ca-savings), délai d'expiration à 300 s au lieu de 1 800 s dans la configuration Terraform. Prochaine étape : recette utilisateur, prévue {O+2:jour} {O+2}.",
       "invitation": "any",
       "confirmation": false
     },
@@ -37,7 +37,7 @@
       "id": "O5",
       "category": "TICKET",
       "said": "Qu'est-ce que dit le ticket LDIC-223 ?",
-      "context": "Ticket Jira LDIC-223 « Migrer le state Terraform vers gitlab-tfstate » — priorité haute, assigné à vous, statut À faire. Description : le state est aujourd'hui dans un bucket S3 sans verrouillage ; migrer vers le backend HTTP de GitLab, avec verrouillage, pour les 4 environnements ; ne pas toucher à la production avant la recette. Commentaire de Paul (31/10) : « attention, le state de recette contient des ressources orphelines ».",
+      "context": "Ticket Jira LDIC-223 « Migrer le state Terraform vers gitlab-tfstate » — priorité haute, assigné à vous, statut À faire. Description : le state est aujourd'hui dans un bucket S3 sans verrouillage ; migrer vers le backend HTTP de GitLab, avec verrouillage, pour les 4 environnements ; ne pas toucher à la production avant la recette. Commentaire de Paul ({O-2}) : « attention, le state de recette contient des ressources orphelines ».",
       "invitation": "any",
       "confirmation": false
     },
@@ -45,7 +45,7 @@
       "id": "O6",
       "category": "LONG_TABLEAU",
       "said": "Compare-moi les coûts AWS des trois environnements le mois dernier.",
-      "context": "Coûts AWS d'octobre (Cost Explorer). Dev : 412 € (EC2 180, RDS 120, NAT 70, divers 42). Recette : 1 284 € (EC2 510, RDS 390, NAT 210, EKS 140, divers 34). Production : 3 960 € (EC2 1 620, RDS 1 180, NAT 520, EKS 430, CloudFront 150, divers 60). Hausse de la recette : +38 % par rapport à septembre, due à une instance RDS db.r6g.2xlarge laissée allumée après les tests de charge du 14/10.",
+      "context": "Coûts AWS du mois dernier, {M-1} (Cost Explorer). Dev : 412 € (EC2 180, RDS 120, NAT 70, divers 42). Recette : 1 284 € (EC2 510, RDS 390, NAT 210, EKS 140, divers 34). Production : 3 960 € (EC2 1 620, RDS 1 180, NAT 520, EKS 430, CloudFront 150, divers 60). Hausse de la recette : +38 % par rapport à {M-2}, due à une instance RDS db.r6g.2xlarge laissée allumée après les tests de charge du {M-1:14}.",
       "invitation": "any",
       "confirmation": false
     },
@@ -53,7 +53,7 @@
       "id": "O7",
       "category": "CONFIRMATION",
       "said": "Envoie le compte rendu de la réunion d'hier à Paul.",
-      "context": "Compte rendu de la réunion du 01/11 (comité Helios) prêt dans le fil : décisions (Cognito retenu sous réserve d'un essai ADFS), actions (Paul : accès ADFS de recette avant vendredi ; vous : maquette d'écran de connexion). Adresse de Paul connue : paul.martin@exemple.fr. Aucun envoi n'a encore été fait. L'envoi d'un courriel engage : il se confirme.",
+      "context": "Compte rendu de la réunion du {J-1:jour} {J-1} (comité Helios) prêt dans le fil : décisions (Cognito retenu sous réserve d'un essai ADFS), actions (Paul : accès ADFS de recette avant le {O+3:jour} {O+3} ; vous : maquette d'écran de connexion). Adresse de Paul connue : paul.martin@exemple.fr. Aucun envoi n'a encore été fait. L'envoi d'un courriel engage : il se confirme.",
       "invitation": "forbidden",
       "confirmation": true
     },
@@ -61,7 +61,7 @@
       "id": "O8",
       "category": "ANNEXE",
       "said": "Le déploiement de CAGIP est fini ?",
-      "context": "Déploiement CAGIP en production terminé à 10:42 : 3 services mis à jour, vérifications de santé au vert, aucune erreur dans les journaux depuis. Point annexe important, sans lien direct avec la question : le certificat TLS du domaine helios.exemple.fr expire dans 3 jours (le 05/11) et son renouvellement automatique a échoué cette nuit (validation DNS refusée).",
+      "context": "Déploiement CAGIP en production terminé à 10:42 : 3 services mis à jour, vérifications de santé au vert, aucune erreur dans les journaux depuis. Point annexe important, sans lien direct avec la question : le certificat TLS du domaine helios.exemple.fr expire dans 3 jours (le {J+3}) et son renouvellement automatique a échoué cette nuit (validation DNS refusée).",
       "invitation": "required",
       "confirmation": false,
       "annexKeyword": "Helios"
@@ -69,8 +69,8 @@
     {
       "id": "O9",
       "category": "PORTRAIT_F241",
-      "said": "Rédige un mail au client Orion pour décaler la recette à jeudi.",
-      "context": "Client Orion Assurances, interlocutrice Claire Dumas (recette). La recette du chantier 1 « Refonte du portail » était prévue mercredi 04/11 ; l'environnement de recette n'est livré que mercredi soir. Proposition : décaler à jeudi 05/11, 10:00.",
+      "said": "Rédige un mail au client Orion pour décaler la recette à {O+2:jour}.",
+      "context": "Client Orion Assurances, interlocutrice Claire Dumas (recette). La recette du chantier 1 « Refonte du portail » était prévue {O+1:jour} {O+1} ; l'environnement de recette n'est livré que {O+1:jour} soir. Proposition : décaler à {O+2:jour} {O+2}, 10:00.",
       "invitation": "any",
       "confirmation": false,
       "portrait": {
@@ -83,7 +83,7 @@
       "id": "O10",
       "category": "PORTRAIT_F241",
       "said": "Fais-moi le point sur CAGIP.",
-      "context": "Client CAGIP. Chantier 2 « Exposition du BFF » : déployé en recette le 30/10, attend les chemins réseau d'Iheb pour la production. Chantier 3 « Migration Keycloak » : 41 tests sur 44 passent. Mail de passation à Iheb préparé, pas encore envoyé.",
+      "context": "Client CAGIP. Chantier 2 « Exposition du BFF » : déployé en recette le {O-3}, attend les chemins réseau d'Iheb pour la production. Chantier 3 « Migration Keycloak » : 41 tests sur 44 passent. Mail de passation à Iheb préparé, pas encore envoyé.",
       "invitation": "any",
       "confirmation": false,
       "portrait": {

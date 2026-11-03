@@ -79,7 +79,38 @@ public final class JarvisFastGuards {
                 || (n.contains("detail") && n.contains("si vous le souhaitez"));
     }
 
-    private static final java.util.regex.Pattern MORE_REQUEST = java.util.regex.Pattern.compile(
+    private static final Pattern IGNORANCE = Pattern.compile(
+            "^(je l ignore|j ignore|je ne (le )?sais pas|je n en sais rien)\\b.*"
+                    + "|.*\\bje n en sais rien\\b.*"
+                    + "|^je n ai (rien|aucune information|aucune trace|aucune indication) (sur|concernant|a propos|"
+                    + "au sujet|pour|de prevu)\\b.*"
+                    + "|.*\\b(rien|aucune mention|aucune trace) dans (vos|mes|nos) (dossiers|fichiers|notes|echanges)\\b.*");
+
+    /**
+     * F-240 / SF-240-06 — une phrase qui avoue ignorer (« Je l'ignore », « je n'ai rien sur… », « rien dans vos
+     * dossiers ») : une information absente se <b>délègue</b>, elle ne s'avoue pas (banc prod du 03/11, P02).
+     */
+    public static boolean claimsIgnorance(String sentence) {
+        String n = normalize(sentence).replaceAll("\\bmonsieur\\b", "").replaceAll("\\s+", " ").strip();
+        return IGNORANCE.matcher(n).matches();
+    }
+
+    /** F-240 / SF-240-06 — les sources que Jarvis ne lit pas aujourd'hui (F-243 n'est que cadrée), normalisées. */
+    static final List<String> MISSING_SOURCES = List.of("agenda", "agendas", "calendrier", "calendriers",
+            "emploi du temps");
+
+    /**
+     * F-240 / SF-240-06 — une phrase qui nomme une source qu'aucune ligne du contexte ne fournit (« Je peux consulter
+     * votre agenda ») : Jarvis n'offre jamais une capacité ou une source inexistante. Présente dans le contexte, elle
+     * est permise.
+     */
+    public static boolean namesMissingSource(String sentence, String context) {
+        String n = " " + normalize(sentence) + " ";
+        String known = " " + normalize(context) + " ";
+        return MISSING_SOURCES.stream().anyMatch(s -> n.contains(" " + s + " ") && !known.contains(" " + s + " "));
+    }
+
+    private static final java.util.regex.Pattern MORE_REQUEST =java.util.regex.Pattern.compile(
             "\\b(dis m en|dites m en|dis moi en|dites moi en|m en dire|en dire|me dire) (un peu )?plus\\b"
                     + "|\\bdevelopp|\\bdetaill|\\bplus de details?\\b|\\bdavantage de details?\\b"
                     + "|^(et )?(la suite|ensuite|apres|quoi d autre|encore)$");

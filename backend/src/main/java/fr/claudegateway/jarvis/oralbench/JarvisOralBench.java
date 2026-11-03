@@ -1,8 +1,14 @@
 package fr.claudegateway.jarvis.oralbench;
 
 import java.io.InputStream;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
+import java.time.format.TextStyle;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -81,7 +87,80 @@ public final class JarvisOralBench {
     private JarvisOralBench() {
     }
 
-    /** Le jeu figé. */
+    /**
+     * F-240 / SF-240-06 — le jeu daté par rapport à {@code today} : chaque jeton de date de la demande et du contexte
+     * est résolu (voir {@link #dated}). Le banc ne dépend ainsi jamais du jour où il tourne.
+     */
+    public static List<Scenario> load(LocalDate today) {
+        return load().stream().map(s -> new Scenario(s.id(), s.category(), dated(s.said(), today),
+                dated(s.context(), today), s.invitation(), s.confirmation(), s.annexKeyword(), s.portrait()))
+                .toList();
+    }
+
+    private static final Pattern DATE_TOKEN = Pattern.compile("\\{([JOM])([+-]\\d{1,2})?(?::([a-z0-9]+))?}");
+    private static final Pattern ANY_TOKEN = Pattern.compile("\\{[^{}\\s]*}");
+    private static final DateTimeFormatter DAY_MONTH = DateTimeFormatter.ofPattern("dd/MM");
+
+    /**
+     * F-240 / SF-240-06 — résout les jetons de date d'un texte du jeu par rapport à {@code today} : {@code {J±n}} (jour
+     * calendaire, « jj/MM »), {@code {O±n}} (n-ième jour ouvré, lundi→vendredi), suffixe {@code :jour} (« lundi ») ;
+     * {@code {M±n}} (nom du mois, « octobre »), {@code {M±n:jj}} (« jj/MM » de ce mois, jour borné). Un jeton inconnu
+     * ou mal formé fait échouer le chargement : jamais un jeton dit tel quel au modèle.
+     */
+    public static String dated(String text, LocalDate today) {
+        if (text == null) {
+            return null;
+        }
+        Matcher m = DATE_TOKEN.matcher(text);
+        StringBuilder b = new StringBuilder();
+        while (m.find()) {
+            m.appendReplacement(b, Matcher.quoteReplacement(resolve(m.group(1),
+                    m.group(2) == null ? 0 : Integer.parseInt(m.group(2)), m.group(3), today, m.group())));
+        }
+        m.appendTail(b);
+        String out = b.toString();
+        if (ANY_TOKEN.matcher(out).find()) {
+            throw new IllegalStateException("Jeton de date inconnu dans le jeu : " + text);
+        }
+        return out;
+    }
+
+    private static String resolve(String kind, int n, String suffix, LocalDate today, String token) {
+        if ("M".equals(kind)) {
+            YearMonth month = YearMonth.from(today).plusMonths(n);
+            if (suffix == null) {
+                return month.getMonth().getDisplayName(TextStyle.FULL, Locale.FRENCH);
+            }
+            if (!suffix.matches("\\d{1,2}")) {
+                throw new IllegalStateException("Jeton de date inconnu dans le jeu : " + token);
+            }
+            return month.atDay(Math.min(Math.max(1, Integer.parseInt(suffix)), month.lengthOfMonth()))
+                    .format(DAY_MONTH);
+        }
+        LocalDate date = "J".equals(kind) ? today.plusDays(n) : workingDay(today, n);
+        if (suffix == null) {
+            return date.format(DAY_MONTH);
+        }
+        if (!"jour".equals(suffix)) {
+            throw new IllegalStateException("Jeton de date inconnu dans le jeu : " + token);
+        }
+        return date.getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.FRENCH);
+    }
+
+    /** Le n-ième jour ouvré (lundi→vendredi) après (n &gt; 0) ou avant (n &lt; 0) {@code today}. */
+    static LocalDate workingDay(LocalDate today, int n) {
+        LocalDate d = today;
+        int step = n >= 0 ? 1 : -1;
+        for (int left = Math.abs(n); left > 0;) {
+            d = d.plusDays(step);
+            if (d.getDayOfWeek() != DayOfWeek.SATURDAY && d.getDayOfWeek() != DayOfWeek.SUNDAY) {
+                left--;
+            }
+        }
+        return d;
+    }
+
+    /** Le jeu figé, jetons de date non résolus ({@link #load(LocalDate)} pour le jouer). */
     public static List<Scenario> load() {
         try (InputStream in = JarvisOralBench.class.getResourceAsStream("/jarvis/oral-bench-scenarios.json")) {
             JsonNode root = JSON.readTree(in);

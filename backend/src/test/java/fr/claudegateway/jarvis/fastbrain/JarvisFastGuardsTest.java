@@ -228,4 +228,32 @@ class JarvisFastGuardsTest {
                 .isFalse();
         assertThat(JarvisFastGuards.hasOpusAnswer(null)).isFalse();
     }
+
+    @Test
+    void f240_06AnAdmissionOfIgnoranceIsRecognised() {
+        assertThat(JarvisFastGuards.claimsIgnorance(
+                "Je l'ignore, Monsieur : rien dans vos dossiers ne mentionne ce week-end.")).isTrue();
+        assertThat(JarvisFastGuards.claimsIgnorance("Je ne sais pas, Monsieur.")).isTrue();
+        assertThat(JarvisFastGuards.claimsIgnorance("Monsieur, je n'en sais rien.")).isTrue();
+        assertThat(JarvisFastGuards.claimsIgnorance("Je n'ai rien sur ce week-end, Monsieur.")).isTrue();
+        assertThat(JarvisFastGuards.claimsIgnorance("Je n'ai aucune information concernant samedi.")).isTrue();
+        assertThat(JarvisFastGuards.claimsIgnorance("Il n'y a rien dans mes notes à ce sujet.")).isTrue();
+        // Ni une demande de répéter, ni une réponse ancrée, ni une politesse.
+        assertThat(JarvisFastGuards.claimsIgnorance("Pardon, Monsieur, je n'ai pas saisi la fin.")).isFalse();
+        assertThat(JarvisFastGuards.claimsIgnorance("Je n'ai rien compris, pouvez-vous répéter ?")).isFalse();
+        assertThat(JarvisFastGuards.claimsIgnorance("Rien à envoyer pour l'instant.")).isFalse();
+        assertThat(JarvisFastGuards.claimsIgnorance("Je n'en doute pas, Monsieur.")).isFalse();
+        assertThat(JarvisFastGuards.claimsIgnorance("Voulez-vous que je génère la preuve, Monsieur ?")).isFalse();
+    }
+
+    @Test
+    void f240_06AMissingSourceIsOneTheContextDoesNotProvide() {
+        assertThat(JarvisFastGuards.namesMissingSource("Je peux consulter votre agenda si vous le souhaitez.",
+                "Maintenant : lundi")).isTrue();
+        assertThat(JarvisFastGuards.namesMissingSource("Votre calendrier est vide.", "Maintenant : lundi")).isTrue();
+        assertThat(JarvisFastGuards.namesMissingSource("Voyons votre emploi du temps.", "")).isTrue();
+        assertThat(JarvisFastGuards.namesMissingSource("Votre agenda est libre samedi.",
+                "Agenda : samedi libre")).isFalse();
+        assertThat(JarvisFastGuards.namesMissingSource("Le chantier 3 en est aux tests.", "")).isFalse();
+    }
 }
