@@ -882,7 +882,7 @@ class JarvisFastBrainServiceTest {
         assertThat(JSON.writeValueAsString(calls.get(1).tools())).isEqualTo(first);
         assertThat(JSON.writeValueAsString(calls.get(2).tools())).isEqualTo(first);
         assertThat(calls.get(0).system()).isEqualTo(calls.get(2).system());
-        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("11");
+        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("12");
         assertThat(first).doesNotContain("Kestrel").doesNotContain(subject.toString());
     }
 
@@ -1252,5 +1252,71 @@ class JarvisFastBrainServiceTest {
                         "Maintenant : lundi\nAgenda : samedi libre");
         assertThat(known.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
         assertThat(known.spokenText()).isEqualTo("Votre agenda est libre samedi.");
+    }
+
+    // ---- F-240 / SF-240-07 : jamais un lien inventé, une seule question de politesse ----
+
+    private static final String P08_CONTEXT = """
+            Maintenant : lundi 2 novembre 2026, 09:15
+            Univers (etat a 09:00) :
+            - client Orion Assurances (connecte) : sujets Orion-Run (chantier 1 « Refonte du portail », 3/6, etape : recette)
+            - client Helios Energie (deconnecte) : personnes : Claire Dumas (cheffe de projet)
+            Attentes ouvertes du sujet courant : Claire Dumas doit valider la recette du portail
+            A envoyer (1) : compte rendu de recette a Claire Dumas""";
+
+    @Test
+    void f240_07ThePromptForbidsInventedLinksAndASecondCourtesyQuestion() {
+        assertThat(JarvisFastBrainPrompt.system()).contains("aucun lien de cause")
+                .contains("même quand une note propose une relance");
+    }
+
+    @Test
+    void f240_07TheProdAnswerOfP08IsSaidWithoutTheInventedDependency() {
+        JarvisFastBrainService.Outcome outcome = service(streaming("compris: On passe à la suite.\n",
+                "Passons au compte rendu de recette pour Claire Dumas, Monsieur : il reste à envoyer, et sa ",
+                "validation du portail d'Orion-Run en dépend."), null, null)
+                .bench(ask("On passe à la suite."), "claude-sonnet-5-5", P08_CONTEXT);
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(outcome.spokenText())
+                .isEqualTo("Passons au compte rendu de recette pour Claire Dumas, Monsieur : il reste à envoyer.");
+        assertThat(outcome.guards().groundingTrips()).isEqualTo(1);
+    }
+
+    @Test
+    void f240_07AWhollyInventedLinkIsDroppedAfterASentenceOrDelegatedAlone() {
+        JarvisFastBrainService.Outcome after = service(streaming("Le compte rendu de recette reste à envoyer. ",
+                "Tout dépend de Claire Dumas."), null, null)
+                .bench(ask("On passe à la suite."), "claude-sonnet-5-5", P08_CONTEXT);
+        assertThat(after.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(after.spokenText()).isEqualTo("Le compte rendu de recette reste à envoyer.");
+
+        JarvisFastBrainService.Outcome alone = service(streaming("Tout dépend de Claire Dumas."), null, null)
+                .bench(ask("On passe à la suite."), "claude-sonnet-5-5", P08_CONTEXT);
+        assertThat(alone.kind()).isEqualTo(JarvisFastBrainService.Kind.DELEGATE);
+    }
+
+    @Test
+    void f240_07TheProdAnswerOfP16DropsTheSecondCourtesyQuestion() {
+        String asked = P08_CONTEXT + "\n\n" + JarvisFastContextBuilder.dayState(false, true);
+        JarvisFastBrainService service = service(streaming("Voilà qui laisse le champ libre, Monsieur. ",
+                "Du nouveau depuis notre dernier entretien ?"), null, null);
+        JarvisFastBrainService.Outcome outcome = service.bench(ask("Calme, la matinée."), "claude-sonnet-5-5", asked);
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(outcome.spokenText()).isEqualTo("Voilà qui laisse le champ libre, Monsieur.");
+
+        // Pas encore posée : la question reste dite.
+        String fresh = P08_CONTEXT + "\n\n" + JarvisFastContextBuilder.dayState(false, false);
+        assertThat(service(streaming("Voilà qui laisse le champ libre, Monsieur. ",
+                "Du nouveau depuis notre dernier entretien ?"), null, null)
+                .bench(ask("Calme, la matinée."), "claude-sonnet-5-5", fresh).spokenText())
+                .contains("Du nouveau depuis notre dernier entretien");
+        // Seule dans la réponse : dite (jamais une réponse vide).
+        assertThat(service(streaming("Du nouveau depuis notre dernier entretien ?"), null, null)
+                .bench(ask("Calme, la matinée."), "claude-sonnet-5-5", asked).spokenText())
+                .startsWith("Du nouveau depuis notre dernier entretien");
+        // Une confirmation n'est pas une politesse.
+        assertThat(service(streaming("Le compte rendu de recette reste à envoyer. ", "Vous confirmez ?"),
+                null, null).bench(ask("Prépare le compte rendu."), "claude-sonnet-5-5", asked).spokenText())
+                .contains("Vous confirmez");
     }
 }

@@ -256,4 +256,55 @@ class JarvisFastGuardsTest {
                 "Agenda : samedi libre")).isFalse();
         assertThat(JarvisFastGuards.namesMissingSource("Le chantier 3 en est aux tests.", "")).isFalse();
     }
+
+    // ---- F-240 / SF-240-07 : liens inventés, question de politesse ----
+
+    private static final String P08 = """
+            Attentes ouvertes du sujet courant : Claire Dumas doit valider la recette du portail
+            A envoyer (1) : compte rendu de recette a Claire Dumas""";
+
+    @Test
+    void f240_07AnInventedDependencyIsCutFromTheSentence() {
+        assertThat(JarvisFastGuards.withoutInventedLink("Passons au compte rendu de recette pour Claire Dumas, "
+                + "Monsieur : il reste à envoyer, et sa validation du portail d'Orion-Run en dépend.", P08,
+                "On passe à la suite.")).isEqualTo(
+                        "Passons au compte rendu de recette pour Claire Dumas, Monsieur : il reste à envoyer.");
+        assertThat(JarvisFastGuards.withoutInventedLink(
+                "Le compte rendu reste à envoyer, car Claire l'attend pour valider.", P08, ""))
+                .isEqualTo("Le compte rendu reste à envoyer.");
+        assertThat(JarvisFastGuards.withoutInventedLink(
+                "Le compte rendu reste à envoyer parce que Claire doit valider.", P08, ""))
+                .isEqualTo("Le compte rendu reste à envoyer.");
+        // Rien de dicible ne reste : chaîne vide.
+        assertThat(JarvisFastGuards.withoutInventedLink("Tout dépend de Claire.", P08, "")).isEmpty();
+    }
+
+    @Test
+    void f240_07AKnownLinkOrAPlainSentenceIsKept() {
+        String said = "La validation de Claire dépend du compte rendu.";
+        assertThat(JarvisFastGuards.withoutInventedLink(said, P08 + "\nOpus : la validation dépend du compte rendu.",
+                "")).isEqualTo(said);
+        assertThat(JarvisFastGuards.withoutInventedLink("Ça dépend de Claire, Monsieur.", P08,
+                "Ça dépend de qui ?")).isEqualTo("Ça dépend de Claire, Monsieur.");
+        assertThat(JarvisFastGuards.withoutInventedLink("Le chantier 3 en est aux tests, en toute indépendance.",
+                CONTEXT, "")).isEqualTo("Le chantier 3 en est aux tests, en toute indépendance.");
+        assertThat(JarvisFastGuards.withoutInventedLink("Ensuite, on attend la carte de Paul.", CONTEXT, ""))
+                .isEqualTo("Ensuite, on attend la carte de Paul.");
+    }
+
+    @Test
+    void f240_07CourtesyQuestionsAreToldFromClarifications() {
+        assertThat(JarvisFastGuards.isCourtesyQuestion("Du nouveau depuis notre dernier entretien ?")).isTrue();
+        assertThat(JarvisFastGuards.isCourtesyQuestion("La semaine commence bien ?")).isTrue();
+        assertThat(JarvisFastGuards.isCourtesyQuestion("Bien dormi, Monsieur ?")).isTrue();
+        assertThat(JarvisFastGuards.isCourtesyQuestion("Et vous ?")).isTrue();
+        assertThat(JarvisFastGuards.isCourtesyQuestion("Du nouveau depuis notre dernier entretien.")).isFalse();
+        assertThat(JarvisFastGuards.isCourtesyQuestion("Lequel, Monsieur ?")).isFalse();
+        assertThat(JarvisFastGuards.isCourtesyQuestion("Vous confirmez ?")).isFalse();
+        assertThat(JarvisFastGuards.isCourtesyQuestion("Voulez-vous que je génère la preuve, Monsieur ?")).isFalse();
+        assertThat(JarvisFastGuards.isCourtesyQuestion("Par quoi commençons-nous ?")).isFalse();
+        assertThat(JarvisFastGuards.courtesyAlreadyAsked("## Conversation du jour\nPremière salutation du jour : non"
+                + "\nQuestion de politesse déjà posée : oui")).isTrue();
+        assertThat(JarvisFastGuards.courtesyAlreadyAsked("Question de politesse déjà posée : non")).isFalse();
+    }
 }
