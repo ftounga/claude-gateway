@@ -1319,4 +1319,25 @@ class JarvisFastBrainServiceTest {
                 null, null).bench(ask("Prépare le compte rendu."), "claude-sonnet-5-5", asked).spokenText())
                 .contains("Vous confirmez");
     }
+
+    @Test
+    void f240_07OnARemarkAMissingSourceIsCutNeverDelegated() {
+        JarvisFastBrainService.Outcome outcome = service(streaming("compris: Grosse journée qui s'annonce.\n",
+                "Je vous crois sur parole, Monsieur ; l'agenda, lui, n'a pas encore rendu son verdict."), null, null)
+                .bench(ask("Grosse journée qui s'annonce."), "claude-sonnet-5-5", P08_CONTEXT);
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(outcome.spokenText()).isEqualTo("Je vous crois sur parole, Monsieur.");
+
+        // Une question reste déléguée (SF-240-06, P02) ; un aveu d'ignorance aussi, même sur une remarque.
+        assertThat(service(streaming("Je peux consulter votre agenda, Monsieur."), null, null)
+                .bench(ask("J'ai quoi demain ?"), "claude-sonnet-5-5", P08_CONTEXT).kind())
+                .isEqualTo(JarvisFastBrainService.Kind.DELEGATE);
+        assertThat(service(streaming("Je l'ignore, Monsieur."), null, null)
+                .bench(ask("Grosse journée qui s'annonce."), "claude-sonnet-5-5", P08_CONTEXT).kind())
+                .isEqualTo(JarvisFastBrainService.Kind.DELEGATE);
+        // Après une autre phrase : la phrase est retirée.
+        assertThat(service(streaming("Je n'en doute pas, Monsieur. ", "Votre agenda le dira."), null, null)
+                .bench(ask("Grosse journée qui s'annonce."), "claude-sonnet-5-5", P08_CONTEXT).spokenText())
+                .isEqualTo("Je n'en doute pas, Monsieur.");
+    }
 }

@@ -150,22 +150,58 @@ public final class JarvisFastGuards {
             if (known.contains("car".equals(stem) ? " car " : " " + stem)) {
                 continue;
             }
-            int cut = m.start();
-            if (m.group(2) != null) {
-                cut = 0;
-                Matcher b = CLAUSE_BOUNDARY.matcher(sentence.substring(0, m.start()));
-                while (b.find()) {
-                    cut = b.start();
-                }
-            }
-            String kept = TRAILING_JOIN.matcher(sentence.substring(0, cut)).replaceAll("").strip();
-            String words = normalize(kept).replaceAll("\\bmonsieur\\b", " ").strip();
-            if (words.isEmpty() || words.split("\\s+").length < 3) {
-                return "";
-            }
-            return kept + ".";
+            return m.group(2) != null ? beforeClauseOf(sentence, m.start()) : keptBefore(sentence, m.start());
         }
         return sentence;
+    }
+
+    /** Ce qui précède la proposition qui contient la position {@code at}, ou une chaîne vide (moins de trois mots). */
+    static String beforeClauseOf(String sentence, int at) {
+        int cut = 0;
+        Matcher b = CLAUSE_BOUNDARY.matcher(sentence.substring(0, at));
+        while (b.find()) {
+            cut = b.start();
+        }
+        return keptBefore(sentence, cut);
+    }
+
+    /** Ce qui précède {@code cut}, sans liaison pendante, terminé par un point ; vide sous trois mots (hors Monsieur). */
+    private static String keptBefore(String sentence, int cut) {
+        String kept = TRAILING_JOIN.matcher(sentence.substring(0, cut)).replaceAll("").strip();
+        String words = normalize(kept).replaceAll("\\bmonsieur\\b", " ").strip();
+        if (words.isEmpty() || words.split("\\s+").length < 3) {
+            return "";
+        }
+        return kept + ".";
+    }
+
+    /**
+     * F-240 / SF-240-07 — une <b>remarque</b> de l'utilisateur (« Grosse journée qui s'annonce. ») à laquelle la phrase
+     * répond en nommant une source absente (« … ; l'agenda, lui, n'a pas encore rendu son verdict », pré-banc du 03/11,
+     * C06) : rien n'est à chercher, donc rien à déléguer. Rend la phrase sans la proposition qui nomme la source, ou
+     * une chaîne vide. Un aveu d'ignorance n'est jamais récupéré.
+     */
+    public static String withoutMissingSource(String sentence, String context) {
+        if (sentence == null || claimsIgnorance(sentence)) {
+            return "";
+        }
+        String known = " " + normalize(context) + " ";
+        Matcher w = WORD.matcher(sentence);
+        while (w.find()) {
+            String n = normalize(w.group()).replaceFirst("^[a-z] ", ""); // « l'agenda » ⇒ « agenda »
+            boolean source = MISSING_SOURCES.contains(n) || ("emploi".equals(n)
+                    && normalize(sentence.substring(w.start())).startsWith("emploi du temps"));
+            String named = "emploi".equals(n) ? "emploi du temps" : n;
+            if (source && !known.contains(" " + named + " ")) {
+                return beforeClauseOf(sentence, w.start());
+            }
+        }
+        return sentence;
+    }
+
+    /** F-240 / SF-240-07 — la parole est une remarque, pas une question ni une demande (aucun « ? »). */
+    public static boolean isRemark(String said) {
+        return said != null && !said.isBlank() && !said.contains("?");
     }
 
     /**

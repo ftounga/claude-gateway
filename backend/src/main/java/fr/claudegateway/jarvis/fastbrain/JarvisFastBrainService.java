@@ -1637,8 +1637,19 @@ public class JarvisFastBrainService {
                 // agenda ») : une information absente se délègue (hors petite conversation).
                 if (!smallTalk && (JarvisFastGuards.claimsIgnorance(sentence)
                         || JarvisFastGuards.namesMissingSource(sentence, context))) {
-                    abort(REASON_UNKNOWN);
-                    return;
+                    // F-240 / SF-240-07 — sur une remarque (« Grosse journée qui s'annonce. »), rien n'est à chercher :
+                    // la source est retirée de la phrase, ou la phrase après une autre ; jamais de délégation inutile.
+                    String kept = JarvisFastGuards.isRemark(said)
+                            ? JarvisFastGuards.withoutMissingSource(sentence, context) : "";
+                    if (kept.isEmpty() && JarvisFastGuards.isRemark(said) && !saidNow.isEmpty()) {
+                        fillersRemoved++;
+                        return;
+                    }
+                    if (kept.isEmpty()) {
+                        abort(REASON_UNKNOWN);
+                        return;
+                    }
+                    sentence = kept;
                 }
                 if (JarvisFastGuards.isFillerAlone(sentence) || JarvisFastGuards.isListeningInvitation(sentence)
                         || (!saidNow.isEmpty() && JarvisFastGuards.isClosingPrompt(sentence, said))) {
