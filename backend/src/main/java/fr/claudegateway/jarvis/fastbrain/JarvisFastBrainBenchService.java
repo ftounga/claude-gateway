@@ -356,7 +356,10 @@ public class JarvisFastBrainBenchService {
                 // F-241 / SF-241-05 — la marque 📌 attendue (noter, retenir, oublier, aucune), contrôlée sans modèle.
                 String markDefect = JarvisConversationBench.markDefect(s.turns().get(i),
                         outcome.guards() == null ? List.of() : outcome.guards().pins(), routeAndSaid[1]);
-                turns.add(markDefect == null ? verdict : verdict.withGrave(markDefect));
+                verdict = markDefect == null ? verdict : verdict.withGrave(markDefect);
+                // F-245 / SF-245-05 — la destination attendue (fil Jarvis ou sujet), contrôlée sans modèle.
+                String targetDefect = JarvisConversationBench.targetDefect(s.turns().get(i), outcome);
+                turns.add(targetDefect == null ? verdict : verdict.withGrave(targetDefect));
                 previous.add(new String[] { s.turns().get(i).said(), routeAndSaid[1] });
             }
             allTurns.addAll(turns);

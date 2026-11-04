@@ -608,12 +608,24 @@ public class AtelierCompactionService {
         return (long) (chars / CHARS_PER_TOKEN);
     }
 
-    /** Messages que le prochain tour rejouera : tout le fil, ou ce qui suit la frontière. */
-    private List<AtelierMessage> replayable(UUID userId, Workspace workspace) {
+    /**
+     * Messages que le prochain tour rejouera : tout le fil, ou ce qui suit la frontière.
+     *
+     * <p>F-245 / SF-245-05 (cadrage §5 b) : les échanges du cerveau rapide ({@code brain = FAST}) n'en font pas partie
+     * — la boucle ne les rejoue jamais (F-235 / SF-235-04, D12). Les compter gonflait l'estimation (compaction
+     * déclenchée trop tôt), les envoyait au résumé et les comptait parmi les messages récents gardés. Sur tous les
+     * espaces : c'était une erreur existante.</p>
+     */
+    List<AtelierMessage> replayable(UUID userId, Workspace workspace) {
         OffsetDateTime since = workspace.getChatThreadStartedAt();
-        return since == null
+        List<AtelierMessage> all = since == null
                 ? messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspace.getId(), userId)
                 : messageRepository.findByWorkspaceIdAndUserIdAndCreatedAtGreaterThanEqualOrderByCreatedAtAsc(
                         workspace.getId(), userId, since);
+        if (all.stream().noneMatch(AtelierMessage::isFastBrain)) {
+            return all;
+        }
+        return all.stream().filter(m -> !m.isFastBrain())
+                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
     }
 }
