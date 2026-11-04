@@ -18,9 +18,9 @@ import org.json.JSONObject;
 import fr.claudegateway.jarvis.companion.core.AnnouncementPolicy;
 
 /**
- * <b>Les deux seules routes que le compagnon appelle</b> (F-232 / SF-232-03) : l'appairage
- * ({@code POST /api/runner/jarvis/pair}) et la relève des annonces ({@code GET /api/runner/jarvis/announcements},
- * jeton dans l'en-tête {@value #TOKEN_HEADER}). HTTPS seulement (adresse normalisée par {@code JarvisLink}). Le jeton
+ * <b>Les routes que le compagnon appelle lui-même</b> (F-232 / SF-232-03, SF-232-08) : l'appairage
+ * ({@code POST /api/runner/jarvis/pair}), la relève des annonces ({@code GET /api/runner/jarvis/announcements}) et la
+ * session de l'écran Jarvis ({@code POST /api/runner/jarvis/session}), jeton dans l'en-tête {@value #TOKEN_HEADER}. HTTPS seulement (adresse normalisée par {@code JarvisLink}). Le jeton
  * n'est jamais journalisé. À appeler hors du fil principal.
  */
 final class AnnouncementClient {
@@ -103,6 +103,46 @@ final class AnnouncementClient {
                 items.add(new AnnouncementPolicy.Item(item.optString("id", null), item.optString("text", null)));
             }
             return new Feed(json.optString("cursor", cursor), items);
+        } catch (JSONException e) {
+            throw new IOException("Réponse illisible", e);
+        } finally {
+            http.disconnect();
+        }
+    }
+
+    /**
+     * SF-232-08 — la session courte de l'écran Jarvis ({@code POST /api/runner/jarvis/session}, même jeton, même
+     * en-tête) : {@code {token, expiresAt, scope, locked}}. Le JSON est remis tel quel à la page (cadre principal).
+     */
+    static JSONObject session(String gateway, String token, boolean locked, String purpose) throws IOException {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("locked", locked);
+            body.put("purpose", purpose);
+        } catch (JSONException e) {
+            throw new IOException("Requête illisible", e);
+        }
+        HttpURLConnection http = open(gateway + "/api/runner/jarvis/session");
+        try {
+            http.setRequestMethod("POST");
+            http.setDoOutput(true);
+            http.setRequestProperty("Content-Type", "application/json");
+            http.setRequestProperty(TOKEN_HEADER, token);
+            try (OutputStream out = http.getOutputStream()) {
+                out.write(body.toString().getBytes(StandardCharsets.UTF_8));
+            }
+            int status = http.getResponseCode();
+            if (status == 401) {
+                throw new Unauthorized();
+            }
+            if (status != 200) {
+                throw new IOException("HTTP " + status);
+            }
+            JSONObject json = new JSONObject(read(http.getInputStream()));
+            if (json.optString("token", "").isEmpty()) {
+                throw new IOException("Session vide");
+            }
+            return json;
         } catch (JSONException e) {
             throw new IOException("Réponse illisible", e);
         } finally {

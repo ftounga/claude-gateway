@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   F-232 / SF-232-01 — Le compagnon Android de Jarvis.
-  Le compagnon ouvre l'écran Jarvis dans le navigateur (ou la PWA installée), qui porte seul la session.
-  SF-232-03 : INTERNET pour la SEULE relève des annonces (jeton dédié, appairé par code) ; ce que le
-  micro entend ne sort jamais du téléphone.
+  SF-232-03 : INTERNET pour la relève des annonces (jeton dédié, appairé par code) ; ce que le
+  micro entend AVANT le mot ne sort jamais du téléphone.
+  SF-232-08 (amendement du 2026-11-04) : au mot, l'écran Jarvis s'ouvre DANS le compagnon (WakeActivity,
+  WebView par-dessus l'écran verrouillé), avec une session courte à portée « jarvis-compagnon ».
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
@@ -36,13 +37,14 @@
 
         <activity
             android:name=".WakeActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode|smallestScreenSize"
             android:excludeFromRecents="true"
             android:exported="false"
             android:launchMode="singleInstance"
             android:noHistory="true"
             android:showWhenLocked="true"
             android:taskAffinity=""
-            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
             android:turnScreenOn="true" />
 
         <service
