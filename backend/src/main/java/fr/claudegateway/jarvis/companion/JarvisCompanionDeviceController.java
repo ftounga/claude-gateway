@@ -30,7 +30,9 @@ import jakarta.validation.constraints.Size;
  * <ul>
  *   <li>{@code POST /runner/jarvis/pair} — authentifié par le <b>code</b> porté dans le corps ;</li>
  *   <li>{@code GET /runner/jarvis/announcements} — authentifié par le <b>jeton dédié</b> dans l'en-tête
- *   {@value #TOKEN_HEADER}, vérifié ICI ; rien n'est posé dans le {@code SecurityContext}.</li>
+ *   {@value #TOKEN_HEADER}, vérifié ICI ; rien n'est posé dans le {@code SecurityContext} ;</li>
+ *   <li>{@code POST /runner/jarvis/session} (SF-232-05) — même jeton, même vérification : rend une <b>session courte à
+ *   portée {@code jarvis-compagnon}</b> pour l'écran Jarvis ouvert dans le compagnon.</li>
  * </ul>
  *
  * <p>Le jeton du compagnon n'est lu nulle part ailleurs : il n'ouvre aucune autre route. Il n'est jamais journalisé.</p>
@@ -44,11 +46,28 @@ public class JarvisCompanionDeviceController {
 
     private final JarvisCompanionService companions;
     private final JarvisAnnouncementService announcements;
+    private final JarvisCompanionSessionService sessions;
 
     public JarvisCompanionDeviceController(JarvisCompanionService companions,
-            JarvisAnnouncementService announcements) {
+            JarvisAnnouncementService announcements, JarvisCompanionSessionService sessions) {
         this.companions = companions;
         this.announcements = announcements;
+        this.sessions = sessions;
+    }
+
+    /**
+     * F-232 / SF-232-05 — la session de l'écran Jarvis du compagnon. {@code locked} absent vaut verrouillé ; le corps
+     * entier est facultatif. 401 générique si le jeton est refusé.
+     */
+    @PostMapping(value = "/session", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> session(@RequestHeader(value = TOKEN_HEADER, required = false) String token,
+            @Valid @RequestBody(required = false) SessionRequest request) {
+        Boolean locked = request == null ? null : request.locked();
+        JarvisCompanionOpening.Purpose purpose = request == null ? null : request.purposeOrNull();
+        return sessions.open(token, locked, purpose)
+                .<ResponseEntity<?>>map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(new ErrorResponse("jarvis_companion_unauthorized", "Jeton du compagnon refusé.")));
     }
 
     @PostMapping(value = "/pair", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -82,6 +101,21 @@ public class JarvisCompanionDeviceController {
             return OffsetDateTime.parse(cursor.strip());
         } catch (DateTimeParseException e) {
             return null;
+        }
+    }
+
+    /** SF-232-05 — l'état du téléphone et le motif ({@code OPEN}, {@code UNLOCK}, {@code RENEW} ; inconnu ⇒ OPEN). */
+    public record SessionRequest(Boolean locked, @Size(max = 16) String purpose) {
+
+        JarvisCompanionOpening.Purpose purposeOrNull() {
+            if (purpose == null) {
+                return null;
+            }
+            try {
+                return JarvisCompanionOpening.Purpose.valueOf(purpose.strip().toUpperCase(java.util.Locale.ROOT));
+            } catch (IllegalArgumentException e) {
+                return null;
+            }
         }
     }
 

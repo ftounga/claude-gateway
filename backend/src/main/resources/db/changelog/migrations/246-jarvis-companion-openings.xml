@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-232 / SF-232-05 - LA SESSION JARVIS DU COMPAGNON (amendement du 2026-11-04, D7, D9).
+
+      jarvis_companion_openings : une ligne par session courte emise a un compagnon appaire (portee
+      jarvis-compagnon) : ouverture de l'ecran au mot (OPEN), deverrouillage pour un "oui" (UNLOCK),
+      renouvellement (RENEW), et l'etat verrouille du telephone a l'emission. Mesure J+7 seulement :
+      aucun contenu, aucun jeton. Isolation : user_id sur chaque ligne.
+
+      Rollback : la table se retire.
+    -->
+
+    <changeSet id="246-jarvis-companion-openings" author="claude-gateway">
+        <createTable tableName="jarvis_companion_openings">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="companion_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="purpose" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="locked" type="boolean"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="jarvis_companion_openings" indexName="idx_jarvis_companion_openings_user">
+            <column name="user_id"/>
+            <column name="created_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="jarvis_companion_openings"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

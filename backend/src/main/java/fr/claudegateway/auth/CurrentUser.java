@@ -33,6 +33,20 @@ public class CurrentUser {
         return principal().map(AuthenticatedUser::id);
     }
 
+    /**
+     * F-232 / SF-232-05 — la session du compagnon Android (compagnon, verrouillé à l'émission), ou vide pour une
+     * session ordinaire ou une requête anonyme. Lue sur le thread de requête (le {@code SecurityContext} n'est pas
+     * hérité par les pools SSE).
+     */
+    public Optional<CompanionSession> companionSession() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.isAuthenticated()
+                && authentication.getDetails() instanceof CompanionSession session) {
+            return Optional.of(session);
+        }
+        return Optional.empty();
+    }
+
     /** Identité complète authentifiée, ou vide si la requête est anonyme. */
     public Optional<AuthenticatedUser> principal() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();

@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -30,6 +31,12 @@ import jakarta.servlet.http.HttpServletResponse;
  * le filtre laisse simplement le contexte de sécurité vide : l'autorisation refusera l'accès
  * et l'{@code AuthenticationEntryPoint} renverra une 401 JSON homogène. Le filtre n'écrit
  * jamais lui-même la réponse d'erreur et ne journalise jamais le token.</p>
+ *
+ * <p><b>F-232 / SF-232-05 — la session du compagnon.</b> Un jeton portant la portée {@code jarvis-compagnon} n'ouvre que
+ * la liste fermée des routes de l'écran Jarvis ({@link CompanionSessionVerifier#allows}) : hors liste, le filtre répond
+ * lui-même <b>403</b> {@code jarvis_companion_scope} (seule exception à la règle ci-dessus). Le compagnon doit être
+ * encore appairé à chaque requête (révocation immédiate) ; la version de jeton s'applique comme partout. Toute autre
+ * portée est refusée.</p>
  */
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
@@ -40,11 +47,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final UserService userService;
+    /** F-232 / SF-232-05 — absent (contexte partiel de test) : toute session à portée est refusée. */
+    private final ObjectProvider<CompanionSessionVerifier> companionVerifier;
 
-    public JwtAuthenticationFilter(JwtService jwtService, UserService userService) {
+    public JwtAuthenticationFilter(JwtService jwtService, UserService userService,
+            ObjectProvider<CompanionSessionVerifier> companionVerifier) {
         this.jwtService = jwtService;
         this.userService = userService;
+        this.companionVerifier = companionVerifier;
     }
+
+    /** Ce que le filtre a conclu du jeton présenté. */
+    private enum Outcome { CONTINUE, OUT_OF_SCOPE }
 
     @Override
     protected void doFilterInternal(
@@ -53,24 +67,60 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             @NonNull FilterChain filterChain) throws ServletException, IOException {
 
         String token = extractBearerToken(request);
-        if (token != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-            authenticate(token, request);
+        if (token != null && SecurityContextHolder.getContext().getAuthentication() == null
+                && authenticate(token, request) == Outcome.OUT_OF_SCOPE) {
+            // F-232 / SF-232-05 : une session « jarvis-compagnon » hors de la liste fermée — refus net, jamais
+            // une 401 (l'écran du compagnon ne doit pas croire sa session expirée et la renouveler en boucle).
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            response.setContentType("application/json");
+            response.setCharacterEncoding("UTF-8");
+            response.getWriter().write("{\"error\":\"jarvis_companion_scope\","
+                    + "\"message\":\"Cette route n'est pas ouverte à la session du compagnon.\"}");
+            return;
         }
         filterChain.doFilter(request, response);
     }
 
-    private void authenticate(String token, HttpServletRequest request) {
+    private Outcome authenticate(String token, HttpServletRequest request) {
         try {
             Claims claims = jwtService.parseClaims(token);
             UUID userId = UUID.fromString(claims.getSubject());
-
+            String scope = claims.get(JwtService.CLAIM_SCOPE, String.class);
+            CompanionSession companion = null;
+            if (scope != null) {
+                CompanionSessionVerifier verifier = companionVerifier.getIfAvailable();
+                if (!JwtService.SCOPE_JARVIS_COMPANION.equals(scope) || verifier == null) {
+                    log.debug("JWT rejeté : portée inconnue");
+                    return Outcome.CONTINUE;
+                }
+                if (!verifier.allows(request.getMethod(), pathWithinApplication(request))) {
+                    return Outcome.OUT_OF_SCOPE;
+                }
+                UUID companionId = UUID.fromString(claims.get(JwtService.CLAIM_COMPANION, String.class));
+                if (!verifier.isActive(userId, companionId)) {
+                    log.debug("JWT rejeté : compagnon révoqué ou inconnu");
+                    return Outcome.CONTINUE;
+                }
+                // Absent ⇒ verrouillé : le défaut sûr (SF-232-06).
+                Boolean locked = claims.get(JwtService.CLAIM_LOCKED, Boolean.class);
+                companion = new CompanionSession(companionId, locked == null || locked);
+            }
+            CompanionSession details = companion;
             userService.findById(userId).ifPresentOrElse(
-                    user -> authenticateIfTokenVersionMatches(user, claims, request),
+                    user -> authenticateIfTokenVersionMatches(user, claims, request, details),
                     () -> log.debug("JWT valide mais utilisateur {} introuvable — accès refusé", userId));
-        } catch (JwtException | IllegalArgumentException ex) {
-            // Token malformé, signature invalide, expiré, ou sub non-UUID : contexte laissé vide.
+        } catch (JwtException | IllegalArgumentException | NullPointerException ex) {
+            // Token malformé, signature invalide, expiré, sub ou cid non-UUID : contexte laissé vide.
             log.debug("Rejet du JWT présenté : {}", ex.getClass().getSimpleName());
         }
+        return Outcome.CONTINUE;
+    }
+
+    /** Le chemin sans le context-path ({@code /api/jarvis/converse} ⇒ {@code /jarvis/converse}). */
+    static String pathWithinApplication(HttpServletRequest request) {
+        String uri = request.getRequestURI() == null ? "" : request.getRequestURI();
+        String context = request.getContextPath() == null ? "" : request.getContextPath();
+        return !context.isEmpty() && uri.startsWith(context) ? uri.substring(context.length()) : uri;
     }
 
     /**
@@ -78,22 +128,25 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
      * de l'utilisateur. Après un « logout de toutes les sessions », les tokens antérieurs (ancien
      * {@code tv}) sont ainsi rejetés. Un token sans claim {@code tv} est traité comme {@code tv=0}.
      */
-    private void authenticateIfTokenVersionMatches(User user, Claims claims, HttpServletRequest request) {
+    private void authenticateIfTokenVersionMatches(User user, Claims claims, HttpServletRequest request,
+            CompanionSession companion) {
         Integer tokenVersion = claims.get(JwtService.CLAIM_TOKEN_VERSION, Integer.class);
         int presentedVersion = tokenVersion == null ? 0 : tokenVersion;
         if (presentedVersion != user.getTokenVersion()) {
             log.debug("JWT rejeté : version de token périmée (logout-all) pour l'utilisateur {}", user.getId());
             return;
         }
-        setAuthentication(user, request);
+        setAuthentication(user, request, companion);
     }
 
-    private void setAuthentication(User user, HttpServletRequest request) {
+    private void setAuthentication(User user, HttpServletRequest request, CompanionSession companion) {
         AuthenticatedUser principal = new AuthenticatedUser(user.getId(), user.getEmail(), user.getRole());
         var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()));
 
         var authentication = new UsernamePasswordAuthenticationToken(principal, null, authorities);
-        authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+        // F-232 / SF-232-05 : une session du compagnon porte ses détails (compagnon, verrouillé) ; les autres, ceux du web.
+        authentication.setDetails(companion != null ? companion
+                : new WebAuthenticationDetailsSource().buildDetails(request));
         SecurityContextHolder.getContext().setAuthentication(authentication);
     }
 
