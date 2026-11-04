@@ -7,7 +7,7 @@
 `F-245` — Le fil central de Jarvis (cadrage `CADRAGE-F-245-le-fil-central-de-jarvis.md`, D5, D6, D10, §6)
 
 ## Statut
-`done` (2026-11-04, PR #1573 backend + PR front) · **Estimation :** 1 j · **Branches :** `feat/SF-245-03-ligne-lien` (backend), `feat/SF-245-03-ligne-lien-front` (frontend) · **Dépend de :** SF-245-02
+`done` (2026-11-04, PR #1573 backend + PR #1574 frontend) · **Estimation :** 1 j · **Branches :** `feat/SF-245-03-ligne-lien` (backend), `feat/SF-245-03-ligne-lien-front` (frontend) · **Dépend de :** SF-245-02
 
 ## Objectif
 Une demande routée vers un sujet ou un chantier y est traitée, et le fil Jarvis en garde une ligne-lien vivante qui s'ouvre d'un toucher sur la réponse.

@@ -1460,6 +1460,14 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   Le plus récent du compte fait foi (`JarvisVoiceService.current(userId)`), sinon la configuration. Purgé à la
   suppression du compte.
 - **jarvis_companions** — **un compagnon Android appairé** (F-232 / SF-232-03, migration `194`) : `user_id`, `label`, `pairing_code_hash` + `pairing_expires_at` (code à usage unique, effacé à l'échange), `token_hash` (unique ; jeton dédié qui n'ouvre QUE `GET /api/runner/jarvis/announcements`, en-tête `X-Jarvis-Token`), `paired_at`, `last_seen_at` (échéance glissante 60 j), `revoked_at`, `created_at`. Empreintes SHA-256 seulement. Index `(user_id, via, created_at)` ajouté sur `atelier_messages` pour la relève des annonces.
+- **workspaces.jarvis_thread_user_id** — **le fil Jarvis** (F-245 / SF-245-01, migration `245-workspaces-jarvis-thread`)
+  : `NULL` pour tout espace ; égal à `user_id` sur l'unique fil Jarvis du compte (contrainte `UNIQUE`). Sans poste,
+  cible `SANDBOX`, ni renommable ni supprimable, hors univers, routines et « Hébergé ».
+- **atelier_messages — la ligne-lien** (F-245 / SF-245-03, migration `245-atelier-messages-link`) : `role = LINK`
+  dans le fil Jarvis quand une délégation part vers un sujet ou un chantier ; `ref_workspace_id` (sujet du même
+  `user_id`), `ref_chantier_number`, `ref_message_id` (la réponse d'Opus), `link_status` (`EN_COURS`, `FAIT`,
+  `ECHEC`). `NULL` pour tout autre message. Rejouée à Opus en texte court « [Transmis à …] » ; jamais dans la mémoire
+  du jour (`via` nul). Lue par `GET /api/jarvis/thread/today` (SF-245-04).
 - **atelier_messages.via** — **l'origine d'un message** (F-231 / SF-231-06, migration `191`) : `JARVIS` pour une
   demande dite à la voix dans l'écran Jarvis **et** la réponse de ce tour, `NULL` sinon. Donnée d'affichage : marque
   « 🎙 via Jarvis », encart « Pendant ton absence » (`GET /api/workspaces/{id}/jarvis/absence`), point de situation,

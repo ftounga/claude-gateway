@@ -7,7 +7,7 @@
 `F-245` — Le fil central de Jarvis (cadrage `CADRAGE-F-245-le-fil-central-de-jarvis.md`, §5, §7, §8)
 
 ## Statut
-`done` (2026-11-04) · **Estimation :** 0,5 j · **Branche :** `feat/SF-245-05-banc-routage-cache` · **Dépend de :** SF-245-03
+`done` (2026-11-04, PR #1577) · **Estimation :** 0,5 j · **Branche :** `feat/SF-245-05-banc-routage-cache` · **Dépend de :** SF-245-03
 
 ## Objectif
 Le routage du fil Jarvis est mesuré au banc, la compaction cesse de compter les échanges rapides, et le cache du fil Jarvis se mesure en prod.
