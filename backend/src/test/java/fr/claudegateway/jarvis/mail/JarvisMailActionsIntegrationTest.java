@@ -144,6 +144,41 @@ class JarvisMailActionsIntegrationTest {
 
     private String lastNote;
 
+    /** F-232 / SF-232-06 — le même message, dit téléphone du compagnon verrouillé. */
+    private void userSaysLocked(Box b, String text) {
+        AtelierMessage m = messages.save(AtelierMessage.builder().workspaceId(b.thread().getId()).userId(b.userId())
+                .role("USER").content(text).build());
+        lastNote = actions.onUserMessage(b.userId(), b.thread().getId(), m.getId(), text, true);
+    }
+
+    @Test
+    void lockedPhoneYesSendsNothingUntilAnUnlockedYes() throws Exception {
+        Box b = box("locked");
+        String paul = "paul-" + UUID.randomUUID() + "@example.com";
+        userSays(b, "Écris à " + paul + " pour le comité.");
+        assertThat(call(b, JarvisMailToolCatalog.SEND, "{\"boite\":\"\",\"a\":[\"" + paul + "\"],\"cc\":[],"
+                + "\"objet\":\"Comité\",\"corps\":\"Bonjour\",\"en_reponse_a\":\"\"}").error()).isFalse();
+
+        userSaysLocked(b, "Oui");
+        assertThat(lastNote).contains("téléphone verrouillé").contains("reste en attente").contains("déverrouiller");
+        assertThat(received(paul)).isZero();
+        assertThat(jdbc.queryForObject("select status from jarvis_mail_actions where user_id = ?", String.class,
+                b.userId())).isEqualTo("PENDING");
+
+        // Déverrouillé : le « oui » suivant envoie, une seule fois.
+        userSays(b, "Oui");
+        assertThat(lastNote).contains("confirmé par l'utilisateur").contains("envoyé");
+        assertThat(received(paul)).isEqualTo(1);
+
+        // Verrouillé, autre chose qu'un « oui » : annulation, comme avant.
+        userSays(b, "Réécris à " + paul + " pour le comité.");
+        assertThat(call(b, JarvisMailToolCatalog.SEND, "{\"boite\":\"\",\"a\":[\"" + paul + "\"],\"cc\":[],"
+                + "\"objet\":\"Comité 2\",\"corps\":\"Bonjour\",\"en_reponse_a\":\"\"}").error()).isFalse();
+        userSaysLocked(b, "Non");
+        assertThat(lastNote).contains("annulée");
+        assertThat(received(paul)).isEqualTo(1);
+    }
+
     private JarvisMailToolCatalog.Result call(Box b, String tool, String input) throws Exception {
         return catalog.execute(b.userId(), b.thread(), tool, json.readTree(input));
     }

@@ -369,4 +369,17 @@ class AtelierChatServiceVoiceTurnTest {
         assertThat(fr.claudegateway.jarvis.JarvisOralNote.appendCut("c", "  ")).isEqualTo("c");
         assertThat(fr.claudegateway.jarvis.JarvisOralNote.appendCut("c", "a « b »")).contains("« a \" b \" »");
     }
+
+    @Test
+    void phoneLockedMarkIsPerThreadAndClearedByAnUnlockedRequest() {
+        // F-232 / SF-232-06 (D8) — la marque « verrouillé » vaut pour CE fil, jusqu'à une requête non verrouillée.
+        service.markPhoneLocked(userId, workspaceId, null, true);
+        assertThat(service.phoneLocked(userId, workspaceId, null)).isTrue();
+        assertThat(service.phoneLocked(userId, workspaceId, 2)).isFalse();
+        assertThat(service.phoneLocked(UUID.randomUUID(), workspaceId, null)).isFalse();
+        // Lue, jamais consommée : un tour de suite la voit encore.
+        assertThat(service.phoneLocked(userId, workspaceId, null)).isTrue();
+        service.markPhoneLocked(userId, workspaceId, null, false);
+        assertThat(service.phoneLocked(userId, workspaceId, null)).isFalse();
+    }
 }

@@ -73,6 +73,15 @@ public class JarvisMailActionService implements JarvisMailPurge {
      * l'annule (tout le reste). Rend la note jointe au message d'Opus, ou {@code ""} sans action en attente.
      */
     public String onUserMessage(UUID userId, UUID workspaceId, UUID messageId, String text) {
+        return onUserMessage(userId, workspaceId, messageId, text, false);
+    }
+
+    /**
+     * F-232 / SF-232-06 (D8) — même règle, et téléphone du compagnon <b>verrouillé</b> : un « oui » net n'exécute rien,
+     * l'action reste en attente (son échéance court toujours) et la note fixe le dit. Seul un « oui » d'une session
+     * déverrouillée l'exécute.
+     */
+    public String onUserMessage(UUID userId, UUID workspaceId, UUID messageId, String text, boolean phoneLocked) {
         if (userId == null || workspaceId == null) {
             return "";
         }
@@ -91,6 +100,10 @@ public class JarvisMailActionService implements JarvisMailPurge {
             actions.close(pending.getId(), userId, JarvisMailAction.Status.CANCELLED);
             return "[Courrier — pas de « oui » net de l'utilisateur : l'action « " + pending.getSummary()
                     + " » est annulée, rien n'est fait. Traite son message tel quel.]";
+        }
+        if (phoneLocked) {
+            return "[Courrier — « oui » reçu téléphone verrouillé : rien n'est fait, l'action « " + pending.getSummary()
+                    + " » reste en attente. Dis seulement qu'il faut déverrouiller le téléphone pour confirmer.]";
         }
         if (actions.confirm(pending.getId(), userId, messageId, now) != 1) {
             return "";

@@ -8,6 +8,7 @@ import java.util.concurrent.Executor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -123,6 +124,8 @@ public class AtelierChatController {
     @PostMapping
     public AtelierChatResponse chat(@PathVariable UUID id, @Valid @RequestBody AtelierChatRequest request) {
         atelierAccess.requireTerminalAccess(id);
+        // F-232 / SF-232-06 (D8) : l'origine du message (compagnon verrouillé ou non), lue sur le thread de requête.
+        atelierChatService.markPhoneLocked(currentUser.requireId(), id, request.chantier(), phoneLocked());
         atelierChatService.setLaneSplit(currentUser.requireId(), id, request.chantier(), request.splitOrDefault());
         if (request.viaJarvis()) {
             // F-241 / SF-241-03 (D17) : le mode présentation suit la marque « né à la voix ».
@@ -173,6 +176,9 @@ public class AtelierChatController {
         List<UUID> attachedDepositIds = request.attachedDepositIdsOrEmpty();
         // F-221 / SF-221-01 : le fil de l'envoi — null = fil commun du sujet.
         Integer chantier = request.chantier();
+        // F-232 / SF-232-06 (D8) : le téléphone du compagnon était-il verrouillé ? Lu ICI (thread de requête, où vit le
+        // SecurityContext) et posé sur le fil : le « oui » d'une action en attente n'exécutera rien sous cette marque.
+        atelierChatService.markPhoneLocked(userId, id, chantier, phoneLocked());
         // F-221 / SF-221-05 : ce fil est-il montré dans un volet du split ? (ses suites s'y limitent)
         atelierChatService.setLaneSplit(userId, id, chantier, request.splitOrDefault());
         if (request.viaJarvis()) {
@@ -409,13 +415,23 @@ public class AtelierChatController {
      * rien renvoie 409 plutôt que de laisser croire à une autorisation passée.</p>
      */
     @PostMapping("/confirm")
-    public ResponseEntity<Void> confirm(@PathVariable UUID id,
+    public ResponseEntity<?> confirm(@PathVariable UUID id,
             @Valid @RequestBody AgentConfirmRequest request,
             @RequestParam(name = "chantier", required = false) Integer chantier) {
         atelierAccess.requireTerminalAccess(id);
+        // F-232 / SF-232-06 (D8) : téléphone verrouillé, aucune autorisation d'outil ne part (le refus, lui, passe).
+        if (request.allows() && phoneLocked()) {
+            return ResponseEntity.status(HttpStatus.LOCKED).body(new fr.claudegateway.shared.error.ErrorResponse(
+                    "jarvis_phone_locked", "Déverrouillez le téléphone pour autoriser cette action."));
+        }
         atelierChatService.confirmToolUse(currentUser.requireId(), id, lane(chantier), request.toolUseId(),
                 request.allows(), request.reason(), request.allowsAll(), request.alwaysAllowsCommand());
         return ResponseEntity.noContent().build();
+    }
+
+    /** F-232 / SF-232-06 — la requête vient-elle de la session d'un compagnon dont le téléphone était verrouillé ? */
+    private boolean phoneLocked() {
+        return currentUser.companionSession().map(fr.claudegateway.auth.CompanionSession::locked).orElse(false);
     }
 
     /**
