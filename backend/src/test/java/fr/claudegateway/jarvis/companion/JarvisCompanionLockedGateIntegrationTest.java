@@ -61,7 +61,9 @@ class JarvisCompanionLockedGateIntegrationTest {
     @DisplayName("verrouillé : « autoriser » est refusé (423), « refuser » passe")
     void lockedAllowIsRefused() throws Exception {
         String locked = companionSession(true);
-        confirm(locked, "allow").andExpect(status().isLocked());
+        confirm(locked, "allow").andExpect(status().isLocked())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.error")
+                        .value("jarvis_phone_locked"));
         confirm(locked, "deny").andExpect(r -> assertThat(r.getResponse().getStatus()).isNotEqualTo(423));
     }
 

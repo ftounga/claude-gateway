@@ -415,13 +415,14 @@ public class AtelierChatController {
      * rien renvoie 409 plutôt que de laisser croire à une autorisation passée.</p>
      */
     @PostMapping("/confirm")
-    public ResponseEntity<Void> confirm(@PathVariable UUID id,
+    public ResponseEntity<?> confirm(@PathVariable UUID id,
             @Valid @RequestBody AgentConfirmRequest request,
             @RequestParam(name = "chantier", required = false) Integer chantier) {
         atelierAccess.requireTerminalAccess(id);
         // F-232 / SF-232-06 (D8) : téléphone verrouillé, aucune autorisation d'outil ne part (le refus, lui, passe).
         if (request.allows() && phoneLocked()) {
-            return ResponseEntity.status(HttpStatus.LOCKED).build();
+            return ResponseEntity.status(HttpStatus.LOCKED).body(new fr.claudegateway.shared.error.ErrorResponse(
+                    "jarvis_phone_locked", "Déverrouillez le téléphone pour autoriser cette action."));
         }
         atelierChatService.confirmToolUse(currentUser.requireId(), id, lane(chantier), request.toolUseId(),
                 request.allows(), request.reason(), request.allowsAll(), request.alwaysAllowsCommand());
