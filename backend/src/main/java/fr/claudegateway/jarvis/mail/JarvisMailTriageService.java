@@ -198,6 +198,19 @@ public class JarvisMailTriageService implements JarvisMailTriageTrigger {
         }
     }
 
+    /**
+     * F-242 / SF-242-07 — le banc MAIL : le même appel (consigne figée, aucun outil) sur un lot FICTIF et un modèle
+     * candidat ; rien n'est écrit dans le cache ; le coût est inscrit (MAIL). Rend la sortie brute du modèle.
+     */
+    public String benchRaw(UUID userId, String model, List<JarvisMailTriagePrompt.Entry> entries) {
+        AgentTurn turn = provider.nextTurn(new AgentTurnRequest(model, JarvisMailTriagePrompt.SYSTEM,
+                List.of(AgentMessage.userText(JarvisMailTriagePrompt.message(entries))), List.of(),
+                fastBrain.apiKeyFor(userId), AgentReasoning.none(), AgentContextPolicy.none(), AgentTurnMode.ACT,
+                new AgentCallShape(1_500, false, false, false)));
+        account(userId, turn);
+        return turn == null ? null : turn.text();
+    }
+
     /** Le coût de l'appel : journal (annexe JARVIS / MAIL, hors quota Gateway) et ligne « Courrier ». Best-effort. */
     private void account(UUID userId, AgentTurn turn) {
         if (turn == null) {

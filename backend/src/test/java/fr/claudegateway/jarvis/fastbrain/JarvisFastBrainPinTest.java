@@ -204,6 +204,6 @@ class JarvisFastBrainPinTest {
         JarvisConversationBench.Turn task = new JarvisConversationBench.Turn("x", "any", "sans_relance");
         assertThat(JarvisConversationBench.markDefect(task, List.of(),
                 "Du nouveau depuis notre dernier entretien ?")).isEqualTo("relance pendant une tâche");
-        assertThat(JarvisConversationBench.load().scenarios()).hasSize(55);
+        assertThat(JarvisConversationBench.load().scenarios()).hasSize(59);
     }
 }
