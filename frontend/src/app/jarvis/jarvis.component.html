@@ -351,6 +351,10 @@
 @if (calendarOpen() && !presentation()) {
   <app-jarvis-calendars (closed)="calendarOpen.set(false)" />
 }
+<!-- F-243 / SF-243-02 (D10, D11) — la vue d'agenda : frise du jour ou de la semaine, jamais en présentation. -->
+@if (!presentation() && agendaView(); as view) {
+  <app-jarvis-agenda [view]="view" (closed)="agendaView.set(null)" />
+}
 <!-- F-245 / SF-245-04 (D8) — le volet « Fil du jour » : jamais en présentation (aucun nom de client montré). -->
 @if (threadOpen() && !presentation()) {
   <app-jarvis-thread-panel (closed)="threadOpen.set(false)" />

@@ -1019,6 +1019,11 @@ valeur en dur ailleurs.
   flou 10 px, rayon 8 px), à gauche, `min(560px, 100vw − 2 × space-4)` ; en-têtes en grille (libellés crème 70 %),
   corps en **texte seul** (`pre-wrap`, jamais de HTML rendu, donc aucune image distante), étiquette « Contenu externe »
   liserée `--cg-orange-2` ; brouillon : liseré `--cg-orange-2`. Aucune couleur nouvelle ; **jamais en présentation**.
+- **Vue d'agenda (F-243 / SF-243-02)** — même verre, à gauche, `min(560px, 100vw − 2 × space-4)` ; une **frise** par
+  journée (7 h → 21 h, élargie aux heures pleines), trame `--cg-orange` 4 %, liserés `--cg-orange` 35 %, rendez-vous en
+  pavés `--cg-orange` 45 %, le **prochain ou celui en cours** plein avec halo, son mot écrit (« prochain », « en
+  cours ») ; « maintenant » en trait crème ; heures en JetBrains Mono, jours en Space Grotesk capitales. Aucune
+  couleur nouvelle ; **jamais en présentation**.
 
 ## 24 — Conventions AWS des schémas d'architecture (ajout F-238 / SF-238-06, 2026-11-02)
 

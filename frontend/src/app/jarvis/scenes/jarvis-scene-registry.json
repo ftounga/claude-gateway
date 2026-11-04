@@ -56,6 +56,7 @@
     "task": { "scene": "S13", "cible": "S13", "libelle": "Tâche déléguée", "pluriel": "{n} tâches déléguées" },
     "deleguer": { "scene": "GENERIQUE", "cible": "S13", "libelle": "Demande confiée au cerveau principal" },
     "pieces": { "scene": "GENERIQUE", "cible": "GENERIQUE", "libelle": "Lecture des pièces" },
+    "agenda": { "scene": "GENERIQUE", "cible": "GENERIQUE", "libelle": "Lecture de l'agenda" },
     "afficher": { "scene": "GENERIQUE", "cible": "GENERIQUE", "libelle": "Pièce montrée à l'écran" },
     "noter": { "scene": "GENERIQUE", "cible": "S15", "libelle": "Réponse notée (banc d’essai)" },
     "noter_tour": { "scene": "GENERIQUE", "cible": "S15", "libelle": "Tour de conversation noté (banc d’essai)" },

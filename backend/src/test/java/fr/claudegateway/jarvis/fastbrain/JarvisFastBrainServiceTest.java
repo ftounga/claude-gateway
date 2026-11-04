@@ -110,7 +110,7 @@ class JarvisFastBrainServiceTest {
 
         AgentTurnRequest request = calls.get(0);
         assertThat(request.model()).isEqualTo("claude-haiku-5-5");
-        assertThat(request.tools()).extracting(t -> t.name()).containsExactly("deleguer", "pieces", "afficher");
+        assertThat(request.tools()).extracting(t -> t.name()).containsExactly("deleguer", "pieces", "afficher", "agenda");
         assertThat(request.reasoning().disabled()).isTrue();
         assertThat(request.reasoning().effort()).isEqualTo("low");
         assertThat(request.shape().maxTokens()).isEqualTo(600);
@@ -1083,7 +1083,7 @@ class JarvisFastBrainServiceTest {
         assertThat(JSON.writeValueAsString(calls.get(1).tools())).isEqualTo(first);
         assertThat(JSON.writeValueAsString(calls.get(2).tools())).isEqualTo(first);
         assertThat(calls.get(0).system()).isEqualTo(calls.get(2).system());
-        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("15");
+        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("16");
         assertThat(first).doesNotContain("Kestrel").doesNotContain(subject.toString());
     }
 
@@ -1157,6 +1157,79 @@ class JarvisFastBrainServiceTest {
                 .get(calls.get(0).messages().size() - 1).content().get(0)).text();
         assertThat(message).contains("## Pièces").contains("chantier 3 : besoin initial");
         assertThat(calls.get(0).system()).doesNotContain("## Pièces\nchantier");
+    }
+
+    // ------------------------------------------------------- F-243 / SF-243-02 : l'outil agenda
+
+    private static final String AGENDA_TODAY = """
+            {"periode":"aujourdhui","jour":"","date":""}""";
+
+    @Test
+    void f243AgendaIsReadOnceByTheGatewayTheAnswerIsGroundedAndTheViewOpensWithoutOpus() {
+        fr.claudegateway.jarvis.calendar.JarvisCalendarReader reader =
+                mock(fr.claudegateway.jarvis.calendar.JarvisCalendarReader.class);
+        when(reader.toolText(eq(alice), eq("aujourdhui"), eq(""), eq(""), eq(false))).thenReturn(
+                "Agenda, heure de Paris — aujourd'hui, dimanche 1 novembre. Maintenant : dimanche 1 novembre 14:32.\n"
+                        + "<agenda_non_fiable>\n- 16:00–17:00 — Atelier Zéphyr — agenda Pro [prochain]\n"
+                        + "</agenda_non_fiable>");
+        when(reader.period(any(), any(), any())).thenReturn(new fr.claudegateway.jarvis.calendar.JarvisCalendarReader
+                .Period(java.time.LocalDate.parse("2026-11-01"), java.time.LocalDate.parse("2026-11-01"), "aujourdhui"));
+        Screen screen = new Screen();
+        JarvisFastBrainService service = service(scripted(
+                new AgentTurn("", List.of(tool("a1", "agenda", AGENDA_TODAY)), false, 100, 10),
+                new AgentTurn("À 16 h, l'atelier Zéphyr.", List.of(), true, 100, 10)), null, null);
+        service.setCalendar(reader);
+
+        JarvisFastBrainService.Outcome outcome = service.converse(ask("Qu'est-ce que j'ai aujourd'hui ?"), screen);
+
+        assertThat(calls).hasSize(2);
+        verify(reader, org.mockito.Mockito.times(1)).toolText(eq(alice), any(), any(), any(), eq(false));
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        // « 16 h » et « Zéphyr » viennent du résultat de l'outil : la phrase est ancrée, jamais déléguée d'office.
+        assertThat(outcome.spokenText()).contains("16 h").contains("Zéphyr");
+        assertThat(screen.shows).extracting(JarvisShowCommand::pieces)
+                .containsExactly(List.of("agenda:jour:2026-11-01"));
+        // Le résultat de l'outil va dans la conversation, jamais dans la consigne.
+        assertThat(calls.get(1).system()).isEqualTo(calls.get(0).system()).doesNotContain("Atelier Zéphyr");
+    }
+
+    @Test
+    void f243InPresentationTheAgendaSaysNothingAndNoViewOpens() throws Exception {
+        fr.claudegateway.jarvis.calendar.JarvisCalendarReader reader =
+                mock(fr.claudegateway.jarvis.calendar.JarvisCalendarReader.class);
+        when(reader.toolText(eq(alice), any(), any(), any(), eq(true)))
+                .thenReturn(fr.claudegateway.jarvis.calendar.JarvisCalendarReader.PRESENTATION);
+        Screen screen = new Screen();
+        JarvisFastBrainService service = service(scripted(
+                new AgentTurn("", List.of(tool("a1", "agenda", AGENDA_TODAY)), false, 100, 10),
+                new AgentTurn("L'agenda n'est pas disponible en présentation.", List.of(), true, 100, 10)), null,
+                null);
+        service.setCalendar(reader);
+
+        service.converse(new JarvisFastBrainService.Request(alice, workspace, 3, "Qu'est-ce que j'ai aujourd'hui ?",
+                null, null, true), screen);
+
+        assertThat(screen.shows).isEmpty();
+        assertThat(JSON.writeValueAsString(calls.get(1).messages())).contains("Indisponible en présentation")
+                .doesNotContain("Helios");
+    }
+
+    @Test
+    void f243WithoutCalendarTheToolSaysNoFeedAndOpensNothing() throws Exception {
+        Screen screen = new Screen();
+        JarvisFastBrainService service = service(scripted(
+                new AgentTurn("", List.of(tool("a1", "agenda", AGENDA_TODAY)), false, 100, 10),
+                new AgentTurn("", List.of(tool("d1", "deleguer", """
+                        {"demande":"Chercher ce qui est prévu aujourd'hui","label":"programme du jour",
+                         "annonce":"Je cherche ce qui est prévu aujourd'hui, Monsieur.","sujet":"",
+                         "chantier":null}""")), false, 100, 10)), null, null);
+
+        JarvisFastBrainService.Outcome outcome = service.converse(ask("Qu'est-ce que j'ai aujourd'hui ?"), screen);
+
+        assertThat(JSON.writeValueAsString(calls.get(1).messages()))
+                .contains(fr.claudegateway.jarvis.calendar.JarvisCalendarReader.NO_FEED);
+        assertThat(screen.shows).isEmpty();
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.DELEGATE);
     }
 
     @Test
@@ -1401,8 +1474,10 @@ class JarvisFastBrainServiceTest {
 
     @Test
     void f240_06ThePromptForbidsOfferingAnAgendaAndCarriesTheThursdayExample() {
-        assertThat(JarvisFastBrainPrompt.system()).contains("Tu n'as ni agenda, ni calendrier")
-                .contains("Qu'est-ce que j'ai jeudi ?").contains("Je cherche ce qui est prévu jeudi, Monsieur.");
+        // F-243 / SF-243-02 — l'agenda est désormais un outil ; sans agenda relié, la question se délègue toujours.
+        assertThat(JarvisFastBrainPrompt.system()).contains("Tu n'as aucune source hors du contexte et de tes quatre outils")
+                .contains("passe par l'outil agenda").contains("Qu'est-ce que j'ai jeudi ?")
+                .contains("Je cherche ce qui est prévu jeudi, Monsieur.").doesNotContain("Tu n'as ni agenda");
     }
 
     @Test

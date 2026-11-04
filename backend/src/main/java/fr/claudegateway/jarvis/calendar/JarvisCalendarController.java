@@ -1,8 +1,10 @@
 package fr.claudegateway.jarvis.calendar;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -10,6 +12,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import fr.claudegateway.auth.CurrentUser;
@@ -27,11 +30,29 @@ public class JarvisCalendarController {
     }
 
     private final JarvisCalendarFeedService feeds;
+    private final JarvisCalendarReader reader;
     private final CurrentUser currentUser;
 
-    public JarvisCalendarController(JarvisCalendarFeedService feeds, CurrentUser currentUser) {
+    public JarvisCalendarController(JarvisCalendarFeedService feeds, JarvisCalendarReader reader,
+            CurrentUser currentUser) {
         this.feeds = feeds;
+        this.reader = reader;
         this.currentUser = currentUser;
+    }
+
+    /**
+     * F-243 / SF-243-02 (D10, D11) — les rendez-vous fusionnés de [from, to[ (ISO-8601, 31 jours au plus) ; rien en
+     * présentation (409).
+     */
+    @GetMapping("/jarvis/calendar/events")
+    public ResponseEntity<JarvisCalendarReader.Window> events(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime to,
+            @RequestParam(required = false) Boolean presentation) {
+        if (Boolean.TRUE.equals(presentation)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+        }
+        return ResponseEntity.ok(reader.between(currentUser.requireId(), from, to));
     }
 
     @GetMapping("/jarvis/calendar/feeds")

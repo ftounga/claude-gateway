@@ -125,14 +125,19 @@ final class JarvisConversationBench {
      * de contexte propre au scénario (les derniers échanges du fil, avec une réponse d'Opus), ou {@code null}.
      */
     record Scenario(String id, String category, String heardBeforeCut, List<Turn> turns, String context,
-            Personal personal) {
+            Personal personal, String agenda) {
 
         Scenario(String id, String category, String heardBeforeCut, List<Turn> turns) {
-            this(id, category, heardBeforeCut, turns, null, null);
+            this(id, category, heardBeforeCut, turns, null, null, null);
         }
 
         Scenario(String id, String category, String heardBeforeCut, List<Turn> turns, String context) {
-            this(id, category, heardBeforeCut, turns, context, null);
+            this(id, category, heardBeforeCut, turns, context, null, null);
+        }
+
+        Scenario(String id, String category, String heardBeforeCut, List<Turn> turns, String context,
+                Personal personal) {
+            this(id, category, heardBeforeCut, turns, context, personal, null);
         }
 
         /** F-241 — le portrait FICTIF du scénario (jamais un portrait réel), ou {@code null}. */
@@ -233,7 +238,8 @@ final class JarvisConversationBench {
                 }
                 scenarios.add(new Scenario(s.get("id").asText(), s.get("category").asText(),
                         s.hasNonNull("heardBeforeCut") ? s.get("heardBeforeCut").asText() : null, turns,
-                        s.hasNonNull("context") ? s.get("context").asText() : null, personal(s)));
+                        s.hasNonNull("context") ? s.get("context").asText() : null, personal(s),
+                        s.hasNonNull("agenda") ? s.get("agenda").asText() : null));
             }
             return new Set(root.get("context").asText(), scenarios, root.get("budgetEurPerTurn").decimalValue(),
                     root.get("opusTurnEur").decimalValue());

@@ -95,6 +95,8 @@ import { JarvisCompanionsComponent } from './jarvis-companions.component';
 import { JarvisPortraitComponent } from './jarvis-portrait.component';
 import { JarvisMailboxesComponent } from './jarvis-mailboxes.component';
 import { JarvisCalendarsComponent } from './jarvis-calendars.component';
+import { JarvisAgendaComponent } from './jarvis-agenda.component';
+import { AgendaView, agendaPieceView } from './jarvis-calendar';
 import { JarvisThreadPanelComponent } from './jarvis-thread-panel.component';
 import { JarvisMailCardComponent } from './jarvis-mail-card.component';
 import { JarvisMailClient, MailCard, bodyCard, briefCard, mailPieceId } from './jarvis-mail';
@@ -178,7 +180,7 @@ export function companionOffer(version: JarvisCompanionVersion, installed: numbe
  */
 @Component({
   selector: 'app-jarvis',
-  imports: [JarvisPieceGalleryComponent, JarvisCockpitComponent, JarvisCompanionsComponent, JarvisCostPanelComponent, JarvisPortraitComponent, JarvisMailboxesComponent, JarvisCalendarsComponent, JarvisThreadPanelComponent, JarvisMailCardComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatMenuModule],
+  imports: [JarvisPieceGalleryComponent, JarvisCockpitComponent, JarvisCompanionsComponent, JarvisCostPanelComponent, JarvisPortraitComponent, JarvisMailboxesComponent, JarvisCalendarsComponent, JarvisAgendaComponent, JarvisThreadPanelComponent, JarvisMailCardComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatMenuModule],
   templateUrl: './jarvis.component.html',
   styleUrl: './jarvis.component.scss',
   providers: [JarvisAppUpdate],
@@ -367,6 +369,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
   readonly mailOpen = signal(false);
   /** F-243 / SF-243-01 — le volet « Mes agendas » (jamais en présentation). */
   readonly calendarOpen = signal(false);
+  /** F-243 / SF-243-02 (D10) — la vue d'agenda ouverte par la passerelle (jamais en présentation). */
+  readonly agendaView = signal<AgendaView | null>(null);
 
   /** F-245 / SF-245-04 (D8) — le volet « Fil du jour », replié par défaut (jamais en présentation). */
   readonly threadOpen = signal(false);
@@ -2927,6 +2931,16 @@ export class JarvisComponent implements OnInit, OnDestroy {
     if (mailId) {
       this.showMail(mailId);
       return !this.presentation();
+    }
+    // F-243 / SF-243-02 (D10, D11) — l'agenda n'est pas une pièce de chantier : il s'ouvre dans sa vue, jamais en
+    // présentation.
+    const agenda = agendaPieceView(command.pieces);
+    if (agenda) {
+      if (this.presentation()) {
+        return false;
+      }
+      this.agendaView.set(agenda);
+      return true;
     }
     const done = await this.pieces.applyShow(command, {
       subjectId: this.subjectId(), subjectName: this.subject()?.name ?? null, sober: this.sober(),

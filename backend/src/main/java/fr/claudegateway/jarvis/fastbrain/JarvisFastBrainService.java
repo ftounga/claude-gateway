@@ -971,6 +971,7 @@ public class JarvisFastBrainService {
         AgentTurn turn = null;
         long firstMs = -1L;
         boolean read = false;
+        boolean agendaRead = false;
         int appuiLeft = JarvisShowCommand.MAX_APPUI;
         List<JarvisShowCommand> shown = new ArrayList<>();
         for (int n = 0; n < MAX_CALLS; n++) {
@@ -1025,6 +1026,21 @@ public class JarvisFastBrainService {
                         freshRead = true;
                         text = readPieces(request, tc.input(), bench);
                         gate.ground(text);
+                    }
+                    results.add(new fr.claudegateway.agent.AgentContentBlock.ToolResult(tc.id(), text, false));
+                } else if (JarvisFastBrainPrompt.AGENDA_TOOL.equals(tc.name())) {
+                    // F-243 / SF-243-02 (D9, D11) — lecture seule du cache des agendas, une fois par réponse.
+                    String text = ALREADY_READ;
+                    if (!agendaRead) {
+                        agendaRead = true;
+                        freshRead = true;
+                        text = readAgenda(request, tc.input(), bench);
+                        gate.ground(text);
+                        JarvisShowCommand view = bench ? null : agendaView(request, tc.input(), text);
+                        if (view != null) {
+                            out.show(view);
+                            shown.add(view);
+                        }
                     }
                     results.add(new fr.claudegateway.agent.AgentContentBlock.ToolResult(tc.id(), text, false));
                 } else {
@@ -1175,6 +1191,69 @@ public class JarvisFastBrainService {
         }
         return fastPieces.read(request.userId(), request.workspace() == null ? null : request.workspace().getId(),
                 input);
+    }
+
+    /** F-243 / SF-243-02 — la lecture de l'agenda au banc : le texte fixe du scénario, pour le fil appelant. */
+    private static final ThreadLocal<String> BENCH_AGENDA_FIXTURE = new ThreadLocal<>();
+
+    /** F-243 / SF-243-02 — exécute {@code body} avec l'agenda fictif {@code agenda} (ou « aucun agenda relié »). */
+    public <T> T withBenchAgenda(String agenda, java.util.function.Supplier<T> body) {
+        BENCH_AGENDA_FIXTURE.set(agenda);
+        try {
+            return body.get();
+        } finally {
+            BENCH_AGENDA_FIXTURE.remove();
+        }
+    }
+
+    /** F-243 / SF-243-02 — les agendas du compte (lecture seule). Facultatif. */
+    private fr.claudegateway.jarvis.calendar.JarvisCalendarReader calendar;
+
+    @Autowired(required = false)
+    public void setCalendar(fr.claudegateway.jarvis.calendar.JarvisCalendarReader calendar) {
+        this.calendar = calendar;
+    }
+
+    /**
+     * F-243 / SF-243-02 (D9, D11) — l'outil {@code agenda} : le cache lu sous {@code user_id}, rien en présentation ;
+     * au banc, le texte fixe du scénario. Best-effort : une panne rend « aucun agenda relié » (la question se délègue).
+     */
+    String readAgenda(Request request, JsonNode input, boolean bench) {
+        if (bench) {
+            String fixture = BENCH_AGENDA_FIXTURE.get();
+            if (request.presentation()) {
+                return fr.claudegateway.jarvis.calendar.JarvisCalendarReader.PRESENTATION;
+            }
+            return fixture != null ? fixture : fr.claudegateway.jarvis.calendar.JarvisCalendarReader.NO_FEED;
+        }
+        if (calendar == null) {
+            return request.presentation() ? fr.claudegateway.jarvis.calendar.JarvisCalendarReader.PRESENTATION
+                    : fr.claudegateway.jarvis.calendar.JarvisCalendarReader.NO_FEED;
+        }
+        try {
+            return calendar.toolText(request.userId(), input == null ? "" : input.path("periode").asText(""),
+                    input == null ? "" : input.path("jour").asText(""),
+                    input == null ? "" : input.path("date").asText(""), request.presentation());
+        } catch (RuntimeException e) {
+            log.debug("Cerveau rapide : agenda illisible ({})", e.getClass().getSimpleName());
+            return fr.claudegateway.jarvis.calendar.JarvisCalendarReader.NO_FEED;
+        }
+    }
+
+    /**
+     * F-243 / SF-243-02 (D10) — l'ordre d'écran qui ouvre la vue d'agenda ({@code agenda:<vue>:<date>}), seulement
+     * quand des rendez-vous ont été lus (jamais en présentation, jamais sans agenda relié).
+     */
+    JarvisShowCommand agendaView(Request request, JsonNode input, String text) {
+        if (request.presentation() || calendar == null || text == null || !text.startsWith("Agenda,")) {
+            return null;
+        }
+        fr.claudegateway.jarvis.calendar.JarvisCalendarReader.Period p = calendar.period(
+                input == null ? "" : input.path("periode").asText(""), input == null ? "" : input.path("jour").asText(""),
+                input == null ? "" : input.path("date").asText(""));
+        String view = "semaine".equals(p.name()) ? "semaine" : "jour";
+        return new JarvisShowCommand("piece", List.of("agenda:" + view + ":" + p.first()), null, null, null, null,
+                null, null, null, "demande");
     }
 
     /** Les blocs « ## Écran » (de l'écran, coupé) et « ## Pièces » (du sujet courant), précédés d'une ligne vide. */
