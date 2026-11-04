@@ -7,7 +7,7 @@
 `F-245` — Le fil central de Jarvis (cadrage `CADRAGE-F-245-le-fil-central-de-jarvis.md`, D8, §6)
 
 ## Statut
-`done` (2026-11-04, PR #1575 backend + PR front) · **Estimation :** 0,75 j · **Branches :** `feat/SF-245-04-voir-le-fil` (backend), `feat/SF-245-04-voir-le-fil-front` (frontend) · **Dépend de :** SF-245-03
+`done` (2026-11-04, PR #1575 backend + PR #1576 frontend) · **Estimation :** 0,75 j · **Branches :** `feat/SF-245-04-voir-le-fil` (backend), `feat/SF-245-04-voir-le-fil-front` (frontend) · **Dépend de :** SF-245-03
 
 ## Objectif
 Le PO voit son fil Jarvis du jour dans `/jarvis` et ouvre un chantier depuis une ligne-lien.
