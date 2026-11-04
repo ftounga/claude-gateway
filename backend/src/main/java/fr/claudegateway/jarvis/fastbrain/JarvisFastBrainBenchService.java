@@ -66,6 +66,8 @@ public class JarvisFastBrainBenchService {
     public static final String SET_CONVERSATION = "CONVERSATION";
     /** F-237 / SF-237-13 — le banc « Jarvis montre les pièces » (SHOW, NAVIGATE, PROOF, NEUTRAL), sans juge. */
     public static final String SET_PIECES = "PIECES";
+    /** F-242 / SF-242-07 — le banc du courrier (tri, injection, bref), jeu FICTIF, porte : tri ≥ 90 %, injection 100 %. */
+    public static final String SET_MAIL = "MAIL";
     static final int MAX_CASES = 60;
     static final int MAX_CONTEXT_FOR_JUDGE = 6_000;
     static final int MAX_RUNS_PER_USER = 5;
@@ -180,7 +182,7 @@ public class JarvisFastBrainBenchService {
         }
         String which = set == null || set.isBlank() ? SET_REAL : set.strip().toUpperCase();
         if (!SET_REAL.equals(which) && !SET_PERSONALITY.equals(which) && !SET_CONVERSATION.equals(which)
-                && !SET_PIECES.equals(which)) {
+                && !SET_PIECES.equals(which) && !SET_MAIL.equals(which)) {
             throw new IllegalArgumentException("Jeu inconnu.");
         }
         prune(userId);
@@ -233,6 +235,9 @@ public class JarvisFastBrainBenchService {
         if (SET_PIECES.equals(set)) {
             return pieces(userId, runId, model, startedAt);
         }
+        if (SET_MAIL.equals(set)) {
+            return mail(userId, runId, model, startedAt);
+        }
         List<Case> cases = SET_PERSONALITY.equals(set) ? personalityCases(userId) : realCases(userId);
         List<Verdict> verdicts = new ArrayList<>();
         for (Case c : cases) {
@@ -262,6 +267,60 @@ public class JarvisFastBrainBenchService {
         return new Report(runId, "DONE", SET_PIECES, model, "déterministe", verdicts.size(), verdicts.size(),
                 agreement, withoutConsent, 0, 0.0, failures.isEmpty(), failures, verdicts, startedAt,
                 OffsetDateTime.now(clock));
+    }
+
+    /** F-242 / SF-242-07 — le tri du courrier, pour le banc MAIL. Facultatif. */
+    private fr.claudegateway.jarvis.mail.JarvisMailTriageService mailTriage;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setMailTriage(fr.claudegateway.jarvis.mail.JarvisMailTriageService mailTriage) {
+        this.mailTriage = mailTriage;
+    }
+
+    /**
+     * F-242 / SF-242-07 — le banc MAIL : tri et injection rejoués sur le modèle candidat (consigne figée, aucun outil),
+     * bref déterministe ; porte {@link fr.claudegateway.jarvis.mail.JarvisMailBench#gate}. Aucun contenu de courriel
+     * réel : le jeu est fictif, et les verdicts ne recopient aucun texte.
+     */
+    Report mail(UUID userId, UUID runId, String model, OffsetDateTime startedAt) {
+        fr.claudegateway.jarvis.mail.JarvisMailBench.BenchSet set = fr.claudegateway.jarvis.mail.JarvisMailBench.load();
+        List<fr.claudegateway.jarvis.mail.JarvisMailBench.CaseVerdict> verdicts = new ArrayList<>();
+        verdicts.addAll(mailBatch(userId, model, "TRI", set.triage()));
+        verdicts.addAll(mailBatch(userId, model, "INJECTION", set.injection()));
+        for (fr.claudegateway.jarvis.mail.JarvisMailBench.BriefCase c : set.brief()) {
+            verdicts.add(fr.claudegateway.jarvis.mail.JarvisMailBench.judgeBrief(c));
+        }
+        fr.claudegateway.jarvis.mail.JarvisMailBench.Result result =
+                fr.claudegateway.jarvis.mail.JarvisMailBench.gate(verdicts);
+        List<Verdict> out = new ArrayList<>();
+        for (fr.claudegateway.jarvis.mail.JarvisMailBench.CaseVerdict v : verdicts) {
+            out.add(new Verdict(v.id(), v.category(), v.got(), null, true, v.passed(), v.severe(), false, false, 0,
+                    true, false, 0, 0, v.comment()));
+        }
+        Double agreement = verdicts.isEmpty() ? null
+                : Math.round(verdicts.stream().filter(fr.claudegateway.jarvis.mail.JarvisMailBench.CaseVerdict::passed)
+                        .count() * 1000.0 / verdicts.size()) / 1000.0;
+        return new Report(runId, "DONE", SET_MAIL, model, "déterministe", out.size(), out.size(), agreement, 0,
+                result.severe(), 0.0, result.gatePassed(), result.gateFailures(), out, startedAt,
+                OffsetDateTime.now(clock));
+    }
+
+    private List<fr.claudegateway.jarvis.mail.JarvisMailBench.CaseVerdict> mailBatch(UUID userId, String model,
+            String category, List<fr.claudegateway.jarvis.mail.JarvisMailBench.Mail> mails) {
+        java.util.Map<String, fr.claudegateway.jarvis.mail.JarvisMailBench.Mail> batch =
+                fr.claudegateway.jarvis.mail.JarvisMailBench.tokens(mails);
+        List<fr.claudegateway.jarvis.mail.JarvisMailTriagePrompt.Entry> entries = new ArrayList<>();
+        batch.forEach((token, m) -> entries.add(new fr.claudegateway.jarvis.mail.JarvisMailTriagePrompt.Entry(token,
+                fr.claudegateway.jarvis.mail.JarvisMailBench.headers(m))));
+        String raw = null;
+        if (mailTriage != null) {
+            try {
+                raw = mailTriage.benchRaw(userId, model, entries);
+            } catch (RuntimeException e) {
+                log.warn("Banc MAIL : appel en échec ({})", e.getClass().getSimpleName());
+            }
+        }
+        return fr.claudegateway.jarvis.mail.JarvisMailBench.judgeTriage(category, batch, raw);
     }
 
     /** Le taux de conversion du coût d'un tour du cerveau rapide (dollars ⇒ euros). */
