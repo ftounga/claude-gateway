@@ -3310,6 +3310,32 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
     }
 
+    /**
+     * F-232 / SF-232-06 (D8) — les fils dont le DERNIER message vient d'un compagnon au téléphone VERROUILLÉ (instant de
+     * la marque). Toute requête non verrouillée sur le fil l'efface. Sous cette marque, le « oui » d'une action de
+     * courrier ou d'agenda en attente n'exécute rien.
+     */
+    private final java.util.Map<String, Long> phoneLockedTurns = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Au-delà, une marque « verrouillé » ne vaut plus (une action en attente expire, elle, au bout de 10 min). */
+    static final long PHONE_LOCK_MARK_TTL_MS = 10 * 60_000L;
+
+    /** F-232 / SF-232-06 — l'origine du prochain message de ce fil : compagnon verrouillé, ou non (efface). */
+    public void markPhoneLocked(UUID userId, UUID workspaceId, Integer chantier, boolean locked) {
+        String key = turnKey(userId, workspaceId, chantier);
+        if (locked) {
+            phoneLockedTurns.put(key, System.currentTimeMillis());
+        } else {
+            phoneLockedTurns.remove(key);
+        }
+    }
+
+    /** F-232 / SF-232-06 — le message de ce fil vient-il d'un téléphone verrouillé ? (lu, jamais consommé). */
+    boolean phoneLocked(UUID userId, UUID workspaceId, Integer chantier) {
+        Long at = phoneLockedTurns.get(turnKey(userId, workspaceId, chantier));
+        return at != null && System.currentTimeMillis() - at <= PHONE_LOCK_MARK_TTL_MS;
+    }
+
     /** F-241 / SF-241-03 (D17) — les fils dont le prochain tour vocal part d'un écran en présentation. */
     private final java.util.Map<String, Boolean> presentationTurns = new java.util.concurrent.ConcurrentHashMap<>();
 
@@ -3649,8 +3675,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         // F-242 / SF-242-06 (D9 c) — LE « OUI » VÉRIFIÉ CÔTÉ SERVEUR : dans le fil Jarvis, le message PERSISTÉ de
         // l'utilisateur (sa parole, jamais un texte du modèle ni un résultat d'outil) confirme ou annule l'action de
         // courrier en attente ; la note fixe jointe AU MESSAGE dit à Opus ce qui s'est passé. Ailleurs : rien.
+        // F-232 / SF-232-06 (D8) — téléphone du compagnon VERROUILLÉ : le « oui » n'exécute rien (règle de la passerelle).
+        boolean phoneLocked = phoneLocked(userId, workspaceId, chantier);
         if (workspace.isJarvisThread() && jarvisMailActions != null) {
-            String mailNote = jarvisMailActions.onUserMessage(userId, workspaceId, savedUserMessage.getId(), userText);
+            String mailNote = jarvisMailActions.onUserMessage(userId, workspaceId, savedUserMessage.getId(), userText,
+                    phoneLocked);
             if (mailNote != null && !mailNote.isEmpty()) {
                 messages.set(messages.size() - 1, AgentMessage.userText(consigne + "\n\n" + mailNote));
             }
@@ -3659,7 +3688,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         // l'utilisateur, dans le fil Jarvis, la confirme ; la note fixe est jointe AU MESSAGE.
         if (workspace.isJarvisThread() && jarvisCalendarActions != null) {
             String calendarNote = jarvisCalendarActions.onUserMessage(userId, workspaceId, savedUserMessage.getId(),
-                    userText);
+                    userText, phoneLocked);
             if (calendarNote != null && !calendarNote.isEmpty()) {
                 AgentMessage last = messages.get(messages.size() - 1);
                 String lastText = last.content().isEmpty()

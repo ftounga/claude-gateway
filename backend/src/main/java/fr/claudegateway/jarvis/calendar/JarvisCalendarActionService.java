@@ -100,6 +100,14 @@ public class JarvisCalendarActionService {
      * l'annule (tout le reste). Rend la note jointe au message d'Opus, ou {@code ""} sans action en attente.
      */
     public String onUserMessage(UUID userId, UUID workspaceId, UUID messageId, String text) {
+        return onUserMessage(userId, workspaceId, messageId, text, false);
+    }
+
+    /**
+     * F-232 / SF-232-06 (D8) — même règle, et téléphone du compagnon <b>verrouillé</b> : un « oui » net ne pose rien,
+     * l'action reste en attente et la note fixe le dit. Seul un « oui » d'une session déverrouillée l'exécute.
+     */
+    public String onUserMessage(UUID userId, UUID workspaceId, UUID messageId, String text, boolean phoneLocked) {
         if (userId == null || workspaceId == null) {
             return "";
         }
@@ -118,6 +126,10 @@ public class JarvisCalendarActionService {
             actions.close(pending.getId(), userId, JarvisCalendarAction.Status.CANCELLED);
             return "[Agenda — pas de « oui » net de l'utilisateur : « " + pending.getSummary() + " » n'est pas posé. "
                     + "Traite son message tel quel.]";
+        }
+        if (phoneLocked) {
+            return "[Agenda — « oui » reçu téléphone verrouillé : « " + pending.getSummary() + " » n'est pas posé, "
+                    + "l'action reste en attente. Dis seulement qu'il faut déverrouiller le téléphone pour confirmer.]";
         }
         if (actions.confirm(pending.getId(), userId, messageId, now) != 1) {
             return "";

@@ -211,6 +211,26 @@ class JarvisCalendarWriteIntegrationTest {
     }
 
     @Test
+    void aLockedPhoneYesPosesNothingUntilAnUnlockedYes() throws Exception {
+        // F-232 / SF-232-06 (D8) — téléphone du compagnon verrouillé : la passerelle ne pose rien sur « oui ».
+        User a = user("verrou");
+        Workspace thread = threads.open(a.getId());
+        link(a);
+        assertThat(tools.execute(a.getId(), thread, "agenda_poser", input(tomorrowAt(10), tomorrowAt(11))).error())
+                .isFalse();
+
+        String locked = actions.onUserMessage(a.getId(), thread.getId(), UUID.randomUUID(), "Oui", true);
+        assertThat(locked).contains("téléphone verrouillé").contains("n'est pas posé").contains("reste en attente");
+        assertThat(GoogleTestServer.RECEIVED).noneMatch(r -> r.path().endsWith("/calendars/primary/events"));
+        assertThat(jdbc.queryForObject("select status from jarvis_calendar_actions where user_id = ?", String.class,
+                a.getId())).isEqualTo("PENDING");
+
+        assertThat(actions.onUserMessage(a.getId(), thread.getId(), UUID.randomUUID(), "Oui", false)).contains("posé");
+        assertThat(GoogleTestServer.RECEIVED.stream().filter(r -> r.path().endsWith("/calendars/primary/events")))
+                .hasSize(1);
+    }
+
+    @Test
     void aYesFromAnotherUserOrAnotherThreadIsWorthNothingAndRevocationClearsTheToken() throws Exception {
         User a = user("iso");
         User b = user("isob");
