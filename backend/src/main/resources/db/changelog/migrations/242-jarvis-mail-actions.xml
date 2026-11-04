@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-242 / SF-242-06 - LES ACTIONS QUI ENGAGENT (D9 c) : envoyer, supprimer, archiver en masse. Une action est creee
+      PENDING par l'outil d'Opus (expiration 10 min) ; elle n'est executee QUE si le message suivant de l'UTILISATEUR
+      dans le fil Jarvis est un "oui" de la liste fermee, verifie par la passerelle (confirmed_by_message_id = ce
+      message). payload scelle (ByokKeyCipher) ; summary = la reformulation dite (sans le corps). Filtre user_id.
+      Requete de controle : aucun envoi ni suppression sans une ligne EXECUTED passee par CONFIRMED.
+
+      Rollback : table retiree (nouvelle).
+    -->
+
+    <changeSet id="242-jarvis-mail-actions" author="claude-gateway">
+        <createTable tableName="jarvis_mail_actions">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="account_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="kind" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="payload" type="varchar(64000)"><constraints nullable="false"/></column>
+            <column name="summary" type="varchar(600)"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="expires_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="confirmed_by_message_id" type="uuid"/>
+            <column name="executed_at" type="timestamp with time zone"/>
+            <column name="error" type="varchar(300)"/>
+        </createTable>
+        <createIndex tableName="jarvis_mail_actions" indexName="idx_jarvis_mail_actions_user_status">
+            <column name="user_id"/>
+            <column name="status"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="jarvis_mail_actions"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
