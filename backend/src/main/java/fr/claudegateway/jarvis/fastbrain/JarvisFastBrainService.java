@@ -216,6 +216,13 @@ public class JarvisFastBrainService {
     static final String AUTO_ANNOUNCE = "";
 
     /**
+     * F-245 / SF-245-06 — le repli d'une annonce de délégation rejetée (creuse, répétée, non ancrée) : une phrase
+     * humaine, sans fait ni libellé ; la seconde quand la première vient d'être dite.
+     */
+    static final List<String> SAFE_ANNOUNCES = List.of("Entendu, Monsieur, je m'y penche.",
+            "Bien, je me renseigne.");
+
+    /**
      * L'annonce d'une délégation demandée par le PO (« vérifie »), à défaut d'objet nommable. F-240 / SF-240-05 :
      * « Je vérifie. » seul était jugé creux ; l'annonce dit désormais ce qui est vérifié ({@link #forcedAnnounce}).
      */
@@ -1264,8 +1271,8 @@ public class JarvisFastBrainService {
     }
 
     /**
-     * L'annonce d'une délégation (D11b) : creuse, répétée ou non ancrée ⇒ remplacée par une annonce qui nomme
-     * l'objet (« Je regarde : tickets bloqués d'Edenred. »).
+     * L'annonce d'une délégation (D11b) : creuse, répétée ou non ancrée ⇒ remplacée par une phrase humaine
+     * ({@link #SAFE_ANNOUNCES}, F-245 / SF-245-06), jamais par le libellé brut.
      */
     Delegation withSafeAnnounce(Delegation d, SentenceGate gate) {
         String annonce = d.annonce();
@@ -1275,13 +1282,10 @@ public class JarvisFastBrainService {
         if (!bad) {
             return d;
         }
-        String label = d.label() == null ? "" : d.label().strip().replaceAll("[.!?…]+$", "");
-        String safe = label.isEmpty() || JarvisFastGuards.looksLikeToolCall(label) || gate.ungrounded(label) != null
-                ? AUTO_ANNOUNCE
-                : "Je regarde : " + label + ".";
-        if (!safe.isEmpty() && gate.repeats(safe)) {
-            safe = "Je lance la recherche : " + label + ".";
-        }
+        // F-245 / SF-245-06 — le repli est une phrase humaine, jamais le libellé brut (« Je regarde : idées cadeau
+        // anniversaire épouse. », banc prod du 04/11, T03) ; la seconde si la première vient d'être dite, sinon le
+        // silence.
+        String safe = SAFE_ANNOUNCES.stream().filter(a -> !gate.repeats(a)).findFirst().orElse(AUTO_ANNOUNCE);
         return new Delegation(d.delegationId(), d.demande(), d.label(), safe, d.subjectId(), d.chantier(),
                 d.automatic(), d.reason());
     }
@@ -1710,7 +1714,8 @@ public class JarvisFastBrainService {
                 }
                 // F-239 / SF-239-13 — ni phrase sur « le contexte », ni offre de détail d'office, ni plus de trois
                 // phrases dites (banc prod du 02/11).
-                if (JarvisFastGuards.isMetaTalk(sentence) || JarvisFastGuards.isDetailOffer(sentence)
+                if (JarvisFastGuards.isMetaTalk(sentence) || JarvisFastGuards.isReasoningLeak(sentence)
+                        || JarvisFastGuards.isDetailOffer(sentence)
                         || saidNow.size() >= MAX_SENTENCES) {
                     fillersRemoved++;
                     return;

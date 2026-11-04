@@ -713,7 +713,55 @@ class JarvisFastBrainServiceTest {
                  "chantier": null}
                 """), null, null).converse(ask("Regarde les tickets bloqués"), null);
 
-        assertThat(outcome.delegation().annonce()).isEqualTo("Je regarde : tickets bloqués.");
+        assertThat(outcome.delegation().annonce()).isEqualTo("Entendu, Monsieur, je m'y penche.")
+                .doesNotContain("tickets bloqués");
+    }
+
+    // ---------------------------------------------------------------- F-245 / SF-245-06 (banc prod du 04/11)
+
+    @Test
+    void f245_06AnAnnounceNamingMadameIsKeptNotReplacedByTheRawLabel() {
+        JarvisFastBrainService.Outcome outcome = service(delegating("""
+                {"demande": "Proposer des idées de cadeau", "label": "idées cadeau anniversaire épouse",
+                 "annonce": "Je cherche des idées de cadeau pour l'anniversaire de Madame, Monsieur.",
+                 "sujet": "", "chantier": null}
+                """), null, null).converse(ask("J'ai besoin d'idées de cadeau pour l'anniversaire de ma femme."),
+                null);
+
+        assertThat(outcome.delegation().annonce())
+                .isEqualTo("Je cherche des idées de cadeau pour l'anniversaire de Madame, Monsieur.");
+    }
+
+    @Test
+    void f245_06AnUngroundedAnnounceFallsBackToAHumanSentenceNeverTheLabel() {
+        JarvisFastBrainService.Outcome outcome = service(delegating("""
+                {"demande": "x", "label": "idées cadeau anniversaire épouse",
+                 "annonce": "Je cherche un cadeau pour Sophie.", "sujet": "", "chantier": null}
+                """), null, null).converse(ask("J'ai besoin d'idées de cadeau pour ma femme."), null);
+
+        assertThat(outcome.delegation().annonce()).isIn(JarvisFastBrainService.SAFE_ANNOUNCES)
+                .doesNotContain("Sophie").doesNotContain("idées cadeau").doesNotContain(" : ");
+    }
+
+    @Test
+    void f245_06ASpokenReasoningIsNeverSaid() {
+        StringBuilder heard = new StringBuilder();
+        JarvisFastBrainService.Outcome outcome = service(streaming("Bonne fin de matinée, Monsieur. ",
+                "La remarque du jour a déjà été faite, mais la question est posée en réponse à une salutation, "
+                        + "sans humour ; je maintiens donc seulement la courtoisie."), null, null)
+                .converse(ask("Bonne fin de matinée, Jarvis."), heard::append);
+
+        assertThat(outcome.spokenText()).isEqualTo("Bonne fin de matinée, Monsieur.");
+        assertThat(heard.toString()).doesNotContain("remarque").doesNotContain("courtoisie");
+    }
+
+    @Test
+    void f245_06ThePromptV15ForbidsSpokenReasoningAndSelfClarifiedActions() {
+        assertThat(JarvisFastBrainPrompt.CORE).contains("Tu décides en silence")
+                .contains("Une action demandée ne se clarifie jamais toi-même");
+        assertThat(fr.claudegateway.jarvis.portrait.JarvisPortraitNote.FAST_MARKS)
+                .contains("La même idée en d'autres mots est une répétition")
+                .contains("y compris une question de politesse sur sa vie");
     }
 
     @Test
@@ -1035,7 +1083,7 @@ class JarvisFastBrainServiceTest {
         assertThat(JSON.writeValueAsString(calls.get(1).tools())).isEqualTo(first);
         assertThat(JSON.writeValueAsString(calls.get(2).tools())).isEqualTo(first);
         assertThat(calls.get(0).system()).isEqualTo(calls.get(2).system());
-        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("14");
+        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("15");
         assertThat(first).doesNotContain("Kestrel").doesNotContain(subject.toString());
     }
 
