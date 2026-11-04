@@ -28,6 +28,10 @@ public interface JarvisMailItemRepository extends JpaRepository<JarvisMailItem, 
     List<JarvisMailItem> findByUserIdAndTriageOrderByReceivedAtAsc(UUID userId, JarvisMailItem.Triage triage,
             Pageable page);
 
+    /** SF-242-04 — les courriers d'un tri jamais dits au bref. */
+    List<JarvisMailItem> findByUserIdAndTriageAndBriefedAtIsNullOrderByReceivedAtDesc(UUID userId,
+            JarvisMailItem.Triage triage, Pageable page);
+
     boolean existsByAccountIdAndUidvalidityAndUid(UUID accountId, long uidvalidity, long uid);
 
     @Query("select i.messageId from JarvisMailItem i where i.accountId = :accountId and i.messageId in :ids")

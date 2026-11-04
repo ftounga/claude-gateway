@@ -1014,6 +1014,10 @@ valeur en dur ailleurs.
   bouton « ☰ Vues » (Space Grotesk capitales, ≥ 44 px) ouvre un volet plein écran navy 94 %, sans flou, à onglets
   (une vue à la fois). Décor : une profondeur d'étoiles, grille simple, ni nébuleuse ni poussière ; liaisons du
   focus seulement ; un panneau ancré (deux pour les tickets) ; entrée 1,2 s.
+- **Visionneuse de courriel (F-242 / SF-242-04)** — le verre des volets de `/jarvis` (navy-2 70 %, liseré crème 18 %,
+  flou 10 px, rayon 8 px), à gauche, `min(560px, 100vw − 2 × space-4)` ; en-têtes en grille (libellés crème 70 %),
+  corps en **texte seul** (`pre-wrap`, jamais de HTML rendu, donc aucune image distante), étiquette « Contenu externe »
+  liserée `--cg-orange-2` ; brouillon : liseré `--cg-orange-2`. Aucune couleur nouvelle ; **jamais en présentation**.
 
 ## 24 — Conventions AWS des schémas d'architecture (ajout F-238 / SF-238-06, 2026-11-02)
 

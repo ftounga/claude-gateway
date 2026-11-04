@@ -35,14 +35,35 @@ public class JarvisMailController {
     private final JarvisMailAccountService accounts;
     private final JarvisMailItemService items;
     private final JarvisMailTriageService triage;
+    private final JarvisMailBriefService briefs;
+    private final JarvisMailReader reader;
     private final CurrentUser currentUser;
 
     public JarvisMailController(JarvisMailAccountService accounts, JarvisMailItemService items,
-            JarvisMailTriageService triage, CurrentUser currentUser) {
+            JarvisMailTriageService triage, JarvisMailBriefService briefs, JarvisMailReader reader,
+            CurrentUser currentUser) {
         this.accounts = accounts;
         this.items = items;
         this.triage = triage;
+        this.briefs = briefs;
+        this.reader = reader;
         this.currentUser = currentUser;
+    }
+
+    /** SF-242-04 (D8) — le bref d'ouverture : vide sans neuf « à traiter » ou en présentation. */
+    @GetMapping("/jarvis/mail/brief")
+    public JarvisMailBriefService.Brief brief(@RequestParam(required = false) Boolean presentation) {
+        return briefs.brief(currentUser.requireId(), Boolean.TRUE.equals(presentation));
+    }
+
+    /** SF-242-04 (D16) — un courrier, corps relu par IMAP en texte seul ; rien en présentation (409). */
+    @GetMapping("/jarvis/mail/items/{id}")
+    public ResponseEntity<JarvisMailReader.Body> item(@PathVariable UUID id,
+            @RequestParam(required = false) Boolean presentation) {
+        if (Boolean.TRUE.equals(presentation)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+        }
+        return ResponseEntity.ok(reader.read(currentUser.requireId(), id));
     }
 
     /** SF-242-03 — corriger le tri au toucher (compté). */

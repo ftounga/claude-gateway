@@ -1896,6 +1896,30 @@ public class JarvisFastBrainService {
         }
     }
 
+    /** F-242 / SF-242-04 — le courrier trié (bloc volatil du message, balisé non fiable). Facultatif. */
+    private fr.claudegateway.jarvis.mail.JarvisMailBriefService mail;
+
+    @Autowired(required = false)
+    public void setMail(fr.claudegateway.jarvis.mail.JarvisMailBriefService mail) {
+        this.mail = mail;
+    }
+
+    /**
+     * F-242 / SF-242-04 (D8, D16) — le bloc « Courrier » joint au contexte du MESSAGE (jamais à la consigne système) ;
+     * vide sans boîte reliée ; en présentation, « indisponible ». Best-effort : une panne ne retire que le bloc.
+     */
+    String mailBlock(Request request) {
+        if (mail == null || request.userId() == null) {
+            return "";
+        }
+        try {
+            return mail.contextBlock(request.userId(), request.presentation());
+        } catch (RuntimeException e) {
+            log.debug("Cerveau rapide : bloc courrier omis ({})", e.getClass().getSimpleName());
+            return "";
+        }
+    }
+
     /** Le message d'un échange : le contexte, puis la parole. */
     static String message(String context, String text) {
         return "[Contexte]\n" + (context == null ? "" : context.strip()) + "\n\n[Parole de l'utilisateur]\n"
@@ -1907,7 +1931,7 @@ public class JarvisFastBrainService {
         if (contextBuilder != null) {
             // F-239 / SF-239-11 — sans l'univers : il est donné en référence en tête de conversation.
             return contextBuilder.build(request.userId(), request.workspace(), request.chantier(),
-                    request.heardBeforeCut(), false);
+                    request.heardBeforeCut(), false) + mailBlock(request);
         }
         StringBuilder context = new StringBuilder();
         context.append("Maintenant : ").append(ZonedDateTime.now(clock).withZoneSameInstant(ZONE).format(STAMP))
@@ -1920,7 +1944,7 @@ public class JarvisFastBrainService {
         if (request.chantier() != null) {
             context.append("Chantier courant : ").append(request.chantier()).append('\n');
         }
-        return context.toString();
+        return context + mailBlock(request);
     }
 
     /** La délégation décidée par le modèle ; sujet cible vérifié sous {@code user_id}, sinon le sujet courant. */

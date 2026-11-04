@@ -94,6 +94,8 @@ import { JarvisAppUpdate } from './jarvis-app-update';
 import { JarvisCompanionsComponent } from './jarvis-companions.component';
 import { JarvisPortraitComponent } from './jarvis-portrait.component';
 import { JarvisMailboxesComponent } from './jarvis-mailboxes.component';
+import { JarvisMailCardComponent } from './jarvis-mail-card.component';
+import { JarvisMailClient, MailCard, bodyCard, briefCard, mailPieceId } from './jarvis-mail';
 import { JarvisCostPanelComponent } from './jarvis-cost-panel.component';
 import {
   INTERVIEW_END, INTERVIEW_END_MS, INTERVIEW_INTRO, INTERVIEW_NOTHING, INTERVIEW_OFFER, INTERVIEW_QUESTIONS,
@@ -174,7 +176,7 @@ export function companionOffer(version: JarvisCompanionVersion, installed: numbe
  */
 @Component({
   selector: 'app-jarvis',
-  imports: [JarvisPieceGalleryComponent, JarvisCockpitComponent, JarvisCompanionsComponent, JarvisCostPanelComponent, JarvisPortraitComponent, JarvisMailboxesComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatMenuModule],
+  imports: [JarvisPieceGalleryComponent, JarvisCockpitComponent, JarvisCompanionsComponent, JarvisCostPanelComponent, JarvisPortraitComponent, JarvisMailboxesComponent, JarvisMailCardComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatMenuModule],
   templateUrl: './jarvis.component.html',
   styleUrl: './jarvis.component.scss',
   providers: [JarvisAppUpdate],
@@ -365,6 +367,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
   // ---- F-241 / SF-241-02 : l'entretien oral (sur l'appareil ; rien d'enregistré avant « Valider ») ----
   private readonly interviewClient = inject(JarvisInterviewClient);
   private readonly portraitClient = inject(JarvisPortraitClient);
+  /** F-242 / SF-242-04 — le courrier : le bref d'ouverture et la visionneuse de courriel. */
+  private readonly mailClient = inject(JarvisMailClient);
+  /** F-242 / SF-242-04 (D16) — le courriel à l'écran (mis en avant, capture) ; jamais en présentation. */
+  readonly mailCard = signal<MailCard | null>(null);
   /** L'entretien en cours : ses réponses ne vont ni au fil, ni à la mémoire du jour, ni à la capture. */
   private interview: JarvisInterview | null = null;
   /** D13 — la proposition d'entretien, affichée (et dite au premier échange) tant qu'elle n'est ni prise ni remise. */
@@ -491,6 +497,43 @@ export class JarvisComponent implements OnInit, OnDestroy {
   /** D12 (a) — la phrase d'Opus sans ses phrases interdites. */
   private portraitSafe(text: string): string {
     return portraitSafe(text, this.portraitSaid(), this.portraitTerms);
+  }
+
+  /**
+   * F-242 / SF-242-04 (D8) — le bref du courrier à l'ouverture : s'il y a du neuf « à traiter », Jarvis le dit (≈ 25 mots,
+   * composé par la passerelle des raisons du tri, aucun appel au modèle) et met le premier courriel en avant. Jamais en
+   * présentation.
+   */
+  private loadMailBrief(): void {
+    if (this.presentation()) {
+      return;
+    }
+    this.mailClient.brief(false).subscribe({
+      next: (brief) => {
+        const card = briefCard(brief);
+        if (!card || this.presentation()) {
+          return;
+        }
+        this.mailCard.set(card);
+        void this.say(brief.text);
+      },
+      error: () => undefined,
+    });
+  }
+
+  /** F-242 / SF-242-04 (D16) — « montre-moi le mail » : le corps relu par la passerelle, en texte seul. */
+  private showMail(id: string): void {
+    if (this.presentation()) {
+      return;
+    }
+    this.mailClient.body(id).subscribe({
+      next: (body) => {
+        if (!this.presentation()) {
+          this.mailCard.set(bodyCard(body));
+        }
+      },
+      error: () => void this.say('Ce courriel n’est plus dans la boîte de réception.'),
+    });
   }
 
   /** D13 — la cadence est tenue par la passerelle ; ni en présentation, ni pendant une tâche. */
@@ -837,6 +880,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.loadCompanion(installed);
     this.loadPreferences();
     this.loadInterviewOffer();
+    this.loadMailBrief();
     this.refreshCosts();
     this.atelier.listWorkspaces().subscribe({
       next: (all) => {
@@ -2871,6 +2915,12 @@ export class JarvisComponent implements OnInit, OnDestroy {
    * (pièce introuvable, index hors bornes) est dit, court ; un refus silencieux (déjà montrée) ne dit rien.
    */
   async applyShow(command: ShowCommand): Promise<boolean> {
+    // F-242 / SF-242-04 — un courriel n'est pas une pièce de chantier : il s'ouvre dans sa visionneuse.
+    const mailId = mailPieceId(command.pieces);
+    if (mailId) {
+      this.showMail(mailId);
+      return !this.presentation();
+    }
     const done = await this.pieces.applyShow(command, {
       subjectId: this.subjectId(), subjectName: this.subject()?.name ?? null, sober: this.sober(),
     });
