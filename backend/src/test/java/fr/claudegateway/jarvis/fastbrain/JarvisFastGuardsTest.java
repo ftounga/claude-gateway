@@ -181,6 +181,28 @@ class JarvisFastGuardsTest {
                 JarvisFastGuards.courtesyReply("Bonjour"))).isFalse();
     }
 
+    // ---------------------------------------------------------------- F-245 / SF-245-06 (banc prod du 04/11)
+
+    @Test
+    void f245_06ASpokenReasoningIsRecognisedButNotAnOrdinaryWorkSentence() {
+        assertThat(JarvisFastGuards.isReasoningLeak("La remarque du jour a déjà été faite, mais la question est posée "
+                + "en réponse à une salutation, sans humour ; je maintiens donc seulement la courtoisie.")).isTrue();
+        assertThat(JarvisFastGuards.isReasoningLeak("L'allusion du jour est faite.")).isTrue();
+        assertThat(JarvisFastGuards.isReasoningLeak("Je m'en tiens donc à la courtoisie.")).isTrue();
+        assertThat(JarvisFastGuards.isReasoningLeak("Ma consigne m'interdit d'en dire plus.")).isTrue();
+        assertThat(JarvisFastGuards.isReasoningLeak("La livraison a déjà été faite.")).isFalse();
+        assertThat(JarvisFastGuards.isReasoningLeak("La règle de pare-feu est en place.")).isFalse();
+        assertThat(JarvisFastGuards.isReasoningLeak("Claire Dumas doit valider la recette.")).isFalse();
+        assertThat(JarvisFastGuards.isReasoningLeak("Bonne fin de matinée, Monsieur.")).isFalse();
+    }
+
+    @Test
+    void f245_06MadameIsAFormOfAddressNotAnUngroundedFact() {
+        assertThat(JarvisFastGuards.ungroundedFact("Je cherche un cadeau pour Madame, Monsieur.", "", "ma femme"))
+                .isNull();
+        assertThat(JarvisFastGuards.ungroundedFact("Je préviens Madame Dupont.", "", "")).isEqualTo("Dupont");
+    }
+
     // ---------------------------------------------------------------- F-239 / SF-239-13 (banc prod du 02/11)
 
     @Test

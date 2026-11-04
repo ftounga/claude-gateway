@@ -35,7 +35,7 @@ public final class JarvisFastGuards {
             "reflechis bien", "c est faux", "c est pas ca", "ce n est pas ca", "non c est faux", "faux");
 
     /** Noms propres toujours permis (ils ne sont pas des faits). */
-    static final Set<String> ALWAYS_ALLOWED = Set.of("monsieur", "jarvis", "opus", "jira", "confluence", "ok",
+    static final Set<String> ALWAYS_ALLOWED = Set.of("monsieur", "madame", "jarvis", "opus", "jira", "confluence", "ok",
             "a", "je", "vous", "il", "elle", "le", "la", "les", "un", "une", "sur", "pour", "c", "j", "l", "d",
             "qu", "n", "s", "et", "en", "au", "aux", "du", "de", "des", "ce", "cette", "ces", "mon", "ma", "mes",
             "votre", "vos", "son", "sa", "ses", "oui", "non", "bien", "bonjour", "bonsoir", "merci", "avec",
@@ -65,6 +65,25 @@ public final class JarvisFastGuards {
         String n = " " + normalize(sentence) + " ";
         return n.contains(" contexte ") || n.contains(" mes notes ") || n.contains(" mes donnees ")
                 || n.contains(" les donnees dont je dispose ") || n.contains(" dans mes informations ");
+    }
+
+    /**
+     * F-245 / SF-245-06 — les motifs d'un <b>raisonnement dit</b> : le vocabulaire des règles du tour, jamais un mot du
+     * métier (banc prod du 04/11, P10 : « La remarque du jour a déjà été faite, mais la question est posée en réponse
+     * à une salutation, sans humour ; je maintiens donc seulement la courtoisie. »).
+     */
+    private static final Pattern REASONING = Pattern.compile(
+            " allusions? (spontanees?|personnelles?|du jour) | remarque du jour | deja dit recemment "
+                    + "| en reponse a (une|sa|la|cette) (salutation|politesse) | (la|une) question est posee "
+                    + "| sans humour | ton sobre | trait d humour | (ma|mes) (consigne|consignes|regle|regles) "
+                    + "| je (maintiens|garde|conserve|m en tiens|me limite|me contente) donc ");
+
+    /**
+     * F-245 / SF-245-06 — une phrase qui commente le tour lui-même (ses règles, ses notes, ses allusions, son choix)
+     * au lieu de parler à Monsieur : jamais dite, retirée comme une phrase sur « le contexte ».
+     */
+    public static boolean isReasoningLeak(String sentence) {
+        return REASONING.matcher(" " + normalize(sentence) + " ").find();
     }
 
     /**
