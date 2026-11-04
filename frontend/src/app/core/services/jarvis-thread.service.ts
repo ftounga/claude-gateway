@@ -2,10 +2,24 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
+import { AtelierMessageLink } from '../models/atelier.models';
+
 /** Le fil Jarvis du compte (F-245 / SF-245-01) : `GET /api/jarvis/thread`. */
 export interface JarvisThread {
   id: string;
   name: string;
+}
+
+/** F-245 / SF-245-04 — une ligne du fil du jour (`GET /api/jarvis/thread/today`). */
+export interface JarvisThreadItem {
+  id: string;
+  role: 'USER' | 'ASSISTANT' | 'LINK';
+  /** La parole, la ligne 🎙 de la réponse (≤ 300 caractères) ou le texte de la ligne-lien. */
+  text: string;
+  at: string;
+  /** Vrai pour un échange du cerveau rapide (réponse « Jarvis »). */
+  fast: boolean;
+  link: AtelierMessageLink | null;
 }
 
 /**
@@ -19,5 +33,10 @@ export class JarvisThreadService {
   /** Le fil du compte, créé s'il n'existe pas encore (idempotent côté serveur). */
   open(): Observable<JarvisThread> {
     return this.http.get<JarvisThread>('/api/jarvis/thread');
+  }
+
+  /** F-245 / SF-245-04 — le fil du jour (lecture seule : le serveur ne crée rien). */
+  today(): Observable<JarvisThreadItem[]> {
+    return this.http.get<JarvisThreadItem[]>('/api/jarvis/thread/today');
   }
 }

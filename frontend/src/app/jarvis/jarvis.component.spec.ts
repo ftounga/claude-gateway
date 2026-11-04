@@ -368,6 +368,30 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     fixture.destroy();
   }));
 
+  it('F-245 / SF-245-04 — « Fil du jour » : bouton dans les réglages, replié ; jamais en présentation, même ouvert', fakeAsync(() => {
+    configure({});
+    let fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    let el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.jv__thread-open')?.textContent).toContain('Fil du jour');
+    expect(el.querySelector('app-jarvis-thread-panel')).toBeNull();
+    fixture.componentInstance.ngOnDestroy();
+    fixture.destroy();
+
+    configure({ presentation: '1' });
+    fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.jv__thread-open')).toBeNull();
+    fixture.componentInstance.threadOpen.set(true);
+    fixture.detectChanges();
+    expect(el.querySelector('app-jarvis-thread-panel')).toBeNull();
+    fixture.componentInstance.ngOnDestroy();
+    fixture.destroy();
+  }));
+
   it('F-241 / SF-241-01 — « Mon portrait » : bouton dans les réglages ; jamais en présentation, même ouvert', fakeAsync(() => {
     configure({});
     let fixture = TestBed.createComponent(JarvisComponent);

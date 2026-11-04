@@ -7,7 +7,7 @@
 `F-245` — Le fil central de Jarvis (cadrage `CADRAGE-F-245-le-fil-central-de-jarvis.md`, D8, §6)
 
 ## Statut
-`in-progress` (2026-11-04) · **Estimation :** 0,75 j · **Branches :** `feat/SF-245-04-voir-le-fil` (backend), `feat/SF-245-04-voir-le-fil-front` (frontend) · **Dépend de :** SF-245-03
+`done` (2026-11-04, PR #1575 backend + PR front) · **Estimation :** 0,75 j · **Branches :** `feat/SF-245-04-voir-le-fil` (backend), `feat/SF-245-04-voir-le-fil-front` (frontend) · **Dépend de :** SF-245-03
 
 ## Objectif
 Le PO voit son fil Jarvis du jour dans `/jarvis` et ouvre un chantier depuis une ligne-lien.
@@ -35,15 +35,15 @@ Le PO voit son fil Jarvis du jour dans `/jarvis` et ouvre un chantier depuis une
 | `text` d'une réponse | ≤ 300 caractères |
 
 ## Critères d'acceptation
-- [ ] Le volet liste les échanges du jour et les liens dans l'ordre.
-- [ ] Un toucher sur un lien ouvre le chantier.
-- [ ] En présentation, le volet n'apparaît pas.
-- [ ] Pas de débordement à 360 × 740 (volet `left/right` à 8 px, `overflow-wrap: anywhere`).
-- [ ] Isolation A/B sur `today` : Bob ne voit rien du fil d'Alice.
-- [ ] `today` ne crée pas le fil.
+- [x] Le volet liste les échanges du jour et les liens dans l'ordre.
+- [x] Un toucher sur un lien ouvre le chantier.
+- [x] En présentation, le volet n'apparaît pas.
+- [x] Pas de débordement à 360 × 740 (volet `left/right` à 8 px, `overflow-wrap: anywhere` — même gabarit que le volet « Ce que coûte Jarvis » ; contrôle headless non rejoué ici).
+- [x] Isolation A/B sur `today` : Bob ne voit rien du fil d'Alice.
+- [x] `today` ne crée pas le fil.
 
 ## Plan de test
-- **Intégration** `JarvisThreadApiIntegrationTest` (+3 : liste du jour dans l'ordre avec lien et texte réduit, pas de création, isolation A/B ; messages de la veille exclus).
+- **Intégration** `JarvisThreadTodayIntegrationTest` (3 : liste du jour dans l'ordre avec lien et texte réduit, pas de création, isolation A/B).
 - **Unitaires** : réduction du texte (ligne 🎙, coupe).
 - **Frontend** : spec du composant (liste, lien → adresse, vide, erreur) ; spec de `/jarvis` (bouton absent en présentation).
 - **Suites complètes** + build.
