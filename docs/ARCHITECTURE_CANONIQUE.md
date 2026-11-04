@@ -1488,6 +1488,27 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   (scellés). Les 10 dernières sur 30 j partent dans le **message** du cerveau rapide (jamais la consigne) ; purge à
   60 j ; vidée avec le portrait. `jarvis_turn_timings` gagne `portrait_on`, `portrait_blocked`, `personal_allusion`
   (jamais de texte).
+- **jarvis_mail_accounts** — **les boîtes mail reliées à Jarvis** (F-242 / SF-242-01, migration `242-jarvis-mail-accounts`) :
+  `id`, `user_id`, `address` (unique par `user_id`), `label`, `provider` (`GOOGLE`), mot de passe d'application
+  **chiffré** par `ByokKeyCipher` (`encrypted_data_key`, `cipher_iv`, `ciphertext`, patron `user_git_credentials`),
+  `secret_last4`, `status` (`OK|AUTH_FAILED|PAUSED`), `last_ok_at`, `last_error`, `auth_failures`, position de relève
+  (`inbox_uidvalidity`, `inbox_last_uid`), `next_poll_at`, `lease_until` (bail entre pods), `created_at`. Deux au plus
+  par compte. `/api/jarvis/mail/accounts` (relier = test IMAP + SMTP **avant** écriture ; le secret n'est jamais
+  renvoyé) ; « Révoquer » et la suppression du compte effacent la boîte, ses courriers et ses actions.
+- **jarvis_mail_items** — **le cache du courrier** (F-242 / SF-242-02, migration `242-jarvis-mail-items`) : `id`,
+  `user_id`, `account_id`, `uid`, `uidvalidity` (unique avec `account_id`), `message_id`, `thread_ref`, `sealed`
+  (en-têtes + extrait ≤ 2 000 caractères, **scellés** ; le corps complet n'est **jamais** stocké, il est relu par IMAP),
+  `received_at`, `has_calendar` (F-243), `bulk` (indice de règle), `flags`, `triage`
+  (`A_TRAITER|A_LIRE|A_IGNORER|EN_ATTENTE`), `triage_reason`, `triaged_at`, `briefed_at`, `created_at`. Écrit par la
+  relève **serveur** (aucune IA sans neuf) sous le `user_id` de la boîte ; trié par le cerveau rapide (lot sans outil,
+  balisage non fiable) ; purge à 30 jours. `jarvis_usage_days` gagne `mail_polls`, `mail_polls_empty`, `mail_fetched`,
+  `mail_triage_corrected` (migration `242-jarvis-usage-mail`, compteurs seuls).
+- **jarvis_mail_actions** — **les actions de courrier qui engagent** (F-242 / SF-242-06, migration
+  `242-jarvis-mail-actions`) : `id`, `user_id`, `account_id`, `workspace_id` (le fil Jarvis), `kind`
+  (`SEND|DELETE|ARCHIVE_BULK`), `payload` (scellé), `summary` (la reformulation dite), `status`
+  (`PENDING|CONFIRMED|EXECUTED|CANCELLED|EXPIRED|FAILED`), `created_at`, `expires_at` (10 min),
+  `confirmed_by_message_id`, `executed_at`, `error`. Exécutée **seulement** si le message suivant de l'utilisateur
+  dans ce fil est un « oui » de la liste fermée, vérifié par la passerelle ; aucun point d'accès ne confirme.
 - **interlocuteurs** — **les interlocuteurs d'un poste** (F-180 / SF-180-03, migration `160`) : une
   personne dont on attend quelque chose, normalisée. `id`, `user_id`, `host_id` (NOT NULL — un terminal
   hébergé garde le texte libre), `display_name (120)`, `normalized_name (120)` (unique par `user_id` +
