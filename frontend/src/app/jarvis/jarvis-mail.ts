@@ -63,6 +63,8 @@ export interface MailBody {
 /** F-242 / SF-242-04 (D8) — le bref d'ouverture ; `text` vide : rien de neuf. */
 export interface MailBrief {
   text: string;
+  /** F-243 / SF-243-04 (D8) — un rendez-vous repéré à proposer (une phrase, une proposition à la fois), ou vide. */
+  proposal?: string;
   items: { id: string; from: string; fromName: string; subject: string; reason: string | null }[];
 }
 

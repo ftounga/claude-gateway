@@ -51,9 +51,20 @@ public class JarvisCalendarReader {
             boolean allDay, String title, String location, String status) {
     }
 
-    /** Une lecture : les rendez-vous de [from, to[, l'heure de la plus ancienne relève réussie, le nombre d'agendas. */
+    /**
+     * Une lecture : les rendez-vous de [from, to[, l'heure de la plus ancienne relève réussie, le nombre d'agendas ;
+     * SF-243-04 : les rendez-vous <b>proposés</b> (repérés dans les mails, pas encore posés), montrés en pointillé.
+     */
     public record Window(OffsetDateTime from, OffsetDateTime to, List<Item> items, OffsetDateTime updatedAt,
-            int feeds) {
+            int feeds, List<Item> proposals) {
+    }
+
+    /** SF-243-04 — les rendez-vous repérés dans les mails. Facultatif. */
+    private JarvisCalendarProposalService proposalService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setProposals(JarvisCalendarProposalService proposalService) {
+        this.proposalService = proposalService;
     }
 
     private final JarvisCalendarFeedRepository feeds;
@@ -87,7 +98,8 @@ public class JarvisCalendarReader {
             }
         }
         List<Item> items = merge(events.overlapping(userId, from, to), labels);
-        return new Window(from, to, items, updated, mine.size());
+        List<Item> proposed = proposalService == null ? List.of() : proposalService.pending(userId, from, to);
+        return new Window(from, to, items, updated, mine.size(), proposed);
     }
 
     /** Les journées d'une période dite ({@code aujourdhui}, {@code demain}, {@code semaine}, {@code jour} + date). */

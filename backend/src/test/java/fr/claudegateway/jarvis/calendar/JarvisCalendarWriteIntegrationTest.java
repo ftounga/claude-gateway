@@ -15,7 +15,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,17 +43,15 @@ import fr.claudegateway.user.UserRole;
  * sans « oui », « oui » ⇒ un événement sans invité et {@code sendUpdates=none}, 401 ⇒ rafraîchissement, un « oui » qui
  * n'est pas celui de l'utilisateur ne vaut rien, révocation, isolation A/B.
  */
-@SpringBootTest(properties = {
-        "app.jarvis.calendar.oauth.client-id=test-client",
-        "app.jarvis.calendar.oauth.client-secret=test-secret",
-        "app.jarvis.calendar.oauth.redirect-uri=http://localhost/api/jarvis/calendar/oauth/callback",
-        "app.jarvis.calendar.oauth.auth-uri=" + GoogleTestServer.BASE + "/auth",
-        "app.jarvis.calendar.oauth.token-uri=" + GoogleTestServer.BASE + "/token",
-        "app.jarvis.calendar.oauth.revoke-uri=" + GoogleTestServer.BASE + "/revoke",
-        "app.jarvis.calendar.oauth.api-base=" + GoogleTestServer.BASE + "/calendar/v3" })
+@SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class JarvisCalendarWriteIntegrationTest {
+
+    @org.springframework.test.context.DynamicPropertySource
+    static void google(org.springframework.test.context.DynamicPropertyRegistry registry) {
+        GoogleTestServer.register(registry);
+    }
 
     @Autowired private MockMvc mockMvc;
     @Autowired private UserRepository userRepository;
@@ -67,11 +64,6 @@ class JarvisCalendarWriteIntegrationTest {
     @Autowired private JarvisCalendarGrantService grants;
 
     private final ObjectMapper json = new ObjectMapper();
-
-    @BeforeAll
-    static void google() {
-        GoogleTestServer.start();
-    }
 
     @BeforeEach
     void reset() {
@@ -92,7 +84,7 @@ class JarvisCalendarWriteIntegrationTest {
         MvcResult r = mockMvc.perform(get("/api/jarvis/calendar/oauth/start").contextPath("/api")
                 .header("Authorization", bearer(u))).andExpect(status().isOk()).andReturn();
         String url = json.readTree(r.getResponse().getContentAsString()).get("url").asText();
-        assertThat(url).startsWith(GoogleTestServer.BASE + "/auth?").contains("access_type=offline")
+        assertThat(url).startsWith(GoogleTestServer.base() + "/auth?").contains("access_type=offline")
                 .contains("code_challenge_method=S256").contains("calendar.events").doesNotContain("test-secret");
         String state = null;
         for (String kv : url.substring(url.indexOf('?') + 1).split("&")) {
@@ -172,7 +164,8 @@ class JarvisCalendarWriteIntegrationTest {
         User a = user("poser");
         Workspace thread = threads.open(a.getId());
         // Sans droit : l'outil existe dans le fil Jarvis mais dit « non relié ».
-        assertThat(tools.toolsFor(a.getId(), thread)).extracting(t -> t.name()).containsExactly("agenda_poser");
+        assertThat(tools.toolsFor(a.getId(), thread)).extracting(t -> t.name())
+                .containsExactly("agenda_poser", "agenda_repondre");
         assertThat(tools.execute(a.getId(), thread, "agenda_poser", input(tomorrowAt(14), tomorrowAt(15))).content())
                 .contains("Agenda pro non relié");
         link(a);

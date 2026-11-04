@@ -290,6 +290,10 @@ public class JarvisFastBrainBenchService {
         for (fr.claudegateway.jarvis.mail.JarvisMailBench.BriefCase c : set.brief()) {
             verdicts.add(fr.claudegateway.jarvis.mail.JarvisMailBench.judgeBrief(c));
         }
+        // F-243 / SF-243-04 — les rendez-vous : le même appel de tri, puis la résolution déterministe.
+        if (set.rdv() != null && !set.rdv().isEmpty()) {
+            verdicts.addAll(rdvBatch(userId, model, set.rdv()));
+        }
         fr.claudegateway.jarvis.mail.JarvisMailBench.Result result =
                 fr.claudegateway.jarvis.mail.JarvisMailBench.gate(verdicts);
         List<Verdict> out = new ArrayList<>();
@@ -303,6 +307,25 @@ public class JarvisFastBrainBenchService {
         return new Report(runId, "DONE", SET_MAIL, model, "déterministe", out.size(), out.size(), agreement, 0,
                 result.severe(), 0.0, result.gatePassed(), result.gateFailures(), out, startedAt,
                 OffsetDateTime.now(clock));
+    }
+
+    private List<fr.claudegateway.jarvis.mail.JarvisMailBench.CaseVerdict> rdvBatch(UUID userId, String model,
+            List<fr.claudegateway.jarvis.mail.JarvisMailBench.RdvCase> cases) {
+        java.util.Map<String, fr.claudegateway.jarvis.mail.JarvisMailBench.RdvCase> batch =
+                fr.claudegateway.jarvis.mail.JarvisMailBench.rdvTokens(cases);
+        List<fr.claudegateway.jarvis.mail.JarvisMailTriagePrompt.Entry> entries = new ArrayList<>();
+        batch.forEach((token, c) -> entries.add(new fr.claudegateway.jarvis.mail.JarvisMailTriagePrompt.Entry(token,
+                new fr.claudegateway.jarvis.mail.MailHeaders(c.from(), c.fromName(), List.of(), List.of(), null,
+                        c.subject(), c.snippet()), OffsetDateTime.parse(c.received()))));
+        String raw = null;
+        if (mailTriage != null) {
+            try {
+                raw = mailTriage.benchRaw(userId, model, entries);
+            } catch (RuntimeException e) {
+                log.warn("Banc MAIL : appel des rendez-vous en échec ({})", e.getClass().getSimpleName());
+            }
+        }
+        return fr.claudegateway.jarvis.mail.JarvisMailBench.judgeRdv(batch, raw);
     }
 
     private List<fr.claudegateway.jarvis.mail.JarvisMailBench.CaseVerdict> mailBatch(UUID userId, String model,
