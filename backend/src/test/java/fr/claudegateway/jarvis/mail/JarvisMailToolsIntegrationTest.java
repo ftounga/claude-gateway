@@ -79,7 +79,9 @@ class JarvisMailToolsIntegrationTest {
     void toolsOnlyInTheJarvisThreadWithABoxAndFrozen() {
         Box b = box("tools");
         assertThat(catalog.toolsFor(b.userId(), b.thread())).extracting("name")
-                .containsExactly(JarvisMailToolCatalog.READ, JarvisMailToolCatalog.SEARCH);
+                .containsExactly(JarvisMailToolCatalog.READ, JarvisMailToolCatalog.SEARCH, JarvisMailToolCatalog.DRAFT,
+                        JarvisMailToolCatalog.REPLY, JarvisMailToolCatalog.SEND, JarvisMailToolCatalog.ARCHIVE,
+                        JarvisMailToolCatalog.DELETE);
         assertThat(catalog.toolsFor(b.userId(), b.subject())).isEmpty();
         assertThat(catalog.toolsFor(UUID.randomUUID(), b.thread())).isEmpty();
         assertThat(catalog.toolsFor(b.userId(), b.thread())).isEqualTo(catalog.toolsFor(b.userId(), b.thread()));

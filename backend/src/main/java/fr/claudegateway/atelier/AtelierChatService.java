@@ -1970,6 +1970,14 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.clientMailTool = clientMailTool;
     }
 
+    /** F-242 / SF-242-06 — le « oui » vérifié des actions de courrier (fil Jarvis). Facultatif. */
+    private fr.claudegateway.jarvis.mail.JarvisMailActionService jarvisMailActions;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJarvisMailActions(fr.claudegateway.jarvis.mail.JarvisMailActionService jarvisMailActions) {
+        this.jarvisMailActions = jarvisMailActions;
+    }
+
     /** F-242 / SF-242-05 — les outils de courrier d'Opus, offerts dans le seul fil Jarvis. Facultatif. */
     private fr.claudegateway.jarvis.mail.JarvisMailToolCatalog jarvisMailTools;
 
@@ -3610,6 +3618,15 @@ public class AtelierChatService implements RelayInterruptTarget {
                 .chantierNumber(workspace.getTurnChantier())
                 .via(viaJarvis ? AtelierMessage.VIA_JARVIS : null)
                 .brain(delegated ? AtelierMessage.BRAIN_DELEGATED : null).build());
+        // F-242 / SF-242-06 (D9 c) — LE « OUI » VÉRIFIÉ CÔTÉ SERVEUR : dans le fil Jarvis, le message PERSISTÉ de
+        // l'utilisateur (sa parole, jamais un texte du modèle ni un résultat d'outil) confirme ou annule l'action de
+        // courrier en attente ; la note fixe jointe AU MESSAGE dit à Opus ce qui s'est passé. Ailleurs : rien.
+        if (workspace.isJarvisThread() && jarvisMailActions != null) {
+            String mailNote = jarvisMailActions.onUserMessage(userId, workspaceId, savedUserMessage.getId(), userText);
+            if (mailNote != null && !mailNote.isEmpty()) {
+                messages.set(messages.size() - 1, AgentMessage.userText(consigne + "\n\n" + mailNote));
+            }
+        }
         // F-169 / SF-169-02 : LIER les dépôts joints à CE message, maintenant que son id existe. Le
         // lien (message_id) rend les pièces jointes persistantes — le rechargement du fil les retrouve
         // (GET /chat). Isolation réappliquée au service. Best-effort : un échec de lien ne casse pas le

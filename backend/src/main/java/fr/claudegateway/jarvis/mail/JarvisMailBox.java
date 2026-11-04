@@ -44,6 +44,15 @@ public class JarvisMailBox {
         }
     }
 
+    /**
+     * Le fil d'un courrier, pour y répondre (SF-242-06) : son {@code Message-ID}, ses références, l'adresse de réponse
+     * ({@code Reply-To} sinon l'expéditeur) et tous ses participants ({@code From}, {@code Reply-To}, {@code To},
+     * {@code Cc}), en minuscules.
+     */
+    public record Thread(String messageId, String references, String replyTo, List<String> participants,
+            String subject) {
+    }
+
     public static final int MAX_HITS = 20;
     private static final ZoneId ZONE = ZoneId.of("Europe/Paris");
 
@@ -116,6 +125,39 @@ public class JarvisMailBox {
                         f.bulk(), f.flags());
                 return new JarvisMailReader.Body(view, truncated ? text.substring(0, JarvisMailReader.BODY_MAX) : text,
                         truncated);
+            } finally {
+                folder.close(false);
+            }
+        });
+    }
+
+    /** Les en-têtes de fil d'un courrier (SF-242-06), relus par IMAP. */
+    public Thread thread(UUID userId, MailRef ref) {
+        JarvisMailAccount account = accounts.require(userId, ref.accountId());
+        return server.withStore(account.getAddress(), accounts.secret(account), store -> {
+            Folder folder = folder(store, ref.all());
+            UIDFolder uids = (UIDFolder) folder;
+            folder.open(Folder.READ_ONLY);
+            try {
+                Message m = uids.getUIDValidity() == ref.uidvalidity() ? uids.getMessageByUID(ref.uid()) : null;
+                if (m == null) {
+                    throw new JarvisMailExceptions.MailNotFoundException();
+                }
+                InboxReader.Fetched f = InboxReader.fetched(ref.uid(), m);
+                String messageId = f.messageId();
+                String refs = InboxReader.header(m, "References");
+                String references = refs == null || refs.isBlank() ? messageId
+                        : (messageId == null ? refs.strip() : refs.strip() + " " + messageId);
+                String replyTo = f.headers().replyTo() != null ? f.headers().replyTo() : f.headers().from();
+                List<String> participants = new ArrayList<>();
+                for (String a : java.util.stream.Stream.of(List.of(f.headers().from()),
+                        f.headers().replyTo() == null ? List.<String>of() : List.of(f.headers().replyTo()),
+                        f.headers().to(), f.headers().cc()).flatMap(List::stream).toList()) {
+                    if (!a.isBlank() && !participants.contains(a)) {
+                        participants.add(a);
+                    }
+                }
+                return new Thread(messageId, references, replyTo, participants, f.headers().subject());
             } finally {
                 folder.close(false);
             }
