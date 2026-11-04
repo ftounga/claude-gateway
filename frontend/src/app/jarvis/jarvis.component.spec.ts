@@ -4,7 +4,7 @@ import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angul
 import { HttpErrorResponse } from '@angular/common/http';
 import { Subject, of, throwError } from 'rxjs';
 
-import { BUDGET_SOFT_NOTICE, JARVIS_USER_AGENT, JarvisComponent, companionOffer, euros } from './jarvis.component';
+import { BUDGET_SOFT_NOTICE, JARVIS_USER_AGENT, JarvisComponent, UNLOCK_ASK_PHRASE, UNLOCK_REFUSED_PHRASE, companionOffer, euros } from './jarvis.component';
 import { JarvisSceneBus } from './scenes/jarvis-scene-bus.service';
 import { testUniverse } from './scenes/jarvis-universe.fixture';
 import { NotificationCenterService } from '../core/services/notification-center.service';
@@ -26,6 +26,7 @@ import { VeilleService } from '../core/services/veille.service';
 import { JarvisStreamOpener, StreamHandlers } from './jarvis-stream-listener';
 import { WakeEvent } from './jarvis-wake';
 import { AuthService } from '../core/services/auth.service';
+import { CompanionBridgeService } from '../core/services/companion-bridge.service';
 import { JarvisVadService, VadHandlers } from './jarvis-barge-in';
 import { FORMULAS, FORMULA_CLIPS, tutoie } from './jarvis-phrases';
 import { JARVIS_3D_LOADER, JarvisEngineFactory } from './stage3d/jarvis-engine.contract';
@@ -1142,6 +1143,93 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     flushMicrotasks();
     expect(atelier.confirmChatToolUse).toHaveBeenCalledWith('w-2', { toolUseId: 't-1', decision: 'allow' });
     jarvis.ngOnDestroy();
+  }));
+
+  function companionStub(unlocks: boolean) {
+    return {
+      available: true,
+      locked: ngSignal(true),
+      isLocked: () => true,
+      unlock: jasmine.createSpy('unlock').and.resolveTo(unlocks),
+      session: jasmine.createSpy('session').and.resolveTo(null),
+      onSessionDelivered: jasmine.createSpy('onSessionDelivered'),
+      keepAlive: jasmine.createSpy('keepAlive'),
+      close: jasmine.createSpy('close'),
+    };
+  }
+
+  it('F-232 / SF-232-07 — verrouillé : le « oui » à une autorisation attend le déverrouillage ; annulé, rien n’est accordé',
+    fakeAsync(() => {
+      const bridge = companionStub(false);
+      TestBed.overrideProvider(CompanionBridgeService, { useValue: bridge });
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      const jarvis = fixture.componentInstance;
+      jarvis.send('w-2', 'Pousse la branche');
+      dictation.stop.and.resolveTo('Oui, vas-y');
+
+      handlers!.onConfirmRequest!({ toolUseId: 't-1', tool: 'bash', detail: 'git push' });
+      flushMicrotasks();
+      void jarvis.finishListening();
+      flushMicrotasks();
+
+      expect(bridge.unlock).toHaveBeenCalled();
+      expect(voice.speak).toHaveBeenCalledWith(UNLOCK_ASK_PHRASE, 'w-2');
+      expect(voice.speak).toHaveBeenCalledWith(UNLOCK_REFUSED_PHRASE, 'w-2');
+      expect(atelier.confirmChatToolUse).not.toHaveBeenCalled();
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-232 / SF-232-07 — verrouillé : déverrouillé, le « oui » part', fakeAsync(() => {
+    const bridge = companionStub(true);
+    TestBed.overrideProvider(CompanionBridgeService, { useValue: bridge });
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    jarvis.send('w-2', 'Pousse la branche');
+    dictation.stop.and.resolveTo('Oui');
+
+    handlers!.onConfirmRequest!({ toolUseId: 't-1', tool: 'bash', detail: 'git push' });
+    flushMicrotasks();
+    void jarvis.finishListening();
+    flushMicrotasks();
+
+    expect(bridge.unlock).toHaveBeenCalled();
+    expect(atelier.confirmChatToolUse).toHaveBeenCalledWith('w-2', { toolUseId: 't-1', decision: 'allow' });
+    expect(bridge.keepAlive).toHaveBeenCalled();
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-232 / SF-232-07 — « non » verrouillé : refusé sans demander le déverrouillage', fakeAsync(() => {
+    const bridge = companionStub(true);
+    TestBed.overrideProvider(CompanionBridgeService, { useValue: bridge });
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    jarvis.send('w-2', 'Pousse la branche');
+    dictation.stop.and.resolveTo('Non');
+
+    handlers!.onConfirmRequest!({ toolUseId: 't-1', tool: 'bash', detail: 'git push' });
+    flushMicrotasks();
+    void jarvis.finishListening();
+    flushMicrotasks();
+
+    expect(bridge.unlock).not.toHaveBeenCalled();
+    expect(atelier.confirmChatToolUse).toHaveBeenCalledWith('w-2',
+      { toolUseId: 't-1', decision: 'deny', reason: 'Refusé à voix haute (Jarvis).' });
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-232 / SF-232-07 — `ecoute=1` : la conversation démarre aussitôt, sans bouton', fakeAsync(() => {
+    configure({ ecoute: '1' });
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    fixture.detectChanges();
+
+    expect(jarvisApi.usage).toHaveBeenCalledWith('WAKE');
+    expect(fixture.componentInstance.state()).toBe('ecoute');
+    fixture.componentInstance.ngOnDestroy();
   }));
 
   it('F-244 / SF-244-03 — budget atteint : « Je la lance ? » est dit, et seul un « oui » confirme puis relance', fakeAsync(() => {

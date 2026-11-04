@@ -70,6 +70,10 @@ function readWakeOn(): boolean {
 
 /** SF-231-04 — ce que Jarvis dit quand la réponse n'est ni « oui » ni « non ». */
 export const DOUBT_PHRASE = 'Je n’ai pas compris : je ne fais rien. Vous pouvez confirmer depuis le terminal.';
+/** F-232 / SF-232-07 (D8) — téléphone verrouillé : le « oui » d'une action engageante attend le déverrouillage. */
+export const UNLOCK_ASK_PHRASE = 'Déverrouillez le téléphone pour confirmer.';
+/** F-232 / SF-232-07 (D8) — déverrouillage annulé : rien n'est fait. */
+export const UNLOCK_REFUSED_PHRASE = 'Rien n’est fait : il faut déverrouiller le téléphone pour confirmer.';
 /** F-235 / SF-235-05 (D13) — une annonce attend une pause d'au moins ce délai. */
 export const ANNOUNCE_PAUSE_MS = 800;
 /** F-240 / SF-240-01 — la mesure d'un tour fini (ou délégué) part au plus tard après ce délai. */
@@ -131,6 +135,7 @@ import { ShowFilter, ShowFocus, isShowDismiss, resolveShow, stripShowLines } fro
 import { ticketKeys } from './scenes/jarvis-scene-reader';
 import { arrivalDelay } from './stage3d/jarvis-panels';
 import { AuthService } from '../core/services/auth.service';
+import { CompanionBridgeService } from '../core/services/companion-bridge.service';
 import {
   ASK_SUBJECT, AnnouncementQueue, CORRECTION_WINDOW_MS, FastDelegation, FastDone, JarvisFastBrainClient,
   announcementText, isCorrection, isRepeatCommand,
@@ -194,6 +199,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
   private readonly dictation = inject(DictationService);
   protected readonly voice = inject(JarvisVoiceService);
   private readonly route = inject(ActivatedRoute);
+  /** F-232 / SF-232-07 — le pont du compagnon Android ; absent (navigateur, PWA) : rien ne change (D10). */
+  private readonly companionBridge = inject(CompanionBridgeService);
   private readonly router = inject(Router);
   private readonly zone = inject(NgZone);
   private readonly destroyRef = inject(DestroyRef);
@@ -845,6 +852,13 @@ export class JarvisComponent implements OnInit, OnDestroy {
       const mode = this.conversation.mode();
       untracked(() => this.onConversationState(state, mode));
     });
+    // F-232 / SF-232-07 — dans le compagnon, chaque changement d'état est un signe de vie : l'écran natif ne se ferme
+    // pas d'office pendant l'échange.
+    effect(() => {
+      this.state();
+      this.conversation.mode();
+      untracked(() => this.companionBridge.keepAlive());
+    });
     // SF-233-12 — une nouvelle version attend : appliquée dès que Jarvis revient au repos (rien en cours).
     effect(() => {
       this.state();
@@ -858,7 +872,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     effect(() => {
       const state = this.state();
       const on = this.wakeOn() && this.wakeLearned() && this.enrolling() === null
-        && this.conversation.mode() !== 'active';
+        && this.conversation.mode() !== 'active' && !this.companionBridge.available;
       untracked(() => {
         if (state === 'ecoute' || !on) {
           if (this.enrolling() === null) {
@@ -898,6 +912,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const alertId = this.route.snapshot.queryParamMap.get('alerte');
     // F-232 : ouvert par le compagnon Android, qui vient d'entendre « Jarvis » et passe sa version.
     const fromCompanion = this.route.snapshot.queryParamMap.get('source') === 'compagnon';
+    // F-232 / SF-232-07 (D6) — `ecoute=1` : la commande s'enchaîne sur le mot, sans bouton.
+    const listenNow = this.route.snapshot.queryParamMap.get('ecoute') === '1';
     const rawInstalled = Number(this.route.snapshot.queryParamMap.get('compagnon'));
     const installed = fromCompanion && Number.isInteger(rawInstalled) && rawInstalled >= 1 ? rawInstalled : null;
     this.loadCompanion(installed);
@@ -921,7 +937,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
         void this.fastBrain.warm(pick).then((on) => this.fastBrainOn.set(on));
         if (alertId) {
           this.readAlert(alertId);
-        } else if (fromCompanion && list.length > 0) {
+        } else if ((fromCompanion || listenNow) && list.length > 0) {
           // Le PO vient de dire « Jarvis » au téléphone : on l'écoute, et le réveil compte (D9). SF-233-11 : la
           // conversation démarre directement en mains libres.
           void this.onWake();
@@ -1902,8 +1918,12 @@ export class JarvisComponent implements OnInit, OnDestroy {
       // SF-231-04 — l'agent a demandé « Tu confirmes ? » : seul un « oui » ou un « non » nets repartent au cerveau ;
       // une réponse ambiguë n'est jamais envoyée (une erreur de transcription ne déclenche rien).
       this.awaitingVerbal = false;
-      if (classifyConfirmation(text) === 'doute') {
+      const verdict = classifyConfirmation(text);
+      if (verdict === 'doute') {
         await this.say(DOUBT_PHRASE);
+        return;
+      }
+      if (verdict === 'oui' && !(await this.unlockedForYes())) {
         return;
       }
       directToOpus = true;
@@ -3498,6 +3518,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
       this.state.set(this.turnRunning ? 'reflexion' : 'repos');
       return;
     }
+    if (answer === 'oui' && !(await this.unlockedForYes())) {
+      return;
+    }
     const decision = answer === 'oui'
       ? { toolUseId: request.toolUseId, decision: 'allow' as const }
       : { toolUseId: request.toolUseId, decision: 'deny' as const, reason: 'Refusé à voix haute (Jarvis).' };
@@ -3654,7 +3677,28 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.jarvis.usage('IDLE_END');
     this.cancelListening();
     const wake = this.wakeOn() && this.wakeLearned();
-    await this.say(IDLE_PHRASE + (wake ? IDLE_WAKE_HINT : ''));
+    await this.say(IDLE_PHRASE + (wake || this.companionBridge.available ? IDLE_WAKE_HINT : ''));
+    // F-232 / SF-232-07 (D6) — dans le compagnon, la veille ferme l'écran : le micro revient au mot d'éveil natif.
+    this.companionBridge.close();
+  }
+
+  /**
+   * F-232 / SF-232-07 (D8) — téléphone verrouillé, un « oui » engageant attend le déverrouillage : la demande s'affiche
+   * au-dessus de l'écran Jarvis ; réussie, le compagnon a remis une session déverrouillée et le « oui » peut partir.
+   * Hors compagnon ou déverrouillé : vrai aussitôt. La passerelle refuse de toute façon un « oui » verrouillé (SF-232-06).
+   */
+  private async unlockedForYes(): Promise<boolean> {
+    if (!this.companionBridge.available || !this.companionBridge.isLocked()) {
+      return true;
+    }
+    // La mesure (D9) est tenue côté passerelle : chaque session déverrouillée émise est tracée (UNLOCK).
+    void this.say(UNLOCK_ASK_PHRASE);
+    const unlocked = await this.companionBridge.unlock();
+    if (!unlocked) {
+      await this.say(UNLOCK_REFUSED_PHRASE);
+      this.state.set(this.turnRunning ? 'reflexion' : 'repos');
+    }
+    return unlocked;
   }
 
   /** Coupe l'écoute en cours sans rien envoyer. */
