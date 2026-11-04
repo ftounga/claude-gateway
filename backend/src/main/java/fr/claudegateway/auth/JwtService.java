@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
+import java.util.UUID;
 
 import javax.crypto.SecretKey;
 
@@ -33,6 +34,14 @@ public class JwtService {
     static final String CLAIM_EMAIL = "email";
     static final String CLAIM_ROLE = "role";
     static final String CLAIM_TOKEN_VERSION = "tv";
+    /** F-232 / SF-232-05 — la portée d'une session restreinte ; absente d'une session ordinaire. */
+    static final String CLAIM_SCOPE = "scope";
+    /** F-232 / SF-232-05 — le compagnon Android qui a ouvert la session (révocable avec lui). */
+    static final String CLAIM_COMPANION = "cid";
+    /** F-232 / SF-232-06 — le téléphone était-il verrouillé à l'émission de la session ? */
+    static final String CLAIM_LOCKED = "lk";
+    /** F-232 / SF-232-05 — la seule portée restreinte connue : l'écran Jarvis ouvert par le compagnon. */
+    public static final String SCOPE_JARVIS_COMPANION = "jarvis-compagnon";
 
     private final SecretKey signingKey;
     private final Duration expiration;
@@ -59,6 +68,28 @@ public class JwtService {
                 .claim(CLAIM_TOKEN_VERSION, user.getTokenVersion())
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plus(expiration)))
+                .signWith(signingKey)
+                .compact();
+    }
+
+    /**
+     * F-232 / SF-232-05 — une session <b>courte, à portée {@value #SCOPE_JARVIS_COMPANION}</b>, émise au compagnon Android
+     * appairé contre son jeton dédié. Mêmes {@code sub} / {@code tv} qu'une session ordinaire (logout-all la coupe aussi),
+     * plus le compagnon ({@code cid}, révocation immédiate) et l'état verrouillé à l'émission ({@code lk}). Le filtre
+     * d'authentification la borne à la liste fermée des routes de l'écran Jarvis.
+     */
+    public String generateCompanionToken(User user, UUID companionId, boolean locked, Instant expiresAt) {
+        Instant now = Instant.now();
+        return Jwts.builder()
+                .subject(user.getId().toString())
+                .claim(CLAIM_EMAIL, user.getEmail())
+                .claim(CLAIM_ROLE, user.getRole().name())
+                .claim(CLAIM_TOKEN_VERSION, user.getTokenVersion())
+                .claim(CLAIM_SCOPE, SCOPE_JARVIS_COMPANION)
+                .claim(CLAIM_COMPANION, companionId.toString())
+                .claim(CLAIM_LOCKED, locked)
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(expiresAt))
                 .signWith(signingKey)
                 .compact();
     }

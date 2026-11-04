@@ -68,6 +68,10 @@ public class RunnerSecurityConfig {
                         // une par une, jamais `/runner/jarvis/**` : ce jeton n'ouvre que ces deux routes.
                         .requestMatchers(HttpMethod.POST, "/runner/jarvis/pair").permitAll()
                         .requestMatchers(HttpMethod.GET, "/runner/jarvis/announcements").permitAll()
+                        // F-232 / SF-232-05 : la session courte de l'écran Jarvis du compagnon, contre le MÊME jeton
+                        // dédié vérifié PAR LE CONTRÔLEUR. Elle rend un JWT à portée « jarvis-compagnon », borné par
+                        // le filtre de la chaîne principale à la liste fermée JarvisCompanionScope.
+                        .requestMatchers(HttpMethod.POST, "/runner/jarvis/session").permitAll()
                         // Mise à jour du runner (F-111 / SF-111-03) : manifeste, jar signé, empreinte et
                         // signature. Même nature que le téléchargement — un client public ; ce qui
                         // protège est la signature Ed25519 vérifiée PAR LE RUNNER avec sa clé embarquée,
