@@ -107,6 +107,28 @@
   font-size: 12px;
 }
 
+// F-245 / SF-245-03 — LA LIGNE-LIEN DU FIL JARVIS : le registre du marqueur de flux, rendu cliquable (cible
+// tactile >= 44 px). Aucune couleur ni police nouvelle.
+.terminal-link-line {
+  min-height: 44px;
+  text-decoration: none;
+  cursor: pointer;
+
+  &:hover .terminal-link-line__text,
+  &:focus-visible .terminal-link-line__text {
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--cg-accent);
+    outline-offset: 2px;
+  }
+}
+
+.terminal-link-line__text {
+  overflow-wrap: anywhere;
+}
+
 .terminal-flux-marker-icon {
   flex-shrink: 0;
   color: var(--cg-accent);

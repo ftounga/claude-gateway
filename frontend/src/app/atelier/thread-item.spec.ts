@@ -22,6 +22,17 @@ describe('toThreadItem — né à la voix (F-231 / SF-231-06)', () => {
   });
 });
 
+/** F-245 / SF-245-03 — la ligne-lien du fil Jarvis garde sa cible au rechargement. */
+describe('toThreadItem — ligne-lien (F-245 / SF-245-03)', () => {
+  it('porte la cible d\'une ligne LINK, et seulement d\'elle', () => {
+    const link = { workspaceId: 'w', chantier: 3, messageId: 'm', status: 'FAIT' as const };
+    const item = toThreadItem({ id: 'l', role: 'LINK', content: '↗ Helios', createdAt: '2026-11-04T09:00:00Z', link });
+    expect(item.link).toEqual(link);
+    expect(toThreadItem({ id: 'u', role: 'USER', content: 'x', createdAt: '2026-11-04T09:00:00Z', link })
+      .link).toBeUndefined();
+  });
+});
+
 /** F-212 / SF-212-06 — la relecture d'un tour garde ses blocs riches (dont les captures de preuve). */
 describe('toThreadItem — blocs riches (F-212 / SF-212-06)', () => {
   const proof: AtelierProofBlock = {

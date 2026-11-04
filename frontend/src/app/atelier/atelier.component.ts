@@ -1191,6 +1191,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
     // liens antérieurs est **accepté et ignoré** — il n'y a plus qu'un terminal (F-39 / SF-39-08),
     // mais un lien déjà partagé doit continuer d'ouvrir le bon projet.
     this.requestedWorkspaceId = this.route.snapshot.paramMap.get('id');
+    // F-245 / SF-245-03 : une ligne-lien du fil Jarvis ouvre `/atelier/{id}?chantier=N&message=M` — le chantier au
+    // volet de gauche, la réponse en vue. Lus une fois, à l'ouverture du sujet demandé.
+    this.readLinkTarget(this.route.snapshot.queryParamMap);
     this.takeRadarDraft();
     this.listenVideoFeedback();
     // Panneau demandé par l'URL (F-39 / SF-39-18) : `?vue=fichiers`, éventuellement `&path=…`.
@@ -1219,9 +1222,51 @@ export class AtelierComponent implements OnInit, OnDestroy {
         firstParams = false;
         return;
       }
+      // F-245 / SF-245-03 : une ligne-lien touchée depuis le fil Jarvis réutilise cet écran.
+      this.readLinkTarget(this.route.snapshot?.queryParamMap ?? null);
       this.followRouteWorkspace(params.get('id'));
     }) ?? null;
     this.loadWorkspaces();
+  }
+
+  // ------------------------------------------------------------------ F-245 / SF-245-03 : la ligne-lien
+
+  /** La cible d'une ligne-lien : le sujet, le chantier à mettre au volet de gauche, la réponse à montrer. */
+  private linkTarget: { workspaceId: string; chantier: number | null; messageId: string | null } | null = null;
+
+  /** La réponse vers laquelle le terminal défile, une fois le fil affiché (`?message=`). */
+  readonly focusMessageId = signal<string | null>(null);
+
+  /** Lit `?chantier=N&message=M` (une ligne-lien) pour le sujet de l'adresse ; rien d'autre sinon. */
+  private readLinkTarget(params: { get(name: string): string | null } | null): void {
+    const workspaceId = this.route.snapshot?.paramMap?.get('id') ?? null;
+    const rawChantier = params?.get('chantier') ?? null;
+    const messageId = params?.get('message') ?? null;
+    const chantier = rawChantier !== null && /^\d{1,4}$/.test(rawChantier) && Number(rawChantier) > 0
+      ? Number(rawChantier) : null;
+    this.linkTarget = workspaceId && (chantier !== null || messageId)
+      ? { workspaceId, chantier, messageId: messageId || null } : null;
+  }
+
+  /**
+   * Le sujet demandé par une ligne-lien s'ouvre : son chantier vient au volet de gauche (le fil lu est le sien) et la
+   * réponse sera montrée. Pris une seule fois. Un chantier inconnu du sujet quitte le volet dès que la liste des
+   * chantiers ouverts arrive (`onPaneChantiers`).
+   */
+  private applyLinkLane(workspaceId: string): void {
+    const target = this.linkTarget;
+    this.focusMessageId.set(null);
+    if (!target || target.workspaceId !== workspaceId) {
+      return;
+    }
+    this.linkTarget = null;
+    if (target.chantier !== null) {
+      const layout = place(this.paneLayout(), target.chantier, 'left');
+      this.paneLayout.set(layout);
+      writeLayout(workspaceId, layout);
+      this.chatLane.set(target.chantier);
+    }
+    this.focusMessageId.set(target.messageId);
   }
 
   /** Abonnement à l'adresse (F-179 / SF-179-02), relâché en quittant l'écran. */
@@ -1903,6 +1948,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.activeWorkspaceId.set(workspace.id);
     // F-221 / SF-221-03 : le fil et le split appartenaient au sujet quitté.
     this.resetSplit();
+    // F-245 / SF-245-03 : le chantier demandé par une ligne-lien vient au volet de gauche AVANT la lecture du fil.
+    this.applyLinkLane(workspace.id);
     // F-198 / SF-198-01 : tout ce qui était vivant à l'écran appartenait au sujet quitté.
     this.resetTurnState();
     this.messages.set([]);

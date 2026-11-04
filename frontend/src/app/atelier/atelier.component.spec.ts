@@ -5194,7 +5194,7 @@ describe('AtelierComponent — projet demandé par l\'URL (F-30 SF-30-10)', () =
   /** L'adresse qui change après l'ouverture (F-179 / F-199) : passation, « précédent », clic du Fil. */
   let params$: BehaviorSubject<ParamMap>;
 
-  function setupWithUrl(id: string | null, mode: string | null) {
+  function setupWithUrl(id: string | null, mode: string | null, query: Record<string, string> = {}) {
     params$ = new BehaviorSubject<ParamMap>(convertToParamMap(id ? { id } : {}));
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
       'createWorkspace', 'listWorkspaces', 'getWorkspace',
@@ -5257,7 +5257,7 @@ describe('AtelierComponent — projet demandé par l\'URL (F-30 SF-30-10)', () =
           useValue: {
             snapshot: {
               paramMap: { get: (k: string) => (k === 'id' ? id : null) },
-              queryParamMap: { get: (k: string) => (k === 'mode' ? mode : null) },
+              queryParamMap: { get: (k: string) => (k === 'mode' ? mode : query[k] ?? null) },
             },
             // Panneau d'explorateur piloté par `?vue=` (F-39 / SF-39-18) : aucun ici.
             queryParamMap: of({ get: () => null } as unknown as ParamMap),
@@ -5299,6 +5299,27 @@ describe('AtelierComponent — projet demandé par l\'URL (F-30 SF-30-10)', () =
     expect(component.activeWorkspaceId()).toBe('w9');
     expect(component.submitting()).toBeFalse();
     expect(TestBed.inject(CurrentClientService).ref()).toBe('h-edenred');
+  });
+
+  it('F-245 / SF-245-03 : ?chantier=3&message=m4 (ligne-lien) met le chantier 3 au volet de gauche et vise la réponse', () => {
+    const fixture = setupWithUrl('w1', null, { chantier: '3', message: 'm4' });
+    const component = fixture.componentInstance;
+
+    expect(component.activeWorkspaceId()).toBe('w1');
+    expect(component.paneLayout().left).toBe(3);
+    expect(component.chatLane()).toBe(3);
+    // Le fil lu est celui du chantier 3.
+    expect(service.getHistory).toHaveBeenCalledWith('w1', 3);
+    expect(component.focusMessageId()).toBe('m4');
+  });
+
+  it('F-245 / SF-245-03 : un ?chantier= invalide est ignoré, le sujet s\'ouvre normalement', () => {
+    const fixture = setupWithUrl('w1', null, { chantier: 'abc' });
+    const component = fixture.componentInstance;
+
+    expect(component.activeWorkspaceId()).toBe('w1');
+    expect(component.chatLane()).toBeNull();
+    expect(component.focusMessageId()).toBeNull();
   });
 
   it('accepte et ignore ?mode=terminal des liens antérieurs (F-30 SF-30-10)', () => {

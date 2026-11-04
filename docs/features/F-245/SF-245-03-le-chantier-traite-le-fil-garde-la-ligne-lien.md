@@ -7,7 +7,7 @@
 `F-245` — Le fil central de Jarvis (cadrage `CADRAGE-F-245-le-fil-central-de-jarvis.md`, D5, D6, D10, §6)
 
 ## Statut
-`in-progress` (2026-11-04) · **Estimation :** 1 j · **Branches :** `feat/SF-245-03-ligne-lien` (backend), `feat/SF-245-03-ligne-lien-front` (frontend) · **Dépend de :** SF-245-02
+`done` (2026-11-04, PR #1573 backend + PR front) · **Estimation :** 1 j · **Branches :** `feat/SF-245-03-ligne-lien` (backend), `feat/SF-245-03-ligne-lien-front` (frontend) · **Dépend de :** SF-245-02
 
 ## Objectif
 Une demande routée vers un sujet ou un chantier y est traitée, et le fil Jarvis en garde une ligne-lien vivante qui s'ouvre d'un toucher sur la réponse.
@@ -43,12 +43,12 @@ Une demande routée vers un sujet ou un chantier y est traitée, et le fil Jarvi
 | ligne 🎙 recopiée | ≤ 300 caractères |
 
 ## Critères d'acceptation
-- [ ] Une délégation vers Helios, chantier 3, crée une ligne-lien `EN_COURS`, puis `FAIT` avec la ligne 🎙 et `ref_message_id` de la réponse.
-- [ ] L'historique du chantier 3 ne contient que la demande reformulée et la réponse, sans « bonjour » ni ligne-lien.
-- [ ] Un toucher ouvre le chantier 3 à la réponse (`/atelier/{id}?chantier=3&message=…`).
-- [ ] Un tour d'Opus suivant dans le fil Jarvis voit « [Transmis à Helios… fait…] » (rejeu).
-- [ ] Une ligne-lien vers un sujet d'autrui est impossible (`findByIdAndUserId` vide ⇒ rien).
-- [ ] Isolation A/B : la ligne-lien d'Alice n'apparaît pas chez Bob ; Bob ne peut pas la terminer.
+- [x] Une délégation vers Helios, chantier 3, crée une ligne-lien `EN_COURS`, puis `FAIT` avec la ligne 🎙 et `ref_message_id` de la réponse.
+- [x] L'historique du chantier 3 ne contient que la demande reformulée et la réponse, sans « bonjour » ni ligne-lien.
+- [x] Un toucher ouvre le chantier 3 à la réponse (`/atelier/{id}?chantier=3&message=…`).
+- [x] Un tour d'Opus suivant dans le fil Jarvis voit « [Transmis à Helios… fait…] » (rejeu).
+- [x] Une ligne-lien vers un sujet d'autrui est impossible (`findByIdAndUserId` vide ⇒ rien).
+- [x] Isolation A/B : la ligne-lien d'Alice n'apparaît pas chez Bob ; Bob ne peut pas la terminer.
 
 ## Plan de test
 - **Unitaires** `JarvisLinkServiceTest` (création, sujet d'autrui, fil Jarvis cible, fin FAIT/ECHEC/interrompu, ligne 🎙, coupe du libellé, rendu du rejeu, mise à jour d'autrui ignorée) ; `JarvisFastBrainServiceTest` (lien créé à la délégation ciblée, aucun lien pour une délégation générale ou une précision).
