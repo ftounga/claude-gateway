@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-243 / SF-243-03 - L'ECRITURE DANS L'AGENDA WORKSPACE (OAuth client Internal, portee calendar.events).
+
+      jarvis_calendar_grants : un droit par (user_id, account). Le jeton de rafraichissement est chiffre par
+      ByokKeyCipher (encrypted_data_key, cipher_iv, ciphertext) ; jamais renvoye ni journalise. La revocation le revoque
+      chez Google puis efface la ligne. jarvis_calendar_oauth_states : parcours OAuth en cours (empreinte du state,
+      user_id, empreinte du temoin du navigateur, verificateur PKCE scelle), usage unique, 10 minutes.
+      jarvis_calendar_actions : poses en attente du « oui » verifie cote serveur (patron jarvis_mail_actions).
+      Filtre user_id sur tout acces.
+
+      Rollback : tables retirees (nouvelles, sans donnee existante).
+    -->
+
+    <changeSet id="243-jarvis-calendar-grants" author="claude-gateway">
+        <createTable tableName="jarvis_calendar_grants">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="account" type="varchar(254)"><constraints nullable="false"/></column>
+            <column name="client_kind" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="encrypted_data_key" type="varchar(1024)"><constraints nullable="false"/></column>
+            <column name="cipher_iv" type="varchar(1024)"><constraints nullable="false"/></column>
+            <column name="ciphertext" type="varchar(4096)"><constraints nullable="false"/></column>
+            <column name="scope" type="varchar(500)"><constraints nullable="false"/></column>
+            <column name="granted_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="revoked_at" type="timestamp with time zone"/>
+        </createTable>
+        <addUniqueConstraint tableName="jarvis_calendar_grants" columnNames="user_id, account"
+                             constraintName="uq_jarvis_calendar_grants_user_account"/>
+        <rollback>
+            <dropTable tableName="jarvis_calendar_grants"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="243-jarvis-calendar-oauth-states" author="claude-gateway">
+        <createTable tableName="jarvis_calendar_oauth_states">
+            <column name="state_hash" type="varchar(64)"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="browser_hash" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="verifier_sealed" type="varchar(4000)"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="expires_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <rollback>
+            <dropTable tableName="jarvis_calendar_oauth_states"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="243-jarvis-calendar-actions" author="claude-gateway">
+        <createTable tableName="jarvis_calendar_actions">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="grant_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="kind" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="mail_item_id" type="uuid"/>
+            <column name="payload" type="varchar(16000)"><constraints nullable="false"/></column>
+            <column name="summary" type="varchar(600)"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="expires_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="confirmed_by_message_id" type="uuid"/>
+            <column name="executed_at" type="timestamp with time zone"/>
+            <column name="google_event_id" type="varchar(1024)"/>
+            <column name="error" type="varchar(300)"/>
+        </createTable>
+        <createIndex tableName="jarvis_calendar_actions" indexName="idx_jarvis_calendar_actions_pending">
+            <column name="user_id"/>
+            <column name="workspace_id"/>
+            <column name="status"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="jarvis_calendar_actions"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -639,6 +639,14 @@ app:
       max-feeds: ${APP_JARVIS_CALENDAR_MAX_FEEDS:10}
       allowed-hosts: calendar.google.com
       zone: ${APP_JARVIS_CALENDAR_ZONE:Europe/Paris}
+      # F-243 / SF-243-03 : ECRITURE dans l'agenda Workspace (client OAuth INTERNAL du projet Google Cloud de
+      # ng-itconsulting.com, portee calendar.events). DORMANT tant que l'identifiant est vide. Le secret vient de
+      # l'environnement (k8s secret), JAMAIS du depot.
+      oauth:
+        client-id: ${APP_JARVIS_CALENDAR_OAUTH_CLIENT_ID:}
+        client-secret: ${APP_JARVIS_CALENDAR_OAUTH_CLIENT_SECRET:}
+        redirect-uri: ${APP_JARVIS_CALENDAR_OAUTH_REDIRECT_URI:https://portal.ng-itconsulting.com/api/jarvis/calendar/oauth/callback}
+        hosted-domain: ${APP_JARVIS_CALENDAR_OAUTH_HOSTED_DOMAIN:ng-itconsulting.com}
     # F-231 / SF-231-05 : l'écran /jarvis existe ; les alertes de veille (F-230) y mènent (/jarvis?alerte=…).
     # false = repli sur le fil du sujet (/atelier/{sujet}?alerte=…).
     route-enabled: ${APP_JARVIS_ROUTE_ENABLED:true}

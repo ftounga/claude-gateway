@@ -29,6 +29,20 @@ export interface CalendarError {
   status?: number;
 }
 
+/** F-243 / SF-243-03 — un droit d'écriture dans l'agenda pro (jamais le jeton). */
+export interface CalendarGrant {
+  id: string;
+  account: string;
+  clientKind: 'INTERNAL' | 'EXTERNAL';
+  grantedAt: string;
+}
+
+/** F-243 / SF-243-03 — l'écriture : configurée ou non, et les droits. */
+export interface CalendarGrants {
+  configured: boolean;
+  grants: CalendarGrant[];
+}
+
 /** L'aide Google : où trouver l'adresse secrète au format iCal d'un agenda. */
 export const GOOGLE_ICAL_HELP_URL = 'https://support.google.com/calendar/answer/37648';
 
@@ -67,6 +81,20 @@ export class JarvisCalendarClient {
 
   remove(id: string): Observable<void> {
     return this.http.delete<void>(`/api/jarvis/calendar/feeds/${id}`);
+  }
+
+  /** F-243 / SF-243-03 — l'écriture dans l'agenda pro. */
+  grants(): Observable<CalendarGrants> {
+    return this.http.get<CalendarGrants>('/api/jarvis/calendar/grants');
+  }
+
+  /** F-243 / SF-243-03 — le départ du parcours OAuth : l'adresse de consentement Google. */
+  startOAuth(): Observable<{ url: string }> {
+    return this.http.get<{ url: string }>('/api/jarvis/calendar/oauth/start');
+  }
+
+  revokeGrant(id: string): Observable<void> {
+    return this.http.delete<void>(`/api/jarvis/calendar/grants/${id}`);
   }
 
   /** F-243 / SF-243-02 — les rendez-vous de [from, to[ (ISO-8601), fusionnés par la passerelle. */

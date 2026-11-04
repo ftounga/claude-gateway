@@ -882,6 +882,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
     void this.voice.preloadClips(FORMULA_CLIPS);
     // SF-233-06 — le fournisseur de la voix, pour la mesure (SF-233-01).
     this.voice.status().subscribe({ next: (status) => this.ttsProvider = status.provider ?? null, error: () => undefined });
+    // F-243 / SF-243-03 — retour du parcours OAuth Google : le volet « Mes agendas » s'ouvre (jamais en présentation).
+    const agendaReturn = this.route.snapshot.queryParamMap.get('agenda');
+    if ((agendaReturn === 'relie' || agendaReturn === 'refuse') && !this.presentation()) {
+      this.calendarOpen.set(true);
+    }
     const wanted = this.route.snapshot.queryParamMap.get('sujet');
     const alertId = this.route.snapshot.queryParamMap.get('alerte');
     // F-232 : ouvert par le compagnon Android, qui vient d'entendre « Jarvis » et passe sa version.

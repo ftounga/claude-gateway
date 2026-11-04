@@ -4,7 +4,9 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { of, throwError } from 'rxjs';
 
-import { CalendarFeed, JarvisCalendarClient, calendarErrorMessage, calendarStatusLabel } from './jarvis-calendar';
+import {
+  CalendarFeed, CalendarGrants, JarvisCalendarClient, calendarErrorMessage, calendarStatusLabel,
+} from './jarvis-calendar';
 import { JarvisCalendarsComponent } from './jarvis-calendars.component';
 
 function feed(over: Partial<CalendarFeed> = {}): CalendarFeed {
@@ -30,15 +32,17 @@ describe('JarvisCalendarsComponent (F-243 / SF-243-01)', () => {
   let snack: jasmine.SpyObj<MatSnackBar>;
   let fixture: ComponentFixture<JarvisCalendarsComponent>;
 
-  function create(list: CalendarFeed[] = []): HTMLElement {
+  function create(list: CalendarFeed[] = [], grants: CalendarGrants = { configured: false, grants: [] }): HTMLElement {
     client.list.and.returnValue(of(list));
+    client.grants.and.returnValue(of(grants));
     fixture = TestBed.createComponent(JarvisCalendarsComponent);
     fixture.detectChanges();
     return fixture.nativeElement as HTMLElement;
   }
 
   beforeEach(() => {
-    client = jasmine.createSpyObj<JarvisCalendarClient>('JarvisCalendarClient', ['list', 'link', 'test', 'remove']);
+    client = jasmine.createSpyObj<JarvisCalendarClient>('JarvisCalendarClient', ['list', 'link', 'test', 'remove',
+      'grants', 'startOAuth', 'revokeGrant']);
     dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
     snack = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
     TestBed.configureTestingModule({
@@ -120,5 +124,34 @@ describe('JarvisCalendarsComponent (F-243 / SF-243-01)', () => {
     client.test.and.returnValue(of(feed({ status: 'BROKEN', lastError: 'refusée' })));
     fixture.componentInstance.test(feed());
     expect(fixture.componentInstance.feeds()[0].status).toBe('BROKEN');
+  });
+
+  // ---- F-243 / SF-243-03 : l'écriture dans l'agenda pro
+
+  it('écriture non configurée : le dit, aucun bouton', () => {
+    const el = create([]);
+    expect(el.querySelector('.jc__write-off')?.textContent).toContain('pas encore configurée');
+    expect(el.querySelector('.jc__connect')).toBeNull();
+  });
+
+  it('« Relier l’agenda pro » : la passerelle rend l’adresse Google, le navigateur y va', () => {
+    const el = create([], { configured: true, grants: [] });
+    client.startOAuth.and.returnValue(of({ url: 'https://accounts.google.com/o/oauth2/v2/auth?x=1' }));
+    const went: string[] = [];
+    fixture.componentInstance.navigate = (u) => went.push(u);
+    (el.querySelector('.jc__connect') as HTMLButtonElement).click();
+    expect(went).toEqual(['https://accounts.google.com/o/oauth2/v2/auth?x=1']);
+  });
+
+  it('un agenda pro relié se montre par son adresse et se révoque après confirmation', () => {
+    const el = create([], { configured: true,
+      grants: [{ id: 'g1', account: 'pro@ng-itconsulting.com', clientKind: 'INTERNAL', grantedAt: '2026-11-04T08:00:00Z' }] });
+    expect(el.querySelector('.jc__grant')?.textContent).toContain('pro@ng-itconsulting.com');
+    expect(el.querySelector('.jc__connect')).toBeNull();
+    client.revokeGrant.and.returnValue(of(undefined));
+    dialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+    fixture.componentInstance.revokeGrant('g1', 'pro@ng-itconsulting.com');
+    expect(client.revokeGrant).toHaveBeenCalledWith('g1');
+    expect(fixture.componentInstance.grants().grants.length).toBe(0);
   });
 });
