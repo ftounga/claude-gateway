@@ -33,6 +33,54 @@ class JarvisConversationBenchTest {
         assertThat(SET.opusTurnEur()).isPositive();
     }
 
+    // ------------------------------------------------------------- F-245 / SF-245-05 : le banc du routage
+
+    private static JarvisFastBrainService.Outcome delegatedTo(java.util.UUID subject) {
+        return new JarvisFastBrainService.Outcome(JarvisFastBrainService.Kind.DELEGATE, "Je regarde.",
+                new JarvisFastBrainService.Delegation(java.util.UUID.randomUUID(), "x", "x", "Je regarde.", subject,
+                        null, false, null), null, "m", 0, BigDecimal.ZERO);
+    }
+
+    @Test
+    void f245TheSetHasEightRoutingScenarios() {
+        assertThat(SET.scenarios()).filteredOn(s -> s.category().equals("ROUTAGE_F245")).hasSize(8)
+                .allSatisfy(s -> assertThat(s.turns()).allSatisfy(t -> assertThat(t.expectTarget())
+                        .isIn("aucun_sujet", "jarvis", "cible")));
+    }
+
+    @Test
+    void f245TheTargetIsCheckedWithoutAModel() {
+        java.util.UUID subject = java.util.UUID.randomUUID();
+        java.util.UUID jarvis = JarvisFastBrainService.JARVIS_THREAD_TARGET;
+        JarvisConversationBench.Turn hello = new JarvisConversationBench.Turn("Bonjour", "repondre", null,
+                "aucun_sujet");
+        JarvisConversationBench.Turn general = new JarvisConversationBench.Turn("Tour d'horizon", "any", null,
+                "jarvis");
+        JarvisConversationBench.Turn targeted = new JarvisConversationBench.Turn("Relance", "deleguer", null,
+                "cible");
+        // Un « bonjour » délégué dans un sujet est un défaut grave ; une réponse dite n'en est jamais un.
+        assertThat(JarvisConversationBench.targetDefect(hello, delegatedTo(subject)))
+                .isEqualTo(JarvisConversationBench.GRAVE_HELLO_IN_SUBJECT);
+        assertThat(JarvisConversationBench.targetDefect(hello, new JarvisFastBrainService.Outcome(
+                JarvisFastBrainService.Kind.ANSWER, "Bonjour Monsieur.", null, null, "m", 0, BigDecimal.ZERO)))
+                .isNull();
+        assertThat(JarvisConversationBench.targetDefect(general, delegatedTo(jarvis))).isNull();
+        assertThat(JarvisConversationBench.targetDefect(general, delegatedTo(null)))
+                .isEqualTo(JarvisConversationBench.GRAVE_GENERAL_OUTSIDE);
+        assertThat(JarvisConversationBench.targetDefect(targeted, delegatedTo(null))).isNull();
+        assertThat(JarvisConversationBench.targetDefect(targeted, delegatedTo(jarvis)))
+                .isEqualTo(JarvisConversationBench.GRAVE_TARGETED_IN_JARVIS);
+    }
+
+    @Test
+    void f245ARoutingGraveFailsTheGate() {
+        JarvisConversationBench.TurnVerdict bad = good("T01", 1, "deleguer", "repondre")
+                .withGrave(JarvisConversationBench.GRAVE_HELLO_IN_SUBJECT);
+        JarvisConversationBench.Result result = JarvisConversationBench.summarize(List.of(bad), List.of());
+        assertThat(result.gatePassed()).isFalse();
+        assertThat(result.failures()).anyMatch(f -> f.contains(JarvisConversationBench.GRAVE_HELLO_IN_SUBJECT));
+    }
+
     @Test
     void aWellHandledScenarioPassesWithinItsBudget() {
         JarvisConversationBench.ScenarioVerdict v = JarvisConversationBench.scenario(scenario("S", "repondre",

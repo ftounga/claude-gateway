@@ -58,11 +58,44 @@ final class JarvisConversationBench {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     /** Un tour attendu d'un scénario. */
-    record Turn(String said, String expect, String expectMark) {
+    record Turn(String said, String expect, String expectMark, String expectTarget) {
 
         Turn(String said, String expect) {
-            this(said, expect, null);
+            this(said, expect, null, null);
         }
+
+        Turn(String said, String expect, String expectMark) {
+            this(said, expect, expectMark, null);
+        }
+    }
+
+    // ------------------------------------------------------------------ F-245 / SF-245-05 : le routage
+
+    /** Défaut grave : un échange sans tâche (« bonjour », « où en est… ») envoyé dans un sujet ou un chantier. */
+    static final String GRAVE_HELLO_IN_SUBJECT = "échange sans tâche envoyé dans un sujet";
+    /** Défaut grave : une demande générale (tour d'horizon, perso, courrier) envoyée hors du fil Jarvis. */
+    static final String GRAVE_GENERAL_OUTSIDE = "demande générale hors du fil Jarvis";
+    /** Défaut grave : une demande ciblée (un sujet, un chantier) envoyée au fil Jarvis. */
+    static final String GRAVE_TARGETED_IN_JARVIS = "demande ciblée envoyée au fil Jarvis";
+
+    /**
+     * F-245 / SF-245-05 — la destination attendue d'un tour, contrôlée sans modèle : {@code aucun_sujet} (rien ne part
+     * dans un sujet : une réponse, ou une délégation au fil Jarvis), {@code jarvis} (une délégation va au fil Jarvis),
+     * {@code cible} (une délégation ne va pas au fil Jarvis) ; {@code null} = non contrôlée. Rend le défaut grave, ou
+     * {@code null}. Une réponse dite reste toujours dans le fil Jarvis (SF-245-02) : elle ne viole aucune attente.
+     */
+    static String targetDefect(Turn turn, JarvisFastBrainService.Outcome outcome) {
+        if (turn.expectTarget() == null || outcome == null || outcome.kind() != JarvisFastBrainService.Kind.DELEGATE
+                || outcome.delegation() == null) {
+            return null;
+        }
+        boolean toJarvis = JarvisFastBrainService.JARVIS_THREAD_TARGET.equals(outcome.delegation().subjectId());
+        return switch (turn.expectTarget()) {
+            case "aucun_sujet" -> toJarvis ? null : GRAVE_HELLO_IN_SUBJECT;
+            case "jarvis" -> toJarvis ? null : GRAVE_GENERAL_OUTSIDE;
+            case "cible" -> toJarvis ? GRAVE_TARGETED_IN_JARVIS : null;
+            default -> null;
+        };
     }
 
     /**
@@ -195,7 +228,8 @@ final class JarvisConversationBench {
                 List<Turn> turns = new ArrayList<>();
                 for (JsonNode t : s.get("turns")) {
                     turns.add(new Turn(t.get("said").asText(), t.path("expect").asText("any"),
-                            t.hasNonNull("expectMark") ? t.get("expectMark").asText() : null));
+                            t.hasNonNull("expectMark") ? t.get("expectMark").asText() : null,
+                            t.hasNonNull("expectTarget") ? t.get("expectTarget").asText() : null));
                 }
                 scenarios.add(new Scenario(s.get("id").asText(), s.get("category").asText(),
                         s.hasNonNull("heardBeforeCut") ? s.get("heardBeforeCut").asText() : null, turns,
@@ -437,6 +471,10 @@ final class JarvisConversationBench {
         // F-241 — les défauts graves du portrait : zéro obligatoire.
         GRAVES.values().forEach(label -> zeros.put(label,
                 turns.stream().filter(t -> t.graves().contains(label)).count()));
+        // F-245 / SF-245-05 — les défauts graves du routage : zéro obligatoire (un « bonjour » dans un chantier…).
+        for (String label : List.of(GRAVE_HELLO_IN_SUBJECT, GRAVE_GENERAL_OUTSIDE, GRAVE_TARGETED_IN_JARVIS)) {
+            zeros.put(label, turns.stream().filter(t -> t.graves().contains(label)).count());
+        }
         zeros.forEach((what, n) -> {
             if (n > 0) {
                 failures.add(n + " " + what);

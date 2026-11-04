@@ -96,6 +96,41 @@ class AtelierCompactionServiceTest {
     }
 
     @Test
+    void f245TheReplayableThreadExcludesFastBrainExchanges() {
+        OffsetDateTime t0 = OffsetDateTime.now().minusHours(3);
+        AtelierMessage hello = message("USER", "Bonjour", t0);
+        hello.setBrain(AtelierMessage.BRAIN_FAST);
+        AtelierMessage helloBack = message("ASSISTANT", "Bonjour Monsieur.", t0.plusMinutes(1));
+        helloBack.setBrain(AtelierMessage.BRAIN_FAST);
+        AtelierMessage ask = message("USER", "Relance le déploiement", t0.plusMinutes(2));
+        AtelierMessage done = message("ASSISTANT", "Relancé.", t0.plusMinutes(3));
+        stubHistory(new ArrayList<>(List.of(hello, helloBack, ask, done)));
+
+        assertThat(service(new StubAiAgentProvider()).replayable(userId, workspace)).containsExactly(ask, done);
+    }
+
+    @Test
+    void f245FastBrainExchangesNeitherTriggerNorEnterTheSummary() {
+        StubAiAgentProvider provider = new StubAiAgentProvider();
+        provider.enqueueFinal("Résumé.");
+        OffsetDateTime t0 = OffsetDateTime.now().minusHours(3);
+        List<AtelierMessage> history = new ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            AtelierMessage fast = message(i % 2 == 0 ? "USER" : "ASSISTANT", longText("bavardage " + i),
+                    t0.plusMinutes(i));
+            fast.setBrain(AtelierMessage.BRAIN_FAST);
+            history.add(fast);
+        }
+        history.add(message("USER", "court", t0.plusMinutes(10)));
+        history.add(message("ASSISTANT", "court", t0.plusMinutes(11)));
+        stubHistory(history);
+
+        // Sans les échanges rapides, le fil est sous le seuil : aucune compaction, aucun appel.
+        assertThat(service(provider).compactIfOversized(userId, workspace, null).compacted()).isFalse();
+        assertThat(provider.lastRequest).isNull();
+    }
+
+    @Test
     void compactionNeverTouchesTheManualFoldMarker() {
         // F-117 / SF-117-05 : la compaction déplace la frontière de rejeu mais LAISSE INTACT le
         // marqueur de repli du nouveau départ manuel — même quand une compaction survient APRÈS un
