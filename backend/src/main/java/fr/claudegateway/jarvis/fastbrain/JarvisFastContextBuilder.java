@@ -300,9 +300,10 @@ public class JarvisFastContextBuilder {
         for (AtelierMessage m : recent) {
             boolean user = "USER".equals(m.getRole());
             String when = m.getCreatedAt() == null ? "" : HOUR.format(m.getCreatedAt().atZoneSameInstant(ZONE)) + " ";
-            String content = user ? oneLine(m.getContent()) : assistantDigest(m.getContent());
+            String content = user || m.isLink() ? oneLine(m.getContent()) : assistantDigest(m.getContent());
             // F-245 / SF-245-02 : une réponse du cerveau rapide est celle de Jarvis, pas d'Opus.
-            String who = user ? "Monsieur : " : m.isFastBrain() ? "Jarvis : " : "Opus : ";
+            // F-245 / SF-245-03 : une ligne-lien dit ce qui a été confié à un sujet ou un chantier.
+            String who = user ? "Monsieur : " : m.isLink() ? "Lien : " : m.isFastBrain() ? "Jarvis : " : "Opus : ";
             b.append("- ").append(when).append(who).append(cut(content, MAX_MESSAGE))
                     .append('\n');
         }

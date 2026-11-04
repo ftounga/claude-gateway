@@ -498,6 +498,14 @@ public class JarvisFastBrainService {
         this.threads = threads;
     }
 
+    /** F-245 / SF-245-03 — la ligne-lien du fil Jarvis. Facultative (sans elle : aucune ligne). */
+    private fr.claudegateway.jarvis.thread.JarvisLinkService links;
+
+    @Autowired(required = false)
+    public void setLinks(fr.claudegateway.jarvis.thread.JarvisLinkService links) {
+        this.links = links;
+    }
+
     /** F-235 / SF-235-04 — l'annonce d'une délégation qui devient une précision du tour vivant de son fil (D10). */
     static final String ADDED_TO_RUNNING = "J'ajoute ça à la recherche en cours";
 
@@ -526,13 +534,20 @@ public class JarvisFastBrainService {
                     outcome.reason(), outcome.model(), outcome.firstTokenMs(), outcome.costUsd(), outcome.guards(),
                     outcome.understood(), outcome.shows());
         }
+        UUID linkId = null;
         if (delegations.live(request.userId(), d.subjectId(), d.chantier())) {
             String label = d.label() == null || d.label().isBlank() ? "" : " : " + d.label().strip()
                     .replaceAll("[.!?…]+$", "");
             d = new Delegation(d.delegationId(), d.demande(), d.label(), ADDED_TO_RUNNING + label + ".",
                     d.subjectId(), d.chantier(), d.automatic(), d.reason());
+        } else if (links != null) {
+            // F-245 / SF-245-03 (D5) — une délégation vers un sujet ou un chantier laisse une ligne-lien « en cours »
+            // dans le fil Jarvis (aucune pour le fil Jarvis lui-même, ni pour une précision d'un tour vivant).
+            linkId = links.open(request.userId(), d.subjectId(), d.chantier(),
+                    d.label() == null || d.label().isBlank() ? d.demande() : d.label());
         }
-        delegations.offer(request.userId(), d.subjectId(), d.chantier(), d.delegationId(), d.demande(), d.label());
+        delegations.offer(request.userId(), d.subjectId(), d.chantier(), d.delegationId(), d.demande(), d.label(),
+                linkId);
         return new Outcome(outcome.kind(), outcome.spokenText(), d, outcome.reason(), outcome.model(),
                 outcome.firstTokenMs(), outcome.costUsd(), outcome.guards());
     }

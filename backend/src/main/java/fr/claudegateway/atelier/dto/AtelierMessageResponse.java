@@ -24,12 +24,30 @@ import fr.claudegateway.quota.TurnCostView;
  * <b>additif</b>, un client d'avant SF-169-03 l'ignore et se comporte comme avant.</p>
  */
 public record AtelierMessageResponse(UUID id, String role, String content, OffsetDateTime createdAt,
-        JsonNode terminal, List<AttachedFile> files, Integer chantier, String via, String brain) {
+        JsonNode terminal, List<AttachedFile> files, Integer chantier, String via, String brain, LinkView link) {
 
     /** Compatibilité des appels d'avant F-235 : sans {@code brain}. */
     public AtelierMessageResponse(UUID id, String role, String content, OffsetDateTime createdAt, JsonNode terminal,
             List<AttachedFile> files, Integer chantier, String via) {
-        this(id, role, content, createdAt, terminal, files, chantier, via, null);
+        this(id, role, content, createdAt, terminal, files, chantier, via, null, null);
+    }
+
+    /** Compatibilité des appels d'avant F-245 / SF-245-03 : sans ligne-lien. */
+    public AtelierMessageResponse(UUID id, String role, String content, OffsetDateTime createdAt, JsonNode terminal,
+            List<AttachedFile> files, Integer chantier, String via, String brain) {
+        this(id, role, content, createdAt, terminal, files, chantier, via, brain, null);
+    }
+
+    /**
+     * F-245 / SF-245-03 (D5) — la cible d'une ligne-lien du fil Jarvis : le sujet, le chantier (ou {@code null}), la
+     * réponse d'Opus (une fois le tour fini) et l'état ({@code EN_COURS}, {@code FAIT}, {@code ECHEC}). Champ
+     * <b>additif</b>, absent ({@code null}) pour tout autre message.
+     */
+    public record LinkView(UUID workspaceId, Integer chantier, UUID messageId, String status) {
+        static LinkView of(AtelierMessage message) {
+            return message.isLink() ? new LinkView(message.getRefWorkspaceId(), message.getRefChantierNumber(),
+                    message.getRefMessageId(), message.getLinkStatus()) : null;
+        }
     }
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -73,7 +91,7 @@ public record AtelierMessageResponse(UUID id, String role, String content, Offse
         return new AtelierMessageResponse(message.getId(), message.getRole(), message.getContent(),
                 message.getCreatedAt(),
                 withCost(parseTranscript(message.getTerminalJson()), costView), files,
-                message.getChantierNumber(), message.getVia(), message.getBrain());
+                message.getChantierNumber(), message.getVia(), message.getBrain(), LinkView.of(message));
     }
 
     /**

@@ -1809,6 +1809,14 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.jarvisDelegations = jarvisDelegations;
     }
 
+    /** F-245 / SF-245-03 — la ligne-lien du fil Jarvis, terminée à la fin d'un tour délégué. Facultative. */
+    private fr.claudegateway.jarvis.thread.JarvisLinkService jarvisLinks;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJarvisLinks(fr.claudegateway.jarvis.thread.JarvisLinkService jarvisLinks) {
+        this.jarvisLinks = jarvisLinks;
+    }
+
     /** F-239 / SF-239-12 — le compteur de Jarvis : le coût des tours nés de Jarvis. Facultatif. */
     private fr.claudegateway.jarvis.JarvisUsageService jarvisUsage;
 
@@ -3586,11 +3594,14 @@ public class AtelierChatService implements RelayInterruptTarget {
         // F-235 / SF-235-04 (D10) — une délégation du cerveau rapide : sa demande reformulée attend ce fil ; elle est
         // jointe AU MESSAGE (la parole du PO reste mot pour mot dans le fil, la consigne système est intouchée).
         boolean delegated = false;
+        // F-245 / SF-245-03 (D5) — la ligne-lien du fil Jarvis que ce tour terminera (fait, échec), ou null.
+        UUID jarvisLinkId = null;
         if (viaJarvis && jarvisDelegations != null) {
             fr.claudegateway.jarvis.fastbrain.JarvisDelegationRegistry.Reformulation reformulation =
                     jarvisDelegations.take(userId, workspaceId, workspace.getTurnChantier());
             if (reformulation != null) {
                 delegated = true;
+                jarvisLinkId = reformulation.linkId();
                 consigne = consigne + "\n[Jarvis — demande reformulée : « "
                         + reformulation.demande().replace('«', '"').replace('»', '"') + " »]";
             }
@@ -4717,6 +4728,10 @@ public class AtelierChatService implements RelayInterruptTarget {
             recordCutTurn(userId, workspace, hosted, model, inputTokens, outputTokens, cacheReadTokens,
                     cacheWriteTokens, webSearchRequests, otherModelShares, lastServedModel[0], startedAt,
                     iterationsUsed, cut, jarvisOrigin);
+            // F-245 / SF-245-03 — le tour délégué a échoué : sa ligne-lien passe à « échec » (best-effort).
+            if (jarvisLinks != null && jarvisLinkId != null) {
+                jarvisLinks.finish(userId, jarvisLinkId, null, false);
+            }
             throw cut;
         }
         // F-195 / SF-195-05 : arrêté sur son budget alors que plusieurs demandes sont arrivées — on dit
@@ -4895,6 +4910,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         // F-162 / SF-162-06 : embed la réponse de l'assistant pour le rappel sémantique — asynchrone,
         // best-effort (NONE par défaut ⇒ ne fait rien).
         embedForRecall(assistant);
+        // F-245 / SF-245-03 (D5) — la ligne-lien du fil Jarvis passe à « fait » (ligne 🎙 de la réponse) ou
+        // « interrompu », et pointe la réponse. Best-effort, jamais bloquant.
+        if (jarvisLinks != null && jarvisLinkId != null) {
+            jarvisLinks.finish(userId, jarvisLinkId, assistant, interrupted);
+        }
 
         // F-136 / SF-136-01 — la carte du client a pu changer pendant ce tour (promotion). On la
         // relit MAINTENANT, une fois la réponse prête : lire au début d'un tour coûterait six
@@ -5250,6 +5270,12 @@ public class AtelierChatService implements RelayInterruptTarget {
             boolean assistant = "ASSISTANT".equalsIgnoreCase(message.getRole());
             if (assistant && messages.isEmpty()) {
                 continue;
+            }
+            // F-245 / SF-245-03 (D6) — une ligne-lien du fil Jarvis est rejouée en texte court (« [Transmis à …] ») :
+            // Opus sait ce qui a été confié, jamais le contenu du chantier. Les user consécutifs sont fusionnés par le
+            // sanitiseur.
+            if (message.isLink()) {
+                content = fr.claudegateway.jarvis.thread.JarvisLinkService.replay(content);
             }
             if (facts != null) {
                 if (!assistant && afterAnswer) {
