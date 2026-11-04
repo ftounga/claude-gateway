@@ -72,6 +72,11 @@
     "veille_poser": { "scene": "S17", "cible": "S17", "libelle": "Veille posée" }
   },
   "prefixes": {
+    "courriel_": {
+      "scene": "S1",
+      "cible": "S1",
+      "libelle": "Courrier"
+    },
     "video_": { "scene": "S7", "cible": "S7", "libelle": "Salle de montage" },
     "radar_": { "scene": "GENERIQUE", "cible": "S18", "libelle": "Radar" },
     "teams_": { "scene": "GENERIQUE", "cible": "S19", "libelle": "Teams" }

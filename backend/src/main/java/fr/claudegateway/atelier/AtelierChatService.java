@@ -1970,6 +1970,14 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.clientMailTool = clientMailTool;
     }
 
+    /** F-242 / SF-242-05 — les outils de courrier d'Opus, offerts dans le seul fil Jarvis. Facultatif. */
+    private fr.claudegateway.jarvis.mail.JarvisMailToolCatalog jarvisMailTools;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJarvisMailTools(fr.claudegateway.jarvis.mail.JarvisMailToolCatalog jarvisMailTools) {
+        this.jarvisMailTools = jarvisMailTools;
+    }
+
     /**
      * Émetteur Web Push (F-153 / SF-153-02), branché par mutateur pour ne toucher à aucun
      * constructeur conservé : {@code null} (formes historiques / tests) ⇒ aucune notification poussée
@@ -3586,6 +3594,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         // F-245 / SF-245-02 (D7) — dans le fil Jarvis, l'univers (clients > sujets > chantiers, ≤ 9 000 caractères) est
         // joint AU MESSAGE, jamais à la consigne système (préfixe stable). Ailleurs : consigne inchangée à l'octet près.
         consigne = withJarvisUniverse(userId, workspace, consigne);
+        // F-242 / SF-242-05 (D17) — la note du courrier, figée, jointe AU MESSAGE du fil Jarvis quand une boîte est
+        // reliée (JarvisOralNote n'est pas modifiée). Ailleurs : consigne inchangée à l'octet près.
+        if (jarvisMailTools != null) {
+            consigne = jarvisMailTools.withNote(userId, workspace, consigne);
+        }
         messages.add(AgentMessage.userText(consigne));
         // F-229 / SF-229-01 : le ruban du premier appel comparé à celui du dernier appel du tour précédent
         // du même fil. Lecture seule : la requête n'en dépend pas. Best-effort.
@@ -4441,6 +4454,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                 } else if (fr.claudegateway.radar.RadarToolCatalog.isRadarTool(call.name())) {
                     // F-104 / SF-104-01 : le registre du Radar vit dans la gateway, pas sur la machine.
                     outcome = executeRadarTool(userId, workspace, call, turnNote);
+                } else if (fr.claudegateway.jarvis.mail.JarvisMailToolCatalog.isMailTool(call.name())) {
+                    // F-242 / SF-242-05 : le courrier du PO, relayé par la gateway (IMAP/SMTP), fil Jarvis seulement.
+                    outcome = executeJarvisMailTool(userId, workspace, call);
                 } else if (fr.claudegateway.mail.ClientMailTool.isEmailTool(call.name())) {
                     // F-110 / SF-110-02 : le courriel part de la gateway, jamais de la machine, sans confirmation.
                     outcome = executeEmailTool(userId, workspace, callId, call, listener, emailsOfTurn);
@@ -8189,6 +8205,19 @@ public class AtelierChatService implements RelayInterruptTarget {
     }
 
     /**
+     * F-242 / SF-242-05 — un outil {@code courriel_*} : refusé hors fil Jarvis ; chaque contenu rendu est balisé non
+     * fiable ; la boîte est revérifiée sous {@code user_id}.
+     */
+    private ToolOutcome executeJarvisMailTool(UUID userId, Workspace workspace, AgentToolCall call) {
+        if (jarvisMailTools == null) {
+            return ToolOutcome.error("Le courrier n'est pas disponible : réponds sans lui.");
+        }
+        fr.claudegateway.jarvis.mail.JarvisMailToolCatalog.Result result =
+                jarvisMailTools.execute(userId, workspace, call.name(), call.input());
+        return result.error() ? ToolOutcome.error(result.content()) : ToolOutcome.info(result.content());
+    }
+
+    /**
      * Exécute {@code email_me} (F-110 / SF-110-02) : le destinataire est résolu par la gateway, jamais lu dans
      * l'appel. Un courriel mis en file pose son reçu dans le tour et le relaie à l'écran.
      */
@@ -10713,6 +10742,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         // F-230 / SF-230-01 : poser une veille Jarvis, sous la même garde que les routines.
         if (watchToolExecutor != null && watchToolCatalog != null) {
             tools.addAll(watchToolCatalog.toolsFor(userId, workspace));
+        }
+        // F-242 / SF-242-05 (D11) : le courrier du PO, dans le SEUL fil Jarvis et avec une boîte reliée ; jamais dans
+        // le terminal d'un sujet. Définitions figées : la liste du fil reste identique d'un tour à l'autre.
+        if (jarvisMailTools != null) {
+            tools.addAll(jarvisMailTools.toolsFor(userId, workspace));
         }
         // F-210 / SF-210-01 : découper un message en questions et en suivre l'avancement — dans tout
         // terminal, sans garde (rien n'est écrit). Définitions littérales stables, en dernier.
