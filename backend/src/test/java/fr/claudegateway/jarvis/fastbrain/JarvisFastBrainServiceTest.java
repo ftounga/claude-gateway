@@ -1083,7 +1083,7 @@ class JarvisFastBrainServiceTest {
         assertThat(JSON.writeValueAsString(calls.get(1).tools())).isEqualTo(first);
         assertThat(JSON.writeValueAsString(calls.get(2).tools())).isEqualTo(first);
         assertThat(calls.get(0).system()).isEqualTo(calls.get(2).system());
-        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("17");
+        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("18");
         assertThat(first).doesNotContain("Kestrel").doesNotContain(subject.toString());
     }
 
@@ -1621,5 +1621,57 @@ class JarvisFastBrainServiceTest {
         assertThat(service(streaming("Je n'en doute pas, Monsieur. ", "Votre agenda le dira."), null, null)
                 .bench(ask("Grosse journée qui s'annonce."), "claude-sonnet-5-5", P08_CONTEXT).spokenText())
                 .isEqualTo("Je n'en doute pas, Monsieur.");
+    }
+
+    private static final String P08_ACK_CONTEXT = "Maintenant : lundi 2 novembre 2026, 09:15\n"
+            + "A envoyer (1) : compte rendu de recette a Claire Dumas\n\n"
+            + "## Derniers échanges de la conversation\n- Utilisateur : On passe à la suite.\n"
+            + "- Jarvis : Ensuite, le compte rendu de recette à envoyer à Claire Dumas.\n";
+
+    @Test
+    void f243_06AnAcknowledgementTheModelDelegatesIsAnswered() {
+        StringBuilder heard = new StringBuilder();
+        JarvisFastBrainService.Outcome outcome = service(delegating("""
+                {"demande": "Envoyer le compte rendu de recette à Claire Dumas", "label": "envoi du compte rendu",
+                 "annonce": "J'envoie le compte rendu à Claire Dumas.", "sujet": "", "chantier": null}
+                """), null, null).converse(ask("C'est noté."), heard::append);
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(outcome.delegation()).isNull();
+        assertThat(outcome.spokenText()).isEqualTo("Parfait, Monsieur.");
+        assertThat(heard.toString().strip()).isEqualTo("Parfait, Monsieur.");
+    }
+
+    @Test
+    void f243_06AnAcknowledgementAnsweredWithAFillerIsNotAMuteDelegation() {
+        // « C'est noté, Monsieur. » seule est retirée par la porte : la réponse vide ne devient plus une délégation
+        JarvisFastBrainService.Outcome outcome = service(streaming("C'est noté, Monsieur."), null, null)
+                .bench(ask("C'est noté."), "claude-sonnet-5-5", P08_ACK_CONTEXT);
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(outcome.delegation()).isNull();
+        assertThat(outcome.spokenText()).isEqualTo("Parfait, Monsieur.");
+    }
+
+    @Test
+    void f243_06AnExplicitGoAheadStillDelegates() {
+        JarvisFastBrainService.Outcome outcome = service(delegating("""
+                {"demande": "Envoyer le compte rendu de recette à Claire Dumas", "label": "envoi du compte rendu",
+                 "annonce": "Je prépare l'envoi du compte rendu à Claire Dumas.", "sujet": "", "chantier": null}
+                """), null, null).bench(ask("Envoie-le."), "claude-sonnet-5-5", P08_ACK_CONTEXT);
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.DELEGATE);
+        outcome = service(delegating("""
+                {"demande": "Préparer le compte rendu", "label": "compte rendu", "annonce": "Je prépare le compte rendu.",
+                 "sujet": "", "chantier": null}
+                """), null, null).bench(ask("Entendu."), "claude-sonnet-5-5",
+                P08_ACK_CONTEXT.replace("Claire Dumas.\n", "Claire Dumas. Je le prépare, Monsieur ?\n"));
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.DELEGATE);
+    }
+
+    @Test
+    void f243_06AnAdministrativeAckInConclusionIsRemoved() {
+        JarvisFastBrainService.Outcome outcome = service(streaming("Un lundi qui demande un peu d'efforts, Monsieur. ",
+                "J'en prends bonne note."), null, null)
+                .bench(ask("Je suis un peu fatigué aujourd'hui."), "claude-sonnet-5-5", P08_ACK_CONTEXT);
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(outcome.spokenText()).isEqualTo("Un lundi qui demande un peu d'efforts, Monsieur.");
     }
 }
