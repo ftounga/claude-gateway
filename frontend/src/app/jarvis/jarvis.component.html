@@ -108,6 +108,11 @@
                 (click)="mailOpen.set(!mailOpen()); portraitOpen.set(false); settingsOpen.set(false)">
           <mat-icon aria-hidden="true">mail</mat-icon> Mes boîtes
         </button>
+        <!-- F-245 / SF-245-04 — le fil du jour : échanges et lignes-liens (jamais en présentation). -->
+        <button mat-button type="button" class="jv__thread-open" [attr.aria-expanded]="threadOpen()"
+                (click)="threadOpen.set(!threadOpen()); mailOpen.set(false); portraitOpen.set(false); settingsOpen.set(false)">
+          <mat-icon aria-hidden="true">forum</mat-icon> Fil du jour
+        </button>
       }
       @if (!presentation() && costLine(); as line) {
         <!-- F-239 / SF-239-12 — le compteur visible ; F-244 / SF-244-04 — il ouvre la ventilation (jamais en présentation). -->
@@ -251,6 +256,11 @@
                 (click)="mailOpen.set(!mailOpen()); portraitOpen.set(false)">
           <mat-icon aria-hidden="true">mail</mat-icon> Mes boîtes
         </button>
+        <!-- F-245 / SF-245-04 — le fil du jour (jamais en présentation). -->
+        <button mat-button type="button" class="jv__wake-button jv__thread-open" [attr.aria-expanded]="threadOpen()"
+                (click)="threadOpen.set(!threadOpen()); mailOpen.set(false); portraitOpen.set(false)">
+          <mat-icon aria-hidden="true">forum</mat-icon> Fil du jour
+        </button>
       }
       @if (!presentation() && costLine(); as line) {
         <!-- F-239 / SF-239-12 — le compteur visible ; F-244 / SF-244-04 — il ouvre la ventilation (jamais en présentation). -->
@@ -326,6 +336,10 @@
 <!-- F-242 / SF-242-01 — le volet « Mes boîtes » : jamais en présentation (aucune adresse montrée). -->
 @if (mailOpen() && !presentation()) {
   <app-jarvis-mailboxes (closed)="mailOpen.set(false)" />
+}
+<!-- F-245 / SF-245-04 (D8) — le volet « Fil du jour » : jamais en présentation (aucun nom de client montré). -->
+@if (threadOpen() && !presentation()) {
+  <app-jarvis-thread-panel (closed)="threadOpen.set(false)" />
 }
 <!-- F-242 / SF-242-04 (D16) — la visionneuse de courriel : texte seul, « Contenu externe », jamais en présentation. -->
 @if (mailCard() && !presentation()) {

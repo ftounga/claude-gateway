@@ -94,6 +94,7 @@ import { JarvisAppUpdate } from './jarvis-app-update';
 import { JarvisCompanionsComponent } from './jarvis-companions.component';
 import { JarvisPortraitComponent } from './jarvis-portrait.component';
 import { JarvisMailboxesComponent } from './jarvis-mailboxes.component';
+import { JarvisThreadPanelComponent } from './jarvis-thread-panel.component';
 import { JarvisMailCardComponent } from './jarvis-mail-card.component';
 import { JarvisMailClient, MailCard, bodyCard, briefCard, mailPieceId } from './jarvis-mail';
 import { JarvisCostPanelComponent } from './jarvis-cost-panel.component';
@@ -176,7 +177,7 @@ export function companionOffer(version: JarvisCompanionVersion, installed: numbe
  */
 @Component({
   selector: 'app-jarvis',
-  imports: [JarvisPieceGalleryComponent, JarvisCockpitComponent, JarvisCompanionsComponent, JarvisCostPanelComponent, JarvisPortraitComponent, JarvisMailboxesComponent, JarvisMailCardComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatMenuModule],
+  imports: [JarvisPieceGalleryComponent, JarvisCockpitComponent, JarvisCompanionsComponent, JarvisCostPanelComponent, JarvisPortraitComponent, JarvisMailboxesComponent, JarvisThreadPanelComponent, JarvisMailCardComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatMenuModule],
   templateUrl: './jarvis.component.html',
   styleUrl: './jarvis.component.scss',
   providers: [JarvisAppUpdate],
@@ -363,6 +364,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
   readonly portraitOpen = signal(false);
   /** F-242 / SF-242-01 — le volet « Mes boîtes » (jamais en présentation). */
   readonly mailOpen = signal(false);
+
+  /** F-245 / SF-245-04 (D8) — le volet « Fil du jour », replié par défaut (jamais en présentation). */
+  readonly threadOpen = signal(false);
 
   // ---- F-241 / SF-241-02 : l'entretien oral (sur l'appareil ; rien d'enregistré avant « Valider ») ----
   private readonly interviewClient = inject(JarvisInterviewClient);
