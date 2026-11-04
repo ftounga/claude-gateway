@@ -1517,6 +1517,34 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   (`PENDING|CONFIRMED|EXECUTED|CANCELLED|EXPIRED|FAILED`), `created_at`, `expires_at` (10 min),
   `confirmed_by_message_id`, `executed_at`, `error`. Exécutée **seulement** si le message suivant de l'utilisateur
   dans ce fil est un « oui » de la liste fermée, vérifié par la passerelle ; aucun point d'accès ne confirme.
+- **jarvis_calendar_feeds** — **les agendas lus par Jarvis** (F-243 / SF-243-01, migration `243-jarvis-calendar-feeds`) :
+  `id`, `user_id`, `label`, `url_hash` (SHA-256 de l'adresse, unique par `user_id`), adresse iCal secrète **chiffrée**
+  par `ByokKeyCipher` (`encrypted_data_key`, `cipher_iv`, `ciphertext`), `secret_last4`, `status` (`OK|BROKEN`),
+  `etag`, `last_modified`, `content_hash` (corps inchangé ⇒ aucune analyse), `event_count`, `last_ok_at`, `expanded_at`
+  (fenêtre glissante), `last_error`, `next_poll_at`, `lease_until` (bail), `created_at`. Relève serveur 15 min, **sans
+  IA** ; garde anti-SSRF (`https://calendar.google.com` seulement) ; l'adresse n'est jamais renvoyée.
+- **jarvis_calendar_events** — **le cache des occurrences** (F-243 / SF-243-01, migration `243-jarvis-calendar-events`) :
+  `id`, `user_id` (index avec `starts_at`), `feed_id`, `ical_uid`, `recurrence_id`, `starts_at`, `ends_at`, `all_day`,
+  `sealed` (titre, lieu, description courte **scellés**), `status` (`CONFIRMED|TENTATIVE`), `created_at`. Fenêtre J-1 →
+  J+60 (ical4j : `RRULE`, `EXDATE`, `RECURRENCE-ID`, fuseaux), remplacée en bloc quand le flux change, purge J-7. Lue
+  par l'outil `agenda` du cerveau rapide et `GET /api/jarvis/calendar/events` (fusion sans doublon d'`UID`).
+  `jarvis_usage_days` gagne `calendar_polls`, `calendar_polls_unchanged` (migration `243-jarvis-usage-calendar`).
+- **jarvis_calendar_grants** / **jarvis_calendar_oauth_states** / **jarvis_calendar_actions** — **l'écriture dans
+  l'agenda Workspace** (F-243 / SF-243-03, migration `243-jarvis-calendar-grants`) : le droit OAuth (client Internal,
+  portée `calendar.events`, jeton de rafraîchissement **chiffré**, `account`, `client_kind`, `scope`, `granted_at`,
+  `revoked_at`, unique par `user_id` + `account`) ; le parcours OAuth en cours (empreinte du `state`, `user_id`,
+  empreinte du témoin du navigateur, vérificateur PKCE scellé, usage unique, 10 min) ; les poses en attente
+  (`grant_id`, `workspace_id` = fil Jarvis, `kind` `CREATE|ACCEPT|DECLINE`, `mail_item_id`, `payload` scellé, `summary`,
+  `status`, `expires_at` 10 min, `confirmed_by_message_id`, `google_event_id`), exécutées **seulement** sur un « oui »
+  vérifié du message suivant de l'utilisateur dans ce fil (patron `jarvis_mail_actions`) ; `sendUpdates=none`, aucun
+  invité.
+- **jarvis_calendar_proposals** — **les rendez-vous repérés dans les mails** (F-243 / SF-243-04, migration
+  `243-jarvis-calendar-proposals`) : `id`, `user_id`, `account_id`, `mail_item_id`, `personal_box`, `kind`
+  (`INVITATION|CANCELLATION|PROPOSAL|ASK`), `ical_uid`, `starts_at`, `ends_at`, `all_day`, `in_calendar` (même `UID`
+  déjà lu), `sealed` (titre, lieu, expéditeur), `status` (`OPEN|SAID|DONE|DISMISSED|EXPIRED`), `briefed_at`,
+  `created_at`, `expires_at` (début du rendez-vous). `.ics` analysé **sans IA** (invités jamais lus), date écrite
+  repérée au tri et résolue par la passerelle ; une proposition à la fois au bref ; **rien n'est posé** depuis cette
+  table. Purge avec la boîte et le compte.
 - **interlocuteurs** — **les interlocuteurs d'un poste** (F-180 / SF-180-03, migration `160`) : une
   personne dont on attend quelque chose, normalisée. `id`, `user_id`, `host_id` (NOT NULL — un terminal
   hébergé garde le texte libre), `display_name (120)`, `normalized_name (120)` (unique par `user_id` +
