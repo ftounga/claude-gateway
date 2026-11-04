@@ -24,6 +24,9 @@ public interface JarvisCalendarEventRepository extends JpaRepository<JarvisCalen
 
     long countByUserIdAndFeedId(UUID userId, UUID feedId);
 
+    /** F-243 / SF-243-04 (D6) — une invitation déjà présente dans un agenda lu (même UID). */
+    boolean existsByUserIdAndIcalUid(UUID userId, String icalUid);
+
     long countByUserId(UUID userId);
 
     @Modifying

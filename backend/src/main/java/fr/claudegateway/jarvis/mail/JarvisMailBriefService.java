@@ -29,8 +29,20 @@ import org.springframework.transaction.annotation.Transactional;
 public class JarvisMailBriefService {
 
     /** Le bref : la phrase et les courriers dont elle parle (le premier est « mis en avant »). */
-    public record Brief(String text, List<BriefItem> items) {
-        static final Brief NONE = new Brief("", List.of());
+    public record Brief(String text, List<BriefItem> items, String proposal) {
+        static final Brief NONE = new Brief("", List.of(), "");
+
+        public Brief(String text, List<BriefItem> items) {
+            this(text, items, "");
+        }
+    }
+
+    /** F-243 / SF-243-04 (D8) — le rendez-vous repéré à proposer, une phrase à la fois. Facultatif. */
+    private JarvisMailCalendarHook calendar;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setCalendar(JarvisMailCalendarHook calendar) {
+        this.calendar = calendar;
     }
 
     public record BriefItem(UUID id, String from, String fromName, String subject, String reason) {
@@ -66,8 +78,9 @@ public class JarvisMailBriefService {
         }
         List<JarvisMailItem> fresh = items.findByUserIdAndTriageAndBriefedAtIsNullOrderByReceivedAtDesc(userId,
                 JarvisMailItem.Triage.A_TRAITER, PageRequest.of(0, 20));
+        String proposal = calendar == null ? "" : calendar.nextBriefSentence(userId);
         if (fresh.isEmpty()) {
-            return Brief.NONE;
+            return proposal.isEmpty() ? Brief.NONE : new Brief("", List.of(), proposal);
         }
         List<BriefItem> said = new ArrayList<>();
         for (JarvisMailItem item : fresh) {
@@ -77,7 +90,7 @@ public class JarvisMailBriefService {
         OffsetDateTime now = OffsetDateTime.now(clock);
         fresh.forEach(i -> i.setBriefedAt(now));
         items.saveAll(fresh);
-        return new Brief(sentence(said), said.subList(0, Math.min(said.size(), MAX_NAMED)));
+        return new Brief(sentence(said), said.subList(0, Math.min(said.size(), MAX_NAMED)), proposal);
     }
 
     /** « Deux mails à traiter : Helios demande le devis signé, et la banque attend une signature. » (≤ 30 mots). */
@@ -147,10 +160,20 @@ public class JarvisMailBriefService {
                     .append(" — de ").append(clean(h.fromName().isBlank() ? h.from() : h.fromName(), 40))
                     .append(" — objet : ").append(clean(h.subject(), 100))
                     .append(item.getTriageReason() == null ? "" : " — tri : " + clean(item.getTriageReason(), 60))
+                    .append(rdvNote(userId, item))
                     .append('\n');
         }
         String body = lines.length() == 0 ? "Aucun courriel à traiter ni à lire." : lines.toString().strip();
         return "\n## Courrier (boîte de réception triée)\n" + UntrustedMail.NOTE + "\n" + UntrustedMail.tag(body) + "\n";
+    }
+
+    /** F-243 / SF-243-04 — ce que l'agenda a repéré dans ce courriel (« — invitation : … »), ou rien. */
+    private String rdvNote(UUID userId, JarvisMailItem item) {
+        if (calendar == null) {
+            return "";
+        }
+        String note = calendar.noteFor(userId, item.getId());
+        return note.isEmpty() ? "" : " — " + clean(note, 200);
     }
 
     private static String clean(String raw, int max) {

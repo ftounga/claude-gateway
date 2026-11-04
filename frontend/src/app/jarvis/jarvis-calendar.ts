@@ -113,7 +113,7 @@ export interface CalendarItem {
   allDay: boolean;
   title: string;
   location: string;
-  status: 'CONFIRMED' | 'TENTATIVE';
+  status: 'CONFIRMED' | 'TENTATIVE' | 'PROPOSED';
 }
 
 /** F-243 / SF-243-02 — une lecture de l'agenda. */
@@ -123,6 +123,8 @@ export interface CalendarWindow {
   items: CalendarItem[];
   updatedAt: string | null;
   feeds: number;
+  /** F-243 / SF-243-04 — les rendez-vous repérés dans les mails, pas encore posés (en pointillé). */
+  proposals?: CalendarItem[];
 }
 
 /** F-243 / SF-243-02 (D10) — ce que montre la vue d'agenda : une journée ou une semaine (à partir de `date`). */

@@ -62,6 +62,14 @@ public class JarvisMailToolCatalog {
     private final JarvisMailActionService actions;
     private final fr.claudegateway.atelier.AtelierMessageRepository messages;
 
+    /** F-243 / SF-243-04 — ce que l'agenda a repéré dans un courriel lu. Facultatif. */
+    private JarvisMailCalendarHook calendar;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setCalendar(JarvisMailCalendarHook calendar) {
+        this.calendar = calendar;
+    }
+
     public JarvisMailToolCatalog(JarvisMailAccountRepository accounts, JarvisMailBox box, JarvisMailWriter writer,
             JarvisMailActionService actions, fr.claudegateway.atelier.AtelierMessageRepository messages) {
         this.accounts = accounts;
@@ -191,7 +199,9 @@ public class JarvisMailToolCatalog {
                 + (v.receivedAt() == null ? "" : v.receivedAt().atZoneSameInstant(ZONE).format(WHEN))
                 + "\nBoîte : " + v.account() + (v.hasCalendar() ? "\nContient une invitation d'agenda." : "")
                 + "\n\n" + body.text() + (body.truncated() ? "\n[… la suite est coupée]" : "");
-        return Result.ok("Courriel " + raw.strip() + " :\n" + UntrustedMail.wrap(content));
+        String note = calendar == null || v.id() == null ? "" : calendar.noteFor(userId, v.id());
+        return Result.ok("Courriel " + raw.strip() + " :\n" + UntrustedMail.wrap(content)
+                + (note.isEmpty() ? "" : "\n[Agenda — repéré par la passerelle, sans IA : " + note + "]"));
     }
 
     private Result search(UUID userId, JsonNode input) {

@@ -54,6 +54,7 @@ const DAY_LABEL = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'nume
               @if (nowLeft(d.day); as left) { <span class="jag__now" [style.left.%]="left"></span> }
               @for (i of d.timed; track i.id) {
                 <span class="jag__block" [class.jag__block--next]="i.id === next()?.id"
+                      [class.jag__block--proposed]="i.status === 'PROPOSED'"
                       [style.left.%]="slot(i, d.day).left" [style.width.%]="slot(i, d.day).width"></span>
               }
             </div>
@@ -62,10 +63,12 @@ const DAY_LABEL = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'nume
             }
             <ul class="jag__list">
               @for (i of d.timed; track i.id) {
-                <li class="jag__item" [class.jag__item--next]="i.id === next()?.id">
+                <li class="jag__item" [class.jag__item--next]="i.id === next()?.id"
+                    [class.jag__item--proposed]="i.status === 'PROPOSED'">
                   <span class="jag__hour">{{ hour(i.start) }}–{{ hour(i.end) }}</span>
                   <span class="jag__what">{{ i.title || '(sans titre)' }}@if (i.location) { <span class="jag__where"> · {{ i.location }}</span> }</span>
                   @if (i.id === next()?.id) { <span class="jag__state">{{ inProgress(i) ? 'en cours' : 'prochain' }}</span> }
+                  @if (i.status === 'PROPOSED') { <span class="jag__state">proposé</span> }
                   @if (i.feedLabel) { <span class="jag__feed">{{ i.feedLabel }}</span> }
                 </li>
               }
@@ -107,6 +110,8 @@ const DAY_LABEL = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'nume
       background: color-mix(in srgb, var(--cg-orange) 45%, transparent);
       border: 1px solid color-mix(in srgb, var(--cg-orange) 75%, transparent); box-sizing: border-box; }
     .jag__block--next { background: var(--cg-orange); box-shadow: 0 0 10px color-mix(in srgb, var(--cg-orange) 75%, transparent); }
+    .jag__block--proposed { background: transparent; border-style: dashed; }
+    .jag__item--proposed { border-left-style: dashed; border-left-color: var(--cg-orange-2); opacity: .85; }
     .jag__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--cg-space-1); }
     .jag__item { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--cg-space-2); font-size: 14px;
       padding: 2px var(--cg-space-1); border-left: 2px solid transparent; min-width: 0; }
@@ -132,7 +137,8 @@ export class JarvisAgendaComponent implements OnChanges {
   readonly loading = signal(true);
   readonly error = signal('');
 
-  readonly next = computed(() => nextItem(this.window()?.items ?? [], this.now()()));
+  readonly next = computed(() => nextItem((this.window()?.items ?? []).filter((i) => i.status !== 'PROPOSED'),
+    this.now()()));
   readonly updated = computed(() => {
     const at = this.window()?.updatedAt;
     return at ? parisHour(at) : '';
@@ -185,7 +191,10 @@ export class JarvisAgendaComponent implements OnChanges {
       next: (w) => {
         this.loading.set(false);
         const wanted = new Set(days);
-        this.window.set({ ...w, items: w.items.filter((i) => this.inDays(i, wanted)) });
+        // F-243 / SF-243-04 (D10) — les rendez-vous proposés rejoignent la frise, en pointillé.
+        const proposed = (w.proposals ?? []).map((p) => ({ ...p, status: 'PROPOSED' as const }));
+        this.window.set({ ...w, items: [...w.items, ...proposed].filter((i) => this.inDays(i, wanted))
+          .sort((a, b) => a.start.localeCompare(b.start)) });
       },
       error: () => {
         this.loading.set(false);

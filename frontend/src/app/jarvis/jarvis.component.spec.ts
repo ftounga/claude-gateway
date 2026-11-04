@@ -292,6 +292,22 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     discardPeriodicTasks();
   }));
 
+  it('F-243 / SF-243-04 — sans courriel neuf, la proposition de rendez-vous se dit seule, sans carte', fakeAsync(() => {
+    mailClient.brief.and.returnValue(of({ text: '', items: [],
+      proposal: 'Helios Conseil propose jeudi 5 novembre à 14 h : « Point devis ». Je le prépare pour votre agenda ?' }));
+    voice.speak.calls.reset();
+    configure({});
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.mailCard()).toBeNull();
+    expect(voice.speak.calls.allArgs().map((a) => a[0]).join(' ')).toContain('Je le prépare pour votre agenda ?');
+    fixture.componentInstance.ngOnDestroy();
+    fixture.destroy();
+    discardPeriodicTasks();
+  }));
+
   it('F-242 / SF-242-04 — le bref à l’ouverture met le premier courriel en avant ; rien en présentation', fakeAsync(() => {
     mailClient.brief.and.returnValue(of({ text: 'Un mail à traiter : Helios demande le devis signé.',
       items: [{ id: '11111111-1111-1111-1111-111111111111', from: 'devis@helios.example', fromName: 'Helios',

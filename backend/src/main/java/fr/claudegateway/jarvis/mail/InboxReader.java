@@ -34,8 +34,17 @@ public final class InboxReader {
 
     /** Un courrier lu : en-têtes, extrait borné, indices. Jamais le corps complet. */
     public record Fetched(long uid, String messageId, String threadRef, MailHeaders headers, OffsetDateTime receivedAt,
-            boolean hasCalendar, boolean bulk, String flags) {
+            boolean hasCalendar, boolean bulk, String flags, byte[] calendar) {
+
+        /** Sans invitation lue (recherche, tests). */
+        public Fetched(long uid, String messageId, String threadRef, MailHeaders headers, OffsetDateTime receivedAt,
+                boolean hasCalendar, boolean bulk, String flags) {
+            this(uid, messageId, threadRef, headers, receivedAt, hasCalendar, bulk, flags, null);
+        }
     }
+
+    /** F-243 / SF-243-04 — taille maximale d'une invitation lue (256 Kio). */
+    static final int MAX_ICS = 256 * 1024;
 
     /**
      * Le résultat d'une relève.
@@ -139,8 +148,9 @@ public final class InboxReader {
         OffsetDateTime received = (when == null ? Instant.now() : when.toInstant()).atOffset(ZoneOffset.UTC);
         String messageId = clip(header(m, "Message-ID"), 500);
         String threadRef = clip(threadRef(m), 500);
-        return new Fetched(uid, messageId, threadRef, headers, received, MailText.hasCalendar(m), isBulk(m, fromAddr),
-                flags(m.getFlags()));
+        boolean calendar = MailText.hasCalendar(m);
+        return new Fetched(uid, messageId, threadRef, headers, received, calendar, isBulk(m, fromAddr),
+                flags(m.getFlags()), calendar ? MailText.calendarBytes(m, MAX_ICS) : null);
     }
 
     /** D6 — indice « courrier de masse » : {@code List-Unsubscribe}, {@code Precedence: bulk}, expéditeur automatique. */

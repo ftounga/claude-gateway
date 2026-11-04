@@ -47,6 +47,33 @@ public final class MailText {
         }
     }
 
+    /**
+     * F-243 / SF-243-04 — le contenu de la première invitation ({@code text/calendar} ou {@code .ics}), borné à
+     * {@code max} octets ; {@code null} sans invitation ou au-delà de la borne.
+     */
+    public static byte[] calendarBytes(Part part, int max) {
+        try {
+            String name = part.getFileName();
+            if (part.isMimeType("text/calendar") || (name != null && name.toLowerCase(Locale.ROOT).endsWith(".ics"))) {
+                try (java.io.InputStream in = part.getInputStream()) {
+                    byte[] bytes = in.readNBytes(max + 1);
+                    return bytes.length > max ? null : bytes;
+                }
+            }
+            if (part.isMimeType("multipart/*") && part.getContent() instanceof Multipart mp) {
+                for (int i = 0; i < mp.getCount(); i++) {
+                    byte[] found = calendarBytes(mp.getBodyPart(i), max);
+                    if (found != null) {
+                        return found;
+                    }
+                }
+            }
+            return null;
+        } catch (MessagingException | IOException | RuntimeException e) {
+            return null;
+        }
+    }
+
     /** Vrai si le courrier porte une invitation ({@code text/calendar} ou un {@code .ics}), sans la télécharger. */
     public static boolean hasCalendar(Part part) {
         try {

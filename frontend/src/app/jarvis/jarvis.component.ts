@@ -521,12 +521,19 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
     this.mailClient.brief(false).subscribe({
       next: (brief) => {
-        const card = briefCard(brief);
-        if (!card || this.presentation()) {
+        if (this.presentation()) {
           return;
         }
-        this.mailCard.set(card);
-        void this.say(brief.text);
+        const card = briefCard(brief);
+        // F-243 / SF-243-04 (D8) — la proposition de rendez-vous se dit après le bref, seule question de la réponse.
+        const proposal = (brief.proposal ?? '').trim();
+        if (card) {
+          this.mailCard.set(card);
+        }
+        const said = [card ? brief.text : '', proposal].filter((s) => s).join(' ');
+        if (said) {
+          void this.say(said);
+        }
       },
       error: () => undefined,
     });

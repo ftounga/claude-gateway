@@ -52,8 +52,21 @@ public class JarvisCalendarPollWorker {
         }
     }
 
-    /** D13 — les occurrences finies depuis plus de {@code retentionDays} jours. */
+    /** SF-243-04 — les rendez-vous repérés, purgés avec la même rétention. Facultatif. */
+    private JarvisCalendarProposalRepository proposals;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setProposals(JarvisCalendarProposalRepository proposals) {
+        this.proposals = proposals;
+    }
+
+    /** D13 — les occurrences finies (et les propositions expirées) depuis plus de {@code retentionDays} jours. */
     public int purgeOnce() {
-        return events.purgeBefore(OffsetDateTime.now(clock).minusDays(properties.retentionDays()));
+        OffsetDateTime before = OffsetDateTime.now(clock).minusDays(properties.retentionDays());
+        int n = events.purgeBefore(before);
+        if (proposals != null) {
+            n += proposals.purgeBefore(before);
+        }
+        return n;
     }
 }

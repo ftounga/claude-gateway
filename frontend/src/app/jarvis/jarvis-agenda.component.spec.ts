@@ -109,6 +109,22 @@ describe('JarvisAgendaComponent (F-243 / SF-243-02)', () => {
     expect(el.querySelectorAll('.jag__empty').length).toBe(3);
   });
 
+  it('F-243 / SF-243-04 — un rendez-vous proposé s’affiche en pointillé, jamais comme le prochain', () => {
+    client.events.and.returnValue(of({ ...win([item({ id: 'b' })]),
+      proposals: [item({ id: 'p1', title: 'Point Helios proposé', start: '2026-11-04T10:00:00Z',
+        end: '2026-11-04T11:00:00Z', status: 'PROPOSED', feedLabel: 'proposé' })] }));
+    fixture = TestBed.createComponent(JarvisAgendaComponent);
+    fixture.componentRef.setInput('view', { mode: 'jour', date: '2026-11-04' });
+    fixture.componentRef.setInput('now', () => new Date('2026-11-04T09:00:00Z'));
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    const proposed = el.querySelector('.jag__item--proposed');
+    expect(proposed?.textContent).toContain('Point Helios proposé');
+    expect(proposed?.textContent).toContain('proposé');
+    expect(el.querySelectorAll('.jag__block--proposed').length).toBe(1);
+    expect(el.querySelector('.jag__item--next')?.textContent).toContain('Point devis Helios');
+  });
+
   it('une journée vide le dit', () => {
     const el = create('jour', []);
     expect(el.querySelector('.jag__empty')?.textContent).toContain('Rien de prévu');

@@ -16,7 +16,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public final class JarvisMailTriageParser {
 
     /** Un classement validé. */
-    public record Verdict(JarvisMailItem.Triage triage, String reason) {
+    public record Verdict(JarvisMailItem.Triage triage, String reason, MailRdv rdv) {
+
+        public Verdict(JarvisMailItem.Triage triage, String reason) {
+            this(triage, reason, null);
+        }
     }
 
     public static final String UNSURE = "Tri incertain";
@@ -58,7 +62,9 @@ public final class JarvisMailTriageParser {
             }
             JarvisMailItem.Triage triage = triage(node.path("classe").asText(""));
             String reason = triage == null ? UNSURE : reason(node.path("raison").asText(""));
-            out.put(id, new Verdict(triage == null ? JarvisMailItem.Triage.A_LIRE : triage, reason));
+            // F-243 / SF-243-04 (D7) — le champ facultatif « rdv », jamais pour un courriel « à ignorer ».
+            MailRdv rdv = triage == JarvisMailItem.Triage.A_IGNORER ? null : MailRdv.parse(node.get("rdv"));
+            out.put(id, new Verdict(triage == null ? JarvisMailItem.Triage.A_LIRE : triage, reason, rdv));
         }
         return out;
     }

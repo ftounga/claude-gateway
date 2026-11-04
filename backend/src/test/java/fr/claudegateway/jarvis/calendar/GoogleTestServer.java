@@ -9,18 +9,17 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.springframework.test.context.DynamicPropertyRegistry;
+
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
 /**
- * F-243 / SF-243-03 — un Google bouchonné sur un port fixe ({@value #PORT}) : {@code /token} (échange du code,
- * rafraîchissement), {@code /revoke}, {@code /calendar/v3/calendars/primary/events}. Chaque requête est gardée
- * (chemin, requête, corps) pour vérifier ce qui part chez Google.
+ * F-243 / SF-243-03, SF-243-04 — un Google bouchonné (un par JVM de test, port dynamique) : {@code /token} (échange,
+ * rafraîchissement), {@code /revoke}, la création d'un événement, et la réponse à une invitation (recherche par
+ * {@code iCalUID}, {@code PATCH}). Chaque requête est gardée pour vérifier ce qui part chez Google.
  */
 final class GoogleTestServer {
-
-    static final int PORT = 18943;
-    static final String BASE = "http://127.0.0.1:" + PORT;
 
     /** Une requête reçue. */
     record Received(String method, String path, String query, String body, String authorization) {
@@ -38,17 +37,30 @@ final class GoogleTestServer {
     private GoogleTestServer() {
     }
 
-    static synchronized void start() {
-        if (server != null) {
-            return;
+    static synchronized String base() {
+        if (server == null) {
+            try {
+                server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+            } catch (IOException e) {
+                throw new IllegalStateException(e);
+            }
+            server.createContext("/", GoogleTestServer::handle);
+            server.start();
         }
-        try {
-            server = HttpServer.create(new InetSocketAddress("127.0.0.1", PORT), 0);
-        } catch (IOException e) {
-            throw new IllegalStateException(e);
-        }
-        server.createContext("/", GoogleTestServer::handle);
-        server.start();
+        return "http://127.0.0.1:" + server.getAddress().getPort();
+    }
+
+    /** Le client OAuth de test, pointé sur ce Google bouchonné. */
+    static void register(DynamicPropertyRegistry registry) {
+        String base = base();
+        registry.add("app.jarvis.calendar.oauth.client-id", () -> "test-client");
+        registry.add("app.jarvis.calendar.oauth.client-secret", () -> "test-secret");
+        registry.add("app.jarvis.calendar.oauth.redirect-uri",
+                () -> "http://localhost/api/jarvis/calendar/oauth/callback");
+        registry.add("app.jarvis.calendar.oauth.auth-uri", () -> base + "/auth");
+        registry.add("app.jarvis.calendar.oauth.token-uri", () -> base + "/token");
+        registry.add("app.jarvis.calendar.oauth.revoke-uri", () -> base + "/revoke");
+        registry.add("app.jarvis.calendar.oauth.api-base", () -> base + "/calendar/v3");
     }
 
     static void reset() {
@@ -61,7 +73,8 @@ final class GoogleTestServer {
     private static void handle(HttpExchange ex) throws IOException {
         String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
         String path = ex.getRequestURI().getPath();
-        RECEIVED.add(new Received(ex.getRequestMethod(), path, ex.getRequestURI().getRawQuery(), body,
+        String method = ex.getRequestMethod();
+        RECEIVED.add(new Received(method, path, ex.getRequestURI().getRawQuery(), body,
                 ex.getRequestHeaders().getFirst("Authorization")));
         if ("/token".equals(path) && body.contains("grant_type=authorization_code")) {
             if (!body.contains("code=good-code")) {
@@ -87,12 +100,22 @@ final class GoogleTestServer {
             reply(ex, 200, "{}");
             return;
         }
-        if (path.endsWith("/calendars/primary/events") && "POST".equals(ex.getRequestMethod())) {
+        if (path.endsWith("/calendars/primary/events") && "POST".equals(method)) {
             if (unauthorizedLeft.getAndUpdate(n -> Math.max(0, n - 1)) > 0) {
                 reply(ex, 401, "{\"error\":{\"code\":401}}");
                 return;
             }
             reply(ex, 200, "{\"id\":\"evt-123\",\"status\":\"confirmed\"}");
+            return;
+        }
+        if (path.endsWith("/calendars/primary/events") && "GET".equals(method)) {
+            reply(ex, 200, "{\"items\":[{\"id\":\"evt-inv\",\"attendees\":["
+                    + "{\"email\":\"devis@helios.example\",\"organizer\":true,\"responseStatus\":\"accepted\"},"
+                    + "{\"email\":\"pro@ng-itconsulting.com\",\"self\":true,\"responseStatus\":\"needsAction\"}]}]}");
+            return;
+        }
+        if (path.endsWith("/calendars/primary/events/evt-inv") && "PATCH".equals(method)) {
+            reply(ex, 200, "{\"id\":\"evt-inv\"}");
             return;
         }
         reply(ex, 404, "{}");

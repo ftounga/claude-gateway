@@ -38,7 +38,21 @@ public class JarvisCalendarActionService {
 
     /** Ce qui sera posé (heures locales de Paris, ISO sans fuseau). */
     public record Payload(String title, String start, String end, String location, String description,
-            String mailItemId) {
+            String mailItemId, String icalUid) {
+
+        /** Une pose (SF-243-03). */
+        public Payload(String title, String start, String end, String location, String description,
+                String mailItemId) {
+            this(title, start, end, location, description, mailItemId, null);
+        }
+    }
+
+    /** SF-243-04 — les propositions du courrier d'origine passent à « faites ». Facultatif. */
+    private JarvisCalendarProposalService proposals;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setProposals(JarvisCalendarProposalService proposals) {
+        this.proposals = proposals;
     }
 
     private final JarvisCalendarActionRepository actions;
@@ -73,7 +87,7 @@ public class JarvisCalendarActionService {
         a.setKind(kind);
         a.setMailItemId(mailItemId);
         a.setPayload(seal.seal(write(payload)));
-        String summary = summary(payload);
+        String summary = summary(kind, payload);
         a.setSummary(summary.length() <= 600 ? summary : summary.substring(0, 600));
         a.setStatus(JarvisCalendarAction.Status.PENDING);
         a.setCreatedAt(now);
@@ -126,8 +140,18 @@ public class JarvisCalendarActionService {
                     a.setGoogleEventId(eventId);
                     yield "posé — " + a.getSummary();
                 }
-                case ACCEPT, DECLINE -> throw new IllegalStateException("réponse à une invitation : SF-243-04");
+                case ACCEPT, DECLINE -> {
+                    boolean accept = a.getKind() == JarvisCalendarAction.Kind.ACCEPT;
+                    grants.withAccess(grant, token -> {
+                        google.respond(token, p.icalUid(), accept);
+                        return Boolean.TRUE;
+                    });
+                    yield (accept ? "accepté — " : "refusé — ") + a.getSummary();
+                }
             };
+            if (proposals != null && a.getMailItemId() != null) {
+                proposals.markDone(a.getUserId(), a.getMailItemId());
+            }
             a.setStatus(JarvisCalendarAction.Status.EXECUTED);
             a.setExecutedAt(OffsetDateTime.now(clock));
             actions.save(a);
@@ -158,6 +182,16 @@ public class JarvisCalendarActionService {
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.FRENCH);
 
     /** La reformulation dite avant le « oui » : jour, heures, titre, agenda, lieu — calculée par le serveur. */
+    static String summary(JarvisCalendarAction.Kind kind, Payload p) {
+        if (kind == JarvisCalendarAction.Kind.CREATE) {
+            return summary(p);
+        }
+        String what = summary(p).replace(", dans votre agenda pro", "");
+        return (kind == JarvisCalendarAction.Kind.ACCEPT ? "Accepter l'invitation : " : "Refuser l'invitation : ")
+                + Character.toLowerCase(what.charAt(0)) + what.substring(1, what.length() - 1)
+                + " ; Google prévient l'organisateur.";
+    }
+
     static String summary(Payload p) {
         LocalDateTime start = LocalDateTime.parse(p.start());
         LocalDateTime end = LocalDateTime.parse(p.end());

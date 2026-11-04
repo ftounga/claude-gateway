@@ -61,6 +61,41 @@ public final class JarvisIcsParser {
             String status, EventText text) {
     }
 
+    /**
+     * F-243 / SF-243-04 (D6) — une invitation reçue : méthode ({@code REQUEST}, {@code CANCEL}), {@code UID}, créneau,
+     * texte. Les invités ({@code ATTENDEE}) ne sont <b>jamais</b> lus : une invitation ne peut faire inviter personne.
+     */
+    public record Invitation(String method, String uid, Instant start, Instant end, boolean allDay, EventText text) {
+    }
+
+    /** F-243 / SF-243-04 — la première invitation d'un {@code .ics} reçu, ou vide s'il est illisible. */
+    public static Optional<Invitation> invitation(byte[] body, ZoneId fallbackZone) {
+        Calendar calendar;
+        try {
+            calendar = build(body, fallbackZone);
+        } catch (InvalidCalendarException e) {
+            return Optional.empty();
+        }
+        ZoneId zone = calendarZone(calendar).orElse(fallbackZone);
+        String method = calendar.getProperty(Property.METHOD).map(Property::getValue)
+                .map(v -> v.strip().toUpperCase(Locale.ROOT)).orElse("REQUEST");
+        for (Object o : calendar.getComponents(Component.VEVENT)) {
+            VEvent event = (VEvent) o;
+            try {
+                Temporal seed = start(event).orElse(null);
+                if (seed == null) {
+                    continue;
+                }
+                Span span = span(event, seed, zone);
+                return Optional.of(new Invitation(method, uid(event), instant(seed, zone), end(seed, span, zone),
+                        seed instanceof LocalDate, text(event)));
+            } catch (RuntimeException e) {
+                // événement suivant
+            }
+        }
+        return Optional.empty();
+    }
+
     /** Le résultat d'une analyse. */
     public record Parsed(List<Occurrence> occurrences, boolean truncated, String method) {
     }

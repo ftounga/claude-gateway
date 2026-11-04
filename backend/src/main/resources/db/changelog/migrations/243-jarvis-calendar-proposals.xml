@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-243 / SF-243-04 - LES RENDEZ-VOUS REPERES DANS LES MAILS (invitation .ics analysee sans IA, ou date ecrite reperee
+      au tri). jarvis_calendar_proposals : une ligne par rendez-vous repere ; titre, lieu et expediteur SCELLES (sealed) ;
+      in_calendar = meme UID deja present dans un agenda lu (pas de doublon) ; personal_box = boite gmail.com (agenda
+      perso en lecture seule) ; expire au debut du rendez-vous. Rien n'est jamais pose a partir de cette table : la pose
+      passe par agenda_poser et le « oui » verifie. Filtre user_id sur tout acces ; purge avec la boite et le compte.
+
+      Rollback : table retiree (nouvelle, sans donnee existante).
+    -->
+
+    <changeSet id="243-jarvis-calendar-proposals" author="claude-gateway">
+        <createTable tableName="jarvis_calendar_proposals">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="account_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="mail_item_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="personal_box" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="kind" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="ical_uid" type="varchar(512)"/>
+            <column name="starts_at" type="timestamp with time zone"/>
+            <column name="ends_at" type="timestamp with time zone"/>
+            <column name="all_day" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="in_calendar" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="sealed" type="varchar(4000)"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="briefed_at" type="timestamp with time zone"/>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="expires_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="jarvis_calendar_proposals" indexName="idx_jarvis_calendar_proposals_user_status">
+            <column name="user_id"/>
+            <column name="status"/>
+        </createIndex>
+        <createIndex tableName="jarvis_calendar_proposals" indexName="idx_jarvis_calendar_proposals_mail">
+            <column name="mail_item_id"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="jarvis_calendar_proposals"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

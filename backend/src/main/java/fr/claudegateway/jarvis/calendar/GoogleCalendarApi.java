@@ -158,6 +158,45 @@ public class GoogleCalendarApi {
         return id;
     }
 
+    /**
+     * F-243 / SF-243-04 (D6) — accepter ou refuser une invitation présente dans l'agenda principal : l'événement est
+     * retrouvé par son {@code iCalUID}, seule la réponse de l'utilisateur ({@code self}) change, la liste des invités est
+     * rendue telle quelle (personne n'est ajouté) ; Google prévient l'organisateur ({@code sendUpdates=all}).
+     */
+    public void respond(String accessToken, String icalUid, boolean accept) {
+        HttpRequest find = HttpRequest.newBuilder(URI.create(properties.apiBase() + "/calendars/primary/events?iCalUID="
+                        + URLEncoder.encode(icalUid, StandardCharsets.UTF_8)))
+                .timeout(properties.timeout()).header("Authorization", "Bearer " + accessToken).GET().build();
+        JsonNode list = send(find);
+        JsonNode event = list.path("items").path(0);
+        String id = event.path("id").asText("");
+        JsonNode attendees = event.path("attendees");
+        if (id.isEmpty() || !attendees.isArray()) {
+            throw new GoogleUnavailableException("Invitation introuvable dans l'agenda pro.");
+        }
+        com.fasterxml.jackson.databind.node.ArrayNode updated = json.createArrayNode();
+        boolean self = false;
+        for (JsonNode a : attendees) {
+            ObjectNode copy = (ObjectNode) a.deepCopy();
+            if (a.path("self").asBoolean(false)) {
+                copy.put("responseStatus", accept ? "accepted" : "declined");
+                self = true;
+            }
+            updated.add(copy);
+        }
+        if (!self) {
+            throw new GoogleUnavailableException("Vous n'êtes pas invité à cet événement.");
+        }
+        ObjectNode body = json.createObjectNode();
+        body.set("attendees", updated);
+        HttpRequest patch = HttpRequest.newBuilder(URI.create(properties.apiBase() + "/calendars/primary/events/"
+                        + URLEncoder.encode(id, StandardCharsets.UTF_8) + "?sendUpdates=all"))
+                .timeout(properties.timeout()).header("Authorization", "Bearer " + accessToken)
+                .header("Content-Type", "application/json")
+                .method("PATCH", HttpRequest.BodyPublishers.ofString(body.toString())).build();
+        send(patch);
+    }
+
     /** Le corps JSON de la création : uniquement ces champs (testé : aucun invité, aucun envoi). */
     String eventJson(EventBody e) {
         ObjectNode root = json.createObjectNode();

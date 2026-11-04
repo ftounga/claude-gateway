@@ -83,6 +83,14 @@ public class JarvisMailPoller {
         this.push = push;
     }
 
+    /** F-243 / SF-243-04 — les invitations .ics relevées sont signalées à l'agenda (analyse sans IA). Facultatif. */
+    private JarvisMailCalendarHook calendar;
+
+    @Autowired(required = false)
+    public void setCalendar(JarvisMailCalendarHook calendar) {
+        this.calendar = calendar;
+    }
+
     /** SF-242-03 — après une relève qui a apporté du neuf, le tri est prévenu (asynchrone). */
     @Autowired(required = false)
     public void setTriage(JarvisMailTriageTrigger triage) {
@@ -155,6 +163,7 @@ public class JarvisMailPoller {
         Set<String> known = new HashSet<>(ids.isEmpty() ? List.of() : items.knownMessageIds(account.getId(), ids));
         OffsetDateTime now = OffsetDateTime.now(clock);
         List<JarvisMailItem> rows = new ArrayList<>();
+        java.util.Map<JarvisMailItem, InboxReader.Fetched> invitations = new java.util.LinkedHashMap<>();
         for (InboxReader.Fetched f : read.mails()) {
             if (items.existsByAccountIdAndUidvalidityAndUid(account.getId(), read.uidValidity(), f.uid())
                     || (f.messageId() != null && !known.add(f.messageId()))) {
@@ -175,8 +184,22 @@ public class JarvisMailPoller {
             item.setTriage(JarvisMailItem.Triage.EN_ATTENTE);
             item.setCreatedAt(now);
             rows.add(item);
+            if (f.calendar() != null) {
+                invitations.put(item, f);
+            }
         }
         items.saveAll(rows);
+        if (calendar != null) {
+            invitations.forEach((item, f) -> {
+                try {
+                    calendar.onInvitation(account.getUserId(), account.getId(), account.getAddress(), item.getId(),
+                            f.headers().fromName().isBlank() ? f.headers().from() : f.headers().fromName(), f.calendar(),
+                            f.receivedAt());
+                } catch (RuntimeException e) {
+                    log.info("Courrier : invitation non analysée ({})", e.getClass().getSimpleName());
+                }
+            });
+        }
         return rows.size();
     }
 

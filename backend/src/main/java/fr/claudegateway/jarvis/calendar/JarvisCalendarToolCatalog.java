@@ -31,6 +31,8 @@ import fr.claudegateway.atelier.Workspace;
 public class JarvisCalendarToolCatalog {
 
     public static final String POSER = "agenda_poser";
+    /** F-243 / SF-243-04 (D6) — accepter ou refuser une invitation déjà dans l'agenda pro. */
+    public static final String REPONDRE = "agenda_repondre";
 
     static final int MAX_TITLE = 200;
     static final int MAX_LOCATION = 200;
@@ -45,17 +47,19 @@ public class JarvisCalendarToolCatalog {
 
     private final JarvisCalendarGrantService grants;
     private final JarvisCalendarActionService actions;
+    private final JarvisCalendarProposalService proposals;
     private final Clock clock;
 
     public JarvisCalendarToolCatalog(JarvisCalendarGrantService grants, JarvisCalendarActionService actions,
-            Clock clock) {
+            JarvisCalendarProposalService proposals, Clock clock) {
         this.grants = grants;
         this.actions = actions;
+        this.proposals = proposals;
         this.clock = clock;
     }
 
     public static boolean isCalendarTool(String name) {
-        return POSER.equals(name);
+        return POSER.equals(name) || REPONDRE.equals(name);
     }
 
     /** Les outils du tour : dans le fil Jarvis, client configuré ; sinon aucun. */
@@ -84,16 +88,28 @@ public class JarvisCalendarToolCatalog {
         schema.put("properties", p);
         schema.put("required", List.copyOf(p.keySet()));
         schema.put("additionalProperties", false);
+        Map<String, Object> r = new LinkedHashMap<>();
+        r.put("courriel", Map.of("type", "string", "description", "Le courriel qui porte l'invitation (courriel:…)."));
+        r.put("reponse", Map.of("type", "string", "enum", List.of("accepter", "refuser"),
+                "description", "accepter ou refuser."));
+        Map<String, Object> rs = new LinkedHashMap<>();
+        rs.put("type", "object");
+        rs.put("properties", r);
+        rs.put("required", List.copyOf(r.keySet()));
+        rs.put("additionalProperties", false);
         return List.of(new AgentTool(POSER, "Prépare la pose d'un rendez-vous dans l'agenda pro de l'utilisateur (Google "
                 + "Workspace). Rien n'est posé tout de suite : la passerelle rend la reformulation à dire mot pour mot, "
                 + "terminée par « Vous confirmez ? », et pose le rendez-vous seulement si le message suivant de "
                 + "l'utilisateur est un « oui ». N'invite personne et n'envoie aucun mail. Une heure absente ou "
-                + "ambiguë se demande à l'utilisateur, jamais devinée.", schema));
+                + "ambiguë se demande à l'utilisateur, jamais devinée.", schema),
+                new AgentTool(REPONDRE, "Prépare la réponse (accepter ou refuser) à une invitation déjà présente dans "
+                        + "l'agenda pro. Rien n'est envoyé tout de suite : même reformulation et même « oui » vérifié "
+                        + "qu'agenda_poser. Google prévient alors l'organisateur ; personne n'est ajouté.", rs));
     }
 
-    /** Exécute {@value #POSER} dans le fil Jarvis, sous le {@code user_id} du tour. */
+    /** Exécute {@value #POSER} ou {@value #REPONDRE} dans le fil Jarvis, sous le {@code user_id} du tour. */
     public Result execute(UUID userId, Workspace workspace, String name, JsonNode input) {
-        if (!POSER.equals(name) || workspace == null || !workspace.isJarvisThread()) {
+        if (!isCalendarTool(name) || workspace == null || !workspace.isJarvisThread()) {
             return new Result("Outil réservé au fil Jarvis.", true);
         }
         if (!grants.configured()) {
@@ -103,6 +119,9 @@ public class JarvisCalendarToolCatalog {
         if (grant == null) {
             return new Result("Agenda pro non relié : rien n'est posé. Propose à l'utilisateur de le relier dans "
                     + "« Mes agendas » (Jarvis, réglages).", true);
+        }
+        if (REPONDRE.equals(name)) {
+            return respond(userId, workspace, grant, input);
         }
         String title = text(input, "titre", MAX_TITLE);
         if (title.isEmpty()) {
@@ -143,6 +162,38 @@ public class JarvisCalendarToolCatalog {
         JarvisCalendarAction action = actions.propose(userId, workspace.getId(), grant,
                 JarvisCalendarAction.Kind.CREATE, payload, mailItemId);
         return new Result("En attente du « oui » de l'utilisateur : rien n'est posé. Dis mot pour mot, puis rien "
+                + "d'autre : « " + action.getSummary() + " Vous confirmez ? »", false);
+    }
+
+    /** SF-243-04 (D6) — l'invitation du courriel, déjà dans l'agenda pro : la réponse attend le « oui ». */
+    private Result respond(UUID userId, Workspace workspace, JarvisCalendarGrant grant, JsonNode input) {
+        java.util.regex.Matcher m = MAIL_REF.matcher(text(input, "courriel", 60));
+        if (!m.matches()) {
+            return new Result("Courriel manquant (courriel:…).", true);
+        }
+        UUID mailItemId = UUID.fromString(m.group(1));
+        JarvisCalendarProposal inv = proposals.invitation(userId, mailItemId).orElse(null);
+        if (inv == null) {
+            return new Result("Aucune invitation d'agenda dans ce courriel.", true);
+        }
+        if (inv.isPersonalBox()) {
+            return new Result("Cette invitation est dans l'agenda perso : la réponse se fait depuis Gmail.", true);
+        }
+        if (!inv.isInCalendar()) {
+            return new Result("Cette invitation n'est pas dans l'agenda : propose plutôt de la poser (agenda_poser).",
+                    true);
+        }
+        boolean accept = !"refuser".equalsIgnoreCase(text(input, "reponse", 20));
+        JarvisCalendarProposalService.Text t = proposals.open(inv);
+        java.time.ZoneId zone = JarvisCalendarActionService.ZONE;
+        JarvisCalendarActionService.Payload payload = new JarvisCalendarActionService.Payload(
+                t.title().isBlank() ? "Rendez-vous" : t.title(),
+                inv.getStartsAt().atZoneSameInstant(zone).toLocalDateTime().toString(),
+                inv.getEndsAt().atZoneSameInstant(zone).toLocalDateTime().toString(), t.location(), "",
+                mailItemId.toString(), inv.getIcalUid());
+        JarvisCalendarAction action = actions.propose(userId, workspace.getId(), grant,
+                accept ? JarvisCalendarAction.Kind.ACCEPT : JarvisCalendarAction.Kind.DECLINE, payload, mailItemId);
+        return new Result("En attente du « oui » de l'utilisateur : rien n'est envoyé. Dis mot pour mot, puis rien "
                 + "d'autre : « " + action.getSummary() + " Vous confirmez ? »", false);
     }
 

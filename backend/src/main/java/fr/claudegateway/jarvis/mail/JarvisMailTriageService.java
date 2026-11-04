@@ -95,6 +95,14 @@ public class JarvisMailTriageService implements JarvisMailTriageTrigger {
         this.budget = budget;
     }
 
+    /** F-243 / SF-243-04 — les dates écrites repérées au tri vont à l'agenda (proposition, jamais une pose). */
+    private JarvisMailCalendarHook calendar;
+
+    @Autowired(required = false)
+    public void setCalendar(JarvisMailCalendarHook calendar) {
+        this.calendar = calendar;
+    }
+
     /** Asynchrone, un tri à la fois par compte ; jamais pendant un tour de voix. */
     @Override
     public void triageSoon(UUID userId) {
@@ -153,7 +161,7 @@ public class JarvisMailTriageService implements JarvisMailTriageTrigger {
             }
             String token = "m" + (entries.size() + 1);
             byToken.put(token, item);
-            entries.add(new JarvisMailTriagePrompt.Entry(token, h));
+            entries.add(new JarvisMailTriagePrompt.Entry(token, h, item.getReceivedAt()));
         }
         if (!entries.isEmpty()) {
             Map<String, JarvisMailTriageParser.Verdict> verdicts = budget != null && budget.hardStop(userId)
@@ -165,6 +173,17 @@ public class JarvisMailTriageService implements JarvisMailTriageTrigger {
                     set(e.getValue(), JarvisMailItem.Triage.A_LIRE, fallback, now);
                 } else {
                     set(e.getValue(), v.triage(), v.reason(), now);
+                    if (v.rdv() != null && calendar != null && !e.getValue().isHasCalendar()) {
+                        try {
+                            MailHeaders hh = itemService.headers(e.getValue());
+                            calendar.onTextProposal(userId, e.getValue().getAccountId(), e.getValue().getId(),
+                                    hh.fromName().isBlank() ? hh.from() : hh.fromName(), v.rdv(),
+                                    e.getValue().getReceivedAt());
+                        } catch (RuntimeException ex) {
+                            log.info("Courrier : proposition de rendez-vous ignorée ({})",
+                                    ex.getClass().getSimpleName());
+                        }
+                    }
                 }
                 decided.add(e.getValue());
             }
