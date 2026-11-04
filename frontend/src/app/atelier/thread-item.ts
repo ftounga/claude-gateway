@@ -23,6 +23,8 @@ export function toThreadItem(message: AtelierMessage): AtelierThreadItem {
     ...(message.brain === 'FAST' || message.brain === 'DELEGATED' ? { brain: message.brain } : {}),
     // F-246 / SF-246-02 : le fil du message, quand la gateway le dit (repli du passé commun dans un volet).
     ...(message.chantier !== undefined ? { chantier: message.chantier } : {}),
+    // F-245 / SF-245-03 : une ligne-lien du fil Jarvis (vers un sujet ou un chantier).
+    ...(message.role === 'LINK' && message.link ? { link: message.link } : {}),
   };
   const stored = message.terminal;
   if (!stored) {

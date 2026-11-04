@@ -539,6 +539,43 @@ describe('AtelierTerminalComponent', () => {
     expect(restarted).toBe(0); // « Compacter » ne déclenche jamais « Nouveau départ »
   });
 
+  // ---------------------------- F-245 / SF-245-03 : la ligne-lien du fil Jarvis
+
+  it('rend une ligne-lien comme une ligne cliquable qui ouvre le chantier à la réponse', () => {
+    component.messages = [{
+      id: 'l1', role: 'LINK', actions: [],
+      content: '↗ Helios · chantier 3 — « relancer le déploiement » · fait\n🎙 Le déploiement est relancé.',
+      link: { workspaceId: 'w-helios', chantier: 3, messageId: 'm4', status: 'FAIT' },
+    }];
+    fixture.detectChanges();
+
+    const line = fixture.nativeElement.querySelector('a.terminal-link-line') as HTMLAnchorElement;
+    expect(line).not.toBeNull();
+    expect(line.getAttribute('href')).toBe('/atelier/w-helios?chantier=3&message=m4');
+    expect(line.textContent).toContain('↗ Helios · chantier 3 — « relancer le déploiement » · fait — 🎙 Le déploiement');
+    expect(line.getAttribute('data-status')).toBe('FAIT');
+    // Une ligne, pas une bulle de question.
+    expect(fixture.nativeElement.querySelector('.terminal-question')).toBeNull();
+  });
+
+  it('une ligne-lien en cours, sans chantier ni réponse, ouvre le sujet seul', () => {
+    component.messages = [{
+      id: 'l2', role: 'LINK', actions: [], content: '↗ Doc archi — « relire » · en cours',
+      link: { workspaceId: 'w-doc', chantier: null, messageId: null, status: 'EN_COURS' },
+    }];
+    fixture.detectChanges();
+
+    const line = fixture.nativeElement.querySelector('a.terminal-link-line') as HTMLAnchorElement;
+    expect(line.getAttribute('href')).toBe('/atelier/w-doc');
+  });
+
+  it('une réponse porte l\'ancre vers laquelle une ligne-lien fait défiler', () => {
+    component.messages = [{ id: 'm4', role: 'ASSISTANT', actions: [], content: 'Relancé.' }];
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-message-id="m4"]')).not.toBeNull();
+  });
+
   it('affiche la barre de compaction pendant une compaction manuelle', () => {
     component.compactingNow = true;
     fixture.detectChanges();

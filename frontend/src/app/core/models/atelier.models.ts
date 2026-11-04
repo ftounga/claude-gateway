@@ -443,7 +443,18 @@ export interface WriteFileRequest {
 }
 
 /** Rôle d'un message Atelier tel que persisté par le backend. */
-export type AtelierRole = 'USER' | 'ASSISTANT';
+export type AtelierRole = 'USER' | 'ASSISTANT' | 'LINK';
+
+/**
+ * F-245 / SF-245-03 — la cible d'une **ligne-lien** du fil Jarvis : le sujet, le chantier (ou `null`), la réponse
+ * d'Opus une fois le tour fini, et l'état.
+ */
+export interface AtelierMessageLink {
+  workspaceId: string;
+  chantier: number | null;
+  messageId: string | null;
+  status: 'EN_COURS' | 'FAIT' | 'ECHEC';
+}
 
 /**
  * Modification d'un fichier constatée par le backend à la resynchronisation d'un tour (F-37 /
@@ -568,6 +579,8 @@ export interface AtelierMessage {
    * F-246 / SF-246-02 : le volet d'un chantier replie le passé commun (messages d'autres fils). Absent d'un serveur d'avant.
    */
   chantier?: number | null;
+  /** F-245 / SF-245-03 — la cible d'une ligne-lien (`role = LINK`) ; absent ou `null` pour tout autre message. */
+  link?: AtelierMessageLink | null;
 }
 
 /** Action de fichier réalisée par l'agent pendant un tour : `type` = `read` ou `write`. */

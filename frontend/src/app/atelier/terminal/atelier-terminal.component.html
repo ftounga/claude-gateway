@@ -827,7 +827,16 @@
     }
 
     @for (message of displayedMessages; track message.id) {
-      @if (message.role === 'USER') {
+      @if (message.link; as link) {
+        <!-- F-245 / SF-245-03 — LA LIGNE-LIEN DU FIL JARVIS : ce qui a été confié à un sujet ou un chantier. Une
+             ligne, pas une bulle ; un toucher ouvre le chantier à la réponse. Registre du marqueur de flux : aucune
+             couleur ni police nouvelle. -->
+        <a class="terminal-flux-marker terminal-link-line" [attr.data-status]="link.status"
+           [routerLink]="['/atelier', link.workspaceId]" [queryParams]="linkQuery(link)">
+          <mat-icon class="terminal-flux-marker-icon" aria-hidden="true">call_made</mat-icon>
+          <span class="terminal-flux-marker-text terminal-link-line__text">{{ linkText(message.content) }}</span>
+        </a>
+      } @else if (message.role === 'USER') {
         <!-- F-196 / SF-196-03 — LA RÉSOLUTION DU CHANTIER, MARQUÉE DANS LE FIL : le message de clôture
              (persisté, donc rejoué à l'historique au bon endroit) est rendu en séparateur, pas en bulle.
              Encre du terminal héritée : aucune couleur nouvelle, AA sur les deux peaux. -->
@@ -906,6 +915,8 @@
         </div>
         }
       } @else {
+        <!-- F-245 / SF-245-03 : l'ancre de la réponse, vers laquelle une ligne-lien du fil Jarvis fait défiler. -->
+        <span class="terminal-message-anchor" [attr.data-message-id]="message.id"></span>
         @if (message.terminal && message.terminal.length > 0) {
           @for (block of message.terminal; track $index) {
             <!-- LOT D'EXPLORATIONS PARALLÈLES (F-150 / SF-150-06) : ≥ 2 explore adjacents → un seul

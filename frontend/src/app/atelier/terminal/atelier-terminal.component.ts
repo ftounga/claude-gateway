@@ -43,7 +43,7 @@ import { PlumeView, TerminalPlumeComponent, looksLikeVideoRequest } from './term
 import { TerminalBarTier, terminalBarTier } from './terminal-bar-tier';
 import { PlumeService } from '../../core/services/plume.service';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { AtelierNextStep, AtelierNextStepsChantier, AtelierQuestionAnswer, DepositedFileRef } from '../../core/models/atelier.models';
+import { AtelierMessageLink, AtelierNextStep, AtelierNextStepsChantier, AtelierQuestionAnswer, DepositedFileRef } from '../../core/models/atelier.models';
 import {
   DictationButtonComponent,
   DictationState,
@@ -4184,6 +4184,49 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       this.qrailTimer = null;
     }
   }
+
+  // ------------------------------------------------------------------ F-245 / SF-245-03 : la ligne-lien
+
+  /** Les paramètres de l'adresse d'une ligne-lien : le chantier (s'il y en a un) et la réponse (si le tour a fini). */
+  linkQuery(link: AtelierMessageLink): Record<string, string> {
+    const query: Record<string, string> = {};
+    if (link.chantier !== null && link.chantier !== undefined) {
+      query['chantier'] = String(link.chantier);
+    }
+    if (link.messageId) {
+      query['message'] = link.messageId;
+    }
+    return query;
+  }
+
+  /** Le texte d'une ligne-lien sur une ligne : « ↗ Helios · chantier 3 — « … » · fait — 🎙 … ». */
+  linkText(content: string): string {
+    return (content ?? '').split('\n').map((line) => line.trim()).filter((line) => line.length > 0).join(' — ');
+  }
+
+  /**
+   * La réponse vers laquelle défiler une fois le fil affiché (`?message=` d'une ligne-lien, F-245 / SF-245-03) ;
+   * `null` : rien à faire. Prise une seule fois : le fil reprend ensuite son comportement ordinaire.
+   */
+  @Input()
+  set focusMessageId(value: string | null) {
+    this.focusMessageValue.set(value ?? null);
+  }
+  private readonly focusMessageValue = signal<string | null>(null);
+
+  private readonly focusMessageEffect = effect(() => {
+    const id = this.focusMessageValue();
+    if (!id || !this.messagesValue().some((m) => m.id === id)) {
+      return;
+    }
+    this.focusMessageValue.set(null);
+    // Après le rendu du fil (et son défilement vers le bas) : l'ancre de la réponse vient en tête.
+    setTimeout(() => {
+      const container = this.scrollback?.nativeElement ?? (this.hostElement.nativeElement as HTMLElement);
+      container?.querySelector<HTMLElement>(`[data-message-id="${id}"]`)
+        ?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    }, 120);
+  });
 
   scrollToQuestion(anchorId: string): void {
     const container = this.scrollback?.nativeElement;

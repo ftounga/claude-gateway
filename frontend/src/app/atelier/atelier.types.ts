@@ -11,6 +11,7 @@ import {
   DepositedFileRef,
   AtelierNextStep,
   AtelierNextStepsChantier,
+  AtelierMessageLink,
 } from '../core/models/atelier.models';
 import { AtelierFileDiffView } from './terminal/terminal-diff';
 
@@ -45,6 +46,8 @@ export interface AtelierThreadItem {
    * pas encore relu (optimiste) — qui n'est donc jamais replié comme « passé commun ».
    */
   chantier?: number | null;
+  /** F-245 / SF-245-03 — une ligne-lien du fil Jarvis : ouvre le sujet (et le chantier) à la réponse. */
+  link?: AtelierMessageLink;
   /** Chemins des fichiers modifiés par une session d'exécution (mode « Terminal », SF-28-11). */
   changedFiles?: string[];
   /**
