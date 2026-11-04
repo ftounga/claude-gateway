@@ -982,6 +982,7 @@ public class JarvisFastBrainService {
                     ? benchRecent.stream().map(r -> fr.claudegateway.jarvis.portrait.JarvisPortraitNote.normalize(
                             r.replaceFirst("(?i)^aujourd'hui:", ""))).toList()
                     : fr.claudegateway.jarvis.portrait.JarvisAllusionService.topicsWithin(recent, now);
+            gate.moment(fr.claudegateway.jarvis.portrait.JarvisPortraitNote.momentStems(portrait));
             gate.allusions(fr.claudegateway.jarvis.portrait.JarvisPortraitNote.allusionTerms(portrait),
                     fr.claudegateway.jarvis.portrait.JarvisPortraitNote.personalSaid(request.text(), portrait), spontaneousToday, topics);
             // F-241 / SF-241-05 (D15) — la relance « Du nouveau ? » : cadence bornée ici, moment choisi par Jarvis.
@@ -1482,6 +1483,13 @@ public class JarvisFastBrainService {
         private static final java.util.regex.Pattern DECLARATION = java.util.regex.Pattern
                 .compile("(?i)^✦\\s*(allusion|humour)\\s*:?\\s*(.*)$");
 
+        /** F-243 / SF-243-06 — les racines du « moment » du portrait (la cause connue). */
+        private java.util.Set<String> momentStems = java.util.Set.of();
+
+        void moment(java.util.Set<String> stems) {
+            this.momentStems = stems == null ? java.util.Set.of() : stems;
+        }
+
         void allusions(java.util.Set<String> terms, boolean saidPersonal, boolean spontaneousBefore,
                 List<String> recentTopics) {
             this.allusionTerms = terms == null ? java.util.Set.of() : terms;
@@ -1770,6 +1778,12 @@ public class JarvisFastBrainService {
                     abort(REASON_TOOL_TEXT);
                     return;
                 }
+                // F-243 / SF-243-06 — « Je vois cela, Monsieur : … » : la formule creuse d'ouverture est retirée.
+                String unled = JarvisFastGuards.withoutHollowLead(sentence);
+                if (!unled.equals(sentence)) {
+                    fillersRemoved++;
+                    sentence = unled;
+                }
                 if (fr.claudegateway.jarvis.portrait.JarvisPortraitNote.blocked(sentence, said, forbidden)) {
                     portraitBlocked++; // D12 (a) : un sujet interdit que le PO n'a pas amené n'est jamais dit
                     return;
@@ -1842,6 +1856,15 @@ public class JarvisFastBrainService {
                 // déjà posée ⇒ la nouvelle est retirée, pourvu qu'une autre phrase ait été dite.
                 if (courtesyAsked && !saidNow.isEmpty() && JarvisFastGuards.isCourtesyQuestion(sentence)) {
                     fillersRemoved++;
+                    return;
+                }
+                // F-243 / SF-243-06 — Monsieur amène lui-même sa vie (« je suis fatigué ») alors qu'une allusion vient
+                // d'être faite : la cause connue (« ces nuits courtes ») n'est pas redite (banc, P07), pourvu qu'une
+                // autre phrase ait été dite.
+                if (saidPersonal && !recentTopics.isEmpty() && !saidNow.isEmpty()
+                        && fr.claudegateway.jarvis.portrait.JarvisPortraitNote.restatesMoment(sentence, said,
+                                momentStems)) {
+                    allusionsBlocked++;
                     return;
                 }
                 // F-241 / SF-241-04 (D12 b, c) — une allusion spontanée : une seule par jour, jamais un sujet récent.

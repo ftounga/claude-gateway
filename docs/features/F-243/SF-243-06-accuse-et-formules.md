@@ -41,6 +41,17 @@ d'une délégation muette, et que Jarvis ne dise plus d'accusé administratif cr
    administratif est retirée **en conclusion** (après une autre phrase dite), comme les relances de conclusion ; seule,
    elle est gardée (jamais de réponse vidée ⇒ jamais de délégation d'office).
 
+4. **Ajouts du pré-banc (premier passage v18, porte fausse)** — deux défauts déjà vus au banc, corrigés à la racine :
+   - **C06#2** « Je vois cela, Monsieur : une journée dense en perspective. » (formule déjà interdite en v17, dite
+     quand même) : `JarvisFastGuards.withoutHollowLead` retire la formule creuse d'**ouverture** suivie d'une
+     ponctuation (« je vois cela », « je vois », « j'en prends (bonne) note », « bien noté », « je note ») ; sans
+     ponctuation (« Je vois cela comme… »), la phrase est intacte.
+   - **P07#1** « Bonjour, Monsieur. Ces nuits courtes finissent par se faire sentir » alors qu'une allusion « le petit
+     ne dort pas » vient d'être faite (« allusion ou trait répété ») : la consigne dit déjà « réponds à ce qu'il dit
+     sans en redire la cause connue ». Garde `JarvisPortraitNote.restatesMoment` : quand Monsieur amène lui-même sa vie
+     et qu'une allusion est récente, une phrase qui redit un mot du « moment » du portrait qu'il n'a pas dit est
+     retirée, pourvu qu'une autre phrase ait été dite.
+
 ## Cas d'erreur
 | Cas | Comportement |
 |---|---|
@@ -50,6 +61,9 @@ d'une délégation muette, et que Jarvis ne dise plus d'accusé administratif cr
 | « Je le prépare ? » puis « Entendu. » | décision du modèle (peut valoir « oui ») |
 | « Retiens que je pars le 20 décembre. » | « C'est noté : … » + 📌 noter (F-241 inchangé) |
 | « …, Monsieur. J'en prends bonne note. » | la seconde phrase est retirée |
+| « Je vois cela, Monsieur : une journée dense. » | « Une journée dense. » |
+| « Je suis fatigué » + allusion récente ; réponse « Bonjour. Ces nuits courtes… » | « Bonjour, Monsieur. » |
+| « Encore une nuit courte » + allusion récente | les nuits courtes peuvent être dites (il l'a dit) |
 | « C'est noté, vérifie quand même » | délégation forcée inchangée (pas un accusé seul) |
 
 ## Contraintes de validation
@@ -81,7 +95,8 @@ d'une délégation muette, et que Jarvis ne dise plus d'accusé administratif cr
 
 ## Impact
 - **Tables / endpoints** : aucun. **Frontend** : aucun.
-- **Backend** : `JarvisFastBrainPrompt` (v18), `JarvisFastGuards` (`isAcknowledgement`, `isAdministrativeAck`),
+- **Backend** : `JarvisFastBrainPrompt` (v18), `JarvisFastGuards` (`isAcknowledgement`, `isAdministrativeAck`,
+  `withoutHollowLead`), `JarvisPortraitNote` (`momentStems`, `restatesMoment`),
   `JarvisFastBrainService` (`decide` : garde d'accusé ; porte : accusé administratif en conclusion) ; tests.
 - Préoccupations transversales : aucune (ni auth, ni tenant, ni plans, ni navigation).
 

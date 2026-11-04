@@ -509,6 +509,30 @@ public final class JarvisFastGuards {
                 + "(?: (?:de|du|des|d)\\b.*)?");
     }
 
+    private static final Pattern HOLLOW_LEAD = Pattern.compile("^(?:je vois cela|je vois|j[’']en prends (?:bonne )?note"
+            + "|je prends (?:bonne )?note|bien noté|je note|j[’']en ai pris (?:bonne )?note)(?:\\s*,\\s*monsieur)?"
+            + "\\s*[,:;—–]\\s*(?<rest>\\S.*)$", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+
+    /**
+     * F-243 / SF-243-06 — la formule creuse d'ouverture retirée de la phrase (« Je vois cela, Monsieur : une journée
+     * dense en perspective. » ⇒ « Une journée dense en perspective. ») — banc prod, C06#2. Sans ponctuation après la
+     * formule (« Je vois cela comme une journée dense »), la phrase est intacte.
+     */
+    public static String withoutHollowLead(String sentence) {
+        if (sentence == null) {
+            return null;
+        }
+        java.util.regex.Matcher m = HOLLOW_LEAD.matcher(sentence.strip());
+        if (!m.matches()) {
+            return sentence;
+        }
+        String rest = m.group("rest").strip();
+        if (normalize(rest).isEmpty()) {
+            return sentence;
+        }
+        return Character.toUpperCase(rest.charAt(0)) + rest.substring(1);
+    }
+
     /** F-235 / SF-235-09 (D18) — les noms de l'œuvre que Jarvis n'imite jamais (normalisés). */
     static final List<String> WORK_NAMES = List.of("stark", "tony stark", "iron man", "ironman", "marvel",
             "avengers");

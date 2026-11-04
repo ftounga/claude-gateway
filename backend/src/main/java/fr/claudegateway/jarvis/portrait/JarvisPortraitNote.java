@@ -380,6 +380,47 @@ public final class JarvisPortraitNote {
             "hopital", "naissance", "mariage", "week", "weekend", "dimanche", "samedi", "sport", "course", "musique",
             "jazz", "lecture", "nuit", "nuits", "dormi", "dort", "maison", "chez");
 
+    /**
+     * F-243 / SF-243-06 — les racines des mots du « moment » (« Nuits courtes depuis la naissance de Léo » ⇒ nuit,
+     * courte, naissance) : la cause connue de ce que vit Monsieur. ≥ 5 lettres, sans mots vides ni noms propres
+     * (ceux-là sont déjà des termes d'allusion).
+     */
+    public static Set<String> momentStems(JarvisPortraitService.Snapshot s) {
+        if (s == null) {
+            return Set.of();
+        }
+        String text = s.text(PortraitSection.MOMENT);
+        Set<String> names = properNames(text);
+        Set<String> out = new LinkedHashSet<>();
+        for (String w : words(text)) {
+            if (w.length() >= 5 && !STOP.contains(w) && !names.contains(w)) {
+                out.add(stem(w));
+            }
+        }
+        return out;
+    }
+
+    /** F-243 / SF-243-06 — vrai si la phrase redit un mot du moment que Monsieur n'a pas dit lui-même. */
+    public static boolean restatesMoment(String sentence, String said, Set<String> stems) {
+        if (stems == null || stems.isEmpty() || sentence == null) {
+            return false;
+        }
+        Set<String> heard = new LinkedHashSet<>();
+        words(said).forEach(w -> heard.add(stem(w)));
+        for (String w : words(sentence)) {
+            String st = stem(w);
+            if (stems.contains(st) && !heard.contains(st)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String stem(String w) {
+        String st = w.endsWith("s") || w.endsWith("x") ? w.substring(0, w.length() - 1) : w;
+        return st.endsWith("e") && st.length() > 4 ? st.substring(0, st.length() - 1) : st;
+    }
+
     /** Les termes qui signent une allusion : noms propres des sections personnelles et des souvenirs. */
     public static Set<String> allusionTerms(JarvisPortraitService.Snapshot s) {
         if (s == null) {

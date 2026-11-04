@@ -377,4 +377,18 @@ class JarvisFastGuardsTest {
             assertThat(JarvisFastGuards.isAdministrativeAck(sentence)).as(sentence).isFalse();
         }
     }
+
+    @Test
+    void f243_06AHollowLeadIsRemovedFromTheSentence() {
+        assertThat(JarvisFastGuards.withoutHollowLead("Je vois cela, Monsieur : une journée dense en perspective."))
+                .isEqualTo("Une journée dense en perspective.");
+        assertThat(JarvisFastGuards.withoutHollowLead("J'en prends bonne note ; la journée sera longue."))
+                .isEqualTo("La journée sera longue.");
+        assertThat(JarvisFastGuards.withoutHollowLead("Je vois cela comme une journée dense, Monsieur."))
+                .isEqualTo("Je vois cela comme une journée dense, Monsieur.");
+        assertThat(JarvisFastGuards.withoutHollowLead("Je vois Paul demain : il livre le lot 2."))
+                .isEqualTo("Je vois Paul demain : il livre le lot 2.");
+        assertThat(JarvisFastGuards.withoutHollowLead("C'est noté : départ le 20 décembre."))
+                .isEqualTo("C'est noté : départ le 20 décembre.");
+    }
 }

@@ -165,4 +165,25 @@ class JarvisFastBrainAllusionTest {
         verify(allusions, never()).recent(any());
         verify(allusions, never()).record(any(), anyString(), anyString(), any(), anyBoolean());
     }
+
+    @Test
+    void f243_06TheKnownCauseIsNotRestatedRightAfterAnAllusion() {
+        JarvisPortraitService.Snapshot p = JarvisPortraitNote.fixture(Map.of(
+                "ENTOURAGE", "Leur fils Léo, né le 12 septembre 2026.",
+                "MOMENT", "Nuits courtes depuis la naissance de Léo."), List.of(), NOW);
+        String reply = "Bonjour, Monsieur. Ces nuits courtes finissent par se faire sentir, je n'en doute pas.";
+        // une allusion récente : la cause connue n'est pas redite
+        JarvisFastBrainService.Outcome o = service(reply).benchWithPortrait(ask(alice, "Bonjour, je suis un peu fatigué."),
+                "claude-sonnet-5-5", "Maintenant : lundi", p, List.of("le petit ne dort pas"));
+        assertThat(o.spokenText()).isEqualTo("Bonjour, Monsieur.");
+        // aucune allusion récente : la réponse est intacte
+        o = service(reply).benchWithPortrait(ask(alice, "Bonjour, je suis un peu fatigué."),
+                "claude-sonnet-5-5", "Maintenant : lundi", p, List.of());
+        assertThat(o.spokenText()).isEqualTo(reply);
+        // Monsieur en parle lui-même : il peut en être question
+        o = service("Bonjour, Monsieur. Les nuits courtes se paient, en effet.").benchWithPortrait(
+                ask(alice, "Bonjour, encore une nuit courte."), "claude-sonnet-5-5", "Maintenant : lundi", p,
+                List.of("le petit ne dort pas"));
+        assertThat(o.spokenText()).isEqualTo("Bonjour, Monsieur. Les nuits courtes se paient, en effet.");
+    }
 }
