@@ -28,18 +28,27 @@ public record MailRdv(String title, String weekday, String date, String hour, in
         if (node == null || !node.isObject()) {
             return null;
         }
-        String title = clean(node.path("titre").asText(""));
+        // SF-243-05 — défense en profondeur : aucune adresse électronique (un invité injecté) dans le texte dit.
+        String title = cleanText(node.path("titre").asText(""));
         String weekday = clean(node.path("jour_semaine").asText("")).toLowerCase(Locale.ROOT);
         String date = node.path("date").asText("").strip();
         String hour = node.path("heure").asText("").strip();
         int minutes = node.path("duree_minutes").canConvertToInt() ? Math.max(0, node.path("duree_minutes").asInt()) : 0;
-        String location = clean(node.path("lieu").asText(""));
+        String location = cleanText(node.path("lieu").asText(""));
         boolean certain = "haute".equalsIgnoreCase(node.path("certitude").asText("").strip());
         if (title.isEmpty() && weekday.isEmpty() && date.isEmpty() && hour.isEmpty()) {
             return null;
         }
         return new MailRdv(title.isEmpty() ? "Rendez-vous" : title, weekday, date.matches("\\d{4}-\\d{2}-\\d{2}") ? date : "",
                 hour.matches("\\d{1,2}:\\d{2}") ? hour : "", Math.min(minutes, 24 * 60), location, certain);
+    }
+
+    private static final java.util.regex.Pattern EMAIL = java.util.regex.Pattern
+            .compile("[\\p{L}\\p{N}._%+-]+@[\\p{L}\\p{N}.-]+\\.[\\p{L}]{2,}");
+
+    /** Le titre ou le lieu d'un rendez-vous : nettoyé comme {@link #clean}, sans aucune adresse électronique. */
+    static String cleanText(String raw) {
+        return clean(raw == null ? "" : EMAIL.matcher(raw).replaceAll(" "));
     }
 
     public static String clean(String raw) {

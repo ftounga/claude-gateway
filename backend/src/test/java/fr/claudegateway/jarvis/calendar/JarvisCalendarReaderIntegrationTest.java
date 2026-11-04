@@ -103,7 +103,10 @@ class JarvisCalendarReaderIntegrationTest {
         assertThat(reader.toolText(a.getId(), "jour", weekday, "2001-01-01", false)).contains("Point devis Helios");
         assertThat(reader.toolText(a.getId(), "semaine", "", "", false)).isNotBlank();
         assertThat(reader.toolText(a.getId(), "jour", "", "2099-01-01", false)).startsWith("Hors de la fenêtre");
-        assertThat(reader.toolText(a.getId(), "demain", "", "", true)).isEqualTo(JarvisCalendarReader.PRESENTATION);
+        // SF-243-05 — en présentation, l'agenda « Perso » disparaît avant le modèle, « Pro » reste.
+        String shown = reader.toolText(a.getId(), "demain", "", "", true);
+        assertThat(shown).startsWith("Agenda, heure de Paris — demain").contains(JarvisCalendarReader.PRESENTATION_NOTE)
+                .contains("09:00–09:30 — Point hebdo").doesNotContain("Piano").doesNotContain("agenda Perso");
     }
 
     @Test

@@ -53,7 +53,8 @@ class JarvisMailBenchLiveTest {
             StringBuilder line = new StringBuilder("passage " + i + " : porte " + report.gatePassed() + " ; accord "
                     + report.routeAgreement() + " ; échecs " + report.gateFailures());
             report.verdicts().stream().filter(v -> !v.routeAgreed())
-                    .forEach(v -> line.append("\n    ").append(v.caseId()).append(" ").append(v.category()));
+                    .forEach(v -> line.append("\n    ").append(v.caseId()).append(" ").append(v.category())
+                            .append(" -> ").append(v.fastRoute()));
             lines.add(line.toString());
             System.out.println("[PRE-BANC MAIL] " + line);
         }

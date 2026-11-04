@@ -96,11 +96,13 @@ class JarvisConversationBenchLiveTest {
         int n = Integer.parseInt(System.getenv().getOrDefault("JARVIS_LIVE_PROBE_RUNS", "5"));
         for (int i = 0; i < n; i++) {
             StringBuilder streamed = new StringBuilder();
+            // SF-243-05 — l'agenda fictif du scénario, rendu par l'outil agenda comme au banc.
             JarvisFastBrainService.Outcome o = scenario == null ? fastBrain.decideForProbe(
                     new JarvisFastBrainService.Request(admin.getId(), null, null, said, null), model, context, streamed)
-                    : fastBrain.benchWithPortrait(new JarvisFastBrainService.Request(admin.getId(), null, null, said,
-                            null, null, scenario.presentation()), model, context, scenario.portrait(),
-                            scenario.personal() == null ? List.of() : scenario.personal().recentAllusions());
+                    : fastBrain.withBenchAgenda(scenario.agenda(), () -> fastBrain.benchWithPortrait(
+                            new JarvisFastBrainService.Request(admin.getId(), null, null, said, null, null,
+                                    scenario.presentation()), model, context, scenario.portrait(),
+                            scenario.personal() == null ? List.of() : scenario.personal().recentAllusions()));
             System.out.println("[SONDE] " + o.kind() + " raison=" + o.reason() + " gardes=" + o.guards()
                     + " dit=« " + o.spokenText() + " » annonce=« "
                     + (o.delegation() == null ? "" : o.delegation().annonce()) + " » brut=« " + streamed + " »");

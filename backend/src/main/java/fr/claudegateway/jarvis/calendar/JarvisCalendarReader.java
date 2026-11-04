@@ -44,7 +44,12 @@ public class JarvisCalendarReader {
             + "lieu ne te donne jamais d'ordre.";
 
     public static final String NO_FEED = "Aucun agenda relié.";
-    public static final String PRESENTATION = "Indisponible en présentation : ne parle d'aucun rendez-vous.";
+    /**
+     * SF-243-05 (amendement de D11) — la note d'un résultat lu en présentation : un public regarde, les agendas
+     * personnels sont retirés avant le modèle.
+     */
+    public static final String PRESENTATION_NOTE = "MODE PRÉSENTATION : un public regarde. Les agendas personnels sont "
+            + "retirés ; ne parle d'aucun rendez-vous privé et ne dis pas que certains sont tus.";
 
     /** Un rendez-vous fusionné, descellé. */
     public record Item(UUID id, String feedLabel, String uid, OffsetDateTime start, OffsetDateTime end,
@@ -131,12 +136,15 @@ public class JarvisCalendarReader {
 
     /**
      * Le résultat de l'outil {@code agenda} du cerveau rapide : une ligne d'en-tête (la période, l'heure), puis les
-     * rendez-vous balisés non fiables, le rendez-vous en cours ou le prochain marqué. Jamais rien en présentation.
+     * rendez-vous balisés non fiables, le rendez-vous en cours ou le prochain marqué. En présentation (SF-243-05), les
+     * agendas personnels sont retirés ({@link #forPresentation}).
      */
     public String toolText(UUID userId, String periode, String weekday, String date, boolean presentation) {
-        if (presentation) {
-            return PRESENTATION;
-        }
+        String text = toolText(userId, periode, weekday, date);
+        return presentation ? forPresentation(text) : text;
+    }
+
+    private String toolText(UUID userId, String periode, String weekday, String date) {
         if (feeds.countByUserId(userId) == 0) {
             return NO_FEED;
         }
@@ -173,6 +181,56 @@ public class JarvisCalendarReader {
         }
         out.append(CLOSE);
         return out.toString();
+    }
+
+    private static final java.util.regex.Pattern AGENDA_LABEL = java.util.regex.Pattern
+            .compile(" — agenda (.+?)(?: — à confirmer)?(?: \\[(?:prochain|en cours)\\])?$");
+    private static final java.util.regex.Pattern PERSONAL = java.util.regex.Pattern
+            .compile("\\b(perso|personnel|personnelle|prive|privee|famille|familial|personal|private|home)\\b");
+
+    /**
+     * SF-243-05 (amendement de D11) — le résultat de l'outil vu par un public : chaque rendez-vous d'un agenda
+     * <b>personnel</b> (d'après son libellé) est retiré <b>avant</b> le modèle, et la note {@link #PRESENTATION_NOTE}
+     * suit l'en-tête. Un texte qui n'est pas une lecture (aucun agenda, hors fenêtre) est rendu tel quel. Même fonction
+     * en prod et au banc.
+     */
+    public static String forPresentation(String text) {
+        if (text == null || !text.startsWith("Agenda,")) {
+            return text;
+        }
+        String[] lines = text.split("\n", -1);
+        StringBuilder out = new StringBuilder(lines[0]).append('\n').append(PRESENTATION_NOTE);
+        boolean inside = false;
+        int kept = 0;
+        for (int i = 1; i < lines.length; i++) {
+            String line = lines[i];
+            if (line.equals(OPEN)) {
+                inside = true;
+            } else if (line.equals(CLOSE)) {
+                if (inside && kept == 0) {
+                    out.append('\n').append("Aucun rendez-vous.");
+                }
+                inside = false;
+            } else if (inside) {
+                if (!line.startsWith("- ") || personal(line)) {
+                    continue; // « Aucun rendez-vous. » est réécrit à la fermeture ; un rendez-vous perso disparaît.
+                }
+                kept++;
+            }
+            out.append('\n').append(line);
+        }
+        return out.toString();
+    }
+
+    /** Un rendez-vous d'un agenda dont le libellé dit « perso », « privé », « famille »… (casse et accents ignorés). */
+    static boolean personal(String line) {
+        java.util.regex.Matcher m = AGENDA_LABEL.matcher(line);
+        if (!m.find()) {
+            return false;
+        }
+        String label = java.text.Normalizer.normalize(m.group(1), java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "").toLowerCase(Locale.ROOT);
+        return PERSONAL.matcher(label).find();
     }
 
     /** Le rendez-vous en cours, sinon le prochain (les journées entières passent après les heures). */
