@@ -157,6 +157,29 @@
 			<version>${openpdf.version}</version>
 		</dependency>
 
+		<!-- ical4j (F-243 / SF-243-01, D2) : analyse des agendas iCal (RRULE, EXDATE, fuseaux), licence BSD.
+		     Variante de pile signalée (TECH_STACK). Confinée à fr.claudegateway.jarvis.calendar.JarvisIcsParser.
+		     groovy et jparsec (filtres d'expressions, inutilisés) sont exclus. -->
+		<dependency>
+			<groupId>org.mnode.ical4j</groupId>
+			<artifactId>ical4j</artifactId>
+			<version>4.0.8</version>
+			<exclusions>
+				<exclusion>
+					<groupId>org.apache.groovy</groupId>
+					<artifactId>groovy</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>org.codehaus.groovy</groupId>
+					<artifactId>groovy</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>org.jparsec</groupId>
+					<artifactId>jparsec</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+
 		<!-- Stripe (billing F-09) : SDK officiel — checkout + vérification de signature webhook -->
 		<dependency>
 			<groupId>com.stripe</groupId>

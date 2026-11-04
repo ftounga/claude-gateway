@@ -243,6 +243,16 @@ public class JarvisUsageService {
         });
     }
 
+    /** F-243 / SF-243-01 — une relève d'agenda ; {@code unchanged} : rien n'a été analysé (304 ou même empreinte). */
+    public void addCalendarPoll(UUID userId, boolean unchanged) {
+        bump(userId, day -> {
+            day.setCalendarPolls(day.getCalendarPolls() + 1);
+            if (unchanged) {
+                day.setCalendarPollsUnchanged(day.getCalendarPollsUnchanged() + 1);
+            }
+        });
+    }
+
     /** F-242 / SF-242-03 — le coût d'un appel de tri du courrier (dollars, ligne « Courrier » du budget Jarvis). */
     public void addMailCost(UUID userId, BigDecimal costUsd) {
         bump(userId, day -> day.setMailCostUsd(day.getMailCostUsd().add(costUsd == null ? BigDecimal.ZERO : costUsd)));

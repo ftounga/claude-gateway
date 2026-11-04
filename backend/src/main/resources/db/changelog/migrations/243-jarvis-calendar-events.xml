@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-243 / SF-243-01 - LE CACHE DES OCCURRENCES D'AGENDA (fenetre J-1 -> J+60, purge J-7, aucun historique).
+
+      jarvis_calendar_events : une ligne par occurrence deployee (recurrences comprises). Titre, lieu et description
+      courte SCELLES ensemble dans sealed (JSON, dataKey.iv.ciphertext, ByokKeyCipher, patron jarvis_mail_items) ;
+      seules les heures sont en clair pour l'index (user_id, starts_at). recurrence_id = instant d'origine (ISO-8601)
+      d'une occurrence recurrente, null pour un evenement simple. Remplacees en bloc quand le flux change.
+      Filtre user_id sur tout acces. Pas de cle etrangere (patron des caches Jarvis) : la purge est nommee
+      (retrait de l'agenda, suppression du compte).
+
+      Rollback : table retiree (nouvelle, sans donnee existante).
+    -->
+
+    <changeSet id="243-jarvis-calendar-events" author="claude-gateway">
+        <createTable tableName="jarvis_calendar_events">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="feed_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="ical_uid" type="varchar(512)"><constraints nullable="false"/></column>
+            <column name="recurrence_id" type="varchar(40)"/>
+            <column name="starts_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="ends_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="all_day" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="sealed" type="varchar(4000)"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="jarvis_calendar_events" indexName="idx_jarvis_calendar_events_user_starts">
+            <column name="user_id"/>
+            <column name="starts_at"/>
+        </createIndex>
+        <createIndex tableName="jarvis_calendar_events" indexName="idx_jarvis_calendar_events_feed">
+            <column name="feed_id"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="jarvis_calendar_events"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -43,6 +43,12 @@ app:
       enabled: false
       ssl: false
       timeout: PT5S
+    # F-243 : relève des agendas éteinte (JarvisCalendarPoller.runOnce() appelé directement) ; serveur HTTP local admis.
+    calendar:
+      enabled: false
+      allow-http: true
+      allowed-hosts: calendar.google.com,127.0.0.1,localhost
+      timeout: PT5S
   # F-219 / SF-219-02 : fermeture des courses autonomes orphelines désactivée en tests ;
   # AutonomyService.closeStale() est appelé directement.
   autonomy:

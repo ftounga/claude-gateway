@@ -107,7 +107,14 @@ public enum PushEvent {
      * suspendue. Une seule par passage OK → refus ; corps neutre, sans adresse.
      */
     MAIL_AUTH_FAILED("Une boîte mail ne répond plus à Jarvis",
-            "Google refuse son mot de passe d'application : ouvrez Jarvis, « Mes boîtes ».", true);
+            "Google refuse son mot de passe d'application : ouvrez Jarvis, « Mes boîtes ».", true),
+
+    /**
+     * F-243 / SF-243-01 — Google ne reconnaît plus l'adresse iCal d'un agenda (404 : adresse réinitialisée). Une seule
+     * par passage OK → cassé ; corps neutre, sans libellé ni adresse.
+     */
+    CALENDAR_BROKEN("Un agenda ne répond plus à Jarvis",
+            "Son adresse iCal a peut-être été réinitialisée : ouvrez Jarvis, « Mes agendas ».", true);
 
     private final String title;
     private final String body;

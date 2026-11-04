@@ -368,6 +368,29 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     fixture.destroy();
   }));
 
+  it('F-243 / SF-243-01 — « Mes agendas » : bouton dans les réglages ; jamais en présentation, même ouvert', fakeAsync(() => {
+    configure({});
+    let fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    let el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.jv__calendar-open')?.textContent).toContain('Mes agendas');
+    fixture.componentInstance.ngOnDestroy();
+    fixture.destroy();
+
+    configure({ presentation: '1' });
+    fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.jv__calendar-open')).toBeNull();
+    fixture.componentInstance.calendarOpen.set(true);
+    fixture.detectChanges();
+    expect(el.querySelector('app-jarvis-calendars')).toBeNull();
+    fixture.componentInstance.ngOnDestroy();
+    fixture.destroy();
+  }));
+
   it('F-245 / SF-245-04 — « Fil du jour » : bouton dans les réglages, replié ; jamais en présentation, même ouvert', fakeAsync(() => {
     configure({});
     let fixture = TestBed.createComponent(JarvisComponent);
