@@ -251,6 +251,65 @@ class AtelierChatServiceVoiceTurnTest {
     }
 
     @Test
+    void SF_245_03_leTourDelegueTermineSaLigneLienSurSaReponse() {
+        fr.claudegateway.jarvis.fastbrain.JarvisDelegationRegistry registry =
+                new fr.claudegateway.jarvis.fastbrain.JarvisDelegationRegistry(java.time.Clock.systemUTC(), null);
+        service.setJarvisDelegations(registry);
+        fr.claudegateway.jarvis.thread.JarvisLinkService links =
+                Mockito.mock(fr.claudegateway.jarvis.thread.JarvisLinkService.class);
+        service.setJarvisLinks(links);
+        UUID link = UUID.randomUUID();
+        registry.offer(userId, workspaceId, null, UUID.randomUUID(), "Relancer le déploiement", "déploiement", link);
+        service.markVoiceTurn(userId, workspaceId, null);
+        agentProvider.enqueueFinal("🎙 Le déploiement est relancé, Monsieur.");
+
+        service.chat(userId, workspaceId, "relance le déploiement");
+
+        ArgumentCaptor<AtelierMessage> reply = ArgumentCaptor.forClass(AtelierMessage.class);
+        verify(links).finish(org.mockito.ArgumentMatchers.eq(userId), org.mockito.ArgumentMatchers.eq(link),
+                reply.capture(), org.mockito.ArgumentMatchers.eq(false));
+        assertThat(reply.getValue().getRole()).isEqualTo("ASSISTANT");
+        assertThat(reply.getValue().getContent()).contains("Le déploiement est relancé");
+        // Le chantier reste propre : aucune ligne-lien n'y est écrite.
+        assertThat(saved()).noneMatch(AtelierMessage::isLink);
+    }
+
+    @Test
+    void SF_245_03_unTourSansDelegationNeTermineAucuneLigneLien() {
+        fr.claudegateway.jarvis.thread.JarvisLinkService links =
+                Mockito.mock(fr.claudegateway.jarvis.thread.JarvisLinkService.class);
+        service.setJarvisLinks(links);
+        service.setJarvisDelegations(
+                new fr.claudegateway.jarvis.fastbrain.JarvisDelegationRegistry(java.time.Clock.systemUTC(), null));
+        service.markVoiceTurn(userId, workspaceId, null);
+        agentProvider.enqueueFinal("🎙 ok");
+
+        service.chat(userId, workspaceId, "bonjour");
+
+        Mockito.verifyNoInteractions(links);
+    }
+
+    @Test
+    void SF_245_03_uneLigneLienEstRejoueeEnTexteCourt() {
+        AtelierMessage question = AtelierMessage.builder().id(UUID.randomUUID()).workspaceId(workspaceId)
+                .userId(userId).role("USER").content("Bonjour").build();
+        AtelierMessage answer = AtelierMessage.builder().id(UUID.randomUUID()).workspaceId(workspaceId)
+                .userId(userId).role("ASSISTANT").content("Bonjour Monsieur.").build();
+        AtelierMessage link = AtelierMessage.builder().id(UUID.randomUUID()).workspaceId(workspaceId)
+                .userId(userId).role(AtelierMessage.ROLE_LINK).linkStatus(AtelierMessage.LINK_DONE)
+                .content("↗ Helios · chantier 3 — « relancer le déploiement » · fait\n🎙 Relancé.").build();
+        when(messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspaceId, userId))
+                .thenReturn(List.of(question, answer, link));
+        agentProvider.enqueueFinal("ok");
+
+        service.chat(userId, workspaceId, "et ensuite ?");
+
+        assertThat(sentToModel())
+                .contains("[Transmis à Helios · chantier 3 — « relancer le déploiement » · fait — 🎙 Relancé.]")
+                .doesNotContain("↗");
+    }
+
+    @Test
     void SF_235_04_laReformulationDUnAutreCompteOuDUnAutreFilNeSePrendPas() {
         fr.claudegateway.jarvis.fastbrain.JarvisDelegationRegistry registry =
                 new fr.claudegateway.jarvis.fastbrain.JarvisDelegationRegistry(java.time.Clock.systemUTC(), null);

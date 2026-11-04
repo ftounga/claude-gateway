@@ -203,4 +203,7 @@ public interface AtelierMessageRepository extends JpaRepository<AtelierMessage, 
     List<AtelierMessage> findTop2000ByWorkspaceIdAndUserIdAndChantierNumberIsNotNullOrderByCreatedAtAsc(
             UUID workspaceId, UUID userId);
 
+    /** F-245 / SF-245-03 — un message du compte (la ligne-lien à terminer) ; isolation {@code user_id}. */
+    java.util.Optional<AtelierMessage> findByIdAndUserId(UUID id, UUID userId);
+
 }

@@ -118,4 +118,35 @@ public class AtelierMessage {
     public boolean isFastBrain() {
         return BRAIN_FAST.equals(brain);
     }
+
+    // ------------------------------------------------------------------ F-245 / SF-245-03 : la ligne-lien
+
+    /** F-245 / SF-245-03 (D5) — le rôle d'une ligne-lien du fil Jarvis vers un sujet ou un chantier. */
+    public static final String ROLE_LINK = "LINK";
+
+    /** États d'une ligne-lien. */
+    public static final String LINK_RUNNING = "EN_COURS";
+    public static final String LINK_DONE = "FAIT";
+    public static final String LINK_FAILED = "ECHEC";
+
+    /** Le sujet visé par une ligne-lien (même {@code user_id}), {@code null} sinon. */
+    @Column(name = "ref_workspace_id")
+    private UUID refWorkspaceId;
+
+    /** Le chantier visé par une ligne-lien, {@code null} pour le fil commun du sujet (ou hors ligne-lien). */
+    @Column(name = "ref_chantier_number")
+    private Integer refChantierNumber;
+
+    /** La réponse d'Opus vers laquelle la ligne-lien ouvre, une fois le tour fini. */
+    @Column(name = "ref_message_id")
+    private UUID refMessageId;
+
+    /** {@link #LINK_RUNNING}, {@link #LINK_DONE} ou {@link #LINK_FAILED} ; {@code null} hors ligne-lien. */
+    @Column(name = "link_status", length = 16)
+    private String linkStatus;
+
+    /** Vrai si le message est une ligne-lien du fil Jarvis. */
+    public boolean isLink() {
+        return ROLE_LINK.equals(role);
+    }
 }

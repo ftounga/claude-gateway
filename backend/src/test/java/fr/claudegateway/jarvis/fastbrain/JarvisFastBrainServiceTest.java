@@ -863,6 +863,58 @@ class JarvisFastBrainServiceTest {
         assertThat(registry.take(alice, subject, 3).demande()).isEqualTo("Lister les tickets bloqués");
     }
 
+    // ------------------------------------------------------------- F-245 / SF-245-03 : la ligne-lien
+
+    @Test
+    void f245ATargetedDelegationLeavesALinkCarriedByItsReformulation() {
+        JarvisFastBrainService service = service(delegating("""
+                {"demande": "Relancer le déploiement", "label": "relancer le déploiement", "annonce": "Je relance.",
+                 "sujet": "", "chantier": null}
+                """), null, null);
+        JarvisDelegationRegistry registry = new JarvisDelegationRegistry(Clock.systemUTC(), null);
+        service.setContext(null, null, registry);
+        fr.claudegateway.jarvis.thread.JarvisLinkService links =
+                mock(fr.claudegateway.jarvis.thread.JarvisLinkService.class);
+        UUID link = UUID.randomUUID();
+        when(links.open(alice, subject, 3, "relancer le déploiement")).thenReturn(link);
+        service.setLinks(links);
+
+        service.converse(ask("Relance le déploiement"), null);
+
+        assertThat(registry.take(alice, subject, 3).linkId()).isEqualTo(link);
+    }
+
+    @Test
+    void f245AnAdditionToALiveTurnLeavesNoNewLink() {
+        JarvisFastBrainService service = service(delegating("""
+                {"demande": "Et aussi les tickets en revue", "label": "tickets en revue",
+                 "annonce": "Je regarde.", "sujet": "", "chantier": null}
+                """), null, null);
+        JarvisDelegationRegistry registry = mock(JarvisDelegationRegistry.class);
+        when(registry.live(alice, subject, 3)).thenReturn(true);
+        service.setContext(null, null, registry);
+        fr.claudegateway.jarvis.thread.JarvisLinkService links =
+                mock(fr.claudegateway.jarvis.thread.JarvisLinkService.class);
+        service.setLinks(links);
+
+        service.converse(ask("Et les tickets en revue"), null);
+
+        org.mockito.Mockito.verifyNoInteractions(links);
+    }
+
+    @Test
+    void f245AnAnswerLeavesNoLink() {
+        JarvisFastBrainService service = service(streaming("Bonjour Monsieur."), null, null);
+        fr.claudegateway.jarvis.thread.JarvisLinkService links =
+                mock(fr.claudegateway.jarvis.thread.JarvisLinkService.class);
+        service.setLinks(links);
+        service.setContext(null, null, new JarvisDelegationRegistry(Clock.systemUTC(), null));
+
+        service.converse(ask("Bonjour"), null);
+
+        org.mockito.Mockito.verifyNoInteractions(links);
+    }
+
     @Test
     void aLiveThreadTurnsTheDelegationIntoAnAddition() {
         JarvisFastBrainService service = service(delegating("""

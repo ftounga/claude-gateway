@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-245 / SF-245-03 - LA LIGNE-LIEN DU FIL JARVIS.
+
+      Un message role = LINK, ecrit dans le fil Jarvis quand une delegation part vers un sujet ou un chantier :
+      ref_workspace_id (le sujet cible, possede par le meme user_id), ref_chantier_number (ou NULL : fil commun),
+      ref_message_id (la reponse d'Opus, une fois le tour fini), link_status (EN_COURS, FAIT, ECHEC).
+      NULL partout pour tout autre message. Colonnes nullables, aucune donnee migree.
+
+      Numero 245 = numero de la feature. Rollback : les quatre colonnes se retirent.
+    -->
+
+    <changeSet id="245-atelier-messages-link" author="claude-gateway">
+        <addColumn tableName="atelier_messages">
+            <column name="ref_workspace_id" type="uuid"/>
+            <column name="ref_chantier_number" type="int"/>
+            <column name="ref_message_id" type="uuid"/>
+            <column name="link_status" type="varchar(16)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="atelier_messages" columnName="link_status"/>
+            <dropColumn tableName="atelier_messages" columnName="ref_message_id"/>
+            <dropColumn tableName="atelier_messages" columnName="ref_chantier_number"/>
+            <dropColumn tableName="atelier_messages" columnName="ref_workspace_id"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

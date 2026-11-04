@@ -77,7 +77,12 @@ public class JarvisDelegationRegistry {
     static final Duration REFORMULATION_TTL = Duration.ofMinutes(2);
 
     /** Une reformulation qui attend le tour Opus de son fil. */
-    public record Reformulation(UUID delegationId, String demande, String label, Instant at) {
+    public record Reformulation(UUID delegationId, String demande, String label, Instant at, UUID linkId) {
+
+        /** Compatibilité d'avant F-245 / SF-245-03 : sans ligne-lien. */
+        public Reformulation(UUID delegationId, String demande, String label, Instant at) {
+            this(delegationId, demande, label, at, null);
+        }
     }
 
     private final Map<String, Reformulation> reformulations = new ConcurrentHashMap<>();
@@ -92,11 +97,20 @@ public class JarvisDelegationRegistry {
      */
     public void offer(UUID userId, UUID subjectId, Integer chantier, UUID delegationId, String demande,
             String label) {
+        offer(userId, subjectId, chantier, delegationId, demande, label, null);
+    }
+
+    /**
+     * F-245 / SF-245-03 — même offre, en portant la ligne-lien du fil Jarvis ({@code linkId}, ou {@code null}) que le
+     * tour qui prendra la reformulation terminera.
+     */
+    public void offer(UUID userId, UUID subjectId, Integer chantier, UUID delegationId, String demande,
+            String label, UUID linkId) {
         if (userId == null || subjectId == null || demande == null || demande.isBlank()) {
             return;
         }
         reformulations.put(key(userId, subjectId, chantier),
-                new Reformulation(delegationId, demande.strip(), label, clock.instant()));
+                new Reformulation(delegationId, demande.strip(), label, clock.instant(), linkId));
     }
 
     /** Prend (une seule fois) la reformulation fraîche qui attend ce fil du compte, ou {@code null}. */
