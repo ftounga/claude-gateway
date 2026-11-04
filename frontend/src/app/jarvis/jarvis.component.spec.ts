@@ -31,6 +31,7 @@ import { FORMULAS, FORMULA_CLIPS, tutoie } from './jarvis-phrases';
 import { JARVIS_3D_LOADER, JarvisEngineFactory } from './stage3d/jarvis-engine.contract';
 import { INTERVIEW_END_MS, INTERVIEW_QUESTIONS, JarvisInterviewClient } from './jarvis-interview';
 import { JarvisPortraitClient } from './jarvis-portrait';
+import { JarvisMailClient, MailBrief } from './jarvis-mail';
 import { JARVIS_RENDER_PROBE, RenderProbe } from './stage3d/jarvis-render-capability';
 import { FakeEngine, NO_WEBGL_PROBE, PC_PROBE, fakeEngineFactory } from './stage3d/jarvis-stage3d.testing';
 
@@ -66,6 +67,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
   let fastBrain: jasmine.SpyObj<JarvisFastBrainClient>;
   let interviewClient: jasmine.SpyObj<JarvisInterviewClient>;
   let portraitClient: jasmine.SpyObj<JarvisPortraitClient>;
+  let mailClient: jasmine.SpyObj<JarvisMailClient>;
   let fast: FastBrainHandlers | null;
   let renderProbe: RenderProbe;
   let loader3d: jasmine.Spy<() => Promise<JarvisEngineFactory>>;
@@ -93,6 +95,9 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     portraitClient.get.and.returnValue(of({ exists: false, enabled: true, version: 0, sections: [], souvenirs: [],
       size: { chars: 0, tokens: 0, maxTokens: 1500, maxChars: 6000 }, lastInterviewAt: null, interviewOffers: 0,
       blockedTerms: [] }));
+    // F-242 / SF-242-04 — le courrier : par défaut, rien de neuf.
+    mailClient = jasmine.createSpyObj<JarvisMailClient>('JarvisMailClient', ['list', 'link', 'test', 'revoke', 'brief', 'body']);
+    mailClient.brief.and.returnValue(of({ text: '', items: [] } as MailBrief));
     fastBrain.warm.and.resolveTo(false);
     fastBrain.converse.and.callFake((_body, h) => {
       fast = h;
@@ -168,6 +173,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
         { provide: JarvisFastBrainClient, useValue: fastBrain },
         { provide: JarvisInterviewClient, useValue: interviewClient },
         { provide: JarvisPortraitClient, useValue: portraitClient },
+        { provide: JarvisMailClient, useValue: mailClient },
         { provide: JARVIS_USER_AGENT, useFactory: () => userAgent },
         { provide: NotificationCenterService, useValue: notificationCenter },
         { provide: LiveTerminalService, useValue: liveTerminals },
@@ -281,6 +287,60 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(jarvis.presentation()).toBeFalse();
     expect(jarvis.stageSignals().scene?.detail).toContain('kubectl');
     jarvis.ngOnDestroy();
+    fixture.destroy();
+    discardPeriodicTasks();
+  }));
+
+  it('F-242 / SF-242-04 — le bref à l’ouverture met le premier courriel en avant ; rien en présentation', fakeAsync(() => {
+    mailClient.brief.and.returnValue(of({ text: 'Un mail à traiter : Helios demande le devis signé.',
+      items: [{ id: '11111111-1111-1111-1111-111111111111', from: 'devis@helios.example', fromName: 'Helios',
+        subject: 'Le devis', reason: 'Helios demande le devis signé' }] }));
+    configure({});
+    let fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    fixture.detectChanges();
+    expect(mailClient.brief).toHaveBeenCalledWith(false);
+    expect(fixture.componentInstance.mailCard()?.mode).toBe('highlight');
+    expect((fixture.nativeElement as HTMLElement).querySelector('app-jarvis-mail-card')?.textContent).toContain('Helios');
+    fixture.componentInstance.ngOnDestroy();
+    fixture.destroy();
+    discardPeriodicTasks();
+
+    mailClient.brief.calls.reset();
+    configure({ presentation: '1' });
+    fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    expect(mailClient.brief).not.toHaveBeenCalled();
+    fixture.componentInstance.mailCard.set({ mode: 'capture', id: 'x', from: 'a@a', fromName: '', subject: 's',
+      receivedAt: null, account: null, text: 'secret', truncated: false });
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).querySelector('app-jarvis-mail-card')).toBeNull();
+    fixture.componentInstance.ngOnDestroy();
+    fixture.destroy();
+    discardPeriodicTasks();
+  }));
+
+  it('F-242 / SF-242-04 — afficher(courriel:…) ouvre la visionneuse avec le corps relu, sans passer par la galerie', fakeAsync(() => {
+    mailClient.body.and.returnValue(of({ item: { id: '22222222-2222-2222-2222-222222222222', accountId: 'a',
+      account: 'Pro', from: 'devis@helios.example', fromName: 'Helios', subject: 'Le devis', snippet: '',
+      receivedAt: '2026-11-03T08:00:00Z', triage: 'A_TRAITER', triageReason: null, hasCalendar: false },
+      text: 'Bonjour, voici le devis.', truncated: false }));
+    configure({});
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    let ok = false;
+    void fixture.componentInstance.applyShow({ action: 'piece', pieces: ['courriel:22222222-2222-2222-2222-222222222222'],
+      reason: 'demande' }).then((r) => ok = r);
+    flushMicrotasks();
+    fixture.detectChanges();
+    expect(ok).toBeTrue();
+    expect(mailClient.body).toHaveBeenCalledWith('22222222-2222-2222-2222-222222222222');
+    expect(fixture.componentInstance.mailCard()?.mode).toBe('capture');
+    expect((fixture.nativeElement as HTMLElement).querySelector('.jmc__body')?.textContent).toContain('voici le devis');
+    fixture.componentInstance.ngOnDestroy();
     fixture.destroy();
     discardPeriodicTasks();
   }));

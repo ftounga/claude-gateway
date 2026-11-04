@@ -953,6 +953,25 @@ class JarvisFastBrainServiceTest {
     }
 
     @Test
+    void f242TheMailBlockGoesInTheMessageNeverInTheSystemPromptAndPresentationIsPassed() throws Exception {
+        JarvisFastBrainService service = service(answering("Deux mails à traiter."), null, null);
+        fr.claudegateway.jarvis.mail.JarvisMailBriefService mail =
+                mock(fr.claudegateway.jarvis.mail.JarvisMailBriefService.class);
+        when(mail.contextBlock(alice, false)).thenReturn("\n## Courrier (boîte de réception triée)\n- courriel:x — Helios\n");
+        when(mail.contextBlock(alice, true)).thenReturn("\n## Courrier\nIndisponible en présentation.\n");
+        service.setMail(mail);
+
+        service.converse(ask("Quoi de neuf dans mes mails ?"), null);
+        service.converse(new JarvisFastBrainService.Request(alice, workspace, 3, "Et mes mails ?", null, null, true),
+                null);
+
+        assertThat(JSON.writeValueAsString(calls.get(0).messages())).contains("## Courrier").contains("Helios");
+        assertThat(calls.get(0).system()).doesNotContain("courriel:x").doesNotContain("boîte de réception triée");
+        assertThat(JSON.writeValueAsString(calls.get(1).messages())).contains("Indisponible en présentation")
+                .doesNotContain("Helios");
+    }
+
+    @Test
     void threeFixedToolsIdenticalByteForByteAcrossCallsAndWarmUp() throws Exception {
         JarvisFastBrainService service = service(answering("Oui."), null, null);
         service.warm(alice, workspace);
@@ -964,7 +983,7 @@ class JarvisFastBrainServiceTest {
         assertThat(JSON.writeValueAsString(calls.get(1).tools())).isEqualTo(first);
         assertThat(JSON.writeValueAsString(calls.get(2).tools())).isEqualTo(first);
         assertThat(calls.get(0).system()).isEqualTo(calls.get(2).system());
-        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("13");
+        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("14");
         assertThat(first).doesNotContain("Kestrel").doesNotContain(subject.toString());
     }
 

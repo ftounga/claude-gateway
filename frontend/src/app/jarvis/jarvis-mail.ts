@@ -38,6 +38,75 @@ export interface MailError {
   status?: number;
 }
 
+/** F-242 / SF-242-02 — un courrier du cache, tel que la passerelle le rend (en-têtes descellés, extrait borné). */
+export interface MailItem {
+  id: string;
+  accountId: string;
+  account: string | null;
+  from: string;
+  fromName: string;
+  subject: string;
+  snippet: string;
+  receivedAt: string;
+  triage: 'A_TRAITER' | 'A_LIRE' | 'A_IGNORER' | 'EN_ATTENTE';
+  triageReason: string | null;
+  hasCalendar: boolean;
+}
+
+/** F-242 / SF-242-04 — un courrier relu par la passerelle : texte seul (le HTML n'est jamais rendu). */
+export interface MailBody {
+  item: MailItem;
+  text: string;
+  truncated: boolean;
+}
+
+/** F-242 / SF-242-04 (D8) — le bref d'ouverture ; `text` vide : rien de neuf. */
+export interface MailBrief {
+  text: string;
+  items: { id: string; from: string; fromName: string; subject: string; reason: string | null }[];
+}
+
+/** F-242 / SF-242-04 (D16) — ce que montre la visionneuse de courriel. */
+export interface MailCard {
+  mode: 'highlight' | 'capture' | 'draft';
+  id: string | null;
+  from: string;
+  fromName: string;
+  to?: string;
+  subject: string;
+  receivedAt: string | null;
+  account: string | null;
+  text: string;
+  truncated: boolean;
+}
+
+/** Le préfixe des courriels dans l'ordre d'écran `afficher` (F-242 / SF-242-04). */
+export const MAIL_PIECE_PREFIX = 'courriel:';
+
+/** Le premier identifiant de courriel d'un ordre d'écran, ou `null`. */
+export function mailPieceId(pieces: readonly string[] | null | undefined): string | null {
+  const hit = (pieces ?? []).find((p) => p.startsWith(MAIL_PIECE_PREFIX));
+  const id = hit ? hit.slice(MAIL_PIECE_PREFIX.length) : '';
+  return /^[0-9a-f-]{36}$/i.test(id) ? id : null;
+}
+
+/** La carte « mail mis en avant » d'un bref. */
+export function briefCard(brief: MailBrief): MailCard | null {
+  const first = brief.items[0];
+  if (!brief.text || !first) {
+    return null;
+  }
+  return { mode: 'highlight', id: first.id, from: first.from, fromName: first.fromName, subject: first.subject,
+    receivedAt: null, account: null, text: first.reason ?? '', truncated: false };
+}
+
+/** La carte « capture du mail » d'un corps relu. */
+export function bodyCard(body: MailBody): MailCard {
+  const i = body.item;
+  return { mode: 'capture', id: i.id, from: i.from, fromName: i.fromName, subject: i.subject, receivedAt: i.receivedAt,
+    account: i.account, text: body.text, truncated: body.truncated };
+}
+
 /** Deux boîtes au plus (D18). */
 export const MAX_MAIL_ACCOUNTS = 2;
 
@@ -86,5 +155,15 @@ export class JarvisMailClient {
 
   revoke(id: string): Observable<void> {
     return this.http.delete<void>(`/api/jarvis/mail/accounts/${id}`);
+  }
+
+  /** F-242 / SF-242-04 — le bref d'ouverture (vide en présentation ou sans neuf). */
+  brief(presentation: boolean): Observable<MailBrief> {
+    return this.http.get<MailBrief>(`/api/jarvis/mail/brief?presentation=${presentation}`);
+  }
+
+  /** F-242 / SF-242-04 — le corps d'un courrier, relu par la passerelle, en texte seul. */
+  body(id: string): Observable<MailBody> {
+    return this.http.get<MailBody>(`/api/jarvis/mail/items/${id}`);
   }
 }

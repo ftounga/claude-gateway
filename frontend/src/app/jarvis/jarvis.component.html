@@ -327,6 +327,10 @@
 @if (mailOpen() && !presentation()) {
   <app-jarvis-mailboxes (closed)="mailOpen.set(false)" />
 }
+<!-- F-242 / SF-242-04 (D16) — la visionneuse de courriel : texte seul, « Contenu externe », jamais en présentation. -->
+@if (mailCard() && !presentation()) {
+  <app-jarvis-mail-card [card]="mailCard()" (closed)="mailCard.set(null)" />
+}
 <!-- F-241 / SF-241-02 (D13) — la proposition d'entretien : jamais en présentation ; « oui » à la voix ou ici. -->
 @if (interviewOffer() && !presentation()) {
   <aside class="jv__interview-offer" role="status">
