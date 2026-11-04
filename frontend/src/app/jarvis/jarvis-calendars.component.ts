@@ -9,7 +9,8 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { ConfirmDialogComponent, ConfirmDialogData } from '../chat/confirm-dialog/confirm-dialog.component';
 import {
-  CalendarError, CalendarFeed, GOOGLE_ICAL_HELP_URL, JarvisCalendarClient, calendarErrorMessage, calendarStatusLabel,
+  CalendarError, CalendarFeed, CalendarGrants, GOOGLE_ICAL_HELP_URL, JarvisCalendarClient, calendarErrorMessage,
+  calendarStatusLabel,
 } from './jarvis-calendar';
 
 /**
@@ -71,6 +72,27 @@ import {
           </button>
         </form>
         @if (error()) { <p class="jc__error" role="alert">{{ error() }}</p> }
+        <!-- F-243 / SF-243-03 (D3) — l'écriture dans l'agenda pro (Google Workspace), sur un « oui » seulement. -->
+        <h3 class="jc__sub">Agenda pro — poser des rendez-vous</h3>
+        @if (!grants().configured) {
+          <p class="jc__hint jc__write-off">L’écriture dans l’agenda pro n’est pas encore configurée.</p>
+        } @else {
+          <p class="jc__hint">Jarvis pose un rendez-vous seulement après votre « oui », sans inviter personne ni envoyer
+            de mail.</p>
+          @for (g of grants().grants; track g.id) {
+            <div class="jc__feed jc__grant">
+              <span class="jc__label">{{ g.account }}</span>
+              <span class="jc__status">Relié</span>
+              <span class="jc__actions">
+                <button mat-button type="button" color="warn" class="jc__revoke" [disabled]="busy()" (click)="revokeGrant(g.id, g.account)">Révoquer</button>
+              </span>
+            </div>
+          } @empty {
+            <button mat-flat-button color="primary" type="button" class="jc__connect" [disabled]="busy()" (click)="connect()">
+              Relier l’agenda pro (Google)
+            </button>
+          }
+        }
       }
     </section>
   `,
@@ -99,6 +121,8 @@ import {
     .jc__actions { display: flex; flex-wrap: wrap; margin-left: auto; }
     .jc__steps { margin: 0; padding-left: var(--cg-space-4); font-size: 13px; display: flex; flex-direction: column; gap: var(--cg-space-1); }
     .jc__link { color: var(--cg-orange-2); }
+    .jc__sub { margin: var(--cg-space-2) 0 0; font-family: var(--cg-font-heading); font-size: 15px; color: var(--cg-cream); }
+    .jc__connect { align-self: flex-start; }
     .jc__form { display: flex; flex-wrap: wrap; align-items: center; gap: var(--cg-space-2); }
     .jc__field { flex: 1 1 100%; min-width: 0; }
     .jc__field--label { flex-basis: 40%; }
@@ -119,9 +143,54 @@ export class JarvisCalendarsComponent implements OnInit {
   readonly loading = signal(true);
   readonly busy = signal(false);
   readonly error = signal('');
+  readonly grants = signal<CalendarGrants>({ configured: false, grants: [] });
+  /** La navigation vers Google (remplaçable par les tests). */
+  navigate: (url: string) => void = (url) => window.location.assign(url);
 
   ngOnInit(): void {
     this.reload();
+    this.reloadGrants();
+  }
+
+  /** F-243 / SF-243-03 — l'état de l'écriture (un échec laisse « non configurée »). */
+  reloadGrants(): void {
+    this.client.grants().subscribe({ next: (g) => this.grants.set(g), error: () => undefined });
+  }
+
+  /** F-243 / SF-243-03 — « Relier l'agenda pro » : la passerelle rend l'adresse de consentement, le navigateur y va. */
+  connect(): void {
+    this.busy.set(true);
+    this.client.startOAuth().subscribe({
+      next: ({ url }) => {
+        this.busy.set(false);
+        this.navigate(url);
+      },
+      error: (err: CalendarError) => {
+        this.busy.set(false);
+        this.error.set(calendarErrorMessage(err));
+      },
+    });
+  }
+
+  revokeGrant(id: string, account: string): void {
+    const data: ConfirmDialogData = {
+      title: 'Révoquer l’agenda pro ?',
+      message: `Jarvis ne pourra plus poser de rendez-vous dans l’agenda de ${account}. L’accès est révoqué chez Google `
+        + `aussi.`,
+      confirmLabel: 'Révoquer',
+    };
+    this.dialog.open(ConfirmDialogComponent, { data }).afterClosed().subscribe((ok) => {
+      if (!ok) {
+        return;
+      }
+      this.client.revokeGrant(id).subscribe({
+        next: () => {
+          this.grants.update((g) => ({ ...g, grants: g.grants.filter((x) => x.id !== id) }));
+          this.snack.open('Agenda pro révoqué.', undefined, { duration: 3000 });
+        },
+        error: (err: CalendarError) => this.snack.open(calendarErrorMessage(err), 'OK', { duration: 6000 }),
+      });
+    });
   }
 
   statusLabel(f: CalendarFeed): string {

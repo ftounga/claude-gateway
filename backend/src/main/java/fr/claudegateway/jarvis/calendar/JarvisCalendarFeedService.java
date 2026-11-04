@@ -135,11 +135,22 @@ public class JarvisCalendarFeedService {
         log.info("Agenda : retiré pour l'utilisateur {}", userId);
     }
 
-    /** Purge du compte (suppression de l'utilisateur). */
+    /** SF-243-03 — les droits d'écriture et les actions d'agenda partent avec le compte. Facultatif. */
+    private JarvisCalendarGrantService grants;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setGrants(JarvisCalendarGrantService grants) {
+        this.grants = grants;
+    }
+
+    /** Purge du compte (suppression de l'utilisateur) : occurrences, agendas, droits, actions, parcours OAuth. */
     @Transactional
     public void purgeUser(UUID userId) {
         events.purgeUser(userId);
         feeds.purgeUser(userId);
+        if (grants != null) {
+            grants.purgeUser(userId);
+        }
     }
 
     /** L'agenda du compte, ou 404. */

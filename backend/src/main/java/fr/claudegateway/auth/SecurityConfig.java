@@ -85,6 +85,9 @@ public class SecurityConfig {
                         // porte pas d'en-tête). Le ticket désigne UNE vidéo, UNE version, UN compte ; GET seul.
                         .requestMatchers(HttpMethod.GET, "/video-media/**").permitAll()
                         .requestMatchers("/hello").permitAll()
+                        // F-243 / SF-243-03 : le retour OAuth de Google est une navigation de premier niveau (aucun
+                        // jeton d'API) ; le compte est prouvé par le state à usage unique ET le témoin du navigateur.
+                        .requestMatchers(HttpMethod.GET, "/jarvis/calendar/oauth/callback").permitAll()
                         .requestMatchers("/h2-console/**").permitAll()
                         .anyRequest().authenticated())
                 // La console H2 (dev) est servie dans une frame de même origine.

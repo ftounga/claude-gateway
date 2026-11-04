@@ -1986,6 +1986,23 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.jarvisMailActions = jarvisMailActions;
     }
 
+    /** F-243 / SF-243-03 — l'outil d'agenda d'Opus ({@code agenda_poser}), offert dans le seul fil Jarvis. Facultatif. */
+    private fr.claudegateway.jarvis.calendar.JarvisCalendarToolCatalog jarvisCalendarTools;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJarvisCalendarTools(fr.claudegateway.jarvis.calendar.JarvisCalendarToolCatalog jarvisCalendarTools) {
+        this.jarvisCalendarTools = jarvisCalendarTools;
+    }
+
+    /** F-243 / SF-243-03 — le « oui » vérifié côté serveur des poses d'agenda. Facultatif. */
+    private fr.claudegateway.jarvis.calendar.JarvisCalendarActionService jarvisCalendarActions;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJarvisCalendarActions(
+            fr.claudegateway.jarvis.calendar.JarvisCalendarActionService jarvisCalendarActions) {
+        this.jarvisCalendarActions = jarvisCalendarActions;
+    }
+
     /** F-242 / SF-242-05 — les outils de courrier d'Opus, offerts dans le seul fil Jarvis. Facultatif. */
     private fr.claudegateway.jarvis.mail.JarvisMailToolCatalog jarvisMailTools;
 
@@ -3638,6 +3655,19 @@ public class AtelierChatService implements RelayInterruptTarget {
                 messages.set(messages.size() - 1, AgentMessage.userText(consigne + "\n\n" + mailNote));
             }
         }
+        // F-243 / SF-243-03 (D5) — même règle pour une pose d'agenda en attente : seul le message persisté de
+        // l'utilisateur, dans le fil Jarvis, la confirme ; la note fixe est jointe AU MESSAGE.
+        if (workspace.isJarvisThread() && jarvisCalendarActions != null) {
+            String calendarNote = jarvisCalendarActions.onUserMessage(userId, workspaceId, savedUserMessage.getId(),
+                    userText);
+            if (calendarNote != null && !calendarNote.isEmpty()) {
+                AgentMessage last = messages.get(messages.size() - 1);
+                String lastText = last.content().isEmpty()
+                        || !(last.content().get(0) instanceof fr.claudegateway.agent.AgentContentBlock.Text t)
+                        ? consigne : t.text();
+                messages.set(messages.size() - 1, AgentMessage.userText(lastText + "\n\n" + calendarNote));
+            }
+        }
         // F-169 / SF-169-02 : LIER les dépôts joints à CE message, maintenant que son id existe. Le
         // lien (message_id) rend les pièces jointes persistantes — le rechargement du fil les retrouve
         // (GET /chat). Isolation réappliquée au service. Best-effort : un échec de lien ne casse pas le
@@ -4482,6 +4512,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                 } else if (fr.claudegateway.radar.RadarToolCatalog.isRadarTool(call.name())) {
                     // F-104 / SF-104-01 : le registre du Radar vit dans la gateway, pas sur la machine.
                     outcome = executeRadarTool(userId, workspace, call, turnNote);
+                } else if (fr.claudegateway.jarvis.calendar.JarvisCalendarToolCatalog.isCalendarTool(call.name())) {
+                    // F-243 / SF-243-03 : préparer une pose d'agenda (fil Jarvis seulement) ; posée au « oui ».
+                    outcome = executeJarvisCalendarTool(userId, workspace, call);
                 } else if (fr.claudegateway.jarvis.mail.JarvisMailToolCatalog.isMailTool(call.name())) {
                     // F-242 / SF-242-05 : le courrier du PO, relayé par la gateway (IMAP/SMTP), fil Jarvis seulement.
                     outcome = executeJarvisMailTool(userId, workspace, call);
@@ -8247,6 +8280,16 @@ public class AtelierChatService implements RelayInterruptTarget {
         return outcome.error() ? ToolOutcome.error(outcome.content()) : ToolOutcome.info(outcome.content());
     }
 
+    /** F-243 / SF-243-03 — {@code agenda_poser} : refusé hors fil Jarvis ; rien n'est posé avant le « oui ». */
+    private ToolOutcome executeJarvisCalendarTool(UUID userId, Workspace workspace, AgentToolCall call) {
+        if (jarvisCalendarTools == null) {
+            return ToolOutcome.error("L'agenda n'est pas disponible : réponds sans lui.");
+        }
+        fr.claudegateway.jarvis.calendar.JarvisCalendarToolCatalog.Result result =
+                jarvisCalendarTools.execute(userId, workspace, call.name(), call.input());
+        return result.error() ? ToolOutcome.error(result.content()) : ToolOutcome.info(result.content());
+    }
+
     /**
      * F-242 / SF-242-05 — un outil {@code courriel_*} : refusé hors fil Jarvis ; chaque contenu rendu est balisé non
      * fiable ; la boîte est revérifiée sous {@code user_id}.
@@ -10790,6 +10833,10 @@ public class AtelierChatService implements RelayInterruptTarget {
         // le terminal d'un sujet. Définitions figées : la liste du fil reste identique d'un tour à l'autre.
         if (jarvisMailTools != null) {
             tools.addAll(jarvisMailTools.toolsFor(userId, workspace));
+        }
+        // F-243 / SF-243-03 (D5) : poser un rendez-vous dans l'agenda pro, dans le SEUL fil Jarvis, client configuré.
+        if (jarvisCalendarTools != null) {
+            tools.addAll(jarvisCalendarTools.toolsFor(userId, workspace));
         }
         // F-210 / SF-210-01 : découper un message en questions et en suivre l'avancement — dans tout
         // terminal, sans garde (rien n'est écrit). Définitions littérales stables, en dernier.
