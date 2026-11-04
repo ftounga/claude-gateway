@@ -187,6 +187,15 @@ public class JarvisUsageDay {
     @Column(name = "mail_triage_corrected", nullable = false)
     private int mailTriageCorrected = 0;
 
+    /** F-243 / SF-243-01 — les relèves d'agenda, et celles sans changement (aucune analyse). Compteurs seuls. */
+    @Builder.Default
+    @Column(name = "calendar_polls", nullable = false)
+    private int calendarPolls = 0;
+
+    @Builder.Default
+    @Column(name = "calendar_polls_unchanged", nullable = false)
+    private int calendarPollsUnchanged = 0;
+
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 

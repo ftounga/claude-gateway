@@ -192,6 +192,14 @@ public class AccountService {
         this.jarvisMailAccountService = service;
     }
 
+    /** Les agendas de Jarvis et leurs occurrences en cache (F-243) ; purge nommée à la suppression du compte. */
+    private fr.claudegateway.jarvis.calendar.JarvisCalendarFeedService jarvisCalendarFeedService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJarvisCalendarFeedService(fr.claudegateway.jarvis.calendar.JarvisCalendarFeedService service) {
+        this.jarvisCalendarFeedService = service;
+    }
+
     /** Les veilles Jarvis (F-230 / SF-230-01) ; purge nommée à la suppression du compte. */
     private fr.claudegateway.atelier.veille.JarvisWatchRepository jarvisWatchRepository;
 
@@ -542,6 +550,10 @@ public class AccountService {
         // Les boîtes mail de Jarvis, leurs courriers en cache et leurs actions (F-242) : physique.
         if (jarvisMailAccountService != null) {
             jarvisMailAccountService.purgeUser(userId);
+        }
+        // Les agendas de Jarvis et leurs occurrences en cache (F-243) : physique.
+        if (jarvisCalendarFeedService != null) {
+            jarvisCalendarFeedService.purgeUser(userId);
         }
         // Les captures d'énoncés de Jarvis (F-239 / SF-239-03) : objets puis lignes.
         if (jarvisCaptureService != null) {

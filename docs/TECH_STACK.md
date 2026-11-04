@@ -37,5 +37,11 @@ Ce document explique pourquoi chaque technologie majeure a été retenue pour Cl
 ## AI Provider
 **Anthropic Claude API.** Raisons : capacité métier principale ; raisonnement de haute qualité ; support documentaire natif ; grandes fenêtres de contexte.
 
+## Bibliothèques ciblées (variantes de pile signalées)
+- **ical4j 4.0.8** (licence BSD, F-243 / SF-243-01) : analyse des agendas iCal de Jarvis (récurrences `RRULE`/`EXDATE`,
+  occurrences modifiées, fuseaux). Confinée à `fr.claudegateway.jarvis.calendar.JarvisIcsParser`. `groovy` et `jparsec`
+  (filtres d'expressions inutilisés) sont exclus ; aucune mise à jour de fuseau par le réseau (`ical4j.properties`).
+  Écrire un analyseur iCal maison aurait réinventé l'existant.
+
 ## Guiding Principle
 Les choix technologiques sont guidés par : simplicité, fiabilité, maintenabilité, production readiness, évolution long terme. De nouvelles technologies ne sont introduites que si elles améliorent clairement ces objectifs.

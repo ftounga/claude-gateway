@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-243 / SF-243-01 - LA MESURE DES AGENDAS (compteurs, AUCUN contenu) dans la journee Jarvis : calendar_polls
+      (releves), calendar_polls_unchanged (releves sans changement : 304 ou meme empreinte, aucune analyse).
+
+      Rollback : colonnes retirees.
+    -->
+
+    <changeSet id="243-jarvis-usage-calendar" author="claude-gateway">
+        <addColumn tableName="jarvis_usage_days">
+            <column name="calendar_polls" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="calendar_polls_unchanged" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="jarvis_usage_days" columnName="calendar_polls_unchanged"/>
+            <dropColumn tableName="jarvis_usage_days" columnName="calendar_polls"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
