@@ -1083,7 +1083,7 @@ class JarvisFastBrainServiceTest {
         assertThat(JSON.writeValueAsString(calls.get(1).tools())).isEqualTo(first);
         assertThat(JSON.writeValueAsString(calls.get(2).tools())).isEqualTo(first);
         assertThat(calls.get(0).system()).isEqualTo(calls.get(2).system());
-        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("16");
+        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("17");
         assertThat(first).doesNotContain("Kestrel").doesNotContain(subject.toString());
     }
 
@@ -1194,24 +1194,30 @@ class JarvisFastBrainServiceTest {
     }
 
     @Test
-    void f243InPresentationTheAgendaSaysNothingAndNoViewOpens() throws Exception {
+    void f243InPresentationTheAgendaGivesOnlyWorkAppointmentsAndNoViewOpens() throws Exception {
         fr.claudegateway.jarvis.calendar.JarvisCalendarReader reader =
                 mock(fr.claudegateway.jarvis.calendar.JarvisCalendarReader.class);
-        when(reader.toolText(eq(alice), any(), any(), any(), eq(true)))
-                .thenReturn(fr.claudegateway.jarvis.calendar.JarvisCalendarReader.PRESENTATION);
+        // SF-243-05 — le lecteur réel retire les agendas perso ; ici on vérifie que le service lui passe la présentation.
+        when(reader.toolText(eq(alice), any(), any(), any(), eq(true))).thenReturn(
+                fr.claudegateway.jarvis.calendar.JarvisCalendarReader.forPresentation("""
+                        Agenda, heure de Paris — aujourd'hui, lundi 2 novembre. Maintenant : lundi 2 novembre 09:15.
+                        <agenda_non_fiable>
+                        - 14:00–15:00 — Point devis Helios — agenda Pro [prochain]
+                        - 18:30–19:30 — Cours de piano de Léa — agenda Perso
+                        </agenda_non_fiable>"""));
         Screen screen = new Screen();
         JarvisFastBrainService service = service(scripted(
                 new AgentTurn("", List.of(tool("a1", "agenda", AGENDA_TODAY)), false, 100, 10),
-                new AgentTurn("L'agenda n'est pas disponible en présentation.", List.of(), true, 100, 10)), null,
-                null);
+                new AgentTurn("Le point devis Helios à 14 h.", List.of(), true, 100, 10)), null, null);
         service.setCalendar(reader);
 
         service.converse(new JarvisFastBrainService.Request(alice, workspace, 3, "Qu'est-ce que j'ai aujourd'hui ?",
                 null, null, true), screen);
 
+        verify(reader).toolText(eq(alice), any(), any(), any(), eq(true));
         assertThat(screen.shows).isEmpty();
-        assertThat(JSON.writeValueAsString(calls.get(1).messages())).contains("Indisponible en présentation")
-                .doesNotContain("Helios");
+        assertThat(JSON.writeValueAsString(calls.get(1).messages())).contains("MODE PRÉSENTATION")
+                .contains("Helios").doesNotContain("piano");
     }
 
     @Test

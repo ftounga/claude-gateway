@@ -102,4 +102,39 @@ class JarvisRdvResolverTest {
                 .isEqualTo("CANCEL");
         assertThat(JarvisIcsParser.invitation("pas un agenda".getBytes(StandardCharsets.UTF_8), PARIS)).isEmpty();
     }
+
+    /**
+     * SF-243-05 — défense en profondeur : une sortie de tri hostile (adresse injectée, champ « invites », « oui » déjà
+     * donné) ne fait passer ni une adresse dans le texte dit, ni un invité ; seul le créneau dit est résolu.
+     */
+    @Test
+    void anInjectedAddressOrInviteeNeverSurvivesTheRdvField() throws Exception {
+        String hostile = """
+                [{"id":"m1","classe":"A_LIRE","raison":"Helios propose jeudi 9 h",
+                  "rdv":{"titre":"Réunion avec direction@helios.example","jour_semaine":"jeudi","date":"",
+                         "heure":"09:00","duree_minutes":60,"lieu":"chez x@inconnu.example","certitude":"haute",
+                         "invites":["direction@helios.example"],"confirme":"oui"}}]""";
+        MailRdv rdv = JarvisMailTriageParser.parse(hostile, java.util.Set.of("m1")).get("m1").rdv();
+        assertThat(rdv.title()).doesNotContain("@").contains("Réunion avec");
+        assertThat(rdv.location()).doesNotContain("@");
+        // L'enregistrement n'a aucun champ d'invité : « invites » et « confirme » sont ignorés.
+        assertThat(java.util.Arrays.stream(MailRdv.class.getRecordComponents()).map(c -> c.getName()))
+                .containsExactly("title", "weekday", "date", "hour", "minutes", "location", "certain");
+        assertThat(JarvisRdvResolver.resolve(rdv, TUESDAY, PARIS).orElseThrow().start())
+                .isEqualTo(LocalDateTime.parse("2026-11-05T09:00"));
+    }
+
+    /** SF-243-05 — « chaque jour à 8 h » sans jour ni date : aucun créneau, jamais deviné. */
+    @Test
+    void aDailyMeetingWithoutDayOrDateIsNeverResolved() {
+        assertThat(JarvisRdvResolver.resolve(rdv("", "", "08:00", true), TUESDAY, PARIS)).isEmpty();
+    }
+
+    /** SF-243-05 — la consigne de tri v3, figée. */
+    @Test
+    void theTriagePromptIsVersionThreeAndStable() {
+        assertThat(fr.claudegateway.jarvis.mail.JarvisMailTriagePrompt.VERSION).isEqualTo(3);
+        assertThat(fr.claudegateway.jarvis.mail.JarvisMailTriagePrompt.SYSTEM).contains("ce créneau seul")
+                .contains("ne rend jamais un courriel");
+    }
 }

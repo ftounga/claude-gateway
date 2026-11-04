@@ -1215,20 +1215,22 @@ public class JarvisFastBrainService {
     }
 
     /**
-     * F-243 / SF-243-02 (D9, D11) — l'outil {@code agenda} : le cache lu sous {@code user_id}, rien en présentation ;
+     * F-243 / SF-243-02 (D9, D11) — l'outil {@code agenda} : le cache lu sous {@code user_id}, sans les agendas
+     * personnels en présentation (SF-243-05) ;
      * au banc, le texte fixe du scénario. Best-effort : une panne rend « aucun agenda relié » (la question se délègue).
      */
     String readAgenda(Request request, JsonNode input, boolean bench) {
         if (bench) {
             String fixture = BENCH_AGENDA_FIXTURE.get();
-            if (request.presentation()) {
-                return fr.claudegateway.jarvis.calendar.JarvisCalendarReader.PRESENTATION;
+            if (fixture == null) {
+                return fr.claudegateway.jarvis.calendar.JarvisCalendarReader.NO_FEED;
             }
-            return fixture != null ? fixture : fr.claudegateway.jarvis.calendar.JarvisCalendarReader.NO_FEED;
+            // SF-243-05 — la même fonction qu'en prod : les agendas personnels retirés en présentation.
+            return request.presentation() ? fr.claudegateway.jarvis.calendar.JarvisCalendarReader.forPresentation(fixture)
+                    : fixture;
         }
         if (calendar == null) {
-            return request.presentation() ? fr.claudegateway.jarvis.calendar.JarvisCalendarReader.PRESENTATION
-                    : fr.claudegateway.jarvis.calendar.JarvisCalendarReader.NO_FEED;
+            return fr.claudegateway.jarvis.calendar.JarvisCalendarReader.NO_FEED;
         }
         try {
             return calendar.toolText(request.userId(), input == null ? "" : input.path("periode").asText(""),
