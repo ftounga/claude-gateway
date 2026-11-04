@@ -32,6 +32,7 @@ import { JARVIS_3D_LOADER, JarvisEngineFactory } from './stage3d/jarvis-engine.c
 import { INTERVIEW_END_MS, INTERVIEW_QUESTIONS, JarvisInterviewClient } from './jarvis-interview';
 import { JarvisPortraitClient } from './jarvis-portrait';
 import { JarvisMailClient, MailBrief } from './jarvis-mail';
+import { JarvisCalendarClient } from './jarvis-calendar';
 import { JARVIS_RENDER_PROBE, RenderProbe } from './stage3d/jarvis-render-capability';
 import { FakeEngine, NO_WEBGL_PROBE, PC_PROBE, fakeEngineFactory } from './stage3d/jarvis-stage3d.testing';
 
@@ -317,6 +318,43 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       receivedAt: null, account: null, text: 'secret', truncated: false });
     fixture.detectChanges();
     expect((fixture.nativeElement as HTMLElement).querySelector('app-jarvis-mail-card')).toBeNull();
+    fixture.componentInstance.ngOnDestroy();
+    fixture.destroy();
+    discardPeriodicTasks();
+  }));
+
+  it('F-243 / SF-243-02 — afficher(agenda:…) ouvre la vue d’agenda ; jamais en présentation', fakeAsync(() => {
+    const calendar = jasmine.createSpyObj<JarvisCalendarClient>('JarvisCalendarClient', ['events']);
+    calendar.events.and.returnValue(of({ from: '', to: '', items: [], updatedAt: null, feeds: 1 }));
+    configure({});
+    TestBed.overrideProvider(JarvisCalendarClient, { useValue: calendar });
+    let fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    let ok = false;
+    void fixture.componentInstance.applyShow({ action: 'piece', pieces: ['agenda:jour:2026-11-04'], reason: 'demande' })
+      .then((r) => ok = r);
+    flushMicrotasks();
+    fixture.detectChanges();
+    expect(ok).toBeTrue();
+    expect(fixture.componentInstance.agendaView()).toEqual({ mode: 'jour', date: '2026-11-04' });
+    expect((fixture.nativeElement as HTMLElement).querySelector('app-jarvis-agenda')).not.toBeNull();
+    expect(calendar.events).toHaveBeenCalled();
+    fixture.componentInstance.ngOnDestroy();
+    fixture.destroy();
+    discardPeriodicTasks();
+
+    configure({ presentation: '1' });
+    TestBed.overrideProvider(JarvisCalendarClient, { useValue: calendar });
+    fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    void fixture.componentInstance.applyShow({ action: 'piece', pieces: ['agenda:jour:2026-11-04'], reason: 'demande' })
+      .then((r) => ok = r);
+    flushMicrotasks();
+    fixture.detectChanges();
+    expect(ok).toBeFalse();
+    expect((fixture.nativeElement as HTMLElement).querySelector('app-jarvis-agenda')).toBeNull();
     fixture.componentInstance.ngOnDestroy();
     fixture.destroy();
     discardPeriodicTasks();

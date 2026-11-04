@@ -31,9 +31,12 @@ public record JarvisShowCommand(String action, List<String> pieces, Scope scope,
     /** Longueur au plus d'un texte libre (chapitre, cible, sujet…). */
     static final int MAX_TEXT = 120;
 
-    /** La forme d'un identifiant de pièce (SF-237-01, {@code PieceId}) ; F-242 / SF-242-04 : {@code courriel:<id>}. */
+    /**
+     * La forme d'un identifiant de pièce (SF-237-01, {@code PieceId}) ; F-242 / SF-242-04 : {@code courriel:<id>} ;
+     * F-243 / SF-243-02 : {@code agenda:<jour|semaine>:<date>} (la vue d'agenda, ouverte par la passerelle).
+     */
     static final Pattern PIECE_ID = Pattern
-            .compile("^(dep|proof|page|video|img|slides|send|mail|moment|need|diag|courriel):[A-Za-z0-9@/_.:-]{1,120}$");
+            .compile("^(dep|proof|page|video|img|slides|send|mail|moment|need|diag|courriel|agenda):[A-Za-z0-9@/_.:-]{1,120}$");
     private static final Pattern ZOOM = Pattern.compile("^([+-]|reset|[1-8])$");
     private static final Pattern DATE = Pattern.compile("^\\d{4}-\\d{2}-\\d{2}$");
 

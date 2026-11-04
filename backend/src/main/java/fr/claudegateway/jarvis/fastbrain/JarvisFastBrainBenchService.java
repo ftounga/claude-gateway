@@ -344,15 +344,21 @@ public class JarvisFastBrainBenchService {
                         s.context() == null ? set.context() : set.context() + "\n\n" + s.context(), previous,
                         i == 0 ? s.heardBeforeCut() : null);
                 // F-241 / SF-241-03 — un portrait FICTIF (jamais celui du compte) et le mode présentation du scénario.
-                JarvisFastBrainService.Outcome outcome = fastBrain.benchWithPortrait(new JarvisFastBrainService
-                        .Request(userId, null, null, s.turns().get(i).said(), null, null, s.presentation()), model,
-                        context, s.portrait(), s.personal() == null ? List.of() : s.personal().recentAllusions());
+                // F-243 / SF-243-02 — l'agenda FICTIF du scénario, rendu par l'outil agenda (sinon « aucun agenda »).
+                final String turnContext = context;
+                final int turnIndex = i;
+                JarvisFastBrainService.Outcome outcome = fastBrain.withBenchAgenda(s.agenda(),
+                        () -> fastBrain.benchWithPortrait(new JarvisFastBrainService.Request(userId, null, null,
+                                s.turns().get(turnIndex).said(), null, null, s.presentation()), model, turnContext,
+                                s.portrait(), s.personal() == null ? List.of() : s.personal().recentAllusions()));
                 String[] routeAndSaid = JarvisConversationBench.routeAndSaid(outcome);
                 costs.add(JarvisConversationBench.fastCostEur(outcome, USD_TO_EUR));
                 JarvisConversationBench.TurnVerdict verdict = JarvisConversationBench.ROUTE_MORE.equals(routeAndSaid[0])
                         ? JarvisConversationBench.descent(s, i)
-                        : JarvisConversationBench.judge(provider, judgeModel, apiKey, s, i, context, routeAndSaid[1],
-                                routeAndSaid[0]);
+                        : JarvisConversationBench.judge(provider, judgeModel, apiKey, s, i,
+                                s.agenda() == null ? context
+                                        : context + "\n\n## Agenda (ce que l'outil agenda a rendu)\n" + s.agenda(),
+                                routeAndSaid[1], routeAndSaid[0]);
                 // F-241 / SF-241-05 — la marque 📌 attendue (noter, retenir, oublier, aucune), contrôlée sans modèle.
                 String markDefect = JarvisConversationBench.markDefect(s.turns().get(i),
                         outcome.guards() == null ? List.of() : outcome.guards().pins(), routeAndSaid[1]);
