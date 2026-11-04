@@ -450,6 +450,65 @@ public final class JarvisFastGuards {
         return "Parfait.";
     }
 
+    /** F-243 / SF-243-06 — les accusés de réception qui ne valent jamais « oui » (normalisés, liste fermée). */
+    static final List<String> ACKS = List.of("c est note", "note", "bien note", "c est bien note", "je note",
+            "je vois", "je vois bien", "compris", "bien compris", "j ai compris", "j ai bien compris", "je comprends",
+            "c est compris", "pris note", "j ai pris note", "bien pris note");
+
+    /** F-243 / SF-243-06 — les accusés qui, après une question de Jarvis, peuvent valoir « oui » (le modèle décide). */
+    static final List<String> ACKS_UNLESS_PROPOSAL = List.of("entendu", "c est entendu", "ca marche", "ca me va");
+
+    private static final Pattern LAST_JARVIS = Pattern.compile("(?m)^- (?:\\d{1,2}:\\d{2} )?Jarvis : (.*)$");
+
+    /**
+     * F-243 / SF-243-06 — <b>un accusé de réception n'est pas une demande</b> (« C'est noté. », « Je vois. »,
+     * « Compris, merci ») : la parole entière n'est qu'un accusé, même juste après qu'une action a été évoquée (banc
+     * prod, P08#5 : délégation muette). « Entendu », « ça marche » ne le sont pas quand la dernière réplique de Jarvis
+     * est une question (une proposition) : ils peuvent valoir « oui ». « ok », « d'accord » relèvent de
+     * {@link #isSmallTalk}.
+     */
+    public static boolean isAcknowledgement(String said, String context) {
+        String n = normalize(said).replaceAll("\\b(jarvis|monsieur)\\b", " ").replaceAll("\\s+", " ").strip();
+        n = n.replaceFirst("^(?:(?:ah|bon|bien|alors|oui|ok|d accord|tres bien|parfait) )+", "")
+                .replaceFirst("(?: (?:merci|merci bien|merci beaucoup))+$", "").strip();
+        if (ACKS.contains(n)) {
+            return true;
+        }
+        if (!ACKS_UNLESS_PROPOSAL.contains(n)) {
+            return false;
+        }
+        String last = null;
+        java.util.regex.Matcher m = LAST_JARVIS.matcher(context == null ? "" : context);
+        while (m.find()) {
+            last = m.group(1);
+        }
+        return last == null || !last.contains("?");
+    }
+
+    /** F-243 / SF-243-06 — la réponse fixe à un accusé, quand le modèle n'a rien dit de sûr. */
+    public static final String ACK_REPLY = "Parfait, Monsieur.";
+
+    /** F-243 / SF-243-06 — les accusés administratifs dits par Jarvis (normalisés) : creux, robotiques. */
+    static final List<String> ADMIN_ACKS = List.of("j en prends note", "j en prends bonne note", "je prends note",
+            "je prends bonne note", "j en ai pris note", "j en ai pris bonne note", "j ai pris note",
+            "j ai bien pris note", "j ai pris bonne note", "bien note", "c est bien note", "je note", "je le note",
+            "je note bien", "je le note bien", "note");
+
+    /**
+     * F-243 / SF-243-06 — vrai si la phrase n'est qu'un accusé administratif (« J'en prends bonne note. »,
+     * « Bien noté, Monsieur. », « Je prends note de votre fatigue. ») — banc prod, C08#1. « C'est noté : départ le
+     * 20 décembre. » (réponse d'un « retiens que… », F-241) n'en est pas un.
+     */
+    public static boolean isAdministrativeAck(String sentence) {
+        String n = normalize(sentence).replaceAll("\\bmonsieur\\b", " ").replaceAll("\\s+", " ").strip();
+        n = n.replaceFirst("^(?:(?:et|alors|bien|bon|oui|tres bien|parfait|entendu) )+", "");
+        if (ADMIN_ACKS.contains(n)) {
+            return true;
+        }
+        return n.matches("(?:j en prends|je prends|j en ai pris|j ai pris|j ai bien pris)(?: bien)?(?: bonne)? note"
+                + "(?: (?:de|du|des|d)\\b.*)?");
+    }
+
     /** F-235 / SF-235-09 (D18) — les noms de l'œuvre que Jarvis n'imite jamais (normalisés). */
     static final List<String> WORK_NAMES = List.of("stark", "tony stark", "iron man", "ironman", "marvel",
             "avengers");

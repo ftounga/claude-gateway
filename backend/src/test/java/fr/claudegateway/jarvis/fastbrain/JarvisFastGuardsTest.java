@@ -341,4 +341,40 @@ class JarvisFastGuardsTest {
                 + "\nQuestion de politesse déjà posée : oui")).isTrue();
         assertThat(JarvisFastGuards.courtesyAlreadyAsked("Question de politesse déjà posée : non")).isFalse();
     }
+
+    @Test
+    void f243_06AnAcknowledgementIsNeverARequest() {
+        String afterMention = "## Derniers échanges de la conversation\n- Utilisateur : On passe à la suite.\n"
+                + "- Jarvis : Ensuite, le compte rendu de recette à envoyer à Claire Dumas.\n";
+        String afterProposal = "## Derniers échanges de la conversation\n- Utilisateur : On passe à la suite.\n"
+                + "- Jarvis : Ensuite, le compte rendu à Claire Dumas. Je le prépare, Monsieur ?\n";
+        for (String said : List.of("C'est noté.", "Noté.", "Bien noté, Jarvis.", "Je vois.", "Ah, je vois.",
+                "Compris, merci.", "Ok, je vois.", "D'accord, c'est noté.", "J'ai compris.", "Je comprends.")) {
+            assertThat(JarvisFastGuards.isAcknowledgement(said, afterMention)).as(said).isTrue();
+            assertThat(JarvisFastGuards.isAcknowledgement(said, afterProposal)).as(said).isTrue();
+        }
+        assertThat(JarvisFastGuards.isAcknowledgement("Entendu.", afterMention)).isTrue();
+        assertThat(JarvisFastGuards.isAcknowledgement("Ça marche.", null)).isTrue();
+        // après une proposition, « entendu » peut valoir « oui » : le modèle décide
+        assertThat(JarvisFastGuards.isAcknowledgement("Entendu.", afterProposal)).isFalse();
+        assertThat(JarvisFastGuards.isAcknowledgement("Ça marche.", afterProposal)).isFalse();
+        for (String said : List.of("Oui, vas-y.", "Envoie-le.", "Fais-le.", "C'est noté, envoie-le.",
+                "C'est noté, vérifie quand même.", "Retiens que je pars le 20 décembre.", "Note que Paul part.",
+                "Je vois Paul demain.", "", "Compris, prépare le compte rendu.")) {
+            assertThat(JarvisFastGuards.isAcknowledgement(said, afterProposal)).as(said).isFalse();
+        }
+    }
+
+    @Test
+    void f243_06AnAdministrativeAckIsHollow() {
+        for (String sentence : List.of("J'en prends bonne note.", "J'en prends note, Monsieur.", "Bien noté.",
+                "Je note.", "Je prends note de votre fatigue.", "J'ai bien pris note.", "Très bien, je le note.")) {
+            assertThat(JarvisFastGuards.isAdministrativeAck(sentence)).as(sentence).isTrue();
+        }
+        for (String sentence : List.of("C'est noté : départ en vacances le 20 décembre.", "C'est noté, Monsieur.",
+                "Je note que Paul livre le lot 2 jeudi.", "Un lundi qui demande un peu d'efforts, Monsieur.",
+                "Notez que la recette attend.")) {
+            assertThat(JarvisFastGuards.isAdministrativeAck(sentence)).as(sentence).isFalse();
+        }
+    }
 }

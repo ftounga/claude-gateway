@@ -674,6 +674,7 @@ public class JarvisFastBrainService {
                     outcome.guards(), outcome.understood(), outcome.shows());
         }
         outcome = JarvisFastGuards.isSmallTalk(request.text()) ? courteous(request, outcome, out) : outcome;
+        outcome = acknowledged(request, outcome, out, fixedContext);
         outcome = moreWithoutDelegation(request, outcome, out, fixedContext);
         return rememberWithoutDelegation(request, outcome, out, benchModel != null);
     }
@@ -788,6 +789,36 @@ public class JarvisFastBrainService {
         String said = outcome.spokenText() == null ? "" : outcome.spokenText().strip();
         if (said.isEmpty()) {
             said = JarvisFastGuards.courtesyReply(request.text());
+            out.text(said + " ");
+        }
+        return new Outcome(Kind.ANSWER, said, null, null, outcome.model(), outcome.firstTokenMs(), outcome.costUsd(),
+                outcome.guards(), outcome.understood());
+    }
+
+    /**
+     * F-243 / SF-243-06 — <b>un accusé de réception ne se délègue jamais</b> (« C'est noté. », « Je vois. ») : une
+     * délégation (outil appelé, délégation d'office sur une réponse vidée par la porte) devient une réponse — ce que
+     * le modèle a déjà dit de sûr, sinon {@link JarvisFastGuards#ACK_REPLY}. Le contexte n'est lu que pour un accusé
+     * qui pourrait valoir « oui » après une proposition (« entendu »).
+     */
+    Outcome acknowledged(Request request, Outcome outcome, Sink out, String fixedContext) {
+        if (outcome.kind() != Kind.DELEGATE || JarvisFastGuards.isSmallTalk(request.text())
+                || JarvisFastGuards.forcesDelegation(request.text())
+                || !JarvisFastGuards.isAcknowledgement(request.text(), null)) {
+            return outcome; // sans contexte, la liste la plus large : le contexte n'est lu que pour un candidat
+        }
+        String context;
+        try {
+            context = fixedContext != null ? fixedContext : context(request);
+        } catch (RuntimeException e) {
+            context = null;
+        }
+        if (!JarvisFastGuards.isAcknowledgement(request.text(), context)) {
+            return outcome;
+        }
+        String said = outcome.spokenText() == null ? "" : outcome.spokenText().strip();
+        if (said.isEmpty()) {
+            said = JarvisFastGuards.ACK_REPLY;
             out.text(said + " ");
         }
         return new Outcome(Kind.ANSWER, said, null, null, outcome.model(), outcome.firstTokenMs(), outcome.costUsd(),
@@ -1789,7 +1820,9 @@ public class JarvisFastBrainService {
                     sentence = kept;
                 }
                 if (JarvisFastGuards.isFillerAlone(sentence) || JarvisFastGuards.isListeningInvitation(sentence)
-                        || (!saidNow.isEmpty() && JarvisFastGuards.isClosingPrompt(sentence, said))) {
+                        || (!saidNow.isEmpty() && JarvisFastGuards.isClosingPrompt(sentence, said))
+                        // F-243 / SF-243-06 — « J'en prends bonne note. » en conclusion (banc prod, C08#1).
+                        || (!saidNow.isEmpty() && JarvisFastGuards.isAdministrativeAck(sentence))) {
                     fillersRemoved++; // F-239 (D3) : « Je vous écoute… » retiré, seul ou en conclusion
                     return;
                 }
