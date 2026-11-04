@@ -62,6 +62,12 @@ public final class CompanionService extends Service {
     static final String ACTION_PAUSE = "fr.claudegateway.jarvis.companion.PAUSE";
     static final String ACTION_RESUME = "fr.claudegateway.jarvis.companion.RESUME";
     static final String ACTION_QUIT = "fr.claudegateway.jarvis.companion.QUIT";
+    /** SF-232-08 — l'écran Jarvis du compagnon vient de s'ouvrir : il tient le micro jusqu'à sa fermeture. */
+    static final String ACTION_JARVIS_OPENED = "fr.claudegateway.jarvis.companion.JARVIS_OPENED";
+    /** SF-232-08 — l'écran Jarvis du compagnon est fermé : le micro revient au mot d'éveil. */
+    static final String ACTION_JARVIS_CLOSED = "fr.claudegateway.jarvis.companion.JARVIS_CLOSED";
+    /** Le temps que la WebView relâche le micro avant que le mot d'éveil le reprenne. */
+    private static final long MIC_HANDOVER_MS = 400L;
 
     static final String CHANNEL_LISTEN = "jarvis_listen";
     static final String CHANNEL_WAKE = "jarvis_wake";
@@ -77,8 +83,10 @@ public final class CompanionService extends Service {
     private Prefs prefs;
     private volatile Thread capture;
     private volatile boolean capturing;
-    /** Vrai entre le mot et la reprise : le micro est rendu à la PWA. */
+    /** Vrai entre le mot et la reprise : le micro est rendu à l'écran Jarvis. */
     private boolean awaitingResume;
+    /** SF-232-08 — vrai tant que l'écran Jarvis du compagnon est ouvert : seule sa fermeture rend le micro. */
+    private boolean jarvisOpen;
     private String status = "";
 
     private final Runnable resumeAfterWake = this::resumeAfterWake;
@@ -110,7 +118,8 @@ public final class CompanionService extends Service {
     private final BroadcastReceiver screenOffReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            if (awaitingResume) {
+            // Écran Jarvis ouvert : il se ferme lui-même à l'extinction et rend alors le micro (pas de double capture).
+            if (awaitingResume && !jarvisOpen) {
                 resumeAfterWake();
             }
         }
@@ -171,6 +180,32 @@ public final class CompanionService extends Service {
         String action = intent == null ? ACTION_START : intent.getAction();
         // Toujours passer au premier plan d'abord : Android l'exige dans les secondes qui suivent.
         goForeground();
+        if (ACTION_JARVIS_OPENED.equals(action)) {
+            // L'écran tient le micro : plus de reprise d'office au bout de 10 min (il se ferme seul, sans signe de vie).
+            jarvisOpen = true;
+            awaitingResume = true;
+            replyWindow = false;
+            main.removeCallbacks(endReplyWindow);
+            main.removeCallbacks(resumeAfterWake);
+            if (speaking) {
+                // Une annonce en cours se tait : l'écran Jarvis parle désormais.
+                speaking = false;
+                interruptPolicy.onSpeakingEnd();
+                if (tts != null) {
+                    tts.stop();
+                }
+            }
+            stopCapture();
+            getSystemService(NotificationManager.class).cancel(ID_WAKE);
+            refresh();
+            return START_STICKY;
+        }
+        if (ACTION_JARVIS_CLOSED.equals(action)) {
+            jarvisOpen = false;
+            main.removeCallbacks(resumeAfterWake);
+            main.postDelayed(resumeAfterWake, MIC_HANDOVER_MS);
+            return START_STICKY;
+        }
         if (ACTION_QUIT.equals(action)) {
             prefs.setListening(false);
             stopCapture();
@@ -270,6 +305,9 @@ public final class CompanionService extends Service {
 
     private void resumeAfterWake() {
         main.removeCallbacks(resumeAfterWake);
+        if (jarvisOpen) {
+            return; // l'écran Jarvis tient encore le micro
+        }
         awaitingResume = false;
         getSystemService(NotificationManager.class).cancel(ID_WAKE);
         refresh();

@@ -1,7 +1,8 @@
 # Jarvis — le compagnon Android (F-232)
 
 Un petit APK, installé hors store, qui écoute « Jarvis » **sur le téléphone**, même verrouillé, et
-ouvre alors l'écran Jarvis de l'application (`/jarvis`, F-231).
+ouvre alors l'écran Jarvis de l'application (`/jarvis`, F-231) **dans sa propre fenêtre, par-dessus
+l'écran verrouillé** (SF-232-08) : on dit « Jarvis », puis la commande, sans déverrouiller.
 
 - **Rien ne sort** : la reconnaissance du mot se fait sur l'appareil (même moteur que SF-231-05,
   porté en Java : empreinte MFCC, alignement DTW, trois gabarits appris). Ce qu'il entend ne sort pas.
@@ -10,7 +11,17 @@ ouvre alors l'écran Jarvis de l'application (`/jarvis`, F-231).
   toutes les 20 s). Verrouillé ou écran éteint, il dit à voix haute la fin d'un tour lancé via Jarvis
   et les alertes de veille, puis écoute 8 s : le premier mot ouvre Jarvis. D'où la permission
   `INTERNET` (ajoutée par SF-232-03). Jeton révocable depuis l'écran Jarvis.
-- **Les écrans** restent ceux de la PWA, avec sa propre session : le jeton du compagnon n'y donne pas accès.
+- **L'écran Jarvis dans le compagnon (SF-232-05 → 08, amendement du 2026-11-04)** : au mot, `WakeActivity`
+  s'affiche par-dessus le verrou (sans demander le déverrouillage), garde l'écran allumé et charge
+  `/jarvis?source=compagnon&ecoute=1` dans une WebView : Jarvis écoute aussitôt. Le jeton dédié ne quitte jamais
+  le code natif ; il s'échange (`POST /api/runner/jarvis/session`) contre une **session de 30 min à portée
+  `jarvis-compagnon`** (seules les routes de l'écran Jarvis), remise à la page par le pont `window.JarvisCompanion`.
+  Le micro passe du mot d'éveil à la page à l'ouverture, et revient à la fermeture (fin de conversation, écran
+  éteint, 3 min sans signe de vie).
+- **Téléphone verrouillé** : conversation, lecture et délégation marchent ; un « oui » qui engage (envoyer ou
+  supprimer un courriel, poser un rendez-vous, accepter une invitation, autoriser une commande) affiche la demande
+  de déverrouillage par-dessus l'écran Jarvis. La passerelle refuse elle-même ce « oui » tant que la session est
+  verrouillée.
 - **Interrupteur** dans la notification (Pause / Reprendre / Quitter) ; pause automatique sous 15 %
   de batterie hors charge, reprise à 20 % ou en charge.
 
@@ -122,8 +133,8 @@ l'écran n'affiche aucun lien.
 2. Ouvrir « Jarvis » : autoriser micro + notifications, l'exemption de batterie, l'ouverture plein
    écran (Android 14+).
 3. Apprendre « Jarvis » (trois fois), démarrer l'écoute : la notification « Jarvis écoute » apparaît.
-4. Verrouiller, dire « Jarvis » : l'écran s'allume, le déverrouillage est demandé, puis `/jarvis`
-   s'ouvre.
-5. Éteindre l'écran : l'écoute reprend. Toucher « Pause » : la notification passe à « En pause ».
+4. Verrouiller, dire « Jarvis » : l'écran s'allume sur Jarvis, par-dessus le verrou, et écoute la commande
+   (« quels sont mes rendez-vous demain ? »). Une action qui engage (« oui » à un envoi) demande le déverrouillage.
+5. Éteindre l'écran (ou laisser la conversation se mettre en veille) : Jarvis se ferme et l'écoute du mot reprend. Toucher « Pause » : la notification passe à « En pause ».
 6. Redémarrer le téléphone : la notification « Réactiver Jarvis » apparaît (Android 14+ interdit de
    relancer un micro au démarrage sans geste).
