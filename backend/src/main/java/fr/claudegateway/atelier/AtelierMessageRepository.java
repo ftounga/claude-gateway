@@ -203,6 +203,10 @@ public interface AtelierMessageRepository extends JpaRepository<AtelierMessage, 
     List<AtelierMessage> findTop2000ByWorkspaceIdAndUserIdAndChantierNumberIsNotNullOrderByCreatedAtAsc(
             UUID workspaceId, UUID userId);
 
+    /** F-245 / SF-245-04 — les 200 derniers messages d'un fil depuis un instant (le fil du jour) ; isolation {@code user_id}. */
+    List<AtelierMessage> findTop200ByWorkspaceIdAndUserIdAndCreatedAtGreaterThanEqualOrderByCreatedAtDesc(
+            UUID workspaceId, UUID userId, java.time.OffsetDateTime since);
+
     /** F-245 / SF-245-03 — un message du compte (la ligne-lien à terminer) ; isolation {@code user_id}. */
     java.util.Optional<AtelierMessage> findByIdAndUserId(UUID id, UUID userId);
 

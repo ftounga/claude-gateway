@@ -21,12 +21,14 @@ public class JarvisThreadController {
     private final JarvisThreadService threads;
     private final AtelierAccessService atelierAccess;
     private final CurrentUser currentUser;
+    private final JarvisThreadTodayService today;
 
     public JarvisThreadController(JarvisThreadService threads, AtelierAccessService atelierAccess,
-            CurrentUser currentUser) {
+            CurrentUser currentUser, JarvisThreadTodayService today) {
         this.threads = threads;
         this.atelierAccess = atelierAccess;
         this.currentUser = currentUser;
+        this.today = today;
     }
 
     /** La réponse : l'identifiant et le nom du fil. */
@@ -38,5 +40,15 @@ public class JarvisThreadController {
         atelierAccess.requireAccess();
         Workspace thread = threads.open(currentUser.requireId());
         return new JarvisThreadResponse(thread.getId(), thread.getName());
+    }
+
+    /**
+     * F-245 / SF-245-04 (D8) — le fil du jour, pour le volet « Fil » de {@code /jarvis} : lecture seule, le fil n'est
+     * jamais créé ici (sans fil : liste vide). Le compte est celui du principal.
+     */
+    @GetMapping("/jarvis/thread/today")
+    public java.util.List<JarvisThreadTodayService.Item> today() {
+        atelierAccess.requireAccess();
+        return today.today(currentUser.requireId());
     }
 }
