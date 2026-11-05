@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 
 import { AuthService } from '../core/services/auth.service';
 import { ShowCommand } from './pieces/jarvis-piece-show';
+import { CardsEvent } from './cards/jarvis-card.models';
 
 /**
  * **Le cerveau rapide de Jarvis, côté écran** (F-235 / SF-235-05).
@@ -99,6 +100,8 @@ export interface FastBrainHandlers {
   onDone(done: FastDone): void;
   /** F-237 / SF-237-08 — un ordre d'écran du cerveau rapide (outil `afficher`), déjà validé par la passerelle. */
   onShow?(command: ShowCommand): void;
+  /** F-248 / SF-248-05 — le catalogue des faits lus (pancartes), jamais avant la première phrase (D10). */
+  onCards?(event: CardsEvent): void;
 }
 
 /** L'issue d'un appel : parti au bout, cerveau rapide éteint (503), ou en échec (jamais muet : l'écran se replie). */
@@ -228,6 +231,11 @@ export function dispatch(raw: string, handlers: FastBrainHandlers): 'done' | 'er
     case 'show':
       if (typeof payload['action'] === 'string') {
         handlers.onShow?.(payload as unknown as ShowCommand);
+      }
+      return null;
+    case 'cards':
+      if (Array.isArray(payload['cards']) && typeof payload['responseId'] === 'string') {
+        handlers.onCards?.(payload as unknown as CardsEvent);
       }
       return null;
     case 'done':

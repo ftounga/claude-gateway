@@ -1,6 +1,8 @@
 import { JarvisPieceGalleryComponent } from './pieces/jarvis-piece-gallery.component';
 import { JarvisPieceStore, refusalPhrase } from './pieces/jarvis-piece-store';
 import { cardsAllowedOnDevice, setCardsAllowedOnDevice } from './cards/jarvis-card-deck';
+import { CardShowing } from './cards/jarvis-card-cite';
+import { CardsEvent } from './cards/jarvis-card.models';
 import { pieceVoiceCommand } from './pieces/jarvis-piece-voice';
 import { screenBlock } from './pieces/jarvis-piece-screen';
 import { ShowCommand } from './pieces/jarvis-piece-show';
@@ -1215,6 +1217,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   /** Change de sujet (menu ou voix) et le retient sur cet appareil. */
   chooseSubject(id: string): void {
+    if (id !== this.subjectId()) {
+      this.pieces.closeCards(); // F-248 / SF-248-04 (D11) — un changement de sujet efface le jeu de pancartes
+    }
     this.subjectId.set(id);
     try {
       localStorage.setItem(JARVIS_SUBJECT_KEY, id);
@@ -2099,6 +2104,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
     let delegatedId: string | null = null;
     // F-240 / SF-240-04 — le cerveau rapide a répondu « ⤵ » : l'écran descend d'un étage, sans le dire.
     let moreAsked = false;
+    // F-248 / SF-248-05 — le jeu de pancartes de cette réponse : catalogue reçu, phrases jouées, ce qui est montré.
+    const showing = new CardShowing(seq);
+    this.cardShowing = showing;
     const sayNow = (sentence: string) => {
       if (!latest()) {
         return;
@@ -2127,7 +2135,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
         this.clock?.mark('firstOralSentence');
         this.voice.resetHeard();
       }
-      this.voice.enqueue(sentence, subjectId ?? '', first ? this.clockHooks() : undefined);
+      this.voice.enqueue(sentence, subjectId ?? '', this.cardHooks(sentence, showing,
+        first ? this.clockHooks() : undefined));
     };
     // F-239 / SF-239-05 — ce que le cerveau rapide a compris (relu, garde passée) : affiché, et c'est lui qu'Opus reçoit.
     let understood: string | null = null;
@@ -2138,6 +2147,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const outcome = await this.fastBrain.converse({ subjectId, text, heardBeforeCut, screen,
       presentation: this.presentation() }, {
       onText: (sentence) => this.zone.run(() => sayNow(sentence)),
+      onCards: (event) => this.zone.run(() => {
+        if (latest()) {
+          this.receiveCards(showing, event);
+        }
+      }),
       onShow: (command) => this.zone.run(() => {
         if (latest()) {
           void this.applyShow(command).then((ok) => {
@@ -2244,6 +2258,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
       this.clock = null;
       this.refreshCosts();
       await this.voice.idle();
+      // F-248 / SF-248-05 (D10, D11) — rien n'a été dit : le jeu ciblé part à la fin ; aucun jeu : l'ancien reste 60 s.
+      if (latest()) {
+        this.endCards(showing);
+      }
       if (ending) {
         if (delegatedId) {
           ending.spoken = { ...ending.spoken, announceWords: spokenWordCount(said) };
@@ -2792,6 +2810,85 @@ export class JarvisComponent implements OnInit, OnDestroy {
         this.state.set('reflexion');
       }
     }));
+  }
+
+  /** F-248 / SF-248-05 — le jeu de la réponse en cours (une seule à la fois). */
+  private cardShowing: CardShowing | null = null;
+
+  /** F-248 / SF-248-05 — le catalogue reçu : rangé ; si une phrase a déjà été jouée, le jeu s'affiche tout de suite. */
+  private receiveCards(showing: CardShowing, event: CardsEvent): void {
+    if (!this.cardsOn() || this.presentation()) {
+      return;
+    }
+    showing.receive(event);
+    this.cardsResponseId = event.responseId;
+    this.refreshCards(showing);
+  }
+
+  /**
+   * F-248 / SF-248-05 (D3) — les crochets d'une phrase : au moment où elle **commence à être jouée**, les pancartes
+   * qu'elle nomme apparaissent (lecture d'office) ou s'illuminent (lecture ciblée). Jamais avant la première phrase.
+   */
+  private cardHooks(sentence: string, showing: CardShowing, hooks?: SpeakHooks): SpeakHooks {
+    return {
+      ...hooks,
+      onPlaying: () => {
+        hooks?.onPlaying?.();
+        if (showing !== this.cardShowing) {
+          return;
+        }
+        this.zone.run(() => {
+          const deck = this.pieces.deck().map((c) => c.id);
+          const ids = showing.playing(sentence, performance.now(), deck);
+          this.litCards.set(ids);
+          this.refreshCards(showing);
+        });
+      },
+    };
+  }
+
+  /** F-248 / SF-248-05 — montre ce qui doit l'être ; mesure le premier jeu (délai, nombre, ciblées / citées). */
+  private refreshCards(showing: CardShowing): void {
+    if (!this.cardsOn() || this.presentation() || showing !== this.cardShowing || !showing.responseId) {
+      return;
+    }
+    const visible = showing.visible();
+    if (!visible.length) {
+      return;
+    }
+    const now = performance.now();
+    const flat = this.cardsFlat();
+    const shown = this.pieces.showCards(showing.responseId, visible, { flat });
+    if (!shown.ok && shown.reason !== 'BUSY') {
+      return;
+    }
+    const counts = showing.counts();
+    const fresh = visible.filter((c) => !showing.shownIds.has(c.id));
+    fresh.forEach((c) => showing.shownIds.add(c.id));
+    this.pieces.count('c_tgt', fresh.filter((c) => c.targeted).length);
+    this.pieces.count('c_cit', fresh.filter((c) => !c.targeted).length);
+    if (showing.shownAt == null) {
+      showing.shownAt = now;
+      const clock = this.clock;
+      if (clock) {
+        clock.fast = { ...clock.fast, cardsLagMs: showing.lag(now), cardsCount: counts.targeted + counts.cited };
+      }
+    }
+  }
+
+  /** F-248 / SF-248-05 — fin de la réponse : rien n'a été dit ⇒ le jeu ciblé part ; aucun jeu ⇒ l'ancien reste 60 s. */
+  private endCards(showing: CardShowing): void {
+    if (showing !== this.cardShowing) {
+      return;
+    }
+    if (showing.hasCatalogue && !showing.started) {
+      showing.playing('', performance.now());
+      this.refreshCards(showing);
+    }
+    if (!showing.hasCatalogue || showing.shownAt == null) {
+      this.pieces.lingerCards();
+    }
+    this.litCards.set([]);
   }
 
   /** SF-234-11 — les crochets d'une phrase : ceux du chronomètre, plus la surbrillance de ses noms. */
