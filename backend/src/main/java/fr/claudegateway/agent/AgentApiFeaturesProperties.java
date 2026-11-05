@@ -37,6 +37,14 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param bindingControlModels modèles dont les blocs de raisonnement sont liés à la conversation
  *                       (D5) : la requête pose {@code prefix_mismatch_behavior: "drop_block"}, et
  *                       chaque bloc perdu est compté
+ * @param runawayEnabled coupe-circuit de la coupure d'emballement (F-172 / SF-172-07) —
+ *                       {@code APP_AGENT_RUNAWAY_ENABLED}, défaut {@code true}
+ * @param runawayTokens  jetons produits sans rien de visible au-delà desquels un appel en flux est
+ *                       coupé puis relancé une fois, défaut 16 000 (au-dessus du p99 des appels
+ *                       réussis, 14 917 ; sous le plafond de 32 768)
+ * @param runawayTokensPerSecond débit servant à estimer, en cours de flux, la sortie d'un raisonnement
+ *                       caché (le flux ne la rapporte qu'à la fin), défaut 150 — le débit mesuré des
+ *                       emballements
  */
 @ConfigurationProperties(prefix = "app.agent.api-features")
 public record AgentApiFeaturesProperties(
@@ -47,11 +55,16 @@ public record AgentApiFeaturesProperties(
         Integer escalatedMaxTokens,
         List<String> explicitEffortModels,
         String defaultEffort,
-        List<String> bindingControlModels) {
+        List<String> bindingControlModels,
+        Boolean runawayEnabled,
+        Integer runawayTokens,
+        Integer runawayTokensPerSecond) {
 
     static final int DEFAULT_STREAMED_MAX_TOKENS = 32_768;
     static final int DEFAULT_ESCALATED_MAX_TOKENS = 65_536;
     static final String DEFAULT_EFFORT = "high";
+    static final int DEFAULT_RUNAWAY_TOKENS = 16_000;
+    static final int DEFAULT_RUNAWAY_TOKENS_PER_SECOND = 150;
     static final List<String> DEFAULT_EXPLICIT_EFFORT_MODELS = List.of("claude-opus-5-5");
     static final List<String> DEFAULT_BINDING_CONTROL_MODELS = List.of("claude-opus-5-5", "claude-fable-5-1");
 
@@ -78,11 +91,15 @@ public record AgentApiFeaturesProperties(
         defaultEffort = defaultEffort == null || defaultEffort.isBlank() ? DEFAULT_EFFORT : defaultEffort.trim();
         bindingControlModels = bindingControlModels == null
                 ? DEFAULT_BINDING_CONTROL_MODELS : List.copyOf(bindingControlModels);
+        runawayEnabled = runawayEnabled == null ? Boolean.TRUE : runawayEnabled;
+        runawayTokens = runawayTokens == null || runawayTokens <= 0 ? DEFAULT_RUNAWAY_TOKENS : runawayTokens;
+        runawayTokensPerSecond = runawayTokensPerSecond == null || runawayTokensPerSecond <= 0
+                ? DEFAULT_RUNAWAY_TOKENS_PER_SECOND : runawayTokensPerSecond;
     }
 
     /** Réglages par défaut — ceux d'un environnement qui ne configure rien. */
     public static AgentApiFeaturesProperties defaults() {
-        return new AgentApiFeaturesProperties(null, null, null, null, null, null, null, null);
+        return new AgentApiFeaturesProperties(null, null, null, null, null, null, null, null, null, null, null);
     }
 
     /** Vrai si la requête vers ce modèle doit porter le repli côté serveur. */
@@ -103,6 +120,14 @@ public record AgentApiFeaturesProperties(
     /** Vrai si la requête vers ce modèle pose le contrôle de liaison du raisonnement (D5). */
     public boolean bindingControlsFor(String model) {
         return listed(bindingControlModels, model);
+    }
+
+    /**
+     * Vrai si un appel en flux plafonné à {@code maxTokens} doit être surveillé (SF-172-07) : le
+     * coupe-circuit est ouvert et le plafond laisse la place de dépasser le seuil.
+     */
+    public boolean runawayWatchFor(int maxTokens) {
+        return Boolean.TRUE.equals(runawayEnabled) && maxTokens > runawayTokens;
     }
 
     static boolean listed(List<String> models, String model) {

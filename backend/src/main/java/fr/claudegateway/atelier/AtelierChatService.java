@@ -205,6 +205,17 @@ public class AtelierChatService implements RelayInterruptTarget {
                 + "travail, ou découpe-la en étapes plus ciblées.";
     }
 
+    /**
+     * Réponse sur <b>double emballement</b> du raisonnement caché (F-172 / SF-172-07) : l'appel a
+     * raisonné sans rien produire au-delà du seuil, a été coupé, relancé à l'identique, et s'est
+     * emballé de nouveau. Rien n'a été exécuté. Ce n'est PAS une réponse trop longue : le dire
+     * enverrait l'utilisateur raccourcir une demande qui n'y est pour rien.
+     */
+    static final String RUNAWAY_REPLY =
+            "Mon raisonnement s'est emballé sans aboutir (deux fois de suite, j'ai réfléchi longuement sans "
+                    + "rien produire) : je l'ai interrompu et rien n'a été exécuté. Ce n'est pas ta demande qui "
+                    + "est en cause — renvoie-la telle quelle, elle aboutit d'ordinaire du premier coup.";
+
     static final String TRUNCATED_REPLY =
             "Ma réponse a dépassé la taille maximale autorisée et a été coupée : rien n'a été exécuté. "
                     + "Demande-moi une modification plus courte, ou de travailler fichier par fichier.";
@@ -3855,6 +3866,10 @@ public class AtelierChatService implements RelayInterruptTarget {
         boolean spendCapReached = false;
         // Arrêt sur refus du fournisseur (F-172 / SF-172-01), pour le journal de fin de tour.
         boolean refusalStop = false;
+        // Emballement du raisonnement caché (F-172 / SF-172-07) : appels coupés puis relancés dans le
+        // tour, et abandon après un second emballement — pour la cause d'arrêt mesurée.
+        int runawayRelaunches = 0;
+        boolean runawayStop = false;
         /**
          * Filet réactif du dépassement de fenêtre (F-117 / SF-117-02) : posé à la première
          * compaction forcée déclenchée par un 400 « prompt too long ». Borne le filet à <b>une</b>
@@ -4125,7 +4140,22 @@ public class AtelierChatService implements RelayInterruptTarget {
                     messages = withoutReasoning(buildReplayMessages(userId, workspace));
                     log.warn("Séquence de messages invalide : fil réassaini puis tour relancé une fois "
                             + "(workspace={}).", workspaceId);
+                } catch (fr.claudegateway.agent.AgentRunawayException ex) {
+                    // F-172 / SF-172-07 : raisonnement caché emballé deux fois (coupé, relancé, recoupé).
+                    // Aucun tour n'est sorti des appels coupés : rien à exécuter. Leur usage est
+                    // compté comme celui de tout appel — rien n'est caché.
+                    inputTokens += ex.inputTokens();
+                    outputTokens += ex.outputTokens();
+                    cacheReadTokens += ex.cacheReadTokens();
+                    cacheWriteTokens += ex.cacheWriteTokens();
+                    listener.onProgress((long) inputTokens + outputTokens);
+                    runawayStop = true;
+                    break;
                 }
+            }
+            if (runawayStop) {
+                finalText = RUNAWAY_REPLY;
+                break;
             }
             if (promptOverflow) {
                 finalText = PROMPT_TOO_LONG_REPLY;
@@ -4145,6 +4175,7 @@ public class AtelierChatService implements RelayInterruptTarget {
             webSearchRequests += turn.webSearchRequests();
             contextEditedInTurn |= turn.contextEdited();
             collectOtherModelShares(turn, model, otherModelShares, lastServedModel);
+            runawayRelaunches += turn.runawayRelaunches();
             largestIterationTokens =
                     Math.max(largestIterationTokens, (long) turn.inputTokens() + turn.outputTokens());
             maxContextTokens = Math.max(maxContextTokens, turn.inputTokens());
@@ -4877,7 +4908,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         log.info("Tour d'atelier terminé : {} étape(s), {} s, {} tokens — arrêt : {}",
                 iterationsUsed, Math.max(0L, (System.currentTimeMillis() - startedAt) / 1000L),
                 inputTokens + outputTokens,
-                refusalStop ? "refus du fournisseur" : stopCause(interrupted, spendCapReached, finalText));
+                refusalStop ? "refus du fournisseur"
+                        : runawayCause(stopCause(interrupted, spendCapReached, finalText), runawayRelaunches));
         // F-188 / SF-188-03 : la même fin de tour, en base — des nombres, jamais de contenu.
         int[] runnerCounts = turnRunnerCounters.remove(turnKey(userId, workspace));
         // La trajectoire rangée, calculée une fois ici : la mesure y lit ce que le rangement retire
@@ -4889,7 +4921,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                     workspaceId, workspace.getHostId(), model, java.time.Instant.now(),
                     Math.max(0L, System.currentTimeMillis() - startedAt), iterationsUsed,
                     refusalStop ? "refus du fournisseur"
-                            : stopCause(interrupted, spendCapReached, finalText),
+                            : runawayCause(stopCause(interrupted, spendCapReached, finalText), runawayRelaunches),
                     maxContextTokens, totalContextTokens, firstPassCacheWrite, laterCacheWrite,
                     inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens,
                     webSearchRequests, runnerCounts == null ? 0 : runnerCounts[0],
@@ -5479,7 +5511,27 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (MALFORMED_SEQUENCE_REPLY.equals(finalText)) {
             return "séquence de messages invalide malgré réassainissement";
         }
+        if (RUNAWAY_REPLY.equals(finalText)) {
+            return RUNAWAY_TWICE_CAUSE;
+        }
         return "réponse rendue";
+    }
+
+    /** Cause d'arrêt mesurée d'un tour rendu après une relance d'emballement (F-172 / SF-172-07). */
+    static final String RUNAWAY_RELAUNCHED_CAUSE = "emballement coupé et relancé";
+    /** Cause d'arrêt mesurée d'un tour abandonné après deux emballements (F-172 / SF-172-07). */
+    static final String RUNAWAY_TWICE_CAUSE = "emballement coupé deux fois";
+
+    /**
+     * Cause d'arrêt, marquée quand le tour a été rendu grâce à une relance d'emballement
+     * (F-172 / SF-172-07) — pour le compteur de la mesure J+7. Toute autre cause (interruption,
+     * plafond…) prime : elle dit mieux comment le tour a fini.
+     */
+    static String runawayCause(String cause, int runawayRelaunches) {
+        if (runawayRelaunches > 0 && "réponse rendue".equals(cause)) {
+            return RUNAWAY_RELAUNCHED_CAUSE;
+        }
+        return cause;
     }
 
     /**

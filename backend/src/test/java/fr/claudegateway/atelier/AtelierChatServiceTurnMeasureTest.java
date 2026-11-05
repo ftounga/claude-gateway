@@ -199,4 +199,60 @@ class AtelierChatServiceTurnMeasureTest {
 
         assertThat(result.reply()).contains("Réponse.");
     }
+
+    // ------------------------------------------------- F-172 / SF-172-07 : emballement
+
+    private fr.claudegateway.atelier.measure.TurnMeasure measured(fr.claudegateway.atelier.measure.TurnMeasureWriter w) {
+        ArgumentCaptor<fr.claudegateway.atelier.measure.TurnMeasure> written =
+                ArgumentCaptor.forClass(fr.claudegateway.atelier.measure.TurnMeasure.class);
+        verify(w).write(written.capture());
+        return written.getValue();
+    }
+
+    @Test
+    void aDoubleRunawayEndsWithAClearReplyExecutesNothingAndIsCounted() {
+        runnerWorkspace();
+        fr.claudegateway.atelier.measure.TurnMeasureWriter writer =
+                org.mockito.Mockito.mock(fr.claudegateway.atelier.measure.TurnMeasureWriter.class);
+        service.setTurnMeasureWriter(writer);
+        agentProvider.enqueueRunawayTwice(360_000, 36_000);
+        // Ce tour-ci ne doit jamais être servi : le tour s'arrête sur l'emballement.
+        agentProvider.enqueueTurn(pass("bash", "{\"command\":\"jamais\"}", 100_000, 0));
+
+        AtelierChatService.AtelierChatResult result = service.chat(userId, workspaceId, "fais-le");
+
+        assertThat(result.reply()).isEqualTo(AtelierChatService.RUNAWAY_REPLY);
+        assertThat(result.reply()).contains("rien n'a été exécuté").doesNotContain("taille maximale");
+        verify(runnerToolGateway, never()).bash(any(), anyString(), anyString(), any(), anyLong(), any());
+        fr.claudegateway.atelier.measure.TurnMeasure m = measured(writer);
+        assertThat(m.stopCause()).isEqualTo(AtelierChatService.RUNAWAY_TWICE_CAUSE);
+        // L'usage des appels coupés est compté — rien n'est caché.
+        assertThat(m.inputTokens()).isEqualTo(360_000L);
+        assertThat(m.outputTokens()).isEqualTo(36_000L);
+    }
+
+    @Test
+    void aTurnRenderedAfterARelaunchIsMeasuredAsSuch() {
+        runnerWorkspace();
+        fr.claudegateway.atelier.measure.TurnMeasureWriter writer =
+                org.mockito.Mockito.mock(fr.claudegateway.atelier.measure.TurnMeasureWriter.class);
+        service.setTurnMeasureWriter(writer);
+        agentProvider.enqueueTurn(last(120_000, 0).withRunawayRelaunch(
+                new fr.claudegateway.agent.AgentTurn.ModelUsage("claude-opus-5-5", 0, 18_000, 120_000, 0)));
+
+        AtelierChatService.AtelierChatResult result = service.chat(userId, workspaceId, "fais-le");
+
+        assertThat(result.reply()).contains("Fini.");
+        fr.claudegateway.atelier.measure.TurnMeasure m = measured(writer);
+        assertThat(m.stopCause()).isEqualTo(AtelierChatService.RUNAWAY_RELAUNCHED_CAUSE);
+        assertThat(m.outputTokens()).isEqualTo(18_050L);
+    }
+
+    @Test
+    void anotherStopCauseWinsOverTheRelaunchMark() {
+        assertThat(AtelierChatService.runawayCause("interruption", 1)).isEqualTo("interruption");
+        assertThat(AtelierChatService.runawayCause("réponse rendue", 0)).isEqualTo("réponse rendue");
+        assertThat(AtelierChatService.runawayCause("réponse rendue", 1))
+                .isEqualTo(AtelierChatService.RUNAWAY_RELAUNCHED_CAUSE);
+    }
 }

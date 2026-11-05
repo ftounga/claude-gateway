@@ -544,6 +544,14 @@ app:
       # Raisonnement lie a la conversation (D5) : `drop_block` + journal `thinking_dropped=` — jamais
       # de 400, chaque bloc perdu est compte.
       binding-control-models: ${APP_AGENT_BINDING_CONTROL_MODELS:claude-opus-5-5,claude-fable-5-1}
+      # Emballement du raisonnement cache (F-172 / SF-172-07) : un appel EN FLUX qui depasse
+      # runaway-tokens jetons sans rien de visible (ni texte, ni note, ni outil) est coupe puis relance
+      # une fois a l'identique. La sortie n'etant rapportee qu'en fin de flux, elle est estimee par la
+      # duree x runaway-tokens-per-second (debit mesure des emballements). Coupe-circuit sans livraison :
+      # APP_AGENT_RUNAWAY_ENABLED=false.
+      runaway-enabled: ${APP_AGENT_RUNAWAY_ENABLED:true}
+      runaway-tokens: ${APP_AGENT_RUNAWAY_TOKENS:16000}
+      runaway-tokens-per-second: ${APP_AGENT_RUNAWAY_TOKENS_PER_SECOND:150}
   stt:
     # SERVICE DE TRANSCRIPTION (F-128 / SF-128-04), relais compatible Whisper/OpenAI. BRANCHÉ SUR OPENAI
     # (SF-128-18) : base-url + model fournis par backend-config (https://api.openai.com/v1, whisper-1).

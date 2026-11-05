@@ -55,13 +55,53 @@ import java.util.List;
  *                     pour cet appel (politique {@link AgentContextPolicy}, F-229 / SF-229-01) : ce
  *                     qu'il a mis en cache n'est alors plus ce qui a été envoyé. Fait neutre — le nom
  *                     du mécanisme reste chez le fournisseur
+ * @param runawayRelaunches appels de ce tour coupés pour <b>emballement</b> puis relancés à l'identique
+ *                     (F-172 / SF-172-07) : 0 d'ordinaire, 1 quand le tour vient d'une relance. Leur
+ *                     usage est déjà compris dans les totaux ci-dessus
  * @see #truncated()
  */
 public record AgentTurn(String text, List<AgentToolCall> toolCalls, boolean finished,
         int inputTokens, int outputTokens, boolean truncated, List<AgentContentBlock> reasoning,
         int cacheReadTokens, int cacheWriteTokens, int webSearchRequests, boolean refused,
         String refusalCategory, String servedModel, List<ModelUsage> usageByModel, String narration,
-        int droppedThinkingBlocks, boolean paused, boolean contextEdited) {
+        int droppedThinkingBlocks, boolean paused, boolean contextEdited, int runawayRelaunches) {
+
+    /** Forme sans relance d'emballement (F-172 / SF-172-07 additif). */
+    public AgentTurn(String text, List<AgentToolCall> toolCalls, boolean finished,
+            int inputTokens, int outputTokens, boolean truncated, List<AgentContentBlock> reasoning,
+            int cacheReadTokens, int cacheWriteTokens, int webSearchRequests, boolean refused,
+            String refusalCategory, String servedModel, List<ModelUsage> usageByModel, String narration,
+            int droppedThinkingBlocks, boolean paused, boolean contextEdited) {
+        this(text, toolCalls, finished, inputTokens, outputTokens, truncated, reasoning,
+                cacheReadTokens, cacheWriteTokens, webSearchRequests, refused, refusalCategory,
+                servedModel, usageByModel, narration, droppedThinkingBlocks, paused, contextEdited, 0);
+    }
+
+    /**
+     * Ce tour, augmenté d'un appel <b>coupé pour emballement</b> qui l'a précédé (F-172 / SF-172-07) :
+     * son usage est ajouté aux totaux et à la ventilation par modèle (créée si besoin, pour que la
+     * somme des parts reste égale aux totaux), et le compteur de relances grandit. Le contenu (texte,
+     * outils, raisonnement) est celui de la relance, inchangé : l'appel coupé n'a rien produit de
+     * visible.
+     *
+     * @param cut usage de l'appel coupé, au modèle demandé
+     */
+    public AgentTurn withRunawayRelaunch(ModelUsage cut) {
+        int cutInput = cut.fullPriceInputTokens() + cut.cacheReadTokens() + cut.cacheWriteTokens();
+        List<ModelUsage> parts = new java.util.ArrayList<>();
+        parts.add(cut);
+        if (usageByModel.isEmpty()) {
+            parts.add(new ModelUsage(servedModel != null ? servedModel : cut.model(),
+                    fullPriceInputTokens(), outputTokens, cacheReadTokens, cacheWriteTokens));
+        } else {
+            parts.addAll(usageByModel);
+        }
+        return new AgentTurn(text, toolCalls, finished, inputTokens + cutInput, outputTokens + cut.outputTokens(),
+                truncated, reasoning, cacheReadTokens + cut.cacheReadTokens(),
+                cacheWriteTokens + cut.cacheWriteTokens(), webSearchRequests, refused, refusalCategory,
+                servedModel, parts, narration, droppedThinkingBlocks, paused, contextEdited,
+                runawayRelaunches + 1);
+    }
 
     /** Forme sans édition de contexte signalée (F-229 / SF-229-01 additif). */
     public AgentTurn(String text, List<AgentToolCall> toolCalls, boolean finished,
@@ -192,6 +232,7 @@ public record AgentTurn(String text, List<AgentToolCall> toolCalls, boolean fini
         usageByModel = usageByModel == null ? List.of() : List.copyOf(usageByModel);
         narration = narration == null ? "" : narration;
         droppedThinkingBlocks = Math.max(0, droppedThinkingBlocks);
+        runawayRelaunches = Math.max(0, runawayRelaunches);
     }
 
     /** Forme sans ventilation de cache — conservée pour les appelants qui l'attendent. */

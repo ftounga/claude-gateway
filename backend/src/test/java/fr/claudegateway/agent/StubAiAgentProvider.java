@@ -91,6 +91,17 @@ public class StubAiAgentProvider implements AiAgentProvider {
         this.throwMalformedTimes = times;
     }
 
+    /**
+     * F-172 / SF-172-07 : prochain appel qui lève {@link AgentRunawayException} — le fournisseur a
+     * coupé deux emballements de suite ; porte l'usage des deux appels coupés.
+     */
+    private volatile AgentRunawayException nextRunaway;
+
+    /** Fait lever un double emballement au prochain appel, avec cet usage. */
+    public void enqueueRunawayTwice(int inputTokens, int outputTokens) {
+        this.nextRunaway = new AgentRunawayException("emballement (simulé)", inputTokens, outputTokens, 0, 0);
+    }
+
     public void reset() {
         script.clear();
         lastRequest = null;
@@ -104,6 +115,7 @@ public class StubAiAgentProvider implements AiAgentProvider {
         emitTextDeltas = false;
         throwPromptTooLongTimes = 0;
         throwMalformedTimes = 0;
+        nextRunaway = null;
         idSeq = 0;
     }
 
@@ -341,6 +353,11 @@ public class StubAiAgentProvider implements AiAgentProvider {
         if (throwMalformedTimes > 0) {
             throwMalformedTimes--;
             throw new AgentMalformedRequestException("invalid_request : messages roles (simulé)");
+        }
+        if (nextRunaway != null) {
+            AgentRunawayException runaway = nextRunaway;
+            nextRunaway = null;
+            throw runaway;
         }
         Runnable action = duringTurn;
         if (action != null) {
