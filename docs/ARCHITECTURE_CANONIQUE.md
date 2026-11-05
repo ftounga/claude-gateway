@@ -1473,6 +1473,10 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
 - **workspaces.jarvis_thread_user_id** — **le fil Jarvis** (F-245 / SF-245-01, migration `245-workspaces-jarvis-thread`)
   : `NULL` pour tout espace ; égal à `user_id` sur l'unique fil Jarvis du compte (contrainte `UNIQUE`). Sans poste,
   cible `SANDBOX`, ni renommable ni supprimable, hors univers, routines et « Hébergé ».
+- **workspaces.jarvis_releve_host_id** — **le sujet dédié au relevé** (F-247 / SF-247-18, migration
+  `247-18-workspaces-jarvis-releve`) : `NULL` partout ; égal à `host_id` sur l'unique sujet « Jarvis — relevé » du poste
+  (contrainte `UNIQUE`), cible `RUNNER` à la racine. La mise en place du relevé y tourne, jamais dans un sujet de travail
+  du PO. Hors liste des sujets, `listByHost`, univers et activité de Jarvis ; supprimé avec le poste.
 - **atelier_messages — la ligne-lien** (F-245 / SF-245-03, migration `245-atelier-messages-link`) : `role = LINK`
   dans le fil Jarvis quand une délégation part vers un sujet ou un chantier ; `ref_workspace_id` (sujet du même
   `user_id`), `ref_chantier_number`, `ref_message_id` (la réponse d'Opus), `link_status` (`EN_COURS`, `FAIT`,
