@@ -93,15 +93,18 @@ export function compareRows(a: readonly CardField[], b: readonly CardField[]): C
     </section>
   `,
   styles: [`
-    :host { position: fixed; inset: 0; z-index: 8; display: grid; place-items: center; pointer-events: none; }
+    :host { position: fixed; inset: 0; z-index: 8; display: grid; place-items: center; pointer-events: none;
+      background: color-mix(in srgb, var(--cg-navy, #0B1020) 55%, transparent); }
     .jcd { --jc-tone: var(--cg-holo, #E07B39); pointer-events: auto; box-sizing: border-box;
       width: min(720px, calc(100vw - 16px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 16px;
       display: flex; flex-direction: column; gap: 8px; border-radius: 8px; color: var(--cg-cream, #FFF3E4);
-      background: color-mix(in srgb, var(--cg-navy-2, #141A2E) 94%, transparent);
+      background: var(--cg-navy-2, #141A2E);
       border: 1px solid color-mix(in srgb, var(--jc-tone) 55%, transparent); font-family: Inter, sans-serif; }
     .jcd__head { display: flex; align-items: center; justify-content: space-between; gap: 8px;
       font: 600 12px 'Space Grotesk', Inter, sans-serif; text-transform: uppercase; letter-spacing: .18em; }
-    .jcd__title { margin: 0; font: 600 20px/26px 'Space Grotesk', Inter, sans-serif; overflow-wrap: anywhere; }
+    .jcd__title { margin: 0; font: 600 20px/26px 'Space Grotesk', Inter, sans-serif; overflow-wrap: anywhere;
+      color: var(--cg-cream, #FFF3E4); }
+    .jcd__compare th, .jcd__fields dt, .jcd__fields dd { color: var(--cg-cream, #FFF3E4); }
     .jcd__vs { opacity: .7; font-weight: 400; }
     .jcd__status { align-self: flex-start; margin: 0; padding: 2px 8px; border-radius: 2px;
       font: 600 13px Inter, sans-serif; color: var(--cg-navy, #0B1020); background: var(--jc-tone); }

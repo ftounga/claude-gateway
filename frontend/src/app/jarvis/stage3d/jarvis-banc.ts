@@ -28,6 +28,9 @@ export const BANC_SCENES = [
   // F-237 / SF-237-14 — les pièces (galerie, héros, avant / après, planche).
   'pieces-galerie', 'pieces-proactif', 'pieces-grille', 'pieces-image', 'pieces-texte', 'pieces-avant-apres',
   'pieces-planche',
+  // F-248 / SF-248-10 — les pancartes (bloc, éventail, mur, plein écran, comparaison, poste éteint, pile à plat).
+  'pancartes-un', 'pancartes-eventail', 'pancartes-mur', 'pancartes-plein-ecran', 'pancartes-comparer',
+  'pancartes-eteint', 'pancartes-plat',
   'coeur', 'ecoute', 'reflexion', 'parole', 'oui', 'coupure', 'veille', 'reveil',
   'cerveau-aller', 'cerveau', 'cerveau-retour', 'cerveau-annule', 'univers', 'univers-cite', 'univers-montrer',
   'univers-telephone', 'entree', 'entree-courte', 'focus-chantier', 'zoom', 'dezoom',

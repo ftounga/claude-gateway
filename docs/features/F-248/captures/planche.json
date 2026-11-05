@@ -1,0 +1,27 @@
+{
+  "title": "Les pancartes — planche",
+  "heading": "Les pancartes — planche de référence (F-248)",
+  "intro": [
+    "F-248 / SF-248-03 → SF-248-10. Captures du banc (<code>/jarvis-banc?banc=pancartes-…</code>, développement seulement) : faits fictifs, aucun réseau. Téléphone 390×844 et PC 1920×1080, rendu logiciel.",
+    "<b>Point de goût soumis au PO</b> (cadrage §11, non bloquant) : la taille du bloc unique et la densité du mur."
+  ],
+  "sections": [
+    { "title": "Le jeu (SF-248-04, D5)", "items": [
+      { "label": "Une pancarte : un bloc au centre, au-dessus du cœur (héros, échelle 1,6)", "base": "pancartes-un-t2600" },
+      { "label": "De 2 à 6 : éventail dont l'arc suit le nombre ; au téléphone, pile 2D défilable", "base": "pancartes-eventail-t2600" },
+      { "label": "7 et plus : mur de 6, groupé par client, dernière case « et N autres »", "base": "pancartes-mur-t2600" }
+    ] },
+    { "title": "Interaction (SF-248-06)", "items": [
+      { "label": "Plein écran : tous les champs, « passé de … à … », source, sujet et chantier, lien", "base": "pancartes-plein-ecran-t2600" },
+      { "label": "Comparer deux pancartes : champs alignés, « diffère » écrit", "base": "pancartes-comparer-t2600" }
+    ] },
+    { "title": "Le registre (SF-248-07)", "items": [
+      { "label": "Poste éteint : la mention en pied du jeu, une fois", "base": "pancartes-eteint-t2600" }
+    ] }
+  ],
+  "sequences": [],
+  "notes": [
+    "Statut toujours écrit, ton de la palette §23 (rouge réservé aux alertes : « pipeline échoué ») ; forme et mot du type ; badge de fraîcheur posé par la passerelle.",
+    "Accès : compte, type, validité, état — jamais la valeur (corpus « aucun secret » 100 %, SF-248-09)."
+  ]
+}
