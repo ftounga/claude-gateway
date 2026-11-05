@@ -8,7 +8,7 @@
 cadrage §10 amendé)
 
 ## Statut
-`in-review` (2026-11-05)
+`done` (2026-11-05, PR #1625)
 
 ## Date de création
 2026-11-05
