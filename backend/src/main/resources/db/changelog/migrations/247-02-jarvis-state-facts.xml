@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-247 / SF-247-02 - LE REGISTRE D'ETAT (cadrage par 4.1).
+
+      jarvis_state_facts : UNE ligne par client (host_id) + objet (object_key) + attribut, mise a jour en place
+      (porte Z11) ; valeur scellee (PortraitSeal, D4), valeur precedente dans la meme ligne ; observed_at = heure
+      de la sortie d'outil. Cle technique en clair pour la recherche indexee (porte Z10). Isolation : user_id +
+      host_id sur toute lecture.
+
+      jarvis_state_settings : le reglage par client ; ligne absente = TOUT ACTIVE (D3, decision PO). Couper
+      un client purge ses faits.
+
+      Rollback : les tables se retirent.
+    -->
+
+    <changeSet id="247-02-jarvis-state-facts" author="claude-gateway">
+        <createTable tableName="jarvis_state_facts">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid"/>
+            <column name="object_kind" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="object_key" type="varchar(300)"><constraints nullable="false"/></column>
+            <column name="attribute" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="value_sealed" type="varchar(4000)"><constraints nullable="false"/></column>
+            <column name="previous_value_sealed" type="varchar(4000)"/>
+            <column name="previous_observed_at" type="timestamptz"/>
+            <column name="observed_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="source" type="varchar(8)"><constraints nullable="false"/></column>
+            <column name="source_ref" type="varchar(64)"/>
+            <column name="confidence" type="varchar(8)"><constraints nullable="false"/></column>
+            <column name="changed_at" type="timestamptz"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="jarvis_state_facts" constraintName="uq_jarvis_state_facts_key"
+                columnNames="user_id, host_id, object_key, attribute"/>
+        <createIndex tableName="jarvis_state_facts" indexName="idx_jarvis_state_facts_recent">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="observed_at" descending="true"/>
+        </createIndex>
+        <createIndex tableName="jarvis_state_facts" indexName="idx_jarvis_state_facts_kind">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="object_kind"/>
+            <column name="observed_at" descending="true"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="jarvis_state_facts"/>
+        </rollback>
+    </changeSet>
+
+    <!-- La recherche par prefixe de cle (JIRA:PROJ-, GITLAB:groupe/...) : index a motifs, PostgreSQL seulement. -->
+    <changeSet id="247-02-jarvis-state-facts-prefix" author="claude-gateway" dbms="postgresql">
+        <sql>CREATE INDEX idx_jarvis_state_facts_prefix ON jarvis_state_facts
+            (user_id, host_id, object_key varchar_pattern_ops)</sql>
+        <rollback>
+            <sql>DROP INDEX IF EXISTS idx_jarvis_state_facts_prefix</sql>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="247-02-jarvis-state-settings" author="claude-gateway">
+        <createTable tableName="jarvis_state_settings">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="enabled" type="boolean" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="disabled_families" type="varchar(300)"/>
+            <column name="extract_from_turns" type="boolean" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="notes_enabled" type="boolean" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="releve_enabled" type="boolean" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="captures_enabled" type="boolean" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="fact_retention_days" type="int" defaultValueNumeric="30"><constraints nullable="false"/></column>
+            <column name="capture_retention_days" type="int" defaultValueNumeric="90"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="jarvis_state_settings" constraintName="uq_jarvis_state_settings_host"
+                columnNames="user_id, host_id"/>
+        <rollback>
+            <dropTable tableName="jarvis_state_settings"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
