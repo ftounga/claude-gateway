@@ -41,6 +41,13 @@ public class JarvisStateRegistry {
     private static final Logger log = LoggerFactory.getLogger(JarvisStateRegistry.class);
     static final Duration HIGH_GUARD = Duration.ofMinutes(5);
     public static final int MAX_READ = 20;
+    /** SF-247-14 — les observations écartées par le filtre « aucun secret » à l'enregistrement (mesure). */
+    static final java.util.concurrent.atomic.AtomicLong SECRETS_REJECTED = new java.util.concurrent.atomic.AtomicLong();
+
+    /** Les observations écartées à l'enregistrement parce qu'elles ressemblaient à un secret. */
+    public static long secretsRejected() {
+        return SECRETS_REJECTED.get();
+    }
 
     private final JarvisStateFactRepository facts;
     private final JarvisStateSettingsRepository settings;
@@ -187,6 +194,13 @@ public class JarvisStateRegistry {
                 || !JarvisStateVocabulary.SOURCES.contains(source)
                 || !JarvisStateVocabulary.CONFIDENCES.contains(confidence) || key == null || key.isEmpty()
                 || key.length() > JarvisStateVocabulary.MAX_KEY || value.isEmpty()) {
+            return null;
+        }
+        // SF-247-14 — le filtre « aucun secret » à l'enregistrement : quelle que soit la source, une valeur ou une clé
+        // qui ressemble à un secret n'entre jamais au registre (on préfère perdre un fait que garder un secret).
+        if (fr.claudegateway.jarvis.state.extract.SecretFilter.looksSecret(value)
+                || fr.claudegateway.jarvis.state.extract.SecretFilter.looksSecret(key)) {
+            SECRETS_REJECTED.incrementAndGet();
             return null;
         }
         if (value.length() > JarvisStateVocabulary.MAX_VALUE) {

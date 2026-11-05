@@ -7,8 +7,11 @@ import java.util.regex.Pattern;
  * <b>Le filtre « aucun secret »</b> (F-247 / SF-247-05 ; F-248 D14, corpus « aucun secret » à 100 %) : toute valeur
  * qui ressemble à un secret est rejetée avant le registre, quel que soit l'extracteur. On préfère perdre un fait que
  * garder un secret.
+ *
+ * <p>SF-247-14 : appliqué aussi <b>à l'enregistrement</b>, par le registre lui-même, sur la valeur et sur la clé de
+ * toute observation, quelle que soit sa source (tour, constat rédigé, relevé, veille).</p>
  */
-final class SecretFilter {
+public final class SecretFilter {
 
     private static final List<Pattern> SECRETS = List.of(
             Pattern.compile("\\bgl(pat|dt|rt|cbt|ptt|oas)-[\\w\\-]{10,}"),
@@ -26,7 +29,7 @@ final class SecretFilter {
     private SecretFilter() {
     }
 
-    static boolean looksSecret(String value) {
+    public static boolean looksSecret(String value) {
         if (value == null) {
             return false;
         }

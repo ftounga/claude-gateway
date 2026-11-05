@@ -107,8 +107,43 @@ public class StateExtractJobHandler implements AsyncJobHandler {
         if (!s.isEnabled() || !s.isExtractFromTurns()) {
             return Outcome.drop("disabled");
         }
-        extract(userId, hostId, workspace.get().getId(), workspace.get().getName(), message.get());
+        Summary summary = extract(userId, hostId, workspace.get().getId(), workspace.get().getName(), message.get());
+        // SF-247-14 — les sorties d'état exploitables qu'aucun extracteur n'a couvertes vont aux constats rédigés.
+        if (!summary.uncovered().isEmpty() && notes != null && properties.notes() && s.isNotesEnabled()) {
+            notes.enqueue(userId, message.get().getId(), workspace.get().getId());
+        }
         return Outcome.done();
+    }
+
+    /** SF-247-14 — la remise aux constats rédigés (facultative). */
+    private StateNotesJobHandler notes;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setNotes(@org.springframework.context.annotation.Lazy StateNotesJobHandler notes) {
+        this.notes = notes;
+    }
+
+    /**
+     * SF-247-14 — les sorties d'état exploitables d'une réponse qu'aucun extracteur ne couvre, sans rien écrire. Même
+     * lecture que {@link #extract} (heures lues au journal du runner, sous {@code user_id}).
+     */
+    public List<Uncovered> uncovered(UUID userId, UUID workspaceId, AtelierMessage message) {
+        OffsetDateTime fallback = message.getCreatedAt() == null ? OffsetDateTime.now() : message.getCreatedAt();
+        Map<String, OffsetDateTime> at = auditTimes(userId, workspaceId, fallback);
+        List<Uncovered> out = new ArrayList<>();
+        for (JsonNode b : blocks(message.getTerminalJson())) {
+            if (!"bash".equals(text(b, "tool")) || b.path("error").asBoolean(false)) {
+                continue;
+            }
+            StateExtractors.Result r = extractors.extract(text(b, "command"), text(b, "output"));
+            if (r.stateCommand() && r.facts().isEmpty() && r.usable()) {
+                BashOutput o = BashOutput.parse(text(b, "command"), text(b, "output"));
+                String toolUseId = text(b, "toolUseId");
+                out.add(new Uncovered(toolUseId, o.command(), o.body(),
+                        toolUseId == null ? fallback : at.getOrDefault(toolUseId, fallback)));
+            }
+        }
+        return out;
     }
 
     /** Extrait et range les faits d'une réponse ; rend le bilan (visible des tests et des constats). */
