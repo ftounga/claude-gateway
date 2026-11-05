@@ -66,6 +66,8 @@ public class StateExtractors {
 
     /** SF-247-05 — le repli des API génériques, appliqué seulement si aucun extracteur spécialisé n'a couvert. */
     private static final StateExtractor FALLBACK = new GenericApiExtractor();
+    /** SF-247-17 — le repli des sorties JSON génériques (scripts maison, outils derrière un alias). */
+    private static final StateExtractor JSON = new GenericJsonExtractor();
 
     /** Le résultat d'une sortie : la forme de la commande, si c'est une commande d'état, et les faits lus. */
     public record Result(String form, boolean stateCommand, boolean usable, List<StateExtractor.Extracted> facts) {
@@ -74,11 +76,19 @@ public class StateExtractors {
     /** Applique les extracteurs qui reconnaissent la commande à une sortie {@code bash}. Jamais d'exception. */
     public Result extract(String blockCommand, String output) {
         BashOutput out = BashOutput.parse(blockCommand, output);
-        String command = out.command();
+        // SF-247-17 — l'usage réel : « cd … && A=~/aws-cli/aws; $A ecs … » ⇒ « aws ecs … » (une seule instruction utile,
+        // alias de binaire résolu) ; sinon la première ligne, comme avant.
+        String full = out.command();
+        String resolved = CommandShape.resolve(full);
+        String command = resolved == null || resolved.equals(full) ? firstLine(full) : resolved;
         String form = form(command);
         boolean state = form != null;
-        if (!state || !out.usable()) {
-            return new Result(form, state, out.usable(), List.of());
+        if (!out.usable()) {
+            return new Result(form, state, false, List.of());
+        }
+        if (!state) {
+            // SF-247-17 — script maison ou outil non reconnu : seule une sortie JSON générique d'état est lue (repli).
+            return new Result(null, false, true, clean(json(full, out.body())));
         }
         List<StateExtractor.Extracted> facts = new ArrayList<>();
         boolean accepted = false;
@@ -99,9 +109,30 @@ public class StateExtractors {
                 // rien
             }
         }
-        // SF-247-05 — « aucun secret » : toute valeur qui ressemble à un secret est rejetée, quel que soit l'extracteur.
-        facts.removeIf(f -> SecretFilter.looksSecret(f.value()) || SecretFilter.looksSecret(f.key()));
-        return new Result(form, true, true, List.copyOf(facts));
+        if (facts.isEmpty() && !accepted) {
+            facts.addAll(json(full, out.body()));
+        }
+        return new Result(form, true, true, clean(facts));
+    }
+
+    /** SF-247-17 — le repli JSON générique (identité + champ d'état), jamais sur une commande de fichiers. */
+    private static List<StateExtractor.Extracted> json(String command, String body) {
+        try {
+            return JSON.accepts(command) ? JSON.extract(command, body) : List.of();
+        } catch (RuntimeException e) {
+            return List.of();
+        }
+    }
+
+    /** SF-247-05 — « aucun secret » : toute valeur qui ressemble à un secret est rejetée, quel que soit l'extracteur. */
+    private static List<StateExtractor.Extracted> clean(List<StateExtractor.Extracted> facts) {
+        List<StateExtractor.Extracted> out = new ArrayList<>(facts);
+        out.removeIf(f -> SecretFilter.looksSecret(f.value()) || SecretFilter.looksSecret(f.key()));
+        return List.copyOf(out);
+    }
+
+    private static String firstLine(String command) {
+        return command == null ? null : command.strip().split("\\n", 2)[0];
     }
 
     /**

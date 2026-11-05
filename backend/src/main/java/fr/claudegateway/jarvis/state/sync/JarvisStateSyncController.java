@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import fr.claudegateway.auth.CurrentUser;
@@ -30,10 +31,11 @@ public class JarvisStateSyncController {
     }
 
     @PostMapping("/jarvis/state/clients/{hostId}/sync")
-    public ResponseEntity<?> start(@PathVariable UUID hostId) {
+    public ResponseEntity<?> start(@PathVariable UUID hostId, @RequestBody(required = false) StartRequest body) {
         UUID userId = currentUser.requireId();
         try {
-            JarvisStateSyncService.Started started = syncs.start(userId, hostId);
+            JarvisStateSyncService.Started started = syncs.start(userId, hostId,
+                    body == null ? null : body.notesEnvelopeEur());
             return ResponseEntity.status(started.created() ? HttpStatus.ACCEPTED : HttpStatus.OK).body(started.sync());
         } catch (JarvisStateSyncService.NotFound e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
@@ -50,6 +52,17 @@ public class JarvisStateSyncController {
         } catch (JarvisStateSyncService.NotFound e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         }
+    }
+
+    /** SF-247-17 — l'enveloppe ponctuelle des constats sur l'historique ({@code null} = défaut ; 0 = sans constats). */
+    public record StartRequest(java.math.BigDecimal notesEnvelopeEur) {
+    }
+
+    /** SF-247-17 — l'enveloppe par défaut d'un passage (montrée avant le lancement). */
+    @GetMapping("/jarvis/state/syncs/envelope")
+    public JarvisStateSyncService.Envelope envelope() {
+        currentUser.requireId();
+        return syncs.envelopeInfo();
     }
 
     @GetMapping("/jarvis/state/syncs")

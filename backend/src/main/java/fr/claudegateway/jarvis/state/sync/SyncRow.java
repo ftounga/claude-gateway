@@ -29,6 +29,9 @@ public class SyncRow {
     public static final String P_SKIPPED = "SKIPPED";
     public static final String P_EXPIRED = "EXPIRED";
 
+    /** SF-247-17 — la phase des constats sur l'historique (numérotée 4, jouée juste après l'historique). */
+    public static final int PHASE_NOTES = 4;
+
     /** Situations dites à l'écran. */
     public static final String NOTE_TURN = "TURN";
     public static final String NOTE_HOST_OFF = "HOST_OFF";
@@ -72,6 +75,28 @@ public class SyncRow {
     private long p3Ms;
     private OffsetDateTime p3StartedAt;
     private String p3Detail;
+
+    /** SF-247-17 — phase 4 : les constats sur l'historique (après l'historique, sans le poste). */
+    private String p4Status = P_PENDING;
+    /** Sorties à lire (estimées pendant l'historique). */
+    private int p4Total;
+    /** Sorties lues. */
+    private int p4Done;
+    /** Faits écrits au registre (créés ou modifiés). */
+    private int p4Facts;
+    /** Faits retenus par la garde de citation. */
+    private int p4Kept;
+    /** Faits rejetés par la garde de citation. */
+    private int p4Rejected;
+    private int p4Calls;
+    private int p4Errors;
+    private long p4EstChars;
+    private int p4EstCalls;
+    private long p4Ms;
+    private BigDecimal p4CostUsd = BigDecimal.ZERO;
+    /** L'enveloppe ponctuelle du passage, en euros (distincte du plafond mensuel des constats). */
+    private BigDecimal p4EnvelopeEur = BigDecimal.ZERO;
+    private String p4Detail;
 
     private OffsetDateTime startedAt;
     private OffsetDateTime updatedAt;

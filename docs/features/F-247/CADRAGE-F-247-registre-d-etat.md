@@ -36,6 +36,31 @@ Les seuils « zéro ralentissement » restent **bloquants et inchangés**. Les p
    Tout passe par la file `async_jobs` (type `STATE_SYNC`, priorité basse, par tranches), cède aux tours (gardes Z4),
    ne bloque rien, est idempotent et annulable. Les portes Z1→Z13 restent **inchangées et bloquantes**.
 
+**Amendement PO du 2026-11-05 (version 4, après la mise en production de SF-247-16) — « Constats sur l'historique »
+(SF-247-17) :**
+
+8. **Constat de prod** : la phase Historique a repassé 1 407 réponses de CAGIP → 3 faits, 454 d'EDENRED → 0 fait. Les
+   extracteurs ne reconnaissent pas l'usage réel du PO (scripts `python3` maison, `curl` à variables, alias
+   `A=~/aws-cli/aws`, `K=…/kubectl-devtools.sh`, sorties JSON/CSV de scripts). Les constats rédigés (SF-247-14) ne
+   tournaient que sur les nouveaux tours. **Décision PO (« GO »)** : les appliquer à l'historique, pour un registre
+   maximal :
+   1. une **4e phase « Constats sur l'historique »** dans « Synchroniser », juste après l'Historique, **sans le poste**,
+      dans la même file (`STATE_SYNC`, priorité basse, par tranches d'**un appel**, mêmes gardes Z4), idempotente (une
+      sortie déjà constatée est **marquée** par son empreinte et jamais relue), annulable, progression et € dans la
+      barre ;
+   2. une **enveloppe ponctuelle par passage** (défaut **20 €**, réglable, 0 = pas de constats), **distincte** du
+      plafond mensuel de 15 € des constats au fil de l'eau, affichée avant et pendant ; estimation affichée dès
+      l'Historique ; arrêt avant l'appel qui pourrait la dépasser ; arrêt au budget Jarvis dur ; coût au budget Jarvis
+      (ligne « État »), hors plafond mensuel des constats ;
+   3. seules les **sorties utiles** sont lues (ni vides, ni outils de fichiers et de texte, ni couvertes, ni doublons
+      exacts, **jamais** une sortie qui touche un identifiant), regroupées par tour ; **justesse avant coût** : la
+      consigne `notes-v1` et la garde de citation mot pour mot sont **inchangées** ;
+   4. date d'origine de la sortie, jamais d'écrasement par plus ancien, filtre des secrets à l'enregistrement ;
+   5. extracteurs gratuits améliorés (alias de binaires et préfixes muets résolus, variables littérales substituées,
+      JSON générique `identité + status/state/version/url`), gain **mesuré** sur l'échantillon réel ;
+   6. mesure : faits ajoutés, € dépensés, part rejetée par la garde.
+   Aucune consigne du cerveau rapide ni du terminal ne change. Portes Z1→Z13 **inchangées et bloquantes**.
+
 ## 1. Le besoin (PO, 2026-11-05)
 
 Le runner tourne sur le poste client du PO. Quand ce poste est **éteint, en veille ou déconnecté**, le PO parle à
@@ -516,6 +541,7 @@ Lecture : `GET /api/admin/jarvis/state/measure` (ADMIN).
 | **SF-247-14** | **Les constats rédigés en différé.** Travail `STATE_NOTES` sur les sorties non couvertes, garde de citation, plafond de 15 €/mois en €. Banc `NOTES`. | 2 j |
 | **SF-247-15** | **L'écran.** Dans les réglages de `/jarvis` (pas de nouvelle route) : un volet par client, activé d'office, avec l'interrupteur pour couper, les familles, les sources, les rétentions et « effacer tout ». La vue « Ce que je sais » (faits, conversations, source, âge, effacement d'un élément), la dépense en €. Masquée en présentation. Design system. Banc headless 1366×768 et 360×740. | 1,5 j |
 | **SF-247-16** | **Synchroniser** (amendement v3). Par client : historique des tours (0 €), captures déjà déposées (SF-247-12), relevé du jour ; file `STATE_SYNC` par tranches, Z4, annulable, idempotent ; barre orange dans « Ce que je sais ». | 2 j |
+| **SF-247-17** | **Constats sur l'historique** (amendement v4). Phase 4 de « Synchroniser » : sorties utiles non couvertes, un appel par tranche, enveloppe ponctuelle 20 € hors plafond mensuel, empreintes, garde de citation inchangée ; extracteurs gratuits pour l'usage réel. | 1,5 j |
 
 **Ordre et parallélisme :**
 

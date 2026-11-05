@@ -159,6 +159,9 @@ public class StateNotesJobHandler implements AsyncJobHandler {
         if (!observations.isEmpty()) {
             registry.record(userId, observations);
         }
+        // SF-247-17 — une sortie constatée au fil de l'eau n'est jamais relue par le rattrapage de l'historique.
+        HistoryNotesReader.mark(jdbc, java.time.Clock.systemUTC(), userId, hostId,
+                outputs.stream().map(o -> HistoryNotesSelector.fingerprint(o.body())).toList());
         return Outcome.done(usd);
     }
 

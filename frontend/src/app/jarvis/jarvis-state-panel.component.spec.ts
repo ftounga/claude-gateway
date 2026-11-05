@@ -41,6 +41,8 @@ describe('JarvisStatePanelComponent (F-247 / SF-247-15)', () => {
       notes: { monthEur: 1.2, capEur: 15 } });
     http.expectOne('/api/jarvis/state/clients').flush([client()]);
     http.expectOne('/api/jarvis/state/syncs').flush(syncs);
+    http.expectOne('/api/jarvis/state/syncs/envelope').flush({ notesEnvelopeEur: 20, notesMonthlyCapEur: 15,
+      maxEnvelopeEur: 100 });
     fixture.detectChanges();
     return fixture;
   }
@@ -232,6 +234,34 @@ describe('JarvisStatePanelComponent (F-247 / SF-247-15)', () => {
     expect(snacks).toContain('Le registre est coupé pour ce client : rallumez-le d’abord.');
     fixture.destroy();
   }));
+
+  it('constats sur l’historique (SF-247-17) : enveloppe avant, estimation puis € / enveloppe et part rejetée pendant',
+    fakeAsync(() => {
+      const fixture = render();
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.textContent).toContain('enveloppe 20,00 €');
+      expect(el.textContent).toContain('hors plafond mensuel (15,00 €)');
+      fixture.componentInstance.startSync(client());
+      http.expectOne('/api/jarvis/state/clients/h1/sync').flush(sync({ phases: [
+        phase('HISTORY', { status: 'DONE', total: 10, done: 10, facts: 3 }),
+        phase('NOTES', { status: 'RUNNING', total: 40, done: 12, facts: 9, costEur: 0.42, estimateEur: 1.6,
+          envelopeEur: 20, kept: 9, rejected: 3, calls: 4 }),
+        phase('CAPTURES'), phase('RELEVE')] }));
+      fixture.detectChanges();
+      expect(el.textContent).toContain('Constats');
+      expect(el.textContent).toContain('12/40 sorties · 9 faits · 25 % rejetés (citation) · 0,42 € / 20,00 € '
+        + '(≈ 1,60 € estimés)');
+      tick(SYNC_POLL_MS);
+      http.expectOne('/api/jarvis/state/syncs').flush([sync({ phases: [
+        phase('HISTORY', { status: 'DONE', total: 10, done: 10, facts: 3 }),
+        phase('NOTES', { status: 'DONE', total: 40, done: 30, facts: 20, costEur: 19.5, envelopeEur: 20,
+          detail: 'envelope', kept: 20, rejected: 0 }),
+        phase('CAPTURES', { status: 'WAITING' }), phase('RELEVE')] })]);
+      fixture.detectChanges();
+      expect(el.textContent).toContain('arrêté : enveloppe atteinte');
+      fixture.destroy();
+      discardPeriodicTasks();
+    }));
 
   it('quitter le volet arrête la relecture (la synchronisation continue côté passerelle)', fakeAsync(() => {
     const fixture = render([sync()]);

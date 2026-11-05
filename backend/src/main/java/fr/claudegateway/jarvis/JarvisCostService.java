@@ -93,7 +93,9 @@ public class JarvisCostService {
             mail = mail.add(nz(d.getMailCostUsd()));
             agenda = agenda.add(nz(d.getAgendaCostUsd()));
             // F-247 (D16) : captures lues et constats rédigés, au budget Jarvis.
-            state = state.add(nz(d.getCaptureCostUsd())).add(nz(d.getNotesCostUsd()));
+            // SF-247-17 : et les constats sur l'historique (enveloppe ponctuelle, hors plafond des constats).
+            state = state.add(nz(d.getCaptureCostUsd())).add(nz(d.getNotesCostUsd()))
+                    .add(nz(d.getNotesCatchupCostUsd()));
             fast = fast.add(nz(d.getFastBrainCostUsd()));
             opus = opus.add(nz(d.getOpusCostUsd()));
             voice = voice.add(nz(d.getSpeechCostUsd()));

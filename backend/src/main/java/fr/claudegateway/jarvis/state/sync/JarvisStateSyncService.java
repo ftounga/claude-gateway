@@ -21,6 +21,7 @@ import fr.claudegateway.jarvis.JarvisCostService;
 import fr.claudegateway.jarvis.state.JarvisStateProperties;
 import fr.claudegateway.jarvis.state.JarvisStateRegistry;
 import fr.claudegateway.jarvis.state.capture.CaptureReadJobHandler;
+import fr.claudegateway.jarvis.state.extract.HistoryNotesReader;
 import fr.claudegateway.runner.host.RunnerHostRepository;
 import fr.claudegateway.shared.jobs.AsyncJobQueue;
 
@@ -46,11 +47,25 @@ public class JarvisStateSyncService {
     private final TransactionTemplate tx;
     private final Clock clock;
     private final int windowDays;
+    /** SF-247-17 — l'enveloppe ponctuelle des constats sur l'historique, par passage (défaut 20 €). */
+    private final BigDecimal notesEnvelopeEur;
+    private final BigDecimal notesMonthlyCapEur;
+    static final int MAX_ENVELOPE_EUR = 100;
+    private HistoryNotesReader notes;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setNotes(HistoryNotesReader notes) {
+        this.notes = notes;
+    }
 
     public JarvisStateSyncService(JarvisStateSyncStore store, StateSyncJobHandler handler,
             JarvisStateRegistry registry, JarvisStateProperties properties, RunnerHostRepository hosts,
             AsyncJobQueue queue, JarvisCostService costs, PlatformTransactionManager transactionManager, Clock clock,
-            @Value("${app.jarvis.state.sync-window-days:90}") int windowDays) {
+            @Value("${app.jarvis.state.sync-window-days:90}") int windowDays,
+            @Value("${app.jarvis.state.sync-notes-envelope-eur:20}") BigDecimal notesEnvelopeEur,
+            @Value("${app.jarvis.state.notes-cap-eur:15}") BigDecimal notesMonthlyCapEur) {
+        this.notesEnvelopeEur = notesEnvelopeEur == null ? new BigDecimal("20") : notesEnvelopeEur;
+        this.notesMonthlyCapEur = notesMonthlyCapEur == null ? new BigDecimal("15") : notesMonthlyCapEur;
         this.store = store;
         this.handler = handler;
         this.registry = registry;
@@ -84,9 +99,20 @@ public class JarvisStateSyncService {
         }
     }
 
-    /** Une phase, telle que l'écran la montre. */
+    /**
+     * Une phase, telle que l'écran la montre. SF-247-17 (phase {@code NOTES}) : {@code estimateEur} (estimation au
+     * lancement), {@code envelopeEur} (enveloppe ponctuelle du passage), {@code kept} / {@code rejected} (faits retenus
+     * et rejetés par la garde de citation), {@code calls} ; 0 pour les autres phases.
+     */
     public record PhaseView(String key, String status, int total, int done, int facts, long durationMs,
-            BigDecimal costEur, String detail, int read, int missing) {
+            BigDecimal costEur, String detail, int read, int missing, BigDecimal estimateEur, BigDecimal envelopeEur,
+            int kept, int rejected, int calls) {
+
+        PhaseView(String key, String status, int total, int done, int facts, long durationMs, BigDecimal costEur,
+                String detail, int read, int missing) {
+            this(key, status, total, done, facts, durationMs, costEur, detail, read, missing, BigDecimal.ZERO,
+                    BigDecimal.ZERO, 0, 0, 0);
+        }
     }
 
     /** Un passage, tel que l'écran le montre. */
@@ -98,8 +124,33 @@ public class JarvisStateSyncService {
     public record Started(SyncView sync, boolean created) {
     }
 
-    /** Lance (ou rend) le passage d'un client. */
+    /** Lance (ou rend) le passage d'un client, enveloppe des constats sur l'historique par défaut. */
     public Started start(UUID userId, UUID hostId) {
+        return start(userId, hostId, null);
+    }
+
+    /**
+     * SF-247-17 — l'enveloppe ponctuelle des constats sur l'historique pour un passage : celle demandée (bornée à
+     * [0 ; {@value #MAX_ENVELOPE_EUR} €], 0 = pas de constats), sinon le défaut configuré.
+     */
+    BigDecimal envelope(BigDecimal requested) {
+        BigDecimal e = requested == null ? notesEnvelopeEur : requested;
+        if (e.signum() < 0) {
+            e = BigDecimal.ZERO;
+        }
+        return e.min(BigDecimal.valueOf(MAX_ENVELOPE_EUR)).setScale(2, java.math.RoundingMode.HALF_UP);
+    }
+
+    /** L'enveloppe par défaut d'un passage et le plafond mensuel des constats au fil de l'eau (écran, avant lancement). */
+    public record Envelope(BigDecimal notesEnvelopeEur, BigDecimal notesMonthlyCapEur, int maxEnvelopeEur) {
+    }
+
+    public Envelope envelopeInfo() {
+        return new Envelope(envelope(null), notesMonthlyCapEur, MAX_ENVELOPE_EUR);
+    }
+
+    /** Lance (ou rend) le passage d'un client ; {@code envelopeEur} : l'enveloppe des constats (null = défaut). */
+    public Started start(UUID userId, UUID hostId, BigDecimal envelopeEur) {
         requireOwned(userId, hostId);
         if (!handler.enabled() || !properties.enabled()) {
             throw new Refused("sync_off", "La synchronisation est coupée pour l'instant.");
@@ -124,6 +175,8 @@ public class JarvisStateSyncService {
         s.setP1Status(SyncRow.P_PENDING);
         s.setP2Status(SyncRow.P_PENDING);
         s.setP3Status(SyncRow.P_PENDING);
+        s.setP4Status(SyncRow.P_PENDING);
+        s.setP4EnvelopeEur(envelope(envelopeEur));
         s.setStartedAt(now);
         s.setUpdatedAt(now);
         try {
@@ -179,11 +232,28 @@ public class JarvisStateSyncService {
         List<PhaseView> phases = List.of(
                 new PhaseView("HISTORY", s.getP1Status(), s.getP1Total(), s.getP1Done(), s.getP1Facts(), s.getP1Ms(),
                         BigDecimal.ZERO, s.getP1Detail(), 0, 0),
+                // SF-247-17 — les constats sur l'historique, juste après l'historique.
+                new PhaseView("NOTES", s.getP4Status(), Math.max(s.getP4Total(), s.getP4Done()), s.getP4Done(),
+                        s.getP4Facts(), s.getP4Ms(), costs.toEur(s.getP4CostUsd()), s.getP4Detail(), 0, 0,
+                        estimateEur(s), s.getP4EnvelopeEur(), s.getP4Kept(), s.getP4Rejected(), s.getP4Calls()),
                 new PhaseView("CAPTURES", s.getP2Status(), s.getP2Total(), s.getP2Done(), s.getP2Facts(),
                         s.getP2Ms(), costs.toEur(s.getP2CostUsd()), s.getP2Detail(), s.getP2Read(), s.getP2Missing()),
                 new PhaseView("RELEVE", s.getP3Status(), s.getP3Total(), s.getP3Done(), s.getP3Facts(), s.getP3Ms(),
                         BigDecimal.ZERO, s.getP3Detail(), 0, 0));
         return new SyncView(s.getId(), s.getHostId(), s.getStatus(), s.getNote(), s.getWindowDays(),
                 s.getStartedAt(), s.getFinishedAt(), phases);
+    }
+
+    /** L'estimation des constats sur l'historique, en euros (bornée à l'enveloppe : on ne la dépasse jamais). */
+    private BigDecimal estimateEur(SyncRow s) {
+        if (notes == null || s.getP4EstChars() <= 0) {
+            return BigDecimal.ZERO;
+        }
+        try {
+            BigDecimal eur = notes.toEur(notes.estimateUsd(s.getP4EstChars(), Math.max(1, s.getP4EstCalls())));
+            return eur.setScale(2, java.math.RoundingMode.HALF_UP);
+        } catch (RuntimeException e) {
+            return BigDecimal.ZERO;
+        }
     }
 }
