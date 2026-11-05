@@ -178,6 +178,11 @@ public class JarvisUsageDay {
     @Column(name = "notes_cost_usd", nullable = false, precision = 12, scale = 6)
     private BigDecimal notesCostUsd = BigDecimal.ZERO;
 
+    /** F-247 / SF-247-13 — les lectures de l'outil {@code conversations} (« qu'a dit X »). Compteur seul. */
+    @Builder.Default
+    @Column(name = "conversation_reads", nullable = false)
+    private int conversationReads = 0;
+
     /** F-242 / SF-242-02 — les relèves du courrier, les relèves sans rien de neuf (0 FETCH, 0 IA), les courriers
      * mis en cache ; SF-242-03 — les corrections du tri au toucher. Compteurs seuls, aucun contenu. */
     @Builder.Default

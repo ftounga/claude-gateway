@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-247 / SF-247-13 - RETROUVER LES CONVERSATIONS : les lignes de captures vectorisees (meme fournisseur et meme
+      dimension que F-162, migration 135), cherchees par recall (union) et par l'outil conversations de Jarvis.
+
+      POSTGRESQL UNIQUEMENT (comme 135) : H2 ne recoit rien de `vector` (MARK_RAN). La colonne n'est pas mappee
+      en JPA : ecriture CAST(? AS vector), recherche <=> cosine, toujours sous user_id + host_id.
+      Index (user_id, workspace_id, said_at) pour l'union de recall au sujet.
+
+      Rollback : l'index et la colonne se retirent.
+    -->
+
+    <changeSet id="247-13-jarvis-capture-lines-workspace" author="claude-gateway">
+        <createIndex tableName="jarvis_capture_lines" indexName="idx_jarvis_capture_lines_workspace">
+            <column name="user_id"/>
+            <column name="workspace_id"/>
+            <column name="said_at" descending="true"/>
+        </createIndex>
+        <rollback>
+            <dropIndex tableName="jarvis_capture_lines" indexName="idx_jarvis_capture_lines_workspace"/>
+        </rollback>
+    </changeSet>
+
+    <!-- La mesure des « qu'a dit X » : lectures de l'outil conversations, par jour (compteur seul). -->
+    <changeSet id="247-13-jarvis-usage-conversation-reads" author="claude-gateway">
+        <addColumn tableName="jarvis_usage_days">
+            <column name="conversation_reads" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="jarvis_usage_days" columnName="conversation_reads"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="247-13-jarvis-capture-lines-embedding" author="claude-gateway" dbms="postgresql">
+        <sql>CREATE EXTENSION IF NOT EXISTS vector;
+             ALTER TABLE jarvis_capture_lines ADD COLUMN IF NOT EXISTS embedding vector(1536);</sql>
+        <rollback>
+            <sql>ALTER TABLE jarvis_capture_lines DROP COLUMN IF EXISTS embedding;</sql>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="247-13-jarvis-capture-lines-embedding-index" author="claude-gateway" dbms="postgresql">
+        <sql>CREATE INDEX IF NOT EXISTS jarvis_capture_lines_embedding_idx
+             ON jarvis_capture_lines USING hnsw (embedding vector_cosine_ops);</sql>
+        <rollback>
+            <sql>DROP INDEX IF EXISTS jarvis_capture_lines_embedding_idx;</sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
