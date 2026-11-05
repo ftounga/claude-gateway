@@ -51,4 +51,6 @@ export interface CardsEvent {
   responseId: string;
   targeted: boolean;
   cards: JarvisCard[];
+  /** F-248 / SF-248-07 — « Poste CAGIP éteint depuis 18 h 05 », une fois en pied du jeu (posé par la passerelle). */
+  offline?: string | null;
 }

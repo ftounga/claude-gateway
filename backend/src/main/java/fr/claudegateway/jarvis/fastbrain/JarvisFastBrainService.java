@@ -2134,6 +2134,23 @@ public class JarvisFastBrainService {
                 return "";
             }
             STATE_LINES.set(s.lines());
+            // F-248 / SF-248-07 (Z12) — les pancartes du bloc, des faits préparés dans le même cache (aucune requête) ;
+            // lecture d'office : montrées si citées. Poste éteint : la mention du pied du jeu.
+            if (fr.claudegateway.jarvis.cards.JarvisCardCatalog.active()) {
+                List<fr.claudegateway.jarvis.state.JarvisStateBlock.Client> clients =
+                        stateBlock.preparedClients(request.userId());
+                java.util.Map<UUID, String> names = new java.util.HashMap<>();
+                clients.forEach(c -> names.put(c.hostId(), c.name()));
+                fr.claudegateway.jarvis.cards.JarvisCardCatalog.collectAll(
+                        () -> fr.claudegateway.jarvis.cards.JarvisStateCards.fromFacts(
+                                stateBlock.factsFor(request.userId(), s.lines()), names));
+                java.util.Set<UUID> shownHosts = new java.util.HashSet<>();
+                s.lines().forEach(l -> shownHosts.add(l.hostId()));
+                clients.stream().filter(c -> !c.connected() && shownHosts.contains(c.hostId())).findFirst()
+                        .ifPresent(c -> fr.claudegateway.jarvis.cards.JarvisCardCatalog.note(
+                                fr.claudegateway.jarvis.cards.JarvisStateCards.offlineNote(c.name(),
+                                        c.disconnectedAt())));
+            }
             return "\n\n" + s.text();
         } catch (RuntimeException e) {
             log.debug("Cerveau rapide : bloc d'état omis ({})", e.getClass().getSimpleName());

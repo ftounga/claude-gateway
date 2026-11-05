@@ -107,6 +107,10 @@ const SWIPE_PX = 60;
                 <button type="button" class="pg__more-cell" (click)="nextPage()">et {{ wall().more }} autres</button>
               }
             </div>
+            @if (store.deckNote(); as note) {
+              <!-- F-248 / SF-248-07 — poste éteint : dit une fois, en pied du jeu, jamais par pancarte. -->
+              <p class="pg__deck-note">{{ note }}</p>
+            }
           }
         } @else if (layout() !== 'phone' || nav().selected == null) {
           <div class="pg__cards" [class.pg__cards--fan]="layout() === 'fan'">
@@ -236,6 +240,8 @@ const SWIPE_PX = 60;
       border: 1px dashed color-mix(in srgb, var(--cg-holo, #E07B39) 55%, transparent);
       font: 600 14px 'Space Grotesk', Inter, sans-serif; }
     .pg__panel--card { max-width: 560px; }
+    .pg__deck-note { margin: 0 auto 12px; pointer-events: auto; font: 500 12px 'JetBrains Mono', monospace;
+      color: var(--cg-holo-text, #F0954F); opacity: .85; text-align: center; }
     .pg--fan .pg__deck { pointer-events: auto; }
     @media (prefers-reduced-motion: reduce) { .pg__slot--in { animation: none; } .pg__slot { transition: none; } }
   `],

@@ -154,6 +154,18 @@ describe('F-248 / SF-248-04 — les pancartes dans la galerie (mode cards)', () 
     store.presentation.set(false);
   });
 
+  it('F-248 / SF-248-07 — « Poste … éteint depuis … » une fois en pied du jeu ; effacé avec le jeu', () => {
+    const fixture = TestBed.createComponent(JarvisPieceGalleryComponent);
+    fixture.componentRef.setInput('threeD', true);
+    store.showCards('r1', cards(2), { note: 'Poste CAGIP éteint depuis 18 h 05' });
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelectorAll('.pg__deck-note').length).toBe(1);
+    expect(el.querySelector('.pg__deck-note')?.textContent).toContain('éteint depuis 18 h 05');
+    store.closeCards();
+    expect(store.deckNote()).toBeNull();
+  });
+
   it('la galerie dessine une pancarte par élément, et « et N autres » au mur', () => {
     const fixture = TestBed.createComponent(JarvisPieceGalleryComponent);
     fixture.componentRef.setInput('threeD', true);

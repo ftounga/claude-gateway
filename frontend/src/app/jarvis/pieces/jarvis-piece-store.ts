@@ -65,6 +65,8 @@ export class JarvisPieceStore {
 
   /** F-248 / SF-248-04 — les pancartes du jeu affiché (mode `cards`), par identifiant. */
   readonly cards = signal<ReadonlyMap<string, JarvisCard>>(new Map());
+  /** F-248 / SF-248-07 — la mention du pied du jeu (« Poste … éteint depuis … »), une fois. */
+  readonly deckNote = signal<string | null>(null);
   /** F-248 / SF-248-04 — la page du mur (≥ 7 pancartes). */
   readonly deckPage = signal(0);
   /** F-248 / SF-248-04 — pancartes en attente derrière une galerie demandée (la pastille « 3 pancartes »). */
@@ -290,8 +292,8 @@ export class JarvisPieceStore {
    * (pancarte citée qui s'ajoute) sans recompter ; un nouveau le remplace. Une galerie **demandée** ouverte n'est
    * jamais remplacée : les pancartes attendent derrière la pastille (`pendingCards`). Rien en présentation.
    */
-  showCards(responseId: string, cards: readonly JarvisCard[], opts: { flat?: boolean; now?: number } = {})
-    : PieceStoreResult {
+  showCards(responseId: string, cards: readonly JarvisCard[],
+    opts: { flat?: boolean; now?: number; note?: string | null } = {}): PieceStoreResult {
     const now = opts.now ?? Date.now();
     if (this.presentation()) {
       return { ok: false, reason: 'PRESENTATION' };
@@ -314,6 +316,7 @@ export class JarvisPieceStore {
     }
     const selectedId = !fresh && nav.selected != null ? nav.items[nav.selected - 1]?.id ?? null : null;
     this.cards.set(map);
+    this.deckNote.set(opts.note ?? null);
     this.pieces.set(new Map(ordered.map((c) => [c.id, cardPiece(c)])));
     this.mode.set('cards');
     if (fresh) {
@@ -388,6 +391,7 @@ export class JarvisPieceStore {
     this.nav.set(initialNav());
     this.pieces.set(new Map());
     this.cards.set(new Map());
+    this.deckNote.set(null);
     this.mode.set('fan');
     this.deckId = null;
   }
