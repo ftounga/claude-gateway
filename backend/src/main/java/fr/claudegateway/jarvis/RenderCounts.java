@@ -35,10 +35,14 @@ public final class RenderCounts {
             "p_img", "p_vid", "p_aud", "p_pdf", "p_pag", "p_sld", "p_arc", "p_txt", "p_fil",
             "n_loc", "n_ai", "n_tch", "v_play", "v_sec", "pdf_pg",
             "p_story", "p_cmp", "p_sheet", "p_pin", "p_note", "pf_off", "pf_ok", "pf_gen", "p_fclose",
-            "lat_0_1", "lat_1_2", "lat_2_3", "lat_3_5", "lat_5p");
+            "lat_0_1", "lat_1_2", "lat_2_3", "lat_3_5", "lat_5p",
+            // F-248 / SF-248-01 (cadrage §7) — les pancartes : jeux montrés et leur taille, ciblés / cités, plein écran,
+            // lien, grand écran, comparaison, « et N autres », ordres voix / toucher, fermées < 2 s, « ancien », 2D
+            "c_set", "c_n1", "c_n2_6", "c_n7p", "c_tgt", "c_cit", "c_open", "c_link", "c_big", "c_cmp", "c_more",
+            "c_voice", "c_touch", "c_close2s", "c_old", "c_2d");
 
-    /** F-237 / SF-237-14 — la colonne {@code jarvis_usage_days.render_counts} (varchar 1000). */
-    public static final int MAX_LENGTH = 1_000;
+    /** La colonne {@code jarvis_usage_days.render_counts} (varchar 2000 depuis F-248 / SF-248-01). */
+    public static final int MAX_LENGTH = 2_000;
 
     /** Au plus autant par clé et par déclaration (une session : 24 h de secondes au plus). */
     public static final int MAX_PER_REPORT = 86_400;

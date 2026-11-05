@@ -139,7 +139,7 @@ public class JarvisUsageDay {
     private int render2d = 0;
 
     @Builder.Default
-    @Column(name = "render_counts", nullable = false, length = 1000)
+    @Column(name = "render_counts", nullable = false, length = 2000)
     private String renderCounts = "";
 
     /** F-244 / SF-244-01 (D3) — la retranscription d'énoncés, séparée de l'écoute en flux. */

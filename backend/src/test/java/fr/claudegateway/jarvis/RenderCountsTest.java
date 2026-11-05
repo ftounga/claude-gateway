@@ -64,6 +64,17 @@ class RenderCountsTest {
     }
 
     @Test
+    @DisplayName("F-248 / SF-248-01 — les 16 compteurs des pancartes sont au vocabulaire ; la colonne passe à 2 000")
+    void cardKeys() {
+        String[] keys = {"c_set", "c_n1", "c_n2_6", "c_n7p", "c_tgt", "c_cit", "c_open", "c_link", "c_big", "c_cmp",
+                "c_more", "c_voice", "c_touch", "c_close2s", "c_old", "c_2d"};
+        assertThat(RenderCounts.KEYS).contains(keys);
+        assertThat(RenderCounts.validate(Map.of("c_set", 3, "c_open", 1))).hasSize(2);
+        assertThat(RenderCounts.parse("c_set=2;c_inconnu=4")).containsExactly(Map.entry("c_set", 2));
+        assertThat(RenderCounts.MAX_LENGTH).isEqualTo(2_000);
+    }
+
+    @Test
     @DisplayName("F-237 / SF-237-14 — jamais plus de 1 000 caractères : les plus petits compteurs sont laissés")
     void neverLongerThanTheColumn() {
         Map<String, Integer> all = new HashMap<>();
