@@ -45,6 +45,8 @@ public final class JarvisCompanionScope {
             new Route("POST", "/jarvis/converse/warm"),
             // F-248 / SF-248-06 — le plein écran d'une pancarte (lecture, une ligne sous le compte).
             new Route("GET", "/jarvis/cards/*"),
+            // F-248 / SF-248-08 — les pancartes des clés citées par Opus (lecture par index, après le premier mot).
+            new Route("GET", "/jarvis/cards"),
             // La scène, l'activité, la mesure.
             new Route("GET", "/jarvis/universe"),
             new Route("GET", "/jarvis/activity"),

@@ -41,4 +41,29 @@ export class JarvisCardClient {
       return null;
     }
   }
+
+  /**
+   * F-248 / SF-248-08 — les pancartes des clés citées par Opus (`GET /api/jarvis/cards?keys=`), faits déjà au registre
+   * du compte ; `[]` si rien, éteint ou injoignable.
+   */
+  async byKeys(keys: readonly string[], subjectId: string | null): Promise<JarvisCard[]> {
+    if (!keys.length) {
+      return [];
+    }
+    try {
+      const token = this.injector.get(AuthService).token();
+      const query = `keys=${keys.map((k) => encodeURIComponent(k)).join(',')}`
+        + (subjectId ? `&subjectId=${encodeURIComponent(subjectId)}` : '');
+      const response = await fetch(`/api/jarvis/cards?${query}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) {
+        return [];
+      }
+      const cards = await response.json() as JarvisCard[];
+      return Array.isArray(cards) ? cards : [];
+    } catch {
+      return [];
+    }
+  }
 }
