@@ -42,12 +42,21 @@ public class JarvisStateTurnMeter {
         this.status = status;
     }
 
+    /** SF-247-10 — le bloc préparé, pour la durée de sa lecture dans la réplique ({@code state_block_ms}). */
+    private JarvisStateBlock block;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setBlock(JarvisStateBlock block) {
+        this.block = block;
+    }
+
     /** La mesure d'état d'une réplique ; jamais d'exception. */
     public Measure measure(UUID userId, Workspace workspace, String said, JarvisFastBrainService.Outcome outcome) {
         try {
             Boolean offline = hostOffline(userId, workspace);
             boolean question = JarvisStateQuestion.isStateQuestion(said);
-            return new Measure(offline, question, answer(question, Boolean.TRUE.equals(offline), outcome), null);
+            Integer blockMs = block == null ? null : block.takeReadMs(userId);
+            return new Measure(offline, question, answer(question, Boolean.TRUE.equals(offline), outcome), blockMs);
         } catch (RuntimeException e) {
             return NONE;
         }

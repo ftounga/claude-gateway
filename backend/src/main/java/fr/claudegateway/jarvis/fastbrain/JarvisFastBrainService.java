@@ -962,6 +962,12 @@ public class JarvisFastBrainService {
                 out, JarvisFastGuards.isSmallTalk(request.text()));
         gate.forbid(portrait == null ? java.util.Set.of()
                 : fr.claudegateway.jarvis.portrait.JarvisPortraitNote.forbiddenTerms(portrait));
+        // F-247 / SF-247-10 (D8) — les faits du bloc lu : une phrase qui en cite un vieux de plus d'1 h est datée.
+        List<fr.claudegateway.jarvis.state.JarvisStateBlock.Line> stateLines = STATE_LINES.get();
+        STATE_LINES.remove();
+        if (stateLines != null && !bench) {
+            gate.stale(stateLines, java.time.OffsetDateTime.now(clock));
+        }
         // Au banc, la date qui compte vient du contexte figé du scénario (jamais de l'horloge réelle).
         String notes = portraitNotes(request, bench ? null : portrait);
         // F-241 / SF-241-04 (D11, D12 b/c) — la trace des allusions : volatile, dans le message ; et les filets.
@@ -1004,6 +1010,8 @@ public class JarvisFastBrainService {
         long firstMs = -1L;
         boolean read = false;
         boolean agendaRead = false;
+        boolean stateRead = false;
+        boolean conversationsRead = false;
         int appuiLeft = JarvisShowCommand.MAX_APPUI;
         List<JarvisShowCommand> shown = new ArrayList<>();
         for (int n = 0; n < MAX_CALLS; n++) {
@@ -1073,6 +1081,26 @@ public class JarvisFastBrainService {
                             out.show(view);
                             shown.add(view);
                         }
+                    }
+                    results.add(new fr.claudegateway.agent.AgentContentBlock.ToolResult(tc.id(), text, false));
+                } else if (JarvisFastBrainPrompt.ETAT_TOOL.equals(tc.name())) {
+                    // F-247 / SF-247-10 — lecture seule du registre d'état, une fois par réponse, ancrée.
+                    String text = ALREADY_READ;
+                    if (!stateRead) {
+                        stateRead = true;
+                        freshRead = true;
+                        text = readState(request, tc.input(), gate);
+                        gate.ground(text);
+                    }
+                    results.add(new fr.claudegateway.agent.AgentContentBlock.ToolResult(tc.id(), text, false));
+                } else if (JarvisFastBrainPrompt.CONVERSATIONS_TOOL.equals(tc.name())) {
+                    // F-247 / SF-247-13 — lecture seule des conversations capturées, une fois par réponse, ancrée.
+                    String text = ALREADY_READ;
+                    if (!conversationsRead) {
+                        conversationsRead = true;
+                        freshRead = true;
+                        text = readConversations(request, tc.input());
+                        gate.ground(text);
                     }
                     results.add(new fr.claudegateway.agent.AgentContentBlock.ToolResult(tc.id(), text, false));
                 } else {
@@ -1459,6 +1487,18 @@ public class JarvisFastBrainService {
 
         void forbid(java.util.Set<String> terms) {
             this.forbidden = terms == null ? java.util.Set.of() : terms;
+        }
+
+        // ---- F-247 / SF-247-10 (D8) : la garde de fraîcheur ----
+        private final List<fr.claudegateway.jarvis.state.JarvisStateBlock.Line> stale = new ArrayList<>();
+        private java.time.OffsetDateTime staleNow;
+
+        /** Les faits lus (bloc ou outil {@code etat}) : une phrase qui en cite un de plus d'1 h est datée. */
+        void stale(List<fr.claudegateway.jarvis.state.JarvisStateBlock.Line> lines, java.time.OffsetDateTime now) {
+            if (lines != null) {
+                stale.addAll(lines);
+            }
+            staleNow = now;
         }
 
         // ---- F-241 / SF-241-04 : les allusions (D11, D12 b/c) et les lignes-marques ----
@@ -1885,6 +1925,9 @@ public class JarvisFastBrainService {
                 abort(REASON_GROUNDING); // une garde en panne ne laisse jamais passer un fait
                 return;
             }
+            if (!stale.isEmpty() && staleNow != null) {
+                sentence = fr.claudegateway.jarvis.state.JarvisStateBlock.withFreshness(sentence, stale, staleNow);
+            }
             String kept = oneMonsieur(sentence);
             saidNow.add(kept);
             if (spoken.length() > 0) {
@@ -2053,6 +2096,80 @@ public class JarvisFastBrainService {
         }
     }
 
+    /** F-247 / SF-247-10 — le bloc « État connu » préparé à l'avance et l'outil {@code etat}. Facultatifs. */
+    private fr.claudegateway.jarvis.state.JarvisStateBlock stateBlock;
+    private fr.claudegateway.jarvis.state.JarvisStateTool stateTool;
+    /** F-247 / SF-247-13 — l'outil {@code conversations} (déclaré en v19 ; sans lui, « aucune conversation lue »). */
+    private fr.claudegateway.jarvis.state.JarvisConversationLookup conversationLookup;
+    /** F-247 / SF-247-10 (D8) — les lignes du bloc lues pour la réplique en cours (fil appelant). */
+    private static final ThreadLocal<List<fr.claudegateway.jarvis.state.JarvisStateBlock.Line>> STATE_LINES =
+            new ThreadLocal<>();
+
+    @Autowired(required = false)
+    public void setState(fr.claudegateway.jarvis.state.JarvisStateBlock stateBlock,
+            fr.claudegateway.jarvis.state.JarvisStateTool stateTool) {
+        this.stateBlock = stateBlock;
+        this.stateTool = stateTool;
+    }
+
+    @Autowired(required = false)
+    public void setConversationLookup(fr.claudegateway.jarvis.state.JarvisConversationLookup conversationLookup) {
+        this.conversationLookup = conversationLookup;
+    }
+
+    /**
+     * F-247 / SF-247-10 (Z9, Z12, D11) — le bloc « État connu », <b>lu tout prêt</b> (aucune requête au registre dans la
+     * réplique), joint au message ; vide en présentation, sans registre ou sans cache (pod neuf). Jamais d'exception.
+     */
+    String stateBlock(Request request) {
+        STATE_LINES.remove();
+        if (stateBlock == null || request.userId() == null || request.presentation()) {
+            return "";
+        }
+        try {
+            Workspace w = request.workspace();
+            fr.claudegateway.jarvis.state.JarvisStateBlock.Selected s = stateBlock.ready(request.userId(),
+                    w == null ? null : w.getHostId(), w == null ? null : w.getId());
+            if (s.text().isBlank()) {
+                return "";
+            }
+            STATE_LINES.set(s.lines());
+            return "\n\n" + s.text();
+        } catch (RuntimeException e) {
+            log.debug("Cerveau rapide : bloc d'état omis ({})", e.getClass().getSimpleName());
+            return "";
+        }
+    }
+
+    /** F-247 / SF-247-10 — l'outil {@code etat} : lecture par index sous {@code user_id}, ancrée ; jamais d'exception. */
+    String readState(Request request, JsonNode input, SentenceGate gate) {
+        if (stateTool == null) {
+            return fr.claudegateway.jarvis.state.JarvisStateTool.OPEN + "\nRien de relevé.\n"
+                    + fr.claudegateway.jarvis.state.JarvisStateTool.CLOSE;
+        }
+        Workspace w = request.workspace();
+        fr.claudegateway.jarvis.state.JarvisStateTool.Read r = stateTool.read(request.userId(),
+                w == null ? null : w.getHostId(), input, request.presentation());
+        gate.stale(r.lines(), java.time.OffsetDateTime.now(clock));
+        return r.text();
+    }
+
+    /** F-247 / SF-247-13 — l'outil {@code conversations} ; sans lecteur branché, « aucune conversation lue ». */
+    String readConversations(Request request, JsonNode input) {
+        if (request.presentation()) {
+            return fr.claudegateway.jarvis.state.JarvisConversationLookup.PRESENTATION;
+        }
+        if (conversationLookup == null) {
+            return fr.claudegateway.jarvis.state.JarvisConversationLookup.NONE;
+        }
+        try {
+            Workspace w = request.workspace();
+            return conversationLookup.read(request.userId(), w == null ? null : w.getHostId(), input, false);
+        } catch (RuntimeException e) {
+            return fr.claudegateway.jarvis.state.JarvisConversationLookup.NONE;
+        }
+    }
+
     /** F-242 / SF-242-04 — le courrier trié (bloc volatil du message, balisé non fiable). Facultatif. */
     private fr.claudegateway.jarvis.mail.JarvisMailBriefService mail;
 
@@ -2088,7 +2205,7 @@ public class JarvisFastBrainService {
         if (contextBuilder != null) {
             // F-239 / SF-239-11 — sans l'univers : il est donné en référence en tête de conversation.
             return contextBuilder.build(request.userId(), request.workspace(), request.chantier(),
-                    request.heardBeforeCut(), false) + mailBlock(request);
+                    request.heardBeforeCut(), false) + mailBlock(request) + stateBlock(request);
         }
         StringBuilder context = new StringBuilder();
         context.append("Maintenant : ").append(ZonedDateTime.now(clock).withZoneSameInstant(ZONE).format(STAMP))
@@ -2101,7 +2218,7 @@ public class JarvisFastBrainService {
         if (request.chantier() != null) {
             context.append("Chantier courant : ").append(request.chantier()).append('\n');
         }
-        return context + mailBlock(request);
+        return context + mailBlock(request) + stateBlock(request);
     }
 
     /** La délégation décidée par le modèle ; sujet cible vérifié sous {@code user_id}, sinon le sujet courant. */
