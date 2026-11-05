@@ -57,6 +57,8 @@
     "deleguer": { "scene": "GENERIQUE", "cible": "S13", "libelle": "Demande confiée au cerveau principal" },
     "pieces": { "scene": "GENERIQUE", "cible": "GENERIQUE", "libelle": "Lecture des pièces" },
     "agenda": { "scene": "GENERIQUE", "cible": "GENERIQUE", "libelle": "Lecture de l'agenda" },
+    "etat": { "scene": "GENERIQUE", "cible": "GENERIQUE", "libelle": "Lecture de l'état connu des clients" },
+    "conversations": { "scene": "GENERIQUE", "cible": "GENERIQUE", "libelle": "Lecture des conversations capturées" },
     "agenda_poser": { "scene": "GENERIQUE", "cible": "GENERIQUE", "libelle": "Rendez-vous préparé pour l'agenda" },
     "agenda_repondre": { "scene": "GENERIQUE", "cible": "GENERIQUE", "libelle": "Réponse à une invitation préparée" },
     "afficher": { "scene": "GENERIQUE", "cible": "GENERIQUE", "libelle": "Pièce montrée à l'écran" },

@@ -110,7 +110,8 @@ class JarvisFastBrainServiceTest {
 
         AgentTurnRequest request = calls.get(0);
         assertThat(request.model()).isEqualTo("claude-haiku-5-5");
-        assertThat(request.tools()).extracting(t -> t.name()).containsExactly("deleguer", "pieces", "afficher", "agenda");
+        assertThat(request.tools()).extracting(t -> t.name()).containsExactly("deleguer", "pieces", "afficher", "agenda", "etat",
+                "conversations");
         assertThat(request.reasoning().disabled()).isTrue();
         assertThat(request.reasoning().effort()).isEqualTo("low");
         assertThat(request.shape().maxTokens()).isEqualTo(600);
@@ -1083,7 +1084,7 @@ class JarvisFastBrainServiceTest {
         assertThat(JSON.writeValueAsString(calls.get(1).tools())).isEqualTo(first);
         assertThat(JSON.writeValueAsString(calls.get(2).tools())).isEqualTo(first);
         assertThat(calls.get(0).system()).isEqualTo(calls.get(2).system());
-        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("18");
+        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("19");
         assertThat(first).doesNotContain("Kestrel").doesNotContain(subject.toString());
     }
 
@@ -1481,7 +1482,7 @@ class JarvisFastBrainServiceTest {
     @Test
     void f240_06ThePromptForbidsOfferingAnAgendaAndCarriesTheThursdayExample() {
         // F-243 / SF-243-02 — l'agenda est désormais un outil ; sans agenda relié, la question se délègue toujours.
-        assertThat(JarvisFastBrainPrompt.system()).contains("Tu n'as aucune source hors du contexte et de tes quatre outils")
+        assertThat(JarvisFastBrainPrompt.system()).contains("Tu n'as aucune source hors du contexte et de tes six outils")
                 .contains("passe par l'outil agenda").contains("Qu'est-ce que j'ai jeudi ?")
                 .contains("Je cherche ce qui est prévu jeudi, Monsieur.").doesNotContain("Tu n'as ni agenda");
     }
