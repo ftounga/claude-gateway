@@ -114,7 +114,21 @@ public enum PushEvent {
      * par passage OK → cassé ; corps neutre, sans libellé ni adresse.
      */
     CALENDAR_BROKEN("Un agenda ne répond plus à Jarvis",
-            "Son adresse iCal a peut-être été réinitialisée : ouvrez Jarvis, « Mes agendas ».", true);
+            "Son adresse iCal a peut-être été réinitialisée : ouvrez Jarvis, « Mes agendas ».", true),
+
+    /**
+     * F-247 / SF-247-12 (D16) — le plafond propre de la lecture des captures est atteint : Jarvis cesse de les lire
+     * jusqu'au mois suivant. Une seule par mois ; corps neutre, sans montant.
+     */
+    JARVIS_CAPTURES_CAP("Jarvis a cessé de lire vos captures",
+            "Le plafond du mois pour les captures est atteint : ouvrez Jarvis, « Ce que je sais ».", true),
+
+    /**
+     * F-247 / SF-247-14 (D16) — le plafond propre des constats rédigés est atteint : ils s'arrêtent jusqu'au mois
+     * suivant. Une seule par mois ; corps neutre, sans montant.
+     */
+    JARVIS_NOTES_CAP("Jarvis a cessé de rédiger ses constats",
+            "Le plafond du mois pour les constats est atteint : ouvrez Jarvis, « Ce que je sais ».", true);
 
     private final String title;
     private final String body;

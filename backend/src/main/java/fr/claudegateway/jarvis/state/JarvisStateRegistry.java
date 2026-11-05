@@ -50,6 +50,8 @@ public class JarvisStateRegistry {
     private final Clock clock;
     /** Ce qui veut savoir que le registre d'un client a changé (le bloc préparé à l'avance, SF-247-10). */
     private final List<BiConsumer<UUID, UUID>> listeners = new CopyOnWriteArrayList<>();
+    /** Ce qui doit être effacé avec les faits d'un client (les transcriptions de captures, SF-247-12). */
+    private final List<BiConsumer<UUID, UUID>> eraseListeners = new CopyOnWriteArrayList<>();
 
     public JarvisStateRegistry(JarvisStateFactRepository facts, JarvisStateSettingsRepository settings,
             RunnerHostRepository hosts, JarvisStateSeal seal, JarvisStateProperties properties, Clock clock) {
@@ -75,6 +77,11 @@ public class JarvisStateRegistry {
     /** S'abonne aux changements du registre (userId, hostId). */
     public void onChange(BiConsumer<UUID, UUID> listener) {
         listeners.add(listener);
+    }
+
+    /** S'abonne à « effacer tout » d'un client (userId, hostId) : couper ou effacer purge aussi ce qui s'y rattache. */
+    public void onErase(BiConsumer<UUID, UUID> listener) {
+        eraseListeners.add(listener);
     }
 
     public boolean enabled() {
@@ -294,10 +301,13 @@ public class JarvisStateRegistry {
         return saved;
     }
 
-    /** « Effacer tout » : les faits du client. Les transcriptions de captures sont purgées par leur service. */
+    /** « Effacer tout » : les faits du client, et ce qui s'y rattache (transcriptions de captures, SF-247-12). */
     @Transactional
     public int eraseAll(UUID userId, UUID hostId) {
         int n = facts.deleteAllOf(userId, hostId);
+        for (BiConsumer<UUID, UUID> l : eraseListeners) {
+            l.accept(userId, hostId);
+        }
         fire(userId, hostId);
         return n;
     }

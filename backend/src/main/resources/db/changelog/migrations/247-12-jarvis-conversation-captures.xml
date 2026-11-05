@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-247 / SF-247-12 - LIRE LES CAPTURES DE CONVERSATIONS (cadrage par 4.6, D13, D14).
+
+      jarvis_conversation_captures : une ligne par capture LUE (depot d'image lu a la reception par le modele rapide,
+      via le fournisseur) ; client (host_id), sujet, depot, plateforme, titre, heure du depot, statut, cout.
+      L'IMAGE N'EST JAMAIS GARDEE ICI : elle ne vit que le temps de la lecture, dans async_jobs.payload_bytes.
+
+      jarvis_capture_lines : les messages recopies (jamais resumes) ; interlocuteur rapproche des interlocuteurs
+      connus, date resolue par la passerelle (said_at_approx = "vers", heure du depot). Texte en clair (D13).
+      Pas dans atelier_messages (D14) : rien n'est rejoue dans le contexte d'Opus.
+
+      jarvis_usage_days : capture_cost_usd et notes_cost_usd, comptes au budget Jarvis F-244 (D16).
+
+      Isolation : user_id + host_id sur toute lecture. Rollback : les tables et colonnes se retirent.
+    -->
+
+    <changeSet id="247-12-jarvis-conversation-captures" author="claude-gateway">
+        <createTable tableName="jarvis_conversation_captures">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="deposit_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="platform" type="varchar(8)"><constraints nullable="false"/></column>
+            <column name="title" type="varchar(300)"/>
+            <column name="deposited_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="line_count" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="cost_usd" type="numeric(12,6)" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="jarvis_conversation_captures" constraintName="uq_jarvis_capture_deposit"
+                columnNames="user_id, deposit_id"/>
+        <createIndex tableName="jarvis_conversation_captures" indexName="idx_jarvis_captures_recent">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="deposited_at" descending="true"/>
+        </createIndex>
+        <createIndex tableName="jarvis_conversation_captures" indexName="idx_jarvis_captures_day">
+            <column name="user_id"/>
+            <column name="created_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="jarvis_conversation_captures"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="247-12-jarvis-capture-lines" author="claude-gateway">
+        <createTable tableName="jarvis_capture_lines">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="capture_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="position" type="int"><constraints nullable="false"/></column>
+            <column name="speaker" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="speaker_known" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="said_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="said_at_approx" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="text" type="varchar(4000)"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <addForeignKeyConstraint baseTableName="jarvis_capture_lines" baseColumnNames="capture_id"
+                constraintName="fk_jarvis_capture_lines_capture" referencedTableName="jarvis_conversation_captures"
+                referencedColumnNames="id" onDelete="CASCADE"/>
+        <createIndex tableName="jarvis_capture_lines" indexName="idx_jarvis_capture_lines_recent">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="said_at" descending="true"/>
+        </createIndex>
+        <createIndex tableName="jarvis_capture_lines" indexName="idx_jarvis_capture_lines_capture">
+            <column name="capture_id"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="jarvis_capture_lines"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="247-12-jarvis-usage-state-costs" author="claude-gateway">
+        <addColumn tableName="jarvis_usage_days">
+            <column name="capture_cost_usd" type="numeric(12,6)" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="notes_cost_usd" type="numeric(12,6)" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="jarvis_usage_days" columnName="capture_cost_usd"/>
+            <dropColumn tableName="jarvis_usage_days" columnName="notes_cost_usd"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

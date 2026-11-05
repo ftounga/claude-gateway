@@ -30,4 +30,14 @@ public interface JarvisUsageDayRepository extends JpaRepository<JarvisUsageDay, 
     @Query("select coalesce(sum(d.fastBrainCostUsd), 0) from JarvisUsageDay d"
             + " where d.userId = :userId and d.day >= :from")
     BigDecimal sumFastBrainCostUsdSince(@Param("userId") UUID userId, @Param("from") LocalDate from);
+
+    /** F-247 / SF-247-12 — la lecture des captures depuis une date (plafond propre, D16). */
+    @Query("select coalesce(sum(d.captureCostUsd), 0) from JarvisUsageDay d"
+            + " where d.userId = :userId and d.day >= :from")
+    BigDecimal sumCaptureCostUsdSince(@Param("userId") UUID userId, @Param("from") LocalDate from);
+
+    /** F-247 / SF-247-14 — les constats rédigés depuis une date (plafond propre, D16). */
+    @Query("select coalesce(sum(d.notesCostUsd), 0) from JarvisUsageDay d"
+            + " where d.userId = :userId and d.day >= :from")
+    BigDecimal sumNotesCostUsdSince(@Param("userId") UUID userId, @Param("from") LocalDate from);
 }
