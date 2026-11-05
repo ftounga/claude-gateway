@@ -109,6 +109,95 @@ export function eur(value: number): string {
   return `${(value ?? 0).toFixed(2).replace('.', ',')} €`;
 }
 
+/** Une phase de « Synchroniser » (F-247 / SF-247-16). */
+export interface SyncPhase {
+  key: 'HISTORY' | 'CAPTURES' | 'RELEVE';
+  status: 'PENDING' | 'RUNNING' | 'WAITING' | 'PAUSED' | 'DONE' | 'SKIPPED' | 'EXPIRED' | 'CANCELLED';
+  total: number;
+  done: number;
+  facts: number;
+  durationMs: number;
+  costEur: number;
+  detail: string | null;
+  read: number;
+  missing: number;
+}
+
+/** Un passage de synchronisation d'un client, tel que la passerelle le garde (l'écran le relit). */
+export interface StateSync {
+  id: string;
+  hostId: string;
+  status: 'RUNNING' | 'DONE' | 'CANCELLED';
+  note: 'TURN' | 'HOST_OFF' | 'READING' | null;
+  windowDays: number;
+  startedAt: string;
+  finishedAt: string | null;
+  phases: SyncPhase[];
+}
+
+/** La part faite d'un passage, de 0 à 100 (chaque phase pèse un tiers ; sautée ou finie = pleine). */
+export function syncPercent(s: StateSync): number {
+  if (s.status !== 'RUNNING') {
+    return 100;
+  }
+  const parts = s.phases.map((p) => {
+    if (['DONE', 'SKIPPED', 'EXPIRED', 'CANCELLED'].includes(p.status)) {
+      return 1;
+    }
+    if (p.status === 'PENDING' || p.total <= 0) {
+      return 0;
+    }
+    return Math.min(1, p.done / p.total);
+  });
+  return Math.round((parts.reduce((a, b) => a + b, 0) / Math.max(1, parts.length)) * 100);
+}
+
+/** Le libellé d'une phase. */
+export function syncPhaseLabel(p: SyncPhase): string {
+  return p.key === 'HISTORY' ? 'Historique' : p.key === 'CAPTURES' ? 'Captures' : 'Relevé du jour';
+}
+
+const SKIP_REASONS: Record<string, string> = {
+  source_off: 'source coupée',
+  not_setup: 'relevé non mis en place',
+  runner_old: 'runner à mettre à jour',
+  disarmed: 'relevé désarmé aujourd’hui',
+  registry_off: 'registre coupé',
+};
+
+/** L'état d'une phase, en clair. */
+export function syncPhaseText(p: SyncPhase, note: StateSync['note'], current: boolean): string {
+  const unit = p.key === 'HISTORY' ? 'réponses' : p.key === 'CAPTURES' ? 'captures' : 'sondes';
+  const count = `${p.done}/${p.total} ${unit}`;
+  const facts = p.key === 'CAPTURES'
+    ? `${p.read} lue${p.read > 1 ? 's' : ''} · ${p.facts} message${p.facts > 1 ? 's' : ''}`
+    : `${p.facts} fait${p.facts > 1 ? 's' : ''}`;
+  const capped = p.detail?.startsWith('capped:') ? ` · ${p.detail.slice(7)} reportée(s) (plafond)` : '';
+  switch (p.status) {
+    case 'PENDING': return 'à venir';
+    case 'SKIPPED': return `sautée : ${SKIP_REASONS[p.detail ?? ''] ?? 'rien à faire'}`;
+    case 'EXPIRED': return 'abandonnée : poste éteint depuis 7 jours';
+    case 'CANCELLED': return `annulée · ${facts}`;
+    case 'WAITING': return 'poste éteint — en attente';
+    case 'PAUSED': return `en pause : tour en cours · ${count}`;
+    case 'DONE': return `${facts}${capped}`;
+    default:
+      if (current && note === 'READING') {
+        return `lecture des captures en file · ${count} · ${facts}${capped}`;
+      }
+      return `${count} · ${facts}`;
+  }
+}
+
+/** Le bilan d'un passage terminé : faits, durée, dépense. */
+export function syncSummary(s: StateSync): string {
+  const facts = s.phases.reduce((n, p) => n + p.facts, 0);
+  const ms = s.phases.reduce((n, p) => n + p.durationMs, 0);
+  const cost = s.phases.reduce((n, p) => n + (p.costEur ?? 0), 0);
+  const seconds = Math.max(1, Math.round(ms / 1000));
+  return `${facts} élément${facts > 1 ? 's' : ''} ajouté${facts > 1 ? 's' : ''} · ${seconds} s de travail · ${eur(cost)}`;
+}
+
 export type StateSettingsPatch = Partial<Pick<StateClient, 'enabled' | 'disabledFamilies' | 'extractFromTurns'
   | 'notesEnabled' | 'releveEnabled' | 'capturesEnabled' | 'factRetentionDays' | 'captureRetentionDays'>>;
 
@@ -174,6 +263,20 @@ export class JarvisStateClient {
   setupReleve(hostId: string): Observable<{ workspaceId: string; turnId: string }> {
     return this.http.post<{ workspaceId: string; turnId: string }>(
       `/api/jarvis/state/clients/${encodeURIComponent(hostId)}/releve/setup`, {});
+  }
+
+  /** Lance (ou rend) le passage de synchronisation d'un client. */
+  startSync(hostId: string): Observable<StateSync> {
+    return this.http.post<StateSync>(`/api/jarvis/state/clients/${encodeURIComponent(hostId)}/sync`, {});
+  }
+
+  cancelSync(hostId: string): Observable<StateSync> {
+    return this.http.post<StateSync>(`/api/jarvis/state/clients/${encodeURIComponent(hostId)}/sync/cancel`, {});
+  }
+
+  /** Le dernier passage (7 j) de chaque client. */
+  syncs(): Observable<StateSync[]> {
+    return this.http.get<StateSync[]>('/api/jarvis/state/syncs');
   }
 
   validateAll(hostId: string): Observable<ReleveValidateResult[]> {

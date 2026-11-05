@@ -148,6 +148,15 @@ public class StateExtractJobHandler implements AsyncJobHandler {
 
     /** Extrait et range les faits d'une réponse ; rend le bilan (visible des tests et des constats). */
     public Summary extract(UUID userId, UUID hostId, UUID workspaceId, String subjectName, AtelierMessage message) {
+        return extract(userId, hostId, workspaceId, subjectName, message, true);
+    }
+
+    /**
+     * F-247 / SF-247-16 — même extraction ; {@code countCoverage = false} pour le rattrapage de l'historique : la
+     * couverture mesure les tours au fil de l'eau, un rattrapage (rejouable) ne doit pas la gonfler.
+     */
+    public Summary extract(UUID userId, UUID hostId, UUID workspaceId, String subjectName, AtelierMessage message,
+            boolean countCoverage) {
         String subject = subjectKey(subjectName);
         List<JsonNode> blocks = blocks(message.getTerminalJson());
         OffsetDateTime fallback = message.getCreatedAt() == null ? OffsetDateTime.now() : message.getCreatedAt();
@@ -186,7 +195,9 @@ public class StateExtractJobHandler implements AsyncJobHandler {
         }
         int facts = observations.isEmpty() ? 0 : registry.record(userId, observations);
         LocalDay day = new LocalDay(fallback.atZoneSameInstant(ZONE).toLocalDate());
-        perForm.forEach((form, c) -> count(userId, day, form, c[0], c[1], c[2]));
+        if (countCoverage) {
+            perForm.forEach((form, c) -> count(userId, day, form, c[0], c[1], c[2]));
+        }
         return new Summary(stateCalls, covered, facts, List.copyOf(uncovered));
     }
 

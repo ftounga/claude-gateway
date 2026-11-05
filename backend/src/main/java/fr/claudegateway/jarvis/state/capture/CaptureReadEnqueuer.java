@@ -72,6 +72,29 @@ public class CaptureReadEnqueuer implements DepositReceivedListener {
         }
     }
 
+    /**
+     * F-247 / SF-247-16 — confie à la lecture une capture <b>déjà déposée</b> (relue sur le poste par « Synchroniser »)
+     * : mise en file <b>directe</b> (on est déjà dans un fil de la file durable), priorité basse, {@code depositedAt} =
+     * l'heure du dépôt d'origine, marquée de la synchronisation. Mêmes bornes que la remise à la réception.
+     *
+     * @return vrai si la lecture est en file
+     */
+    public boolean enqueueExisting(Workspace workspace, UUID depositId, byte[] bytes, Instant depositedAt,
+            int priority, UUID syncId) {
+        if (!properties.captures() || workspace == null || workspace.getHostId() == null || depositId == null
+                || bytes == null || bytes.length == 0 || bytes.length > MAX_BYTES || depositedAt == null) {
+            return false;
+        }
+        String mediaType = mediaType(null, bytes);
+        if (mediaType == null) {
+            return false;
+        }
+        String payload = CaptureReadJobHandler.payload(depositId, workspace.getId(), workspace.getHostId(),
+                depositedAt, mediaType, syncId);
+        return queue.enqueue(new AsyncJobQueue.Request(workspace.getUserId(), CaptureReadJobHandler.KIND, priority,
+                payload, bytes, 2)).isPresent();
+    }
+
     /** Le type d'image retenu (png, jpeg, webp), d'après les octets d'abord ; {@code null} sinon. */
     static String mediaType(String contentType, byte[] b) {
         if (b.length >= 8 && (b[0] & 0xFF) == 0x89 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G') {

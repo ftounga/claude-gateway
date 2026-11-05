@@ -93,7 +93,19 @@ public class CaptureReadJobHandler implements AsyncJobHandler {
 
     /** La charge utile : des références seulement (l'image voyage dans {@code payload_bytes}). */
     public static String payload(UUID depositId, UUID workspaceId, UUID hostId, Instant depositedAt, String mediaType) {
+        return payload(depositId, workspaceId, hostId, depositedAt, mediaType, null);
+    }
+
+    /**
+     * F-247 / SF-247-16 — la même charge utile, marquée de la synchronisation qui l'a remise ({@code syncId}) : sa
+     * progression, sa dépense et son annulation se retrouvent par cette marque. L'exécutant l'ignore.
+     */
+    public static String payload(UUID depositId, UUID workspaceId, UUID hostId, Instant depositedAt, String mediaType,
+            UUID syncId) {
         ObjectNode n = MAPPER.createObjectNode();
+        if (syncId != null) {
+            n.put("syncId", syncId.toString());
+        }
         n.put("depositId", depositId.toString());
         n.put("workspaceId", workspaceId.toString());
         n.put("hostId", hostId.toString());

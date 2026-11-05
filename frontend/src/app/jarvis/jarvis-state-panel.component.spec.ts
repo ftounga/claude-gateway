@@ -1,13 +1,13 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { TestBed } from '@angular/core/testing';
+import { TestBed, discardPeriodicTasks, fakeAsync, tick } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { of } from 'rxjs';
 
-import { JarvisStatePanelComponent } from './jarvis-state-panel.component';
-import { StateClient } from './jarvis-state';
+import { JarvisStatePanelComponent, SYNC_POLL_MS } from './jarvis-state-panel.component';
+import { StateClient, StateSync, SyncPhase } from './jarvis-state';
 
 /** F-247 / SF-247-15 — le volet « Ce que je sais ». */
 describe('JarvisStatePanelComponent (F-247 / SF-247-15)', () => {
@@ -34,15 +34,27 @@ describe('JarvisStatePanelComponent (F-247 / SF-247-15)', () => {
 
   afterEach(() => http.verify());
 
-  function render() {
+  function render(syncs: StateSync[] = []) {
     const fixture = TestBed.createComponent(JarvisStatePanelComponent);
     fixture.detectChanges();
     http.expectOne('/api/jarvis/state/spend').flush({ captures: { monthEur: 0.42, capEur: 10 },
       notes: { monthEur: 1.2, capEur: 15 } });
     http.expectOne('/api/jarvis/state/clients').flush([client()]);
+    http.expectOne('/api/jarvis/state/syncs').flush(syncs);
     fixture.detectChanges();
     return fixture;
   }
+
+  const phase = (key: SyncPhase['key'], over: Partial<SyncPhase> = {}): SyncPhase => ({
+    key, status: 'PENDING', total: 0, done: 0, facts: 0, durationMs: 0, costEur: 0, detail: null, read: 0, missing: 0,
+    ...over,
+  });
+
+  const sync = (over: Partial<StateSync> = {}): StateSync => ({
+    id: 's1', hostId: 'h1', status: 'RUNNING', note: null, windowDays: 90, startedAt: '2026-11-05T09:00:00Z',
+    finishedAt: null, phases: [phase('HISTORY', { status: 'RUNNING', total: 340, done: 120, facts: 46 }),
+      phase('CAPTURES'), phase('RELEVE')], ...over,
+  });
 
   it('montre chaque client, activé d’office, et ses faits à la demande', () => {
     const fixture = render();
@@ -148,4 +160,83 @@ describe('JarvisStatePanelComponent (F-247 / SF-247-15)', () => {
     expect(req.request.body).toEqual({ captureRetentionDays: 60 });
     req.flush(client({ captureRetentionDays: 60 }));
   });
+
+  // ---- SF-247-16 « Synchroniser »
+
+  it('« Synchroniser » lance le passage : barre orange et étapes en clair', fakeAsync(() => {
+    const fixture = render();
+    const el: HTMLElement = fixture.nativeElement;
+    (el.querySelector('.js__sync-btn') as HTMLButtonElement).click();
+    const req = http.expectOne('/api/jarvis/state/clients/h1/sync');
+    expect(req.request.method).toBe('POST');
+    req.flush(sync());
+    fixture.detectChanges();
+    expect(el.querySelector('mat-progress-bar.js__bar')).not.toBeNull();
+    expect(el.textContent).toContain('120/340 réponses · 46 faits');
+    expect(el.querySelector('.js__sync-cancel')).not.toBeNull();
+    expect(el.querySelector('.js__sync-btn')).toBeNull();
+    // La progression est relue tant que le passage travaille.
+    tick(SYNC_POLL_MS);
+    http.expectOne('/api/jarvis/state/syncs').flush([sync({ note: 'HOST_OFF', phases: [
+      phase('HISTORY', { status: 'DONE', total: 340, done: 340, facts: 128 }),
+      phase('CAPTURES', { status: 'WAITING', total: 12 }), phase('RELEVE')] })]);
+    fixture.detectChanges();
+    expect(el.textContent).toContain('poste éteint — en attente');
+    expect(el.textContent).toContain('128 faits');
+    fixture.destroy();
+    discardPeriodicTasks();
+  }));
+
+  it('à l’ouverture, l’état persisté revient ; la fin arrête la relecture et dit le bilan', fakeAsync(() => {
+    const fixture = render([sync({ note: 'TURN', phases: [phase('HISTORY', { status: 'PAUSED', total: 10, done: 4 }),
+      phase('CAPTURES'), phase('RELEVE')] })]);
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.textContent).toContain('en pause : tour en cours');
+    tick(SYNC_POLL_MS);
+    http.expectOne('/api/jarvis/state/syncs').flush([sync({ status: 'DONE', finishedAt: '2026-11-05T09:05:00Z',
+      phases: [phase('HISTORY', { status: 'DONE', total: 10, done: 10, facts: 7, durationMs: 1200 }),
+        phase('CAPTURES', { status: 'DONE', total: 2, done: 2, read: 2, facts: 9, costEur: 0.012 }),
+        phase('RELEVE', { status: 'SKIPPED', detail: 'not_setup' })] })]);
+    // Fin : la liste des clients est relue (le nombre de faits a bougé).
+    http.expectOne('/api/jarvis/state/spend').flush({ captures: { monthEur: 0.43, capEur: 10 },
+      notes: { monthEur: 1.2, capEur: 15 } });
+    http.expectOne('/api/jarvis/state/clients').flush([client({ facts: 9 })]);
+    fixture.detectChanges();
+    expect(el.querySelector('mat-progress-bar')).toBeNull();
+    expect(el.textContent).toContain('16 éléments ajoutés');
+    expect(el.textContent).toContain('0,01 €');
+    expect(el.textContent).toContain('relevé non mis en place');
+    tick(SYNC_POLL_MS * 2);
+    http.expectNone('/api/jarvis/state/syncs');
+    fixture.destroy();
+  }));
+
+  it('annuler arrête le passage ; un refus de lancement est dit', fakeAsync(() => {
+    const fixture = render([sync()]);
+    fixture.componentInstance.cancelSync(client());
+    const req = http.expectOne('/api/jarvis/state/clients/h1/sync/cancel');
+    expect(req.request.method).toBe('POST');
+    req.flush(sync({ status: 'CANCELLED', finishedAt: '2026-11-05T09:01:00Z' }));
+    http.expectOne('/api/jarvis/state/spend').flush({ captures: { monthEur: 0, capEur: 10 },
+      notes: { monthEur: 0, capEur: 15 } });
+    http.expectOne('/api/jarvis/state/clients').flush([client()]);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Annulée');
+    tick(SYNC_POLL_MS);
+    http.expectNone('/api/jarvis/state/syncs');
+
+    fixture.componentInstance.startSync(client());
+    http.expectOne('/api/jarvis/state/clients/h1/sync').flush(
+      { code: 'registry_off', message: 'Le registre est coupé pour ce client : rallumez-le d’abord.' },
+      { status: 409, statusText: 'Conflict' });
+    expect(snacks).toContain('Le registre est coupé pour ce client : rallumez-le d’abord.');
+    fixture.destroy();
+  }));
+
+  it('quitter le volet arrête la relecture (la synchronisation continue côté passerelle)', fakeAsync(() => {
+    const fixture = render([sync()]);
+    fixture.destroy();
+    tick(SYNC_POLL_MS * 2);
+    http.expectNone('/api/jarvis/state/syncs');
+  }));
 });
