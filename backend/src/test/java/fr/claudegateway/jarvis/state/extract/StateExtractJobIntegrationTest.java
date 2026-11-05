@@ -132,6 +132,19 @@ class StateExtractJobIntegrationTest {
     }
 
     @Test
+    @DisplayName("SF-247-05 — git status sans -C : la clé porte le nom du sujet")
+    void gitKeyCarriesSubject() {
+        ObjectNode root = MAPPER.createObjectNode();
+        root.putArray("blocks").add(block("bash", "git status", "$ git status\nOn branch main\nYour branch is up to "
+                + "date with 'origin/main'.\n\nnothing to commit, working tree clean\n[code de sortie: 0]", false));
+        AtelierMessage m = messages.save(AtelierMessage.builder().workspaceId(subject.getId()).userId(alice)
+                .role("ASSISTANT").content("ok").terminalJson(root.toString()).createdAt(OffsetDateTime.now()).build());
+        handler.handle(job(alice, m.getId(), subject.getId()));
+        assertThat(registry.byKey(alice, host, "GIT:SSO@main", 5)).extracting(JarvisStateRegistry.Fact::value)
+                .contains("à jour avec origin/main", "propre");
+    }
+
+    @Test
     @DisplayName("Z1 — la remise ne bloque pas le fil appelant et finit en file durable")
     void handoffIsNonBlocking() throws Exception {
         AtelierMessage m = turn(alice, subject.getId());

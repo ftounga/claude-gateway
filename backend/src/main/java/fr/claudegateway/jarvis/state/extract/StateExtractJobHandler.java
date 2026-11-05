@@ -107,12 +107,13 @@ public class StateExtractJobHandler implements AsyncJobHandler {
         if (!s.isEnabled() || !s.isExtractFromTurns()) {
             return Outcome.drop("disabled");
         }
-        extract(userId, hostId, workspace.get().getId(), message.get());
+        extract(userId, hostId, workspace.get().getId(), workspace.get().getName(), message.get());
         return Outcome.done();
     }
 
     /** Extrait et range les faits d'une réponse ; rend le bilan (visible des tests et des constats). */
-    public Summary extract(UUID userId, UUID hostId, UUID workspaceId, AtelierMessage message) {
+    public Summary extract(UUID userId, UUID hostId, UUID workspaceId, String subjectName, AtelierMessage message) {
+        String subject = subjectKey(subjectName);
         List<JsonNode> blocks = blocks(message.getTerminalJson());
         OffsetDateTime fallback = message.getCreatedAt() == null ? OffsetDateTime.now() : message.getCreatedAt();
         Map<String, OffsetDateTime> at = auditTimes(userId, workspaceId, fallback);
@@ -139,8 +140,8 @@ public class StateExtractJobHandler implements AsyncJobHandler {
                 c[1]++;
                 c[2] += r.facts().size();
                 for (StateExtractor.Extracted e : r.facts()) {
-                    observations.add(new JarvisStateRegistry.Observation(hostId, workspaceId, e.kind(), e.key(),
-                            e.attribute(), e.value(), observed, JarvisStateVocabulary.SOURCE_TOUR,
+                    observations.add(new JarvisStateRegistry.Observation(hostId, workspaceId, e.kind(),
+                            e.key().replace(RepoExtractors.SUBJECT, subject), e.attribute(), e.value(), observed, JarvisStateVocabulary.SOURCE_TOUR,
                             message.getId().toString(), e.confidence()));
                 }
             } else if (r.usable()) {
@@ -208,6 +209,12 @@ public class StateExtractJobHandler implements AsyncJobHandler {
             // relevé illisible : rien
         }
         return out;
+    }
+
+    /** SF-247-05 — le nom du sujet, tel qu'il entre dans une clé ({@code GIT:<sujet>@main}). */
+    static String subjectKey(String name) {
+        String s = name == null ? "" : name.strip().replaceAll("[\\s/@!#:]+", "-");
+        return s.isEmpty() ? "sujet" : s.length() > 60 ? s.substring(0, 60) : s;
     }
 
     private static String text(JsonNode n, String field) {
