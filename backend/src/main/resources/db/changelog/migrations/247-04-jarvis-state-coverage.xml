@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-247 / SF-247-04 - LE TAUX DE COUVERTURE DES EXTRACTEURS (cadrage par 4.2).
+
+      jarvis_state_coverage : par compte, jour et FORME de commande d'etat ("curl /rest/api/2/issue",
+      "glab mr view", "kubectl get"...), le nombre d'appels bash d'etat vus et ceux qui ont produit au moins
+      un fait. Les formes non couvertes sont la liste de travail de l'extracteur suivant (ou des constats,
+      SF-247-14). Aucun contenu : ni commande complete, ni sortie.
+
+      Rollback : la table se retire.
+    -->
+
+    <changeSet id="247-04-jarvis-state-coverage" author="claude-gateway">
+        <createTable tableName="jarvis_state_coverage">
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="obs_day" type="date"><constraints nullable="false"/></column>
+            <column name="form" type="varchar(80)"><constraints nullable="false"/></column>
+            <column name="calls" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="covered" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="facts" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <addPrimaryKey tableName="jarvis_state_coverage" columnNames="user_id, obs_day, form"
+                constraintName="pk_jarvis_state_coverage"/>
+        <rollback>
+            <dropTable tableName="jarvis_state_coverage"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
