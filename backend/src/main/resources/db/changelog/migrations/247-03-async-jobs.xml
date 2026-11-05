@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-247 / SF-247-03 - LA FILE DURABLE GENERIQUE (cadrage par 4.0, D15).
+
+      async_jobs : une seule file en base pour tous les travaux asynchrones (STATE_EXTRACT, CAPTURE_READ,
+      STATE_NOTES, liste ouverte : kind est un texte, sans migration pour un nouveau type). Prise en
+      FOR UPDATE SKIP LOCKED sous PostgreSQL (UPDATE conditionnel sous H2), bail multi-pod, faucheur, recul
+      exponentiel. payload = references seulement (JSON texte) ; payload_bytes = image d'une capture, mise a
+      null des la fin du travail. user_id porte par chaque travail, relu sous user_id par son executant.
+
+      Rollback : la table se retire.
+    -->
+
+    <changeSet id="247-03-async-jobs" author="claude-gateway">
+        <createTable tableName="async_jobs">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="kind" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="priority" type="int" defaultValueNumeric="100"><constraints nullable="false"/></column>
+            <column name="payload" type="text"/>
+            <column name="payload_bytes" type="blob"/>
+            <column name="status" type="varchar(12)"><constraints nullable="false"/></column>
+            <column name="attempts" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="max_attempts" type="int" defaultValueNumeric="3"><constraints nullable="false"/></column>
+            <column name="available_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="lease_owner" type="varchar(64)"/>
+            <column name="lease_until" type="timestamptz"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="finished_at" type="timestamptz"/>
+            <column name="duration_ms" type="bigint"/>
+            <column name="cost_usd" type="numeric(12,6)"/>
+            <column name="error_code" type="varchar(32)"/>
+        </createTable>
+        <createIndex tableName="async_jobs" indexName="idx_async_jobs_user_kind">
+            <column name="user_id"/>
+            <column name="kind"/>
+            <column name="created_at"/>
+        </createIndex>
+        <createIndex tableName="async_jobs" indexName="idx_async_jobs_lease">
+            <column name="status"/>
+            <column name="lease_until"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="async_jobs"/>
+        </rollback>
+    </changeSet>
+
+    <!-- La prise : index partiel sur les travaux en attente (PostgreSQL), index plein ailleurs. -->
+    <changeSet id="247-03-async-jobs-pending-pg" author="claude-gateway" dbms="postgresql">
+        <sql>CREATE INDEX idx_async_jobs_pending ON async_jobs (kind, priority, available_at)
+            WHERE status = 'PENDING'</sql>
+        <rollback>
+            <sql>DROP INDEX IF EXISTS idx_async_jobs_pending</sql>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="247-03-async-jobs-pending-other" author="claude-gateway" dbms="!postgresql">
+        <createIndex tableName="async_jobs" indexName="idx_async_jobs_pending">
+            <column name="status"/>
+            <column name="kind"/>
+            <column name="priority"/>
+            <column name="available_at"/>
+        </createIndex>
+        <rollback>
+            <dropIndex tableName="async_jobs" indexName="idx_async_jobs_pending"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
