@@ -7,7 +7,7 @@
 `F-247` — Le registre d'état (correctif de SF-247-08, incident prod du 2026-11-05)
 
 ## Statut
-`in-progress` · **Estimation :** 1 j · **Branche :** `feat/SF-247-18-mise-en-place-isolee` · **Dépend de :** SF-247-08
+`done` (2026-11-05, #1631) · **Estimation :** 1 j · **Branche :** `feat/SF-247-18-mise-en-place-isolee` · **Dépend de :** SF-247-08
 
 ## Date de création
 2026-11-05
