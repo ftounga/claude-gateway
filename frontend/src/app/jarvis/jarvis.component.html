@@ -338,7 +338,8 @@
                             [subjectLabel]="subject()?.name ?? null" [jarvisState]="state()"
                             [canPin]="cockpitListening()" (pin)="pinToCockpit()"
                             [lowQuality]="stage3d.level() === 'low'" [litIds]="litCards()"
-                            (cardsWanted)="showPendingCards()" (cardLinked)="pieces.count('c_link')" />
+                            (cardsWanted)="showPendingCards()" (cardLinked)="pieces.count('c_link')"
+                            (cardOpened)="openCardDetail($event)" />
 </main>
 <!-- F-236 / SF-236-04 — les étiquettes de l'univers 3D (DOM) : au-dessus de l'écran, un sujet se touche comme dans la constellation. -->
 <div #labels3d class="jv3d-labels" [style.opacity]="stage3d.shown() ? 1 : 0" [attr.aria-hidden]="!stage3d.shown()"></div>
@@ -384,6 +385,15 @@
 <!-- F-242 / SF-242-04 (D16) — la visionneuse de courriel : texte seul, « Contenu externe », jamais en présentation. -->
 @if (mailCard() && !presentation()) {
   <app-jarvis-mail-card [card]="mailCard()" (closed)="mailCard.set(null)" />
+}
+<!-- F-248 / SF-248-06 (D6) — le plein écran d'une pancarte (ou deux, comparées) : détail lu à l'ouverture, jamais en présentation. -->
+@if (cardDetail(); as d) {
+  @if (!presentation()) {
+    <app-jarvis-card-detail [card]="d.card" [detail]="d.detail" [loading]="d.loading" [other]="d.other"
+                            [otherDetail]="d.otherDetail" [canBig]="cockpitListening()"
+                            (closed)="cardDetail.set(null)" (big)="cardOnBigScreen($event)"
+                            (linked)="pieces.count('c_link')" />
+  }
 }
 <!-- F-241 / SF-241-02 (D13) — la proposition d'entretien : jamais en présentation ; « oui » à la voix ou ici. -->
 @if (interviewOffer() && !presentation()) {
