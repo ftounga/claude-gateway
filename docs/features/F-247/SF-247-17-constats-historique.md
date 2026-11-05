@@ -7,7 +7,7 @@
 `F-247` — Le registre d'état (amendement PO du 2026-11-05, version 4 : cadrage §1 point 8)
 
 ## Statut
-`in-progress` (2026-11-05)
+`done` (2026-11-05, PR #1629)
 
 ## Branche Git
 `feat/SF-247-17-constats-historique`
