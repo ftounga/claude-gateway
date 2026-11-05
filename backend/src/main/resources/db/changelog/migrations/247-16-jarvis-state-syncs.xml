@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-247 / SF-247-16 - SYNCHRONISER (amendement PO v3 du 2026-11-05).
+
+      jarvis_state_syncs : un passage de synchronisation par client (host_id) et par compte (user_id), sa progression
+      persistee (l'ecran la relit, quitter l'ecran n'arrete rien), son curseur (reprise apres un redemarrage de pod),
+      et sa mesure par phase (faits ecrits, duree de travail, cout). Phases : 1 historique des tours (0 EUR),
+      2 captures deja deposees (lecture SF-247-12), 3 releve du jour.
+
+      active_host = host_id tant que le passage est actif, NULL ensuite : la contrainte unique (user_id, active_host)
+      garantit UN SEUL passage actif par client (plusieurs NULL admis sous PostgreSQL et H2).
+      step : compteur d'etape de la chaine de tranches (async_jobs STATE_SYNC) ; un travail d'etape perimee est
+      abandonne, la chaine ne se dedouble jamais.
+
+      Isolation : toute lecture porte user_id (+ host_id ou id). Rollback : la table se retire.
+    -->
+
+    <changeSet id="247-16-jarvis-state-syncs" author="claude-gateway">
+        <createTable tableName="jarvis_state_syncs">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="active_host" type="uuid"/>
+            <column name="status" type="varchar(12)"><constraints nullable="false"/></column>
+            <column name="phase" type="int" defaultValueNumeric="1"><constraints nullable="false"/></column>
+            <column name="step" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="note" type="varchar(32)"/>
+            <column name="window_days" type="int"><constraints nullable="false"/></column>
+            <column name="cursor_at" type="timestamptz"/>
+            <column name="cursor_id" type="uuid"/>
+            <column name="waiting_since" type="timestamptz"/>
+
+            <column name="p1_status" type="varchar(12)"><constraints nullable="false"/></column>
+            <column name="p1_total" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="p1_done" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="p1_facts" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="p1_ms" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="p1_detail" type="varchar(64)"/>
+
+            <column name="p2_status" type="varchar(12)"><constraints nullable="false"/></column>
+            <column name="p2_total" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="p2_done" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="p2_facts" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="p2_read" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="p2_missing" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="p2_dropped" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="p2_ms" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="p2_cost_usd" type="numeric(12,6)" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="p2_started_at" type="timestamptz"/>
+            <column name="p2_detail" type="varchar(64)"/>
+
+            <column name="p3_status" type="varchar(12)"><constraints nullable="false"/></column>
+            <column name="p3_total" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="p3_done" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="p3_facts" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="p3_ms" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="p3_started_at" type="timestamptz"/>
+            <column name="p3_detail" type="varchar(64)"/>
+
+            <column name="started_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="finished_at" type="timestamptz"/>
+        </createTable>
+        <addUniqueConstraint tableName="jarvis_state_syncs" constraintName="uq_jarvis_state_sync_active"
+                columnNames="user_id, active_host"/>
+        <createIndex tableName="jarvis_state_syncs" indexName="idx_jarvis_state_syncs_recent">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="started_at" descending="true"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="jarvis_state_syncs"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

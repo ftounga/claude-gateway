@@ -96,6 +96,15 @@ public class AsyncJobQueue {
      * @return l'identifiant si le travail est en attente, vide s'il a été jeté ou n'a pu être inscrit
      */
     public Optional<UUID> enqueue(Request r) {
+        return enqueue(r, null);
+    }
+
+    /**
+     * F-247 / SF-247-16 — met un travail en file, <b>pris au plus tôt à {@code availableAt}</b> ({@code null} :
+     * tout de suite). Sert aux tâches qui avancent par tranches et se remettent en file (céder la place, attendre un
+     * poste). Mêmes règles que {@link #enqueue(Request)}.
+     */
+    public Optional<UUID> enqueue(Request r, Instant availableAt) {
         if (r == null || r.userId() == null || r.kind() == null || r.kind().isBlank()) {
             return Optional.empty();
         }
@@ -108,10 +117,12 @@ public class AsyncJobQueue {
             boolean drop = pending != null && pending >= pendingCaps.getOrDefault(kind, DEFAULT_PENDING_CAP);
             UUID id = UUID.randomUUID();
             Timestamp now = Timestamp.from(clock.instant());
+            Timestamp at = availableAt == null || availableAt.isBefore(clock.instant()) ? now
+                    : Timestamp.from(availableAt);
             jdbc.update("INSERT INTO async_jobs (id, user_id, kind, priority, payload, payload_bytes, status, attempts, "
                     + "max_attempts, available_at, created_at, finished_at, error_code) VALUES (?,?,?,?,?,?,?,0,?,?,?,?,?)",
                     id, r.userId(), kind, r.priority(), r.payload(), drop ? null : bytes, drop ? DROPPED : PENDING,
-                    Math.max(1, r.maxAttempts()), now, now, drop ? now : null, drop ? "pending_cap" : null);
+                    Math.max(1, r.maxAttempts()), at, now, drop ? now : null, drop ? "pending_cap" : null);
             return drop ? Optional.empty() : Optional.of(id);
         } catch (RuntimeException e) {
             log.warn("File durable : mise en file impossible ({})", e.getClass().getSimpleName());
@@ -249,6 +260,53 @@ public class AsyncJobQueue {
                     out.put(kind, new KindMeasure(m.byStatus(), Math.max(m.avgDurationMs(), avg), m.costUsd().add(cost)));
                 }, userId, Timestamp.from(since));
         return out;
+    }
+
+    /**
+     * F-247 / SF-247-16 — les travaux d'un compte et d'un type dont la charge utile porte {@code marker} (un fragment
+     * JSON exact, ex. {@code "syncId":"…"}) : nombre par statut et coût cumulé (USD). Lecture par l'index
+     * {@code (user_id, kind, created_at)}.
+     */
+    public MarkerStats markerStats(UUID userId, String kind, String marker) {
+        Map<String, Long> byStatus = new LinkedHashMap<>();
+        BigDecimal[] cost = {BigDecimal.ZERO};
+        jdbc.query("SELECT status, count(*), sum(cost_usd) FROM async_jobs WHERE user_id = ? AND kind = ? "
+                + "AND payload LIKE ? GROUP BY status", rs -> {
+                    byStatus.put(rs.getString(1), rs.getLong(2));
+                    if (rs.getBigDecimal(3) != null) {
+                        cost[0] = cost[0].add(rs.getBigDecimal(3));
+                    }
+                }, userId, kind, like(marker));
+        return new MarkerStats(byStatus, cost[0]);
+    }
+
+    /** Ce que {@link #markerStats} rend. */
+    public record MarkerStats(Map<String, Long> byStatus, BigDecimal costUsd) {
+
+        public long count(String status) {
+            return byStatus.getOrDefault(status, 0L);
+        }
+
+        /** En attente ou en cours. */
+        public long active() {
+            return count(PENDING) + count(RUNNING);
+        }
+    }
+
+    /**
+     * F-247 / SF-247-16 — abandonne ({@code DROPPED}, image effacée) les travaux <b>en attente</b> d'un compte et d'un
+     * type dont la charge utile porte {@code marker}. Un travail déjà pris n'est pas touché.
+     */
+    public int dropPending(UUID userId, String kind, String marker, String reason) {
+        return jdbc.update("UPDATE async_jobs SET status = 'DROPPED', payload_bytes = NULL, finished_at = ?, "
+                + "error_code = ? WHERE user_id = ? AND kind = ? AND status = 'PENDING' AND payload LIKE ?",
+                Timestamp.from(clock.instant()), reason == null ? "dropped" : reason, userId, kind, like(marker));
+    }
+
+    /** Un fragment cherché (identifiants et clés JSON) : le joker {@code %} est retiré, un {@code _} reste anodin. */
+    private static String like(String marker) {
+        String m = marker == null ? "" : marker.replace("%", "");
+        return "%" + m + "%";
     }
 
     /** La mesure d'un type. */

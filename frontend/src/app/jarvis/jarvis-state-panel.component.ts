@@ -1,19 +1,24 @@
 import { DatePipe } from '@angular/common';
-import { Component, OnInit, inject, output, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, inject, output, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
+import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { ConfirmDialogComponent, ConfirmDialogData } from '../chat/confirm-dialog/confirm-dialog.component';
 import {
   JarvisStateClient, ReleveView, STATE_FAMILIES, StateClient, StateConversation, StateFact, StateSettingsPatch,
-  StateSpend, capturePlatformLabel, eur, releveProbeStatus, stateSourceLabel,
+  StateSpend, StateSync, SyncPhase, capturePlatformLabel, eur, releveProbeStatus, stateSourceLabel, syncPercent,
+  syncPhaseLabel, syncPhaseText, syncSummary,
 } from './jarvis-state';
+
+/** Relecture de la progression d'une synchronisation, volet ouvert (F-247 / SF-247-16). */
+export const SYNC_POLL_MS = 3000;
 
 /** Ce que le volet d'un client montre sous ses réglages. */
 type StateView = 'facts' | 'conversations' | 'releve';
@@ -26,7 +31,8 @@ type StateView = 'facts' | 'conversations' | 'releve';
  */
 @Component({
   selector: 'app-jarvis-state-panel',
-  imports: [DatePipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatSlideToggleModule],
+  imports: [DatePipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatProgressBarModule,
+    MatSlideToggleModule],
   template: `
     <section class="js" aria-label="Ce que je sais">
       <header class="js__head">
@@ -60,6 +66,40 @@ type StateView = 'facts' | 'conversations' | 'releve';
                                 (change)="toggleEnabled(c, $event.checked)">Activé</mat-slide-toggle>
             </div>
             @if (c.enabled) {
+              <div class="js__sync" role="group" [attr.aria-label]="'Synchroniser ' + c.name">
+                <div class="js__row">
+                  @if (syncOf(c)?.status === 'RUNNING') {
+                    <span class="js__meta js__sync-state">Synchronisation… {{ percent(syncOf(c)!) }} %</span>
+                    <button mat-stroked-button type="button" class="js__family js__sync-cancel" [disabled]="busy()"
+                            (click)="cancelSync(c)">Annuler</button>
+                  } @else {
+                    <span class="js__meta js__sync-state">
+                      @if (syncOf(c); as last) {
+                        {{ last.status === 'CANCELLED' ? 'Annulée' : 'Synchronisé' }} le {{ (last.finishedAt ?? last.startedAt) | date: 'd/MM HH:mm' }}
+                        · {{ summary(last) }}
+                      } @else {
+                        Remplit tout de suite ce que je sais de ce client.
+                      }
+                    </span>
+                    <button mat-flat-button type="button" class="js__sync-btn" [disabled]="busy()"
+                            (click)="startSync(c)">Synchroniser</button>
+                  }
+                </div>
+                @if (syncOf(c); as sy) {
+                  @if (sy.status === 'RUNNING') {
+                    <mat-progress-bar class="js__bar" mode="determinate" [value]="percent(sy)"
+                                      [attr.aria-label]="'Synchronisation de ' + c.name"></mat-progress-bar>
+                  }
+                  <ul class="js__steps">
+                    @for (ph of sy.phases; track ph.key; let i = $index) {
+                      <li class="js__step" [class.js__step--wait]="ph.status === 'WAITING' || ph.status === 'PAUSED'">
+                        <span class="js__step-name">{{ phaseLabel(ph) }}</span>
+                        <span class="js__meta">{{ phaseText(ph, sy, i) }}</span>
+                      </li>
+                    }
+                  </ul>
+                }
+              </div>
               <div class="js__sources">
                 <mat-slide-toggle [checked]="c.extractFromTurns" [disabled]="busy()"
                                   (change)="save(c, { extractFromTurns: $event.checked })">Tours</mat-slide-toggle>
@@ -209,12 +249,23 @@ type StateView = 'facts' | 'conversations' | 'releve';
     .js__who { font-weight: 600; margin-right: var(--cg-space-1); }
     .js__releve { display: flex; flex-direction: column; gap: var(--cg-space-2); }
     .js__value { flex: 1 1 160px; }
+    .js__sync { display: flex; flex-direction: column; gap: var(--cg-space-1); }
+    .js__sync-state { flex: 1 1 200px; }
+    .js__sync-btn { background: var(--cg-orange); color: var(--cg-surface); }
+    .js__sync-cancel { color: var(--cg-cream); }
+    .js__bar { --mdc-linear-progress-active-indicator-color: var(--cg-orange);
+      --mdc-linear-progress-track-color: color-mix(in srgb, var(--cg-cream) 18%, transparent);
+      --mat-progress-bar-active-indicator-color: var(--cg-orange); border-radius: 4px; }
+    .js__steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--cg-space-1); }
+    .js__step { display: flex; flex-wrap: wrap; gap: var(--cg-space-1) var(--cg-space-2); font-size: 13px; }
+    .js__step-name { flex: 0 0 112px; font-weight: 600; }
+    .js__step--wait .js__meta { color: var(--cg-orange-2); opacity: 1; }
     @media (max-width: 767px) {
       .js { right: var(--cg-space-2); left: var(--cg-space-2); width: auto; padding: var(--cg-space-3); }
     }
   `],
 })
-export class JarvisStatePanelComponent implements OnInit {
+export class JarvisStatePanelComponent implements OnInit, OnDestroy {
   private readonly client = inject(JarvisStateClient);
   private readonly dialog = inject(MatDialog);
   private readonly snack = inject(MatSnackBar);
@@ -234,9 +285,101 @@ export class JarvisStatePanelComponent implements OnInit {
   readonly loading = signal(true);
   readonly busy = signal(false);
   readonly sourceLabel = stateSourceLabel;
+  /** Le dernier passage de synchronisation de chaque client (par hostId). */
+  readonly syncs = signal<Record<string, StateSync>>({});
+  readonly percent = syncPercent;
+  readonly phaseLabel = syncPhaseLabel;
+  readonly summary = syncSummary;
+  private pollTimer: ReturnType<typeof setInterval> | null = null;
 
   ngOnInit(): void {
     this.reload();
+    this.loadSyncs();
+  }
+
+  ngOnDestroy(): void {
+    this.stopPolling();
+  }
+
+  syncOf(c: StateClient): StateSync | null {
+    return this.syncs()[c.hostId] ?? null;
+  }
+
+  phaseText(p: SyncPhase, s: StateSync, index: number): string {
+    return syncPhaseText(p, s.note, s.status === 'RUNNING' && index === this.currentPhase(s));
+  }
+
+  private currentPhase(s: StateSync): number {
+    const i = s.phases.findIndex((p) => !['DONE', 'SKIPPED', 'EXPIRED', 'CANCELLED'].includes(p.status));
+    return i < 0 ? s.phases.length - 1 : i;
+  }
+
+  /** Relit la progression : la synchronisation vit côté passerelle, quitter l'écran ne l'arrête pas. */
+  loadSyncs(): void {
+    this.client.syncs().subscribe({
+      next: (list) => {
+        const byHost: Record<string, StateSync> = {};
+        for (const s of list) {
+          byHost[s.hostId] = s;
+        }
+        const finished = Object.values(this.syncs()).some((old) => old.status === 'RUNNING'
+          && byHost[old.hostId]?.status !== 'RUNNING');
+        this.syncs.set(byHost);
+        if (finished) {
+          this.reload();
+        }
+        this.pollIfRunning();
+      },
+      error: () => this.stopPolling(),
+    });
+  }
+
+  startSync(c: StateClient): void {
+    this.busy.set(true);
+    this.client.startSync(c.hostId).subscribe({
+      next: (s) => {
+        this.busy.set(false);
+        this.syncs.set({ ...this.syncs(), [c.hostId]: s });
+        this.pollIfRunning();
+      },
+      error: (e: HttpErrorResponse) => {
+        this.busy.set(false);
+        const message = typeof e?.error?.message === 'string' ? e.error.message : 'Synchronisation impossible.';
+        this.snack.open(message, undefined, { duration: 5000 });
+      },
+    });
+  }
+
+  cancelSync(c: StateClient): void {
+    this.busy.set(true);
+    this.client.cancelSync(c.hostId).subscribe({
+      next: (s) => {
+        this.busy.set(false);
+        this.syncs.set({ ...this.syncs(), [c.hostId]: s });
+        this.pollIfRunning();
+        this.reload();
+      },
+      error: () => {
+        this.busy.set(false);
+        this.snack.open('Annulation impossible.', undefined, { duration: 4000 });
+      },
+    });
+  }
+
+  private pollIfRunning(): void {
+    const running = Object.values(this.syncs()).some((s) => s.status === 'RUNNING');
+    if (running && this.pollTimer === null) {
+      this.pollTimer = setInterval(() => this.loadSyncs(), SYNC_POLL_MS);
+    } else if (!running) {
+      this.stopPolling();
+    }
+  }
+
+  private stopPolling(): void {
+    if (this.pollTimer !== null) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
   }
 
   reload(): void {

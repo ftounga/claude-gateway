@@ -100,11 +100,11 @@ public class JarvisReleveTriggers {
     }
 
     /** Une sonde de relevé active et son sujet. */
-    record Probe(JarvisWatch watch, Workspace workspace) {
+    public record Probe(JarvisWatch watch, Workspace workspace) {
     }
 
     /** Les sondes de relevé actives d'un poste, les moins récemment passées d'abord. */
-    List<Probe> probesOf(UUID userId, UUID hostId) {
+    public List<Probe> probesOf(UUID userId, UUID hostId) {
         List<Probe> out = new ArrayList<>();
         for (Workspace w : workspaces.findByUserIdAndHostId(userId, hostId)) {
             if (!userId.equals(w.getUserId())) {

@@ -22,6 +22,20 @@ Famille « Jarvis » : F-230 → F-246, **F-247**. Base vérifiée : `origin/mai
 
 Les seuils « zéro ralentissement » restent **bloquants et inchangés**. Les portes Z9 à Z13 s'y ajoutent.
 
+**Amendement PO du 2026-11-05 (version 3, après la mise en production de F-247 15/15) — « Synchroniser » (SF-247-16) :**
+
+7. **Le rattrapage entre dans le périmètre** (il en était exclu, §10). Un bouton « Synchroniser » **par client**, dans
+   « Ce que je sais », remplit le registre tout de suite, en trois phases, avec une barre de progression :
+   1. **Historique** (sans IA, 0 €, poste éteint possible) : les sorties d'outils déjà gardées (`terminal_json`) des
+      sujets du client repassent dans les extracteurs SF-247-04/05, sur une fenêtre bornée (90 j, ramenée à la
+      rétention des faits du client). Chaque fait garde **sa date d'origine** ; l'upsert ne remplace jamais un fait
+      plus récent ;
+   2. **Captures déjà déposées** (runner allumé) : relues sur le poste puis lues par SF-247-12, même plafond € et même
+      coût compté, priorité basse ;
+   3. **Relevé du jour** (runner allumé et à jour, relevé mis en place) : un passage immédiat.
+   Tout passe par la file `async_jobs` (type `STATE_SYNC`, priorité basse, par tranches), cède aux tours (gardes Z4),
+   ne bloque rien, est idempotent et annulable. Les portes Z1→Z13 restent **inchangées et bloquantes**.
+
 ## 1. Le besoin (PO, 2026-11-05)
 
 Le runner tourne sur le poste client du PO. Quand ce poste est **éteint, en veille ou déconnecté**, le PO parle à
@@ -501,6 +515,7 @@ Lecture : `GET /api/admin/jarvis/state/measure` (ADMIN).
 | **SF-247-13** | **Retrouver les conversations.** Vectorisation (pool F-162), `recall` en union, outil `conversations` (déclaré en v19 dès SF-10, branché ici), rien en présentation, mesure des « qu'a dit X ». Test de charge à 100 000 lignes (Z10). | 1,5 j |
 | **SF-247-14** | **Les constats rédigés en différé.** Travail `STATE_NOTES` sur les sorties non couvertes, garde de citation, plafond de 15 €/mois en €. Banc `NOTES`. | 2 j |
 | **SF-247-15** | **L'écran.** Dans les réglages de `/jarvis` (pas de nouvelle route) : un volet par client, activé d'office, avec l'interrupteur pour couper, les familles, les sources, les rétentions et « effacer tout ». La vue « Ce que je sais » (faits, conversations, source, âge, effacement d'un élément), la dépense en €. Masquée en présentation. Design system. Banc headless 1366×768 et 360×740. | 1,5 j |
+| **SF-247-16** | **Synchroniser** (amendement v3). Par client : historique des tours (0 €), captures déjà déposées (SF-247-12), relevé du jour ; file `STATE_SYNC` par tranches, Z4, annulable, idempotent ; barre orange dans « Ce que je sais ». | 2 j |
 
 **Ordre et parallélisme :**
 
@@ -530,7 +545,8 @@ Lecture : `GET /api/admin/jarvis/state/measure` (ADMIN).
 - Toute **action** poste éteint.
 - Un historique des valeurs au-delà de la précédente.
 - La conservation des **images** au-delà de leur lecture. Tout OCR maison.
-- Le rattrapage des captures déposées avant F-247.
+- ~~Le rattrapage des captures déposées avant F-247.~~ **Amendé le 2026-11-05 (v3)** : dans le périmètre, par
+  « Synchroniser » (SF-247-16), à la demande du PO, client par client.
 - La transcription des captures qui ne sont pas des conversations.
 - La capture d'une extinction brutale.
 - **Toute source Vigie, Teams ou Radar** (correction PO), et toute lecture Teams par le runner.

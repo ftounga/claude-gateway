@@ -40,6 +40,23 @@ class AsyncJobQueueIntegrationTest {
     }
 
     @Test
+    @DisplayName("SF-247-16 — mise en file différée : pas prise avant l'heure ; marque : mesure et abandon des attentes")
+    void delayedAndMarker() {
+        String s1 = "\"syncId\":\"s1\"";
+        queue.enqueue(new AsyncJobQueue.Request(user, kind, 200, "{" + s1 + ",\"n\":1}", null, 3),
+                Instant.now().plusSeconds(600)).orElseThrow();
+        assertThat(queue.claim(kind, 5, "p")).isEmpty();
+        queue.enqueue(new AsyncJobQueue.Request(user, kind, 200, "{" + s1 + ",\"n\":2}", null, 3),
+                Instant.now().minusSeconds(5)).orElseThrow();
+        queue.enqueue(new AsyncJobQueue.Request(user, kind, 200, "{\"syncId\":\"s2\"}", null, 3)).orElseThrow();
+        assertThat(queue.markerStats(user, kind, s1).active()).isEqualTo(2);
+        assertThat(queue.markerStats(UUID.randomUUID(), kind, s1).active()).isZero();
+        assertThat(queue.dropPending(user, kind, s1, "sync_cancelled")).isEqualTo(2);
+        assertThat(queue.markerStats(user, kind, s1).count(AsyncJobQueue.DROPPED)).isEqualTo(2);
+        assertThat(queue.markerStats(user, kind, "\"syncId\":\"s2\"").active()).isEqualTo(1);
+    }
+
+    @Test
     @DisplayName("mise en file, prise unique, fin : DONE, image effacée, mesure par type")
     void lifecycle() {
         UUID id = queue.enqueue(new AsyncJobQueue.Request(user, kind, 100, "{\"m\":1}", new byte[] {1, 2, 3}, 3))

@@ -89,7 +89,7 @@ public class JarvisReleveService implements JarvisWatchStateHook {
      * Z4 (1) — aucun tour vivant connu sur les sujets du poste, et aucune entrée du journal du runner hors relevés et
      * veilles depuis 2 min (index {@code user_id, workspace_id, created_at}).
      */
-    boolean quiet(UUID userId, UUID hostId, OffsetDateTime now) {
+    public boolean quiet(UUID userId, UUID hostId, OffsetDateTime now) {
         Set<UUID> subjects = new java.util.HashSet<>(jdbc.queryForList(
                 "SELECT id FROM workspaces WHERE user_id = ? AND host_id = ?", UUID.class, userId, hostId));
         if (subjects.isEmpty()) {
@@ -106,7 +106,7 @@ public class JarvisReleveService implements JarvisWatchStateHook {
     }
 
     /** D12 — plus de 3 préemptions aujourd'hui sur ce poste : désarmé jusqu'au lendemain. */
-    boolean disarmed(UUID userId, UUID hostId, OffsetDateTime now) {
+    public boolean disarmed(UUID userId, UUID hostId, OffsetDateTime now) {
         LocalDate day = now.atZoneSameInstant(ZONE).toLocalDate();
         Integer n = jdbc.queryForObject("SELECT count(*) FROM jarvis_watch_runs r JOIN jarvis_watches w ON w.id = "
                 + "r.watch_id WHERE r.user_id = ? AND w.user_id = ? AND w.purpose = 'STATE' AND r.status = 'YIELDED' "
