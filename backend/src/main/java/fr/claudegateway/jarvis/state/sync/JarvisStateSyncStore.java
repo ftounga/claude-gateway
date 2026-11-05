@@ -29,23 +29,42 @@ public class JarvisStateSyncStore {
         this.jdbc = jdbc;
     }
 
+
+    /** SF-247-17 — la phase 4 (constats sur l'historique). */
+    private static final String P4 = "p4_status, p4_total, p4_done, p4_facts, p4_kept, p4_rejected, p4_calls, "
+            + "p4_errors, p4_est_chars, p4_est_calls, p4_ms, p4_cost_usd, p4_envelope_eur, p4_detail";
+
     private static final String COLUMNS = "id, user_id, host_id, status, phase, step, note, window_days, cursor_at, "
             + "cursor_id, waiting_since, p1_status, p1_total, p1_done, p1_facts, p1_ms, p1_detail, p2_status, p2_total, "
             + "p2_done, p2_facts, p2_read, p2_missing, p2_dropped, p2_ms, p2_cost_usd, p2_started_at, p2_detail, "
             + "p3_status, p3_total, p3_done, p3_facts, p3_ms, p3_started_at, p3_detail, started_at, updated_at, "
-            + "finished_at";
+            + "finished_at, " + P4;
+
+    private static Object[] p4(SyncRow s) {
+        return new Object[] {s.getP4Status(), s.getP4Total(), s.getP4Done(), s.getP4Facts(), s.getP4Kept(),
+                s.getP4Rejected(), s.getP4Calls(), s.getP4Errors(), s.getP4EstChars(), s.getP4EstCalls(), s.getP4Ms(),
+                s.getP4CostUsd(), s.getP4EnvelopeEur(), s.getP4Detail()};
+    }
+
+    private static Object[] concat(Object[] head, Object... tail) {
+        Object[] out = java.util.Arrays.copyOf(head, head.length + tail.length);
+        System.arraycopy(tail, 0, out, head.length, tail.length);
+        return out;
+    }
 
     /** Crée un passage actif. Lève {@code DuplicateKeyException} si un passage de ce client est déjà actif. */
     public void insert(SyncRow s) {
-        jdbc.update("INSERT INTO jarvis_state_syncs (" + COLUMNS + ", active_host) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
-                + "?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", s.getId(), s.getUserId(), s.getHostId(), s.getStatus(),
+        Object[] base = {s.getId(), s.getUserId(), s.getHostId(), s.getStatus(),
                 s.getPhase(), s.getStep(), s.getNote(), s.getWindowDays(), ts(s.getCursorAt()), s.getCursorId(),
                 ts(s.getWaitingSince()), s.getP1Status(), s.getP1Total(), s.getP1Done(), s.getP1Facts(), s.getP1Ms(),
                 s.getP1Detail(), s.getP2Status(), s.getP2Total(), s.getP2Done(), s.getP2Facts(), s.getP2Read(),
                 s.getP2Missing(), s.getP2Dropped(), s.getP2Ms(), s.getP2CostUsd(), ts(s.getP2StartedAt()),
                 s.getP2Detail(), s.getP3Status(), s.getP3Total(), s.getP3Done(), s.getP3Facts(), s.getP3Ms(),
                 ts(s.getP3StartedAt()), s.getP3Detail(), ts(s.getStartedAt()), ts(s.getUpdatedAt()),
-                ts(s.getFinishedAt()), s.getHostId());
+                ts(s.getFinishedAt())};
+        Object[] args = concat(concat(base, p4(s)), s.getHostId());
+        String marks = String.join(",", java.util.Collections.nCopies(args.length, "?"));
+        jdbc.update("INSERT INTO jarvis_state_syncs (" + COLUMNS + ", active_host) VALUES (" + marks + ")", args);
     }
 
     /** Un passage du compte. */
@@ -74,19 +93,21 @@ public class JarvisStateSyncStore {
      * @return vrai si l'avancée est enregistrée
      */
     public boolean advance(SyncRow s, int expectedStep) {
+        Object[] base = {s.getStatus(), s.getPhase(), expectedStep + 1, s.getNote(), ts(s.getCursorAt()),
+                s.getCursorId(), ts(s.getWaitingSince()), s.getP1Status(), s.getP1Total(), s.getP1Done(),
+                s.getP1Facts(), s.getP1Ms(), s.getP1Detail(), s.getP2Status(), s.getP2Total(), s.getP2Done(),
+                s.getP2Facts(), s.getP2Read(), s.getP2Missing(), s.getP2Dropped(), s.getP2Ms(), s.getP2CostUsd(),
+                ts(s.getP2StartedAt()), s.getP2Detail(), s.getP3Status(), s.getP3Total(), s.getP3Done(),
+                s.getP3Facts(), s.getP3Ms(), ts(s.getP3StartedAt()), s.getP3Detail(), ts(s.getUpdatedAt()),
+                ts(s.getFinishedAt()), s.getFinishedAt() == null ? s.getHostId() : null};
+        Object[] args = concat(concat(base, p4(s)), s.getId(), s.getUserId(), expectedStep);
         return jdbc.update("UPDATE jarvis_state_syncs SET status = ?, phase = ?, step = ?, note = ?, cursor_at = ?, "
                 + "cursor_id = ?, waiting_since = ?, p1_status = ?, p1_total = ?, p1_done = ?, p1_facts = ?, p1_ms = ?, "
                 + "p1_detail = ?, p2_status = ?, p2_total = ?, p2_done = ?, p2_facts = ?, p2_read = ?, p2_missing = ?, "
                 + "p2_dropped = ?, p2_ms = ?, p2_cost_usd = ?, p2_started_at = ?, p2_detail = ?, p3_status = ?, "
                 + "p3_total = ?, p3_done = ?, p3_facts = ?, p3_ms = ?, p3_started_at = ?, p3_detail = ?, updated_at = ?, "
-                + "finished_at = ?, active_host = ? WHERE id = ? AND user_id = ? AND step = ? AND active_host IS NOT NULL",
-                s.getStatus(), s.getPhase(), expectedStep + 1, s.getNote(), ts(s.getCursorAt()), s.getCursorId(),
-                ts(s.getWaitingSince()), s.getP1Status(), s.getP1Total(), s.getP1Done(), s.getP1Facts(), s.getP1Ms(),
-                s.getP1Detail(), s.getP2Status(), s.getP2Total(), s.getP2Done(), s.getP2Facts(), s.getP2Read(),
-                s.getP2Missing(), s.getP2Dropped(), s.getP2Ms(), s.getP2CostUsd(), ts(s.getP2StartedAt()),
-                s.getP2Detail(), s.getP3Status(), s.getP3Total(), s.getP3Done(), s.getP3Facts(), s.getP3Ms(),
-                ts(s.getP3StartedAt()), s.getP3Detail(), ts(s.getUpdatedAt()), ts(s.getFinishedAt()),
-                s.getFinishedAt() == null ? s.getHostId() : null, s.getId(), s.getUserId(), expectedStep) == 1;
+                + "finished_at = ?, active_host = ?, " + P4.replace(",", " = ?,") + " = ? "
+                + "WHERE id = ? AND user_id = ? AND step = ? AND active_host IS NOT NULL", args) == 1;
     }
 
     /** Annule le passage actif d'un client ; rend son identifiant s'il y en avait un. */
@@ -100,7 +121,8 @@ public class JarvisStateSyncStore {
                 + "updated_at = ?, finished_at = ?, step = step + 1, "
                 + "p1_status = CASE WHEN p1_status IN ('DONE', 'SKIPPED', 'EXPIRED') THEN p1_status ELSE 'CANCELLED' END, "
                 + "p2_status = CASE WHEN p2_status IN ('DONE', 'SKIPPED', 'EXPIRED') THEN p2_status ELSE 'CANCELLED' END, "
-                + "p3_status = CASE WHEN p3_status IN ('DONE', 'SKIPPED', 'EXPIRED') THEN p3_status ELSE 'CANCELLED' END "
+                + "p3_status = CASE WHEN p3_status IN ('DONE', 'SKIPPED', 'EXPIRED') THEN p3_status ELSE 'CANCELLED' END, "
+                + "p4_status = CASE WHEN p4_status IN ('DONE', 'SKIPPED', 'EXPIRED') THEN p4_status ELSE 'CANCELLED' END "
                 + "WHERE id = ? AND user_id = ? AND active_host IS NOT NULL", ts(now), ts(now), s.getId(), userId);
         return n == 1 ? Optional.of(s.getId()) : Optional.empty();
     }
@@ -169,6 +191,22 @@ public class JarvisStateSyncStore {
         s.setStartedAt(odt(rs, "started_at"));
         s.setUpdatedAt(odt(rs, "updated_at"));
         s.setFinishedAt(odt(rs, "finished_at"));
+        s.setP4Status(rs.getString("p4_status"));
+        s.setP4Total(rs.getInt("p4_total"));
+        s.setP4Done(rs.getInt("p4_done"));
+        s.setP4Facts(rs.getInt("p4_facts"));
+        s.setP4Kept(rs.getInt("p4_kept"));
+        s.setP4Rejected(rs.getInt("p4_rejected"));
+        s.setP4Calls(rs.getInt("p4_calls"));
+        s.setP4Errors(rs.getInt("p4_errors"));
+        s.setP4EstChars(rs.getLong("p4_est_chars"));
+        s.setP4EstCalls(rs.getInt("p4_est_calls"));
+        s.setP4Ms(rs.getLong("p4_ms"));
+        BigDecimal p4Cost = rs.getBigDecimal("p4_cost_usd");
+        s.setP4CostUsd(p4Cost == null ? BigDecimal.ZERO : p4Cost);
+        BigDecimal envelope = rs.getBigDecimal("p4_envelope_eur");
+        s.setP4EnvelopeEur(envelope == null ? BigDecimal.ZERO : envelope);
+        s.setP4Detail(rs.getString("p4_detail"));
         return s;
     };
 }

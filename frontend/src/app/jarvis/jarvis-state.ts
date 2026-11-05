@@ -111,7 +111,7 @@ export function eur(value: number): string {
 
 /** Une phase de « Synchroniser » (F-247 / SF-247-16). */
 export interface SyncPhase {
-  key: 'HISTORY' | 'CAPTURES' | 'RELEVE';
+  key: 'HISTORY' | 'NOTES' | 'CAPTURES' | 'RELEVE';
   status: 'PENDING' | 'RUNNING' | 'WAITING' | 'PAUSED' | 'DONE' | 'SKIPPED' | 'EXPIRED' | 'CANCELLED';
   total: number;
   done: number;
@@ -121,6 +121,19 @@ export interface SyncPhase {
   detail: string | null;
   read: number;
   missing: number;
+  /** SF-247-17 (NOTES) : estimation au lancement, enveloppe ponctuelle du passage, garde de citation, appels. */
+  estimateEur?: number;
+  envelopeEur?: number;
+  kept?: number;
+  rejected?: number;
+  calls?: number;
+}
+
+/** L'enveloppe par défaut des constats sur l'historique (F-247 / SF-247-17), montrée avant le lancement. */
+export interface SyncEnvelope {
+  notesEnvelopeEur: number;
+  notesMonthlyCapEur: number;
+  maxEnvelopeEur: number;
 }
 
 /** Un passage de synchronisation d'un client, tel que la passerelle le garde (l'écran le relit). */
@@ -154,7 +167,12 @@ export function syncPercent(s: StateSync): number {
 
 /** Le libellé d'une phase. */
 export function syncPhaseLabel(p: SyncPhase): string {
-  return p.key === 'HISTORY' ? 'Historique' : p.key === 'CAPTURES' ? 'Captures' : 'Relevé du jour';
+  switch (p.key) {
+    case 'HISTORY': return 'Historique';
+    case 'NOTES': return 'Constats';
+    case 'CAPTURES': return 'Captures';
+    default: return 'Relevé du jour';
+  }
 }
 
 const SKIP_REASONS: Record<string, string> = {
@@ -163,10 +181,42 @@ const SKIP_REASONS: Record<string, string> = {
   runner_old: 'runner à mettre à jour',
   disarmed: 'relevé désarmé aujourd’hui',
   registry_off: 'registre coupé',
+  envelope_zero: 'enveloppe à 0 €',
+  before: 'passage antérieur',
 };
+
+const NOTES_ENDS: Record<string, string> = {
+  envelope: ' · arrêté : enveloppe atteinte',
+  budget_hard: ' · arrêté : budget Jarvis épuisé',
+  provider_error: ' · arrêté : fournisseur indisponible',
+};
+
+/** Les constats sur l'historique, en clair : sorties lues, faits, part rejetée par la garde, € dépensés / enveloppe. */
+export function syncNotesText(p: SyncPhase): string {
+  const kept = p.kept ?? 0;
+  const rejected = p.rejected ?? 0;
+  const proposed = kept + rejected;
+  const share = proposed > 0 ? ` · ${Math.round((rejected / proposed) * 100)} % rejetés (citation)` : '';
+  const money = `${eur(p.costEur)} / ${eur(p.envelopeEur ?? 0)}`;
+  const estimate = (p.estimateEur ?? 0) > 0 ? ` (≈ ${eur(p.estimateEur ?? 0)} estimés)` : '';
+  return `${p.done}/${p.total} sorties · ${p.facts} fait${p.facts > 1 ? 's' : ''}${share} · ${money}${estimate}`;
+}
 
 /** L'état d'une phase, en clair. */
 export function syncPhaseText(p: SyncPhase, note: StateSync['note'], current: boolean): string {
+  if (p.key === 'NOTES') {
+    switch (p.status) {
+      case 'PENDING': return (p.estimateEur ?? 0) > 0
+        ? `à venir · ≈ ${eur(p.estimateEur ?? 0)} estimés · enveloppe ${eur(p.envelopeEur ?? 0)}`
+        : `à venir · enveloppe ${eur(p.envelopeEur ?? 0)}`;
+      case 'SKIPPED': return `sautée : ${SKIP_REASONS[p.detail ?? ''] ?? 'rien à faire'}`;
+      case 'PAUSED': return `en pause : tour en cours · ${syncNotesText(p)}`;
+      case 'DONE': return p.detail === 'nothing' ? 'rien de nouveau à lire'
+        : `${syncNotesText(p)}${NOTES_ENDS[p.detail ?? ''] ?? ''}`;
+      case 'CANCELLED': return `annulée · ${syncNotesText(p)}`;
+      default: return syncNotesText(p);
+    }
+  }
   const unit = p.key === 'HISTORY' ? 'réponses' : p.key === 'CAPTURES' ? 'captures' : 'sondes';
   const count = `${p.done}/${p.total} ${unit}`;
   const facts = p.key === 'CAPTURES'
@@ -275,6 +325,11 @@ export class JarvisStateClient {
   }
 
   /** Le dernier passage (7 j) de chaque client. */
+  /** L'enveloppe par défaut des constats sur l'historique (SF-247-17). */
+  syncEnvelope(): Observable<SyncEnvelope> {
+    return this.http.get<SyncEnvelope>('/api/jarvis/state/syncs/envelope');
+  }
+
   syncs(): Observable<StateSync[]> {
     return this.http.get<StateSync[]>('/api/jarvis/state/syncs');
   }

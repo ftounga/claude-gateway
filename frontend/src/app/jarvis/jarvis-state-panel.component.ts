@@ -13,7 +13,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../chat/confirm-dialog/confirm-dialog.component';
 import {
   JarvisStateClient, ReleveView, STATE_FAMILIES, StateClient, StateConversation, StateFact, StateSettingsPatch,
-  StateSpend, StateSync, SyncPhase, capturePlatformLabel, eur, releveProbeStatus, stateSourceLabel, syncPercent,
+  StateSpend, StateSync, SyncEnvelope, SyncPhase, capturePlatformLabel, eur, releveProbeStatus, stateSourceLabel, syncPercent,
   syncPhaseLabel, syncPhaseText, syncSummary,
 } from './jarvis-state';
 
@@ -79,6 +79,10 @@ type StateView = 'facts' | 'conversations' | 'releve';
                         · {{ summary(last) }}
                       } @else {
                         Remplit tout de suite ce que je sais de ce client.
+                      }
+                      @if (envelope(); as env) {
+                        <span class="js__sync-envelope">· Constats sur l’historique : enveloppe {{ euro(env.notesEnvelopeEur) }}
+                          par passage, hors plafond mensuel ({{ euro(env.notesMonthlyCapEur) }}).</span>
                       }
                     </span>
                     <button mat-flat-button type="button" class="js__sync-btn" [disabled]="busy()"
@@ -290,11 +294,14 @@ export class JarvisStatePanelComponent implements OnInit, OnDestroy {
   readonly percent = syncPercent;
   readonly phaseLabel = syncPhaseLabel;
   readonly summary = syncSummary;
+  /** L'enveloppe par défaut des constats sur l'historique (SF-247-17), montrée avant le lancement. */
+  readonly envelope = signal<SyncEnvelope | null>(null);
   private pollTimer: ReturnType<typeof setInterval> | null = null;
 
   ngOnInit(): void {
     this.reload();
     this.loadSyncs();
+    this.client.syncEnvelope().subscribe({ next: (e) => this.envelope.set(e), error: () => this.envelope.set(null) });
   }
 
   ngOnDestroy(): void {

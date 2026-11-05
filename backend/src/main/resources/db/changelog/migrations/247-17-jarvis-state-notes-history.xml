@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-247 / SF-247-17 - LES CONSTATS SUR L'HISTORIQUE (amendement PO du 2026-11-05, "GO").
+
+      1. jarvis_state_notes_seen : l'empreinte (SHA-256 du corps) de chaque sortie d'outil deja lue par un constat
+         redige, par compte et par client. Une sortie deja constatee n'est jamais relue (ni par "Synchroniser", ni deux
+         fois). Aucune sortie n'est gardee : seulement son empreinte. Isolation : cle primaire (user_id, host_id, ...).
+      2. jarvis_state_syncs : la phase 4 "Constats sur l'historique" (apres l'historique, sans le poste) ; estimation,
+         enveloppe ponctuelle (defaut 20 EUR par passage, DISTINCTE du plafond mensuel de 15 EUR des constats),
+         depense, faits ecrits, faits rejetes par la garde de citation. Les passages deja termines sont marques SKIPPED.
+      3. jarvis_usage_days.notes_catchup_cost_usd : la depense de rattrapage, au budget Jarvis (F-244, ligne "Etat"),
+         HORS du plafond mensuel des constats (notes_cost_usd).
+
+      Rollback : les colonnes et la table se retirent.
+    -->
+
+    <changeSet id="247-17-jarvis-state-notes-seen" author="claude-gateway">
+        <createTable tableName="jarvis_state_notes_seen">
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="fingerprint" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <addPrimaryKey tableName="jarvis_state_notes_seen" columnNames="user_id, host_id, fingerprint"
+                constraintName="pk_jarvis_state_notes_seen"/>
+        <rollback>
+            <dropTable tableName="jarvis_state_notes_seen"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="247-17-jarvis-state-syncs-notes" author="claude-gateway">
+        <addColumn tableName="jarvis_state_syncs">
+            <column name="p4_status" type="varchar(12)" defaultValue="PENDING"><constraints nullable="false"/></column>
+            <column name="p4_total" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="p4_done" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="p4_facts" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="p4_kept" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="p4_rejected" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="p4_calls" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="p4_errors" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="p4_est_chars" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="p4_est_calls" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="p4_ms" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="p4_cost_usd" type="numeric(12,6)" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="p4_envelope_eur" type="numeric(8,2)" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="p4_detail" type="varchar(64)"/>
+        </addColumn>
+        <update tableName="jarvis_state_syncs">
+            <column name="p4_status" value="SKIPPED"/>
+            <column name="p4_detail" value="before"/>
+            <where>finished_at IS NOT NULL</where>
+        </update>
+        <rollback>
+            <dropColumn tableName="jarvis_state_syncs" columnName="p4_status"/>
+            <dropColumn tableName="jarvis_state_syncs" columnName="p4_total"/>
+            <dropColumn tableName="jarvis_state_syncs" columnName="p4_done"/>
+            <dropColumn tableName="jarvis_state_syncs" columnName="p4_facts"/>
+            <dropColumn tableName="jarvis_state_syncs" columnName="p4_kept"/>
+            <dropColumn tableName="jarvis_state_syncs" columnName="p4_rejected"/>
+            <dropColumn tableName="jarvis_state_syncs" columnName="p4_calls"/>
+            <dropColumn tableName="jarvis_state_syncs" columnName="p4_errors"/>
+            <dropColumn tableName="jarvis_state_syncs" columnName="p4_est_chars"/>
+            <dropColumn tableName="jarvis_state_syncs" columnName="p4_est_calls"/>
+            <dropColumn tableName="jarvis_state_syncs" columnName="p4_ms"/>
+            <dropColumn tableName="jarvis_state_syncs" columnName="p4_cost_usd"/>
+            <dropColumn tableName="jarvis_state_syncs" columnName="p4_envelope_eur"/>
+            <dropColumn tableName="jarvis_state_syncs" columnName="p4_detail"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="247-17-jarvis-usage-notes-catchup" author="claude-gateway">
+        <addColumn tableName="jarvis_usage_days">
+            <column name="notes_catchup_cost_usd" type="numeric(12,6)" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="jarvis_usage_days" columnName="notes_catchup_cost_usd"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

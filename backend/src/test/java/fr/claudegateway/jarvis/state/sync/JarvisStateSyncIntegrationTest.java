@@ -331,8 +331,10 @@ class JarvisStateSyncIntegrationTest {
         String b = jwt.generateToken(bob);
         mvc.perform(as(post("/api/jarvis/state/clients/" + host + "/sync"), b)).andExpect(status().isNotFound());
         mvc.perform(as(post("/api/jarvis/state/clients/" + host + "/sync"), a)).andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.status").value("RUNNING")).andExpect(jsonPath("$.phases.length()").value(3))
-                .andExpect(jsonPath("$.phases[0].key").value("HISTORY"));
+                .andExpect(jsonPath("$.status").value("RUNNING")).andExpect(jsonPath("$.phases.length()").value(4))
+                .andExpect(jsonPath("$.phases[0].key").value("HISTORY"))
+                .andExpect(jsonPath("$.phases[1].key").value("NOTES"))
+                .andExpect(jsonPath("$.phases[1].envelopeEur").value(20.0));
         mvc.perform(as(post("/api/jarvis/state/clients/" + host + "/sync"), a)).andExpect(status().isOk());
         mvc.perform(as(get("/api/jarvis/state/syncs"), a)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1)).andExpect(jsonPath("$[0].hostId").value(host.toString()));

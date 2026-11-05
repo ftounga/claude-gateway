@@ -673,6 +673,9 @@ app:
       # dans la file durable (STATE_SYNC, priorite basse). Coupe-circuit ; fenetre (bornee par la retention du client).
       sync-enabled: ${APP_JARVIS_STATE_SYNC_ENABLED:true}
       sync-window-days: ${APP_JARVIS_STATE_SYNC_WINDOW_DAYS:90}
+      # F-247 / SF-247-17 : enveloppe PONCTUELLE (EUR, par passage) des constats sur l'historique, distincte du plafond
+      # mensuel des constats au fil de l'eau (notes-cap-eur) ; 0 = pas de constats sur l'historique.
+      sync-notes-envelope-eur: ${APP_JARVIS_STATE_SYNC_NOTES_ENVELOPE_EUR:20}
     # F-235 : LE CERVEAU RAPIDE (deux cerveaux). Un modele rapide tient la conversation vocale ; tout ce qui agit
     # ou demande reflexion est DELEGUE au tour Opus du terminal, inchange. COUPE-CIRCUIT (D17) : false =>
     # /api/jarvis/converse en 503 et l'ecran fait exactement ce qu'il faisait (tout a Opus). Eteint jusqu'au banc

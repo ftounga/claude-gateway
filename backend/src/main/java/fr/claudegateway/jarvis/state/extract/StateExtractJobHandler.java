@@ -146,6 +146,41 @@ public class StateExtractJobHandler implements AsyncJobHandler {
         return out;
     }
 
+    /**
+     * F-247 / SF-247-17 — les sorties d'une réponse passée qui valent un constat rédigé ({@link HistoryNotesSelector}),
+     * dans l'ordre du tour, chacune à l'heure de sa sortie (journal du runner, sinon l'heure de la réponse). Sans rien
+     * écrire ; doublons exacts du tour écartés.
+     */
+    public List<HistoryNotesSelector.Candidate> historyCandidates(UUID userId, UUID workspaceId, AtelierMessage message) {
+        List<JsonNode> blocks = blocks(message.getTerminalJson());
+        if (blocks.isEmpty()) {
+            return List.of();
+        }
+        OffsetDateTime fallback = message.getCreatedAt() == null ? OffsetDateTime.now() : message.getCreatedAt();
+        Map<String, OffsetDateTime> at = null;
+        List<HistoryNotesSelector.Candidate> out = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (JsonNode b : blocks) {
+            if (!"bash".equals(text(b, "tool")) || b.path("error").asBoolean(false)) {
+                continue;
+            }
+            String command = text(b, "command");
+            String output = text(b, "output");
+            HistoryNotesSelector.Verdict v = HistoryNotesSelector.classify(command, output,
+                    extractors.extract(command, output));
+            if (!v.kept() || !seen.add(v.fingerprint())) {
+                continue;
+            }
+            if (at == null) {
+                at = auditTimes(userId, workspaceId, fallback);
+            }
+            String toolUseId = text(b, "toolUseId");
+            out.add(new HistoryNotesSelector.Candidate(toolUseId, v.command(), v.body(), v.fingerprint(),
+                    toolUseId == null ? fallback : at.getOrDefault(toolUseId, fallback)));
+        }
+        return out;
+    }
+
     /** Extrait et range les faits d'une réponse ; rend le bilan (visible des tests et des constats). */
     public Summary extract(UUID userId, UUID hostId, UUID workspaceId, String subjectName, AtelierMessage message) {
         return extract(userId, hostId, workspaceId, subjectName, message, true);
@@ -172,6 +207,17 @@ public class StateExtractJobHandler implements AsyncJobHandler {
             }
             StateExtractors.Result r = extractors.extract(text(b, "command"), text(b, "output"));
             if (!r.stateCommand()) {
+                // SF-247-17 — script maison ou outil derrière un alias : seuls ses faits JSON génériques sont rangés
+                // (la couverture, qui mesure les commandes d'état reconnues, n'est pas touchée).
+                if (!r.facts().isEmpty()) {
+                    String toolUseId = text(b, "toolUseId");
+                    OffsetDateTime observed = toolUseId == null ? fallback : at.getOrDefault(toolUseId, fallback);
+                    for (StateExtractor.Extracted e : r.facts()) {
+                        observations.add(new JarvisStateRegistry.Observation(hostId, workspaceId, e.kind(), e.key(),
+                                e.attribute(), e.value(), observed, JarvisStateVocabulary.SOURCE_TOUR,
+                                message.getId().toString(), e.confidence()));
+                    }
+                }
                 continue;
             }
             stateCalls++;

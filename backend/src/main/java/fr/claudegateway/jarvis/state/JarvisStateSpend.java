@@ -151,6 +151,63 @@ public class JarvisStateSpend {
         return usd;
     }
 
+    /**
+     * F-247 / SF-247-17 — le budget Jarvis est-il à l'arrêt dur ? (les constats sur l'historique s'arrêtent alors ;
+     * leur enveloppe ponctuelle ne passe jamais outre). En cas de doute : oui.
+     */
+    public boolean jarvisHardStop(UUID userId) {
+        try {
+            return budget != null && budget.hardStop(userId);
+        } catch (RuntimeException e) {
+            return true;
+        }
+    }
+
+    /**
+     * F-247 / SF-247-17 — inscrit le coût d'un constat sur l'historique : journal JARVIS (part {@code ETAT}, hors
+     * quota), budget Jarvis, mais <b>hors</b> du plafond mensuel des constats (colonne propre). Rend le coût en dollars.
+     */
+    public BigDecimal accountCatchup(UUID userId, UUID workspaceId, AgentTurn turn, String fallbackModel) {
+        if (turn == null) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal usd = BigDecimal.ZERO;
+        try {
+            String model = turn.servedModel() != null ? turn.servedModel() : fallbackModel;
+            if (ledger != null) {
+                ledger.recordAnnex(userId, workspaceId, model, turn.inputTokens(), turn.outputTokens(),
+                        turn.cacheReadTokens(), turn.cacheWriteTokens(), UsageTag.jarvis(UsageTurn.JarvisPart.ETAT));
+            }
+            if (calculator != null) {
+                TurnCost cost = calculator.calculate(new TurnTokens(turn.fullPriceInputTokens(), turn.outputTokens(),
+                        turn.cacheReadTokens(), turn.cacheWriteTokens()), model);
+                usd = cost == null || cost.amountUsd() == null ? BigDecimal.ZERO : cost.amountUsd();
+            }
+            usage.addNotesCatchupCost(userId, usd);
+        } catch (RuntimeException e) {
+            log.warn("Registre d'état : coût du rattrapage non inscrit ({})", e.getClass().getSimpleName());
+        }
+        return usd;
+    }
+
+    /** F-247 / SF-247-17 — le prix, en dollars, d'un appel de {@code inputTokens} / {@code outputTokens} (estimation). */
+    public BigDecimal priceUsd(String model, long inputTokens, long outputTokens) {
+        try {
+            if (calculator == null) {
+                return BigDecimal.ZERO;
+            }
+            TurnCost cost = calculator.calculate(new TurnTokens(inputTokens, outputTokens, 0, 0), model);
+            return cost == null || cost.amountUsd() == null ? BigDecimal.ZERO : cost.amountUsd();
+        } catch (RuntimeException e) {
+            return BigDecimal.ZERO;
+        }
+    }
+
+    /** Dollars ⇒ euros, au taux de la passerelle. */
+    public BigDecimal toEur(BigDecimal usd) {
+        return costs.toEur(usd);
+    }
+
     /** Prévient une seule fois par mois : la trace durable est le premier travail abandonné pour plafond. */
     void notifyOnce(UUID userId, Part part) {
         LocalDate first = LocalDate.now(clock.withZone(ZONE)).withDayOfMonth(1);

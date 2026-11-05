@@ -30,7 +30,11 @@ public record BashOutput(String command, String body, Integer exitCode, boolean 
             text = text.substring(0, m.start());
         }
         String command = blockCommand;
-        if (text.startsWith("$ ")) {
+        if (blockCommand != null && blockCommand.contains("\n") && text.startsWith("$ " + blockCommand)) {
+            // SF-247-17 — commande sur plusieurs lignes (script en ligne, heredoc) : son écho entier n'est pas la sortie.
+            text = text.substring(2 + blockCommand.length());
+            text = text.startsWith("\n") ? text.substring(1) : text;
+        } else if (text.startsWith("$ ")) {
             int nl = text.indexOf('\n');
             command = nl < 0 ? text.substring(2) : text.substring(2, nl);
             text = nl < 0 ? "" : text.substring(nl + 1);

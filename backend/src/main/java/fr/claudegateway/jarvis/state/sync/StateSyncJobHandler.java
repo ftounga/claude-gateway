@@ -39,6 +39,8 @@ import fr.claudegateway.jarvis.state.JarvisStateSettings;
 import fr.claudegateway.jarvis.state.JarvisStateVocabulary;
 import fr.claudegateway.jarvis.state.capture.CaptureReadEnqueuer;
 import fr.claudegateway.jarvis.state.capture.CaptureReadJobHandler;
+import fr.claudegateway.jarvis.state.extract.HistoryNotesReader;
+import fr.claudegateway.jarvis.state.extract.HistoryNotesSelector;
 import fr.claudegateway.jarvis.state.extract.StateExtractJobHandler;
 import fr.claudegateway.jarvis.state.releve.JarvisReleveService;
 import fr.claudegateway.jarvis.state.releve.JarvisReleveTriggers;
@@ -62,6 +64,9 @@ import fr.claudegateway.shared.jobs.AsyncJobQueue;
  * <li><b>Historique</b> (sans IA, 0 €) : les sorties d'outils gardées ({@code terminal_json}) des sujets du client
  * repassent dans les extracteurs, des plus anciennes aux plus récentes ; chaque fait garde l'heure de sa sortie
  * d'origine, l'upsert n'écrase jamais un fait plus récent, le filtre des secrets s'applique ;</li>
+ * <li><b>Constats sur l'historique</b> (SF-247-17, phase numérotée 4, jouée juste après l'historique, sans le poste) :
+ * les sorties utiles non couvertes sont lues par le modèle rapide, un appel par tranche, garde de citation inchangée,
+ * dans l'enveloppe ponctuelle du passage ;</li>
  * <li><b>Captures déjà déposées</b> (poste allumé) : relues sur le poste puis confiées à la lecture SF-247-12
  * (priorité basse, mêmes plafonds, même coût compté) ;</li>
  * <li><b>Relevé du jour</b> (poste allumé, à jour, relevé mis en place) : chaque sonde passe une fois.</li>
@@ -109,6 +114,13 @@ public class StateSyncJobHandler implements AsyncJobHandler {
     private final TransactionTemplate tx;
     private final Clock clock;
     private final boolean enabled;
+    /** SF-247-17 — les constats sur l'historique (phase 4). */
+    private HistoryNotesReader notes;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setNotes(HistoryNotesReader notes) {
+        this.notes = notes;
+    }
 
     public StateSyncJobHandler(JarvisStateSyncStore store, AsyncJobQueue queue, JarvisStateRegistry registry,
             JarvisStateProperties properties, WorkspaceRepository workspaces, AtelierMessageRepository messages,
@@ -214,6 +226,7 @@ public class StateSyncJobHandler implements AsyncJobHandler {
         } else {
             next = switch (s.getPhase()) {
                 case 1 -> history(s, settings, now);
+                case SyncRow.PHASE_NOTES -> notesPhase(s, settings, now);
                 case 2 -> capturesPhase(s, settings, now);
                 default -> relevePhase(s, settings, now);
             };
@@ -238,8 +251,11 @@ public class StateSyncJobHandler implements AsyncJobHandler {
             return Outcome.drop("cancelled");
         }
         if (next.finished()) {
-            log.info("Synchroniser : client {} terminé — historique {} faits ({} ms), captures {} lues / {} lignes "
-                    + "({} ms, {} USD), relevé {} faits ({} ms)", s.getHostId(), s.getP1Facts(), s.getP1Ms(),
+            log.info("Synchroniser : client {} terminé — historique {} faits ({} ms), constats {} sorties / {} appels / "
+                    + "{} faits écrits / {} retenus / {} rejetés par la garde ({} ms, {} USD, enveloppe {} EUR, {}), "
+                    + "captures {} lues / {} lignes ({} ms, {} USD), relevé {} faits ({} ms)", s.getHostId(),
+                    s.getP1Facts(), s.getP1Ms(), s.getP4Done(), s.getP4Calls(), s.getP4Facts(), s.getP4Kept(),
+                    s.getP4Rejected(), s.getP4Ms(), s.getP4CostUsd(), s.getP4EnvelopeEur(), s.getP4Detail(),
                     s.getP2Read(), s.getP2Facts(), s.getP2Ms(), s.getP2CostUsd(), s.getP3Facts(), s.getP3Ms());
         }
         return Outcome.done();
@@ -251,7 +267,7 @@ public class StateSyncJobHandler implements AsyncJobHandler {
         if (!properties.extract() || !settings.isExtractFromTurns()) {
             s.setP1Status(SyncRow.P_SKIPPED);
             s.setP1Detail("source_off");
-            return toPhase(s, 2);
+            return toPhase(s, SyncRow.PHASE_NOTES);
         }
         int window = Math.max(1, Math.min(s.getWindowDays(), settings.getFactRetentionDays()));
         OffsetDateTime since = s.getStartedAt().minusDays(window);
@@ -275,6 +291,8 @@ public class StateSyncJobHandler implements AsyncJobHandler {
         long t0 = System.nanoTime();
         List<Object[]> rows = nextMessages(s, since);
         int processed = 0;
+        boolean estimate = notesWillRun(s, settings);
+        List<HistoryNotesSelector.Candidate> toEstimate = new ArrayList<>();
         for (Object[] r : rows) {
             UUID messageId = (UUID) r[0];
             Workspace w = subjects.get((UUID) r[1]);
@@ -284,6 +302,14 @@ public class StateSyncJobHandler implements AsyncJobHandler {
                     StateExtractJobHandler.Summary sum = extractor.extract(s.getUserId(), s.getHostId(), w.getId(),
                             w.getName(), m.get(), false);
                     s.setP1Facts(s.getP1Facts() + sum.facts());
+                    if (estimate) {
+                        // SF-247-17 — l'estimation des constats sur l'historique, sans IA, pendant le même parcours.
+                        List<HistoryNotesSelector.Candidate> c = extractor.historyCandidates(s.getUserId(), w.getId(),
+                                m.get());
+                        toEstimate.addAll(c);
+                        s.setP4EstCalls(s.getP4EstCalls() + HistoryNotesSelector.group(c,
+                                HistoryNotesSelector.MAX_GROUP_CHARS).size());
+                    }
                 } catch (RuntimeException e) {
                     log.debug("Synchroniser : réponse ignorée ({})", e.getClass().getSimpleName());
                 }
@@ -296,11 +322,22 @@ public class StateSyncJobHandler implements AsyncJobHandler {
                 break;
             }
         }
+        if (!toEstimate.isEmpty()) {
+            // Ce qui a déjà été constaté (passage précédent, constats au fil de l'eau) ne compte pas.
+            java.util.Set<String> seen = notes.seen(s.getUserId(), s.getHostId(),
+                    toEstimate.stream().map(HistoryNotesSelector.Candidate::fingerprint).toList());
+            for (HistoryNotesSelector.Candidate c : toEstimate) {
+                if (!seen.contains(c.fingerprint())) {
+                    s.setP4Total(s.getP4Total() + 1);
+                    s.setP4EstChars(s.getP4EstChars() + c.body().length() + c.command().length());
+                }
+            }
+        }
         s.setP1Ms(s.getP1Ms() + (System.nanoTime() - t0) / 1_000_000);
         if (processed == rows.size() && rows.size() < HISTORY_BATCH) {
             s.setP1Status(SyncRow.P_DONE);
             s.setP1Done(s.getP1Total());
-            return toPhase(s, 2);
+            return toPhase(s, SyncRow.PHASE_NOTES);
         }
         return Next.now();
     }
@@ -321,6 +358,126 @@ public class StateSyncJobHandler implements AsyncJobHandler {
         return jdbc.query(base + " AND (m.created_at > ? OR (m.created_at = ? AND m.id > ?)) ORDER BY m.created_at, m.id "
                 + "LIMIT ?", map, s.getUserId(), s.getUserId(), s.getHostId(), Timestamp.from(since.toInstant()), c, c,
                 s.getCursorId(), HISTORY_BATCH);
+    }
+
+    // ------------------------------------------------------------------ phase 4 : les constats sur l'historique
+
+    /** Au-delà de ce nombre d'échecs du fournisseur, la phase s'arrête (relancer reprend où elle s'est arrêtée). */
+    static final int MAX_NOTES_ERRORS = 5;
+
+    /** Les constats sur l'historique tourneront-ils pour ce passage ? (sources, coupe-circuits, enveloppe). */
+    private boolean notesWillRun(SyncRow s, JarvisStateSettings settings) {
+        return notes != null && properties.notes() && settings.isNotesEnabled() && properties.extract()
+                && settings.isExtractFromTurns() && s.getP4EnvelopeEur() != null && s.getP4EnvelopeEur().signum() > 0
+                && SyncRow.P_PENDING.equals(s.getP4Status());
+    }
+
+    /**
+     * SF-247-17 — <b>les constats sur l'historique</b> (sans le poste) : les sorties utiles des réponses passées
+     * ({@link HistoryNotesSelector}), non encore constatées, sont lues <b>un appel par tranche</b> (sorties d'un même
+     * tour regroupées), des plus anciennes aux plus récentes, dans l'enveloppe ponctuelle du passage. Cède aux tours
+     * comme l'historique. Une sortie lue est marquée : jamais relue.
+     */
+    private Next notesPhase(SyncRow s, JarvisStateSettings settings, OffsetDateTime now) {
+        if (SyncRow.P_PENDING.equals(s.getP4Status())) {
+            if (notes == null || !properties.notes() || !settings.isNotesEnabled() || !properties.extract()
+                    || !settings.isExtractFromTurns()) {
+                s.setP4Status(SyncRow.P_SKIPPED);
+                s.setP4Detail("source_off");
+                return toPhase(s, 2);
+            }
+            if (s.getP4EnvelopeEur() == null || s.getP4EnvelopeEur().signum() <= 0) {
+                s.setP4Status(SyncRow.P_SKIPPED);
+                s.setP4Detail("envelope_zero");
+                return toPhase(s, 2);
+            }
+            if (s.getP4Total() == 0) {
+                s.setP4Status(SyncRow.P_DONE);
+                s.setP4Detail("nothing");
+                return toPhase(s, 2);
+            }
+            s.setP4Status(SyncRow.P_RUNNING);
+            s.setCursorAt(null);
+            s.setCursorId(null);
+        }
+        Map<UUID, Workspace> subjects = subjects(s);
+        if (turnLive(s.getUserId(), subjects.keySet())) {
+            return pause(s, SyncRow.PHASE_NOTES);
+        }
+        if (notes.jarvisHardStop(s.getUserId())) {
+            return endNotes(s, "budget_hard");
+        }
+        s.setNote(null);
+        s.setP4Status(SyncRow.P_RUNNING);
+        int window = Math.max(1, Math.min(s.getWindowDays(), settings.getFactRetentionDays()));
+        OffsetDateTime since = s.getStartedAt().minusDays(window);
+        long t0 = System.nanoTime();
+        try {
+            List<Object[]> rows = nextMessages(s, since);
+            for (Object[] r : rows) {
+                UUID messageId = (UUID) r[0];
+                Workspace w = subjects.get((UUID) r[1]);
+                Optional<AtelierMessage> m = messages.findByIdAndUserId(messageId, s.getUserId());
+                List<HistoryNotesSelector.Candidate> unseen = List.of();
+                if (w != null && m.isPresent()) {
+                    List<HistoryNotesSelector.Candidate> all = extractor.historyCandidates(s.getUserId(), w.getId(),
+                            m.get());
+                    java.util.Set<String> seen = notes.seen(s.getUserId(), s.getHostId(),
+                            all.stream().map(HistoryNotesSelector.Candidate::fingerprint).toList());
+                    unseen = all.stream().filter(c -> !seen.contains(c.fingerprint())).toList();
+                }
+                if (!unseen.isEmpty()) {
+                    List<HistoryNotesSelector.Candidate> group = HistoryNotesSelector.group(unseen,
+                            HistoryNotesSelector.MAX_GROUP_CHARS).get(0);
+                    java.math.BigDecimal spent = notes.toEur(s.getP4CostUsd());
+                    java.math.BigDecimal worst = notes.toEur(notes.worstUsd(HistoryNotesReader.chars(group)));
+                    if (spent.add(worst).compareTo(s.getP4EnvelopeEur()) > 0) {
+                        // L'enveloppe ne sera jamais dépassée : on s'arrête avant l'appel qui pourrait la crever.
+                        return endNotes(s, "envelope");
+                    }
+                    HistoryNotesReader.Outcome out;
+                    try {
+                        out = notes.read(s.getUserId(), s.getHostId(), w.getId(), messageId, group);
+                    } catch (RuntimeException e) {
+                        s.setP4Errors(s.getP4Errors() + 1);
+                        log.warn("Synchroniser : constat sur l'historique en échec ({})", e.getClass().getSimpleName());
+                        return s.getP4Errors() >= MAX_NOTES_ERRORS ? endNotes(s, "provider_error")
+                                : Next.in(RETRY_TURN);
+                    }
+                    s.setP4Calls(s.getP4Calls() + 1);
+                    s.setP4Done(s.getP4Done() + group.size());
+                    s.setP4Facts(s.getP4Facts() + out.written());
+                    s.setP4Kept(s.getP4Kept() + out.kept());
+                    s.setP4Rejected(s.getP4Rejected() + out.rejected());
+                    s.setP4CostUsd(s.getP4CostUsd().add(out.usd()));
+                    if (unseen.size() > group.size()) {
+                        return Next.now(); // la suite de ce tour à la tranche suivante (même curseur)
+                    }
+                    s.setCursorAt((OffsetDateTime) r[2]);
+                    s.setCursorId(messageId);
+                    return Next.now(); // un appel par tranche
+                }
+                s.setCursorAt((OffsetDateTime) r[2]);
+                s.setCursorId(messageId);
+                if ((System.nanoTime() - t0) / 1_000_000 > SLICE_BUDGET_MS) {
+                    return Next.now();
+                }
+            }
+            if (rows.size() < HISTORY_BATCH) {
+                return endNotes(s, null);
+            }
+            return Next.now();
+        } finally {
+            s.setP4Ms(s.getP4Ms() + (System.nanoTime() - t0) / 1_000_000);
+        }
+    }
+
+    /** Fin de la phase des constats (toutes lues, enveloppe atteinte, budget à l'arrêt dur, pannes) ; place aux captures. */
+    private Next endNotes(SyncRow s, String detail) {
+        s.setP4Status(SyncRow.P_DONE);
+        s.setP4Detail(detail);
+        s.setP4Total(Math.max(s.getP4Total(), s.getP4Done()));
+        return toPhase(s, 2);
     }
 
     // ------------------------------------------------------------------ phase 2 : les captures déjà déposées
@@ -602,6 +759,7 @@ public class StateSyncJobHandler implements AsyncJobHandler {
     private static void setPhaseStatus(SyncRow s, int phase, String status) {
         switch (phase) {
             case 1 -> s.setP1Status(status);
+            case SyncRow.PHASE_NOTES -> s.setP4Status(status);
             case 2 -> s.setP2Status(status);
             default -> s.setP3Status(status);
         }
@@ -618,15 +776,17 @@ public class StateSyncJobHandler implements AsyncJobHandler {
 
     /** Registre coupé en route : tout ce qui reste est sauté, le passage se termine. */
     private static Next finishAll(SyncRow s, String status, String detail) {
-        for (int phase = 1; phase <= 3; phase++) {
-            String current = phase == 1 ? s.getP1Status() : phase == 2 ? s.getP2Status() : s.getP3Status();
+        for (int phase = 1; phase <= SyncRow.PHASE_NOTES; phase++) {
+            String current = phase == 1 ? s.getP1Status() : phase == 2 ? s.getP2Status()
+                    : phase == 3 ? s.getP3Status() : s.getP4Status();
             if (!SyncRow.P_DONE.equals(current) && !SyncRow.P_SKIPPED.equals(current)
                     && !SyncRow.P_EXPIRED.equals(current)) {
                 setPhaseStatus(s, phase, status);
                 switch (phase) {
                     case 1 -> s.setP1Detail(detail);
                     case 2 -> s.setP2Detail(detail);
-                    default -> s.setP3Detail(detail);
+                    case 3 -> s.setP3Detail(detail);
+                    default -> s.setP4Detail(detail);
                 }
             }
         }
