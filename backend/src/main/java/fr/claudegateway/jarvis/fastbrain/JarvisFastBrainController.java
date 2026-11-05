@@ -27,7 +27,8 @@ import fr.claudegateway.chat.SseStreamDispatch;
  *
  * <p>Événements : {@code text} ({@code {delta}}) au fil de la réponse ; {@code delegated} quand la demande part à
  * Opus ; {@code show} (F-237 / SF-237-08) quand il montre une pièce ou navigue ; {@code fallback} quand le cerveau rapide s'efface (plafond, quota : l'écran garde le mode d'avant) ;
- * {@code done} à la fin ; {@code error} sur une panne de flux.</p>
+ * {@code done} à la fin ; {@code error} sur une panne de flux ; {@code cards} (F-248 / SF-248-02) le jeu des faits lus,
+ * jamais avant la première phrase.</p>
  *
  * <p><b>Dormant</b> (D17) : coupe-circuit éteint ⇒ 503, l'écran retombe sur {@code streamChat}. Le sujet est cherché
  * <b>sous l'utilisateur</b> : celui d'un autre compte est introuvable (404). Tout est résolu sur le thread de la
@@ -120,11 +121,16 @@ public class JarvisFastBrainController {
     }
 
     private void relay(SseEmitter emitter, JarvisFastBrainService.Request call, Long turnSeq) {
+        // F-248 / SF-248-02 — le catalogue des faits lus de la réplique (coupe-circuit, jamais en présentation).
+        fr.claudegateway.jarvis.cards.JarvisCardCatalog catalog = cardsOn(call)
+                ? fr.claudegateway.jarvis.cards.JarvisCardCatalog.open() : null;
         try {
             JarvisFastBrainService.Outcome outcome = service.converse(call, new JarvisFastBrainService.Sink() {
                 @Override
                 public void text(String delta) {
                     send(emitter, "text", new TextEvent(delta));
+                    // D10 — les pancartes partent avec ou après la première phrase, jamais avant.
+                    flushCards(emitter, catalog);
                 }
 
                 @Override
@@ -151,6 +157,8 @@ public class JarvisFastBrainController {
                     // La réponse a déjà été poussée au fil de l'eau.
                 }
             }
+            // D10 — rien n'a été dit (délégation muette) : le jeu part à la fin de la réponse.
+            flushCards(emitter, catalog);
             send(emitter, "done", new DoneEvent(brainOf(outcome), outcome.spokenText(), outcome.firstTokenMs(),
                     outcome.model(), turnSeq, outcome.guards(), budgetOf(outcome),
                     service.portraitInUse(call.userId(), call.presentation()), stateOf(call, outcome)));
@@ -163,6 +171,34 @@ public class JarvisFastBrainController {
             } catch (RuntimeException ignored) {
                 emitter.completeWithError(e);
             }
+        } finally {
+            if (catalog != null) {
+                fr.claudegateway.jarvis.cards.JarvisCardCatalog.close();
+            }
+        }
+    }
+
+    /** F-248 / SF-248-01 — le coupe-circuit des pancartes (facultatif : sans lui, éteintes). */
+    private fr.claudegateway.jarvis.cards.JarvisCardsProperties cards;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setCards(fr.claudegateway.jarvis.cards.JarvisCardsProperties cards) {
+        this.cards = cards;
+    }
+
+    /** Vrai si la réplique tient un catalogue de pancartes : coupe-circuit allumé, hors présentation (K7, §4.6). */
+    boolean cardsOn(JarvisFastBrainService.Request call) {
+        return cards != null && cards.on() && !call.presentation() && call.userId() != null;
+    }
+
+    /** Envoie le jeu de pancartes s'il a changé depuis le dernier envoi ; jamais d'exception vers la réplique. */
+    static void flushCards(SseEmitter emitter, fr.claudegateway.jarvis.cards.JarvisCardCatalog catalog) {
+        if (catalog == null) {
+            return;
+        }
+        fr.claudegateway.jarvis.cards.JarvisCardCatalog.Event event = catalog.takeIfChanged();
+        if (event != null) {
+            send(emitter, "cards", event);
         }
     }
 
