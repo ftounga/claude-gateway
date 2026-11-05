@@ -118,6 +118,11 @@
                 (click)="threadOpen.set(!threadOpen()); mailOpen.set(false); portraitOpen.set(false); settingsOpen.set(false)">
           <mat-icon aria-hidden="true">forum</mat-icon> Fil du jour
         </button>
+        <!-- F-247 / SF-247-15 — « Ce que je sais » : le registre d'état par client (jamais en présentation). -->
+        <button mat-button type="button" class="jv__state-open" [attr.aria-expanded]="stateOpen()"
+                (click)="stateOpen.set(!stateOpen()); mailOpen.set(false); calendarOpen.set(false); portraitOpen.set(false); settingsOpen.set(false)">
+          <mat-icon aria-hidden="true">fact_check</mat-icon> Ce que je sais
+        </button>
       }
       @if (!presentation() && costLine(); as line) {
         <!-- F-239 / SF-239-12 — le compteur visible ; F-244 / SF-244-04 — il ouvre la ventilation (jamais en présentation). -->
@@ -350,6 +355,10 @@
 <!-- F-243 / SF-243-01 — le volet « Mes agendas » : jamais en présentation (aucun agenda montré). -->
 @if (calendarOpen() && !presentation()) {
   <app-jarvis-calendars (closed)="calendarOpen.set(false)" />
+}
+<!-- F-247 / SF-247-15 — le volet « Ce que je sais » : jamais en présentation. -->
+@if (stateOpen() && !presentation()) {
+  <app-jarvis-state-panel (closed)="stateOpen.set(false)" />
 }
 <!-- F-243 / SF-243-02 (D10, D11) — la vue d'agenda : frise du jour ou de la semaine, jamais en présentation. -->
 @if (!presentation() && agendaView(); as view) {

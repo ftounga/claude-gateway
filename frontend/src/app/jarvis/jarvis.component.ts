@@ -99,6 +99,7 @@ import { JarvisCompanionsComponent } from './jarvis-companions.component';
 import { JarvisPortraitComponent } from './jarvis-portrait.component';
 import { JarvisMailboxesComponent } from './jarvis-mailboxes.component';
 import { JarvisCalendarsComponent } from './jarvis-calendars.component';
+import { JarvisStatePanelComponent } from './jarvis-state-panel.component';
 import { JarvisAgendaComponent } from './jarvis-agenda.component';
 import { AgendaView, agendaPieceView } from './jarvis-calendar';
 import { JarvisThreadPanelComponent } from './jarvis-thread-panel.component';
@@ -185,7 +186,7 @@ export function companionOffer(version: JarvisCompanionVersion, installed: numbe
  */
 @Component({
   selector: 'app-jarvis',
-  imports: [JarvisPieceGalleryComponent, JarvisCockpitComponent, JarvisCompanionsComponent, JarvisCostPanelComponent, JarvisPortraitComponent, JarvisMailboxesComponent, JarvisCalendarsComponent, JarvisAgendaComponent, JarvisThreadPanelComponent, JarvisMailCardComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatMenuModule],
+  imports: [JarvisPieceGalleryComponent, JarvisCockpitComponent, JarvisCompanionsComponent, JarvisCostPanelComponent, JarvisPortraitComponent, JarvisMailboxesComponent, JarvisCalendarsComponent, JarvisStatePanelComponent, JarvisAgendaComponent, JarvisThreadPanelComponent, JarvisMailCardComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatMenuModule],
   templateUrl: './jarvis.component.html',
   styleUrl: './jarvis.component.scss',
   providers: [JarvisAppUpdate],
@@ -376,6 +377,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
   readonly mailOpen = signal(false);
   /** F-243 / SF-243-01 — le volet « Mes agendas » (jamais en présentation). */
   readonly calendarOpen = signal(false);
+  /** F-247 / SF-247-15 — le volet « Ce que je sais » (jamais en présentation). */
+  readonly stateOpen = signal(false);
   /** F-243 / SF-243-02 (D10) — la vue d'agenda ouverte par la passerelle (jamais en présentation). */
   readonly agendaView = signal<AgendaView | null>(null);
 
