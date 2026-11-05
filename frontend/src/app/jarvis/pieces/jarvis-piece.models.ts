@@ -5,11 +5,13 @@
 export type PieceCategory = 'ENTREE' | 'PREUVE' | 'PRODUCTION';
 
 export type PieceKind = 'IMAGE' | 'VIDEO' | 'AUDIO' | 'PDF' | 'PAGE' | 'SLIDES' | 'ARCHITECTURE' | 'DIAGRAM' | 'TEXT'
-  | 'FILE';
+  | 'FILE'
+  /** F-248 / SF-248-04 (D1) — un fait lu, montré en pancarte (mode `cards` de la galerie). */
+  | 'FAIT';
 
 /** Tous les types, dans l'ordre — la garde du registre des visionneuses les parcourt. */
 export const PIECE_KINDS: readonly PieceKind[] = [
-  'IMAGE', 'VIDEO', 'AUDIO', 'PDF', 'PAGE', 'SLIDES', 'ARCHITECTURE', 'DIAGRAM', 'TEXT', 'FILE',
+  'IMAGE', 'VIDEO', 'AUDIO', 'PDF', 'PAGE', 'SLIDES', 'ARCHITECTURE', 'DIAGRAM', 'TEXT', 'FILE', 'FAIT',
 ];
 
 export type CaptionSource = 'TITLE' | 'DESCRIPTION' | 'MESSAGE' | 'STEP' | 'CHAPTERS' | 'REFORMULATION' | 'SUBJECT'

@@ -41,7 +41,7 @@ export const FAST_CLOSE_MS = 2000;
 const CATEGORY_KEYS: Record<PieceCategory, PieceCountKey> = { ENTREE: 'p_ent', PREUVE: 'p_prf', PRODUCTION: 'p_prd' };
 const KIND_KEYS: Record<PieceKind, PieceCountKey> = {
   IMAGE: 'p_img', VIDEO: 'p_vid', AUDIO: 'p_aud', PDF: 'p_pdf', PAGE: 'p_pag', SLIDES: 'p_sld',
-  ARCHITECTURE: 'p_arc', DIAGRAM: 'p_arc', TEXT: 'p_txt', FILE: 'p_fil',
+  ARCHITECTURE: 'p_arc', DIAGRAM: 'p_arc', TEXT: 'p_txt', FILE: 'p_fil', FAIT: 'c_open',
 };
 
 export function categoryKey(category: PieceCategory | null | undefined): PieceCountKey | null {

@@ -46,7 +46,7 @@ export function storyOrder(pieces: readonly Piece[]): Piece[] {
 const KIND_WORDS: Record<PieceKind, string> = {
   IMAGE: 'l’image', VIDEO: 'la vidéo', AUDIO: 'l’enregistrement', PDF: 'le document', PAGE: 'la page',
   SLIDES: 'la présentation', ARCHITECTURE: 'le schéma d’architecture', DIAGRAM: 'le schéma', TEXT: 'le texte',
-  FILE: 'le fichier',
+  FILE: 'le fichier', FAIT: 'la pancarte',
 };
 
 const DAY = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/Paris' });

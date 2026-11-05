@@ -9,9 +9,14 @@ import {
 import { versionPiece } from './jarvis-piece-versions';
 import { NavAction, NavOrigin, NavReason, NavScope, PieceNav, initialNav, reduceNav, selectedItem } from './jarvis-piece-nav';
 import { Piece } from './jarvis-piece.models';
+import { JarvisCard } from '../cards/jarvis-card.models';
+import { LINGER_MS, cardPiece, cardsScope, orderCards, sizeKey, wallPage } from '../cards/jarvis-card-deck';
+import { cardFreshness } from '../cards/jarvis-card-templates';
 
 /** Refus de la galerie : ceux du réducteur, plus le mode présentation et l'index injoignable. */
-export type PieceStoreReason = NavReason | 'PRESENTATION' | 'UNAVAILABLE' | Exclude<ShowRefusal, 'PRESENTATION'>;
+export type PieceStoreReason = NavReason | 'PRESENTATION' | 'UNAVAILABLE' | Exclude<ShowRefusal, 'PRESENTATION'>
+  /** F-248 / SF-248-04 — une galerie demandée est ouverte : les pancartes s'annoncent par une pastille. */
+  | 'BUSY';
 
 export interface PieceStoreResult {
   ok: boolean;
@@ -58,6 +63,24 @@ export class JarvisPieceStore {
     return item ? this.pieces().get(item.id) ?? null : null;
   });
 
+  /** F-248 / SF-248-04 — les pancartes du jeu affiché (mode `cards`), par identifiant. */
+  readonly cards = signal<ReadonlyMap<string, JarvisCard>>(new Map());
+  /** F-248 / SF-248-04 — la page du mur (≥ 7 pancartes). */
+  readonly deckPage = signal(0);
+  /** F-248 / SF-248-04 — pancartes en attente derrière une galerie demandée (la pastille « 3 pancartes »). */
+  readonly pendingCards = signal<readonly JarvisCard[]>([]);
+  /** F-248 / SF-248-04 — les pancartes du jeu, dans l'ordre affiché. */
+  readonly deck = computed<JarvisCard[]>(() => {
+    if (this.mode() !== 'cards') {
+      return [];
+    }
+    const cards = this.cards();
+    return this.nav().items.map((i) => cards.get(i.id)).filter((c): c is JarvisCard => c != null);
+  });
+  private deckId: string | null = null;
+  private deckShownAt = 0;
+  private lingerTimer: ReturnType<typeof setTimeout> | null = null;
+
   /** F-237 / SF-237-14 — la mesure (§19) : posée par l'écran, sans contenu. */
   counter: PieceCounter | null = null;
   private galleryOpenedAt = 0;
@@ -84,6 +107,9 @@ export class JarvisPieceStore {
     if (result.ok) {
       this.nav.set(result.state);
       this.measure(before, result.state, action, source, now);
+      if (action.type === 'close' && this.mode() === 'cards') {
+        this.closeCards(); // F-248 / SF-248-04 — « ferme ça » efface le jeu de pancartes
+      }
     }
     return result.ok ? { ok: true } : { ok: false, reason: result.reason };
   }
@@ -93,6 +119,9 @@ export class JarvisPieceStore {
     now: number): void {
     if (source) {
       this.count(source === 'voice' ? 'n_loc' : source === 'touch' ? 'n_tch' : 'n_ai');
+      if (this.mode() === 'cards' && source !== 'ai') {
+        this.count(source === 'voice' ? 'c_voice' : 'c_touch'); // F-248 / SF-248-01 — ordres sur les pancartes
+      }
     }
     if (action.type === 'openGallery') {
       this.galleryOpenedAt = now;
@@ -116,6 +145,9 @@ export class JarvisPieceStore {
       && (before.level === 'GALERIE' || before.level === 'PIECE');
     if (closing && before.origin === 'PROACTIVE' && now - this.galleryOpenedAt < FAST_CLOSE_MS) {
       this.count('p_fclose');
+    }
+    if (action.type === 'close' && this.mode() === 'cards' && now - this.deckShownAt < FAST_CLOSE_MS) {
+      this.count('c_close2s'); // F-248 / SF-248-01 — jeu fermé en moins de 2 s (« mal montré »)
     }
   }
 
@@ -253,6 +285,128 @@ export class JarvisPieceStore {
     return this.show(scope, pieces, 'ASKED');
   }
 
+  /**
+   * F-248 / SF-248-04 — **montre un jeu de pancartes** (mode `cards`, D1, D5). Le même `responseId` met le jeu à jour
+   * (pancarte citée qui s'ajoute) sans recompter ; un nouveau le remplace. Une galerie **demandée** ouverte n'est
+   * jamais remplacée : les pancartes attendent derrière la pastille (`pendingCards`). Rien en présentation.
+   */
+  showCards(responseId: string, cards: readonly JarvisCard[], opts: { flat?: boolean; now?: number } = {})
+    : PieceStoreResult {
+    const now = opts.now ?? Date.now();
+    if (this.presentation()) {
+      return { ok: false, reason: 'PRESENTATION' };
+    }
+    if (!cards.length) {
+      return { ok: false, reason: 'NOTHING' };
+    }
+    const nav = this.nav();
+    const asked = this.open() && this.mode() !== 'cards' && nav.origin === 'ASKED';
+    if (asked) {
+      this.pendingCards.set([...cards]);
+      return { ok: false, reason: 'BUSY' };
+    }
+    this.cancelLinger();
+    const fresh = responseId !== this.deckId || this.mode() !== 'cards';
+    const ordered = orderCards(cards);
+    const map = new Map<string, JarvisCard>();
+    for (const card of ordered) {
+      map.set(card.id, card);
+    }
+    const selectedId = !fresh && nav.selected != null ? nav.items[nav.selected - 1]?.id ?? null : null;
+    this.cards.set(map);
+    this.pieces.set(new Map(ordered.map((c) => [c.id, cardPiece(c)])));
+    this.mode.set('cards');
+    if (fresh) {
+      this.deckPage.set(0);
+    }
+    this.pendingCards.set([]);
+    // Le réducteur sans la mesure des pièces : un jeu de pancartes se compte en `c_*`, pas en galerie (`p_*`).
+    const result = this.applyQuietly({ type: 'openGallery', scope: cardsScope(ordered.length),
+      pieces: ordered.map(cardPiece), origin: 'PROACTIVE' });
+    if (selectedId) {
+      const index = ordered.findIndex((c) => c.id === selectedId);
+      if (index >= 0) {
+        this.applyQuietly({ type: 'select', ref: index + 1 });
+      }
+    }
+    if (fresh && result.ok) {
+      this.deckId = responseId;
+      this.deckShownAt = now;
+      this.count('c_set');
+      this.count(sizeKey(ordered.length));
+      this.count('c_old', ordered.filter((c) => cardFreshness(c.observedAt, now, false).old).length);
+      if (opts.flat) {
+        this.count('c_2d');
+      }
+    }
+    return result;
+  }
+
+  /** F-248 / SF-248-04 — la pastille touchée : le jeu en attente remplace la galerie demandée. */
+  openPendingCards(responseId: string, opts: { flat?: boolean; now?: number } = {}): PieceStoreResult {
+    const pending = this.pendingCards();
+    if (!pending.length) {
+      return { ok: false, reason: 'NOTHING' };
+    }
+    this.mode.set('cards');
+    return this.showCards(responseId, pending, opts);
+  }
+
+  /** F-248 / SF-248-04 — « et N autres » / « la suite » : la page suivante du mur (revient au début après la dernière). */
+  nextDeckPage(): boolean {
+    const deck = this.deck();
+    const page = wallPage(deck, this.deckPage());
+    if (page.pages <= 1) {
+      return false;
+    }
+    this.deckPage.set(page.page + 1 >= page.pages ? 0 : page.page + 1);
+    this.count('c_more');
+    return true;
+  }
+
+  /** F-248 / SF-248-04 (D11) — une réponse sans pancarte : le jeu reste 60 s, puis s'efface. */
+  lingerCards(ms = LINGER_MS): void {
+    if (this.mode() !== 'cards' || !this.open()) {
+      return;
+    }
+    this.cancelLinger();
+    this.lingerTimer = setTimeout(() => {
+      this.lingerTimer = null;
+      if (this.mode() === 'cards') {
+        this.closeCards();
+      }
+    }, ms);
+  }
+
+  /** F-248 / SF-248-04 — efface le jeu de pancartes (changement de sujet, « ferme ça ») ; une autre galerie reste. */
+  closeCards(): void {
+    this.cancelLinger();
+    this.pendingCards.set([]);
+    if (this.mode() !== 'cards') {
+      return;
+    }
+    this.nav.set(initialNav());
+    this.pieces.set(new Map());
+    this.cards.set(new Map());
+    this.mode.set('fan');
+    this.deckId = null;
+  }
+
+  private applyQuietly(action: NavAction): PieceStoreResult {
+    const result = reduceNav(this.nav(), action);
+    if (result.ok) {
+      this.nav.set(result.state);
+    }
+    return result.ok ? { ok: true } : { ok: false, reason: result.reason };
+  }
+
+  private cancelLinger(): void {
+    if (this.lingerTimer) {
+      clearTimeout(this.lingerTimer);
+      this.lingerTimer = null;
+    }
+  }
+
   /** Tout ferme (sortie de l'écran, bascule en présentation). */
   reset(): void {
     this.loading?.abort();
@@ -260,6 +414,10 @@ export class JarvisPieceStore {
     this.nav.set(initialNav());
     this.pieces.set(new Map());
     this.mode.set('fan');
+    this.cards.set(new Map());
+    this.pendingCards.set([]);
+    this.cancelLinger();
+    this.deckId = null;
   }
 }
 
@@ -280,6 +438,7 @@ export function refusalPhrase(reason: PieceStoreReason | undefined): string {
       return 'Cette pièce n’est pas du sujet en cours.';
     case 'RECENT':
     case 'NOTHING':
+    case 'BUSY':
       return '';
     default:
       return 'Je n’arrive pas à lire les pièces pour le moment.';
