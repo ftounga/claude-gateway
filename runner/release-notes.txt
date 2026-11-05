@@ -2,6 +2,7 @@
 # Lu par runner/build-tools/SignRunnerUpdate.java, écrit dans le manifeste, affiché par la Forge à côté
 # de « Mise à jour disponible ». À réécrire à chaque version qui change quelque chose de visible.
 Relevé d'état : les lectures automatiques passent en priorité basse, cèdent la place à vos commandes (interrompues en moins d'une demi-seconde) et ne partent jamais pendant un tour.
+Départ propre : à l'arrêt, le runner laisse 8 s au plus à Jarvis pour relever l'état du poste, puis s'arrête quoi qu'il arrive.
 Vidéo derrière un proxy : Node 22, hyperframes, GSAP et ffmpeg viennent du portail (paquet signé), rendu avec le Chrome ou l'Edge du poste ; rien n'est pris sur internet.
 Relire une vidéo avant de la publier : contrôle de la composition et images clés que l'agent regarde ; GSAP installé avec la chaîne.
 Rendre une vidéo : l'agent prépare la chaîne (Node 22, hyperframes 0.8.193, Chrome, ffmpeg) au premier usage et rend en arrière-plan ; rien n'est contourné sur un poste verrouillé.

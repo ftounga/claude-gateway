@@ -193,8 +193,11 @@ public final class RunnerMain {
         // Arrêt (F-82 / SF-82-01) : l'attente est BORNÉE, et l'échec de fermeture est dit. Le corps
         // du crochet vit dans RunnerShutdown — c'est le Runnable que la JVM exécute, et celui que le
         // test exécute : aucune imitation ne s'intercale entre les deux.
+        // F-247 / SF-247-09 : avant de couper, la gateway peut relever l'état du poste (8 s au plus).
+        Runnable departure = RunnerDeparture.request(httpClient, config.departureUrl(), token,
+                RunnerShutdown.DEPARTURE);
         Runtime.getRuntime().addShutdownHook(new Thread(
-                RunnerShutdown.task(shuttingDown, () -> {
+                RunnerShutdown.task(shuttingDown, departure, RunnerShutdown.DEPARTURE, () -> {
                     connection.stop();
                     PollingConnection active = polling.get();
                     if (active != null) {

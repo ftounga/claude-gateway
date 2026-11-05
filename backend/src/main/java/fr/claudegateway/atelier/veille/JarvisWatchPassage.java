@@ -73,8 +73,15 @@ public class JarvisWatchPassage {
 
     /** Lance le passage et rend la ligne de journal close. */
     public JarvisWatchRun run(JarvisWatch watch, Workspace workspace, OffsetDateTime slot, String trigger) {
+        return run(watch, workspace, slot, trigger, null);
+    }
+
+    /** F-247 / SF-247-09 — un passage au délai de sonde donné ({@code null} : le délai habituel). */
+    public JarvisWatchRun run(JarvisWatch watch, Workspace workspace, OffsetDateTime slot, String trigger,
+            Long timeoutMs) {
         OffsetDateTime started = OffsetDateTime.now(clock);
-        JarvisWatchProbeRunner.Outcome outcome = probes.run(watch, workspace);
+        JarvisWatchProbeRunner.Outcome outcome = timeoutMs == null ? probes.run(watch, workspace)
+                : probes.run(watch, workspace, timeoutMs);
         OffsetDateTime finished = OffsetDateTime.now(clock);
         JarvisWatchRun run = JarvisWatchRun.builder().userId(watch.getUserId()).workspaceId(watch.getWorkspaceId())
                 .watchId(watch.getId()).slotAt(slot).trigger(trigger).startedAt(started).finishedAt(finished)

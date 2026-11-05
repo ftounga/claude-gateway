@@ -100,6 +100,11 @@ public class JarvisWatchProbeRunner {
 
     /** Lance la sonde de cette veille, telle que validée. */
     public Outcome run(JarvisWatch watch, Workspace workspace) {
+        return run(watch, workspace, watch.isState() ? RELEVE_TIMEOUT_MS : PROBE_TIMEOUT_MS);
+    }
+
+    /** F-247 / SF-247-09 — même sonde, délai donné (le relevé de départ n'a que quelques secondes). */
+    public Outcome run(JarvisWatch watch, Workspace workspace, long timeoutMs) {
         long started = System.currentTimeMillis();
         if (watch.getProbeScriptPath() != null) {
             Optional<String> script = readScript(watch.getUserId(), workspace, watch.getProbeScriptPath());
@@ -117,8 +122,8 @@ public class JarvisWatchProbeRunner {
         RunnerCallResult result;
         try {
             result = watch.isState()
-                    ? gateway.bashLow(target, callId, watch.getProbeCommand(), RELEVE_TIMEOUT_MS)
-                    : gateway.bash(target, callId, watch.getProbeCommand(), null, PROBE_TIMEOUT_MS, null);
+                    ? gateway.bashLow(target, callId, watch.getProbeCommand(), Math.min(timeoutMs, RELEVE_TIMEOUT_MS))
+                    : gateway.bash(target, callId, watch.getProbeCommand(), null, timeoutMs, null);
         } catch (RuntimeException e) {
             log.warn("Sonde de veille non lancée ({})", e.getClass().getSimpleName());
             return Outcome.failure(ERR_TRANSPORT, "La sonde n'a pas pu être lancée sur le poste.", elapsed(started));

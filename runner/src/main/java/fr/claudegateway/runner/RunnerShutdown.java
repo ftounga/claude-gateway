@@ -42,6 +42,12 @@ public final class RunnerShutdown {
      */
     public static final Duration GRACE = Duration.ofSeconds(5);
 
+    /**
+     * F-247 / SF-247-09 — plafond du <b>relevé de départ</b> : à l'arrêt propre, et avant de couper les transports, le
+     * runner laisse à la gateway au plus 8 s pour relever l'état du poste. L'arrêt n'attend jamais davantage.
+     */
+    public static final Duration DEPARTURE = Duration.ofSeconds(8);
+
     private RunnerShutdown() {
     }
 
@@ -58,8 +64,34 @@ public final class RunnerShutdown {
      */
     public static Runnable task(AtomicBoolean shuttingDown, Runnable stopTransports,
             CountDownLatch stopped, Duration grace, Console console) {
+        return task(shuttingDown, null, Duration.ZERO, stopTransports, stopped, grace, console);
+    }
+
+    /**
+     * F-247 / SF-247-09 — le même crochet, précédé du <b>relevé de départ</b> : {@code departure} (la demande à la
+     * gateway) tourne pendant au plus {@code departureCap}, transports encore ouverts — la gateway relève l'état par
+     * eux —, puis l'arrêt continue quoi qu'il arrive.
+     */
+    public static Runnable task(AtomicBoolean shuttingDown, Runnable departure, Duration departureCap,
+            Runnable stopTransports, CountDownLatch stopped, Duration grace, Console console) {
         return () -> {
             shuttingDown.set(true);
+            if (departure != null && departureCap != null && !departureCap.isZero()) {
+                Thread leaving = new Thread(() -> {
+                    try {
+                        departure.run();
+                    } catch (RuntimeException ignored) {
+                        // un relevé de départ manqué n'empêche jamais l'arrêt
+                    }
+                }, "runner-departure");
+                leaving.setDaemon(true);
+                leaving.start();
+                try {
+                    leaving.join(departureCap.toMillis());
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
             stopTransports.run();
             try {
                 if (!stopped.await(grace.toMillis(), TimeUnit.MILLISECONDS)) {

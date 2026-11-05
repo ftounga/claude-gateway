@@ -43,6 +43,10 @@ public class JarvisWatchRun {
     /** F-247 / SF-247-07 — relevé qui a cédé la place (poste occupé, préempté) : repris plus tard, jamais un échec. */
     public static final String YIELDED = "YIELDED";
     public static final String SCHEDULED = "SCHEDULED";
+    /** F-247 / SF-247-09 — relevé à l'inactivité du poste (20 min sans commande). */
+    public static final String IDLE = "IDLE";
+    /** F-247 / SF-247-09 — relevé au départ propre du runner (8 s au plus). */
+    public static final String DEPARTURE = "DEPARTURE";
     public static final String CATCH_UP = "CATCH_UP";
     public static final String MANUAL = "MANUAL";
 
