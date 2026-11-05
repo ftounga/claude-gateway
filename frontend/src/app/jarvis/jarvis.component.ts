@@ -110,6 +110,7 @@ import { JarvisMailCardComponent } from './jarvis-mail-card.component';
 import { JarvisCardDetailComponent } from './cards/jarvis-card-detail.component';
 import { JarvisCardClient, JarvisCardDetail } from './cards/jarvis-card-client';
 import { cardVoiceCommand } from './cards/jarvis-card-voice';
+import { OpusCards } from './cards/jarvis-card-opus';
 import { JarvisCard } from './cards/jarvis-card.models';
 import { JarvisMailClient, MailCard, bodyCard, briefCard, mailPieceId } from './jarvis-mail';
 import { JarvisCostPanelComponent } from './jarvis-cost-panel.component';
@@ -2810,7 +2811,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
           }
         },
       };
-      this.voice.enqueue(sentence, subjectId, this.sayingHooks(sentence, lineHooks));
+      this.voice.enqueue(sentence, subjectId,
+        this.sayingHooks(sentence, this.opusCardHooks(sentence, subjectId, oral, lineHooks)));
     }
     // La file dite, le tour continue (outils) : l'orbe repasse en réflexion.
     void this.voice.idle().then(() => this.zone.run(() => {
@@ -2912,6 +2914,51 @@ export class JarvisComponent implements OnInit, OnDestroy {
         return true;
       }
     }
+  }
+
+  /** F-248 / SF-248-08 — le jeu d'un tour d'Opus (clés citées dans ses lignes 🎙 jouées). */
+  private opusCards: { oral: OralStream; cards: OpusCards } | null = null;
+  private opusTurns = 0;
+
+  /**
+   * F-248 / SF-248-08 (§4.8) — une ligne 🎙 d'Opus commence à être jouée : ses clés techniques neuves sont demandées
+   * **après le premier mot** (jamais avant), lues par index côté passerelle ; seules celles du registre reviennent.
+   */
+  private opusCardHooks(sentence: string, subjectId: string, oral: OralStream, hooks?: SpeakHooks): SpeakHooks {
+    return {
+      ...hooks,
+      onPlaying: () => {
+        hooks?.onPlaying?.();
+        if (!this.cardsOn() || this.presentation()) {
+          return;
+        }
+        if (this.opusCards?.oral !== oral) {
+          this.opusCards = { oral, cards: new OpusCards(`opus:${++this.opusTurns}`) };
+        }
+        const turn = this.opusCards.cards;
+        const keys = turn.take(sentence);
+        if (!keys.length) {
+          return;
+        }
+        const startedAt = performance.now();
+        void this.cardClient.byKeys(keys, subjectId || null).then((cards) => this.zone.run(() => {
+          if (!cards.length || this.opusCards?.cards !== turn || this.presentation() || !this.cardsOn()) {
+            return;
+          }
+          const before = turn.cards.size;
+          const all = turn.add(cards);
+          const shown = this.pieces.showCards(turn.id, all, { flat: this.cardsFlat() });
+          if (shown.ok || shown.reason === 'BUSY') {
+            this.pieces.count('c_cit', all.length - before);
+            const clock = this.clock;
+            if (before === 0 && clock) {
+              clock.fast = { ...clock.fast, cardsLagMs: Math.round(performance.now() - startedAt),
+                cardsCount: all.length };
+            }
+          }
+        }));
+      },
+    };
   }
 
   /** F-248 / SF-248-05 — le jeu de la réponse en cours (une seule à la fois). */
