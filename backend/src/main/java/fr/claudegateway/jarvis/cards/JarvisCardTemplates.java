@@ -162,14 +162,14 @@ public final class JarvisCardTemplates {
     /** Les mots qui donnent le ton (normalisés, sans accents). Rouge réservé aux alertes. */
     private static final List<String> ALERT = List.of("echec", "echoue", "failed", "failure", "error", "erreur",
             "degrade", "degraded", "incident", "refuse", "denied", "expire", "expired", "broken", "auth_failed",
-            "crashloop", "outofsync", "out of sync", "rouge", "ko");
+            "crashloop", "outofsync", "out of sync", "rouge", "ko", "panne");
     private static final List<String> WAIT = List.of("attend", "a repondre", "a envoyer", "a traiter", "a lire",
             "bloque", "blocked", "expire dans", "demande", "a faire", "pending", "draft", "brouillon");
     private static final List<String> OK = List.of("fusionne", "merged", "sain", "healthy", "reussi", "success",
             "succeeded", "synced", "termine", "fait", "done", "passed", "deploye", "deployed", "valide", "ok",
             "connecte");
     private static final List<String> OFF = List.of("deconnecte", "eteint", "offline", "hors ligne", "archive",
-            "annule", "closed", "ferme");
+            "annule", "closed", "ferme", "pause");
 
     /** Le ton d'un mot de statut : {@code alerte}, {@code attend}, {@code ok}, {@code eteint} ou {@code normal}. */
     public static String tone(String word) {
