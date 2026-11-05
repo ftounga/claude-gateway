@@ -169,6 +169,46 @@ public final class BashTool {
      */
     public static final String BUSY_MESSAGE = "Une commande est déjà en cours sur ce runner.";
 
+    // ------------------------------------------------------------ basse priorité (F-247 / SF-247-06)
+
+    /** Capacité annoncée : ce poste sait exécuter une commande qui cède la place. */
+    public static final String LOW_PRIORITY_CAPABILITY = "low_priority";
+    /** Refus d'une commande de basse priorité : le poste travaille, on reviendra plus tard. */
+    public static final String BUSY_DEFERRED = "busy_deferred";
+    /** Issue d'une commande de basse priorité tuée parce qu'une commande du PO est arrivée. */
+    public static final String PREEMPTED = "preempted";
+    /** Une sonde ne dure jamais plus de 20 s (porte Z5). */
+    static final long LOW_MAX_MS = 20_000;
+    /** Pas de relevé de CPU plus fin que ce pas (ms). */
+    static final long LOW_POLL_MS = 50;
+
+    /** Une seule commande de basse priorité à la fois (porte Z5). */
+    private final Semaphore lowSlot = new Semaphore(1);
+    /** Commandes « du PO » en vol (premier plan, preuves) : tant qu'il y en a, la basse priorité est refusée. */
+    private final AtomicInteger normalInFlight = new AtomicInteger();
+    /** Les processus de basse priorité vivants, et ceux qu'une commande du PO a préemptés. */
+    private final java.util.Set<Process> lowProcesses = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private final java.util.Set<Process> preempted = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /** Vrai si l'entrée demande la basse priorité. */
+    static boolean low(JsonNode input) {
+        return input != null && "low".equals(input.path("priority").asText(""));
+    }
+
+    /** Tue toute commande de basse priorité en cours : le travail du PO passe d'abord (≤ 500 ms). */
+    void preemptLow() {
+        for (Process p : lowProcesses) {
+            preempted.add(p);
+            p.descendants().forEach(ProcessHandle::destroyForcibly);
+            p.destroyForcibly();
+        }
+    }
+
+    /** Une autre activité que les commandes (capture, synchro, téléchargement) occupe-t-elle le poste ? */
+    private static boolean otherActivity() {
+        return RunnerActivity.busy().stream().anyMatch(l -> !RunnerActivity.COMMAND.equals(l));
+    }
+
     /**
      * Exécute la commande décrite par {@code input} et diffuse sa sortie via {@code context}.
      * Ne lève jamais : toute erreur devient un {@link ToolOutcome} porteur d'un code du contrat (§4).
@@ -190,18 +230,135 @@ public final class BashTool {
         // la fois » (un serveur de dev ne doit pas bloquer un bash de premier plan) et rend la main
         // tout de suite. Ignoré si le montage n'offre pas l'arrière-plan (background == null) : la
         // commande retombe alors en synchrone, exactement comme avant.
-        if (background != null && input != null && input.path("background").asBoolean(false)) {
-            return startInBackground(command, workingDirectory);
+        if (low(input)) {
+            // F-247 / SF-247-06 (Z4) : la basse priorité ne part jamais quand le poste travaille.
+            if (normalInFlight.get() > 0 || otherActivity() || !lowSlot.tryAcquire()) {
+                return ToolOutcome.error(BUSY_DEFERRED, "Le poste travaille : relevé remis à plus tard.");
+            }
+            try {
+                return executeLow(command, workingDirectory, context);
+            } finally {
+                lowSlot.release();
+            }
         }
-        if (!slot.tryAcquire()) {
-            // Pas d'exécution concurrente non bornée : N processus au plus (F-195 / SF-195-02).
-            return ToolOutcome.error("denied", BUSY_MESSAGE);
-        }
+        normalInFlight.incrementAndGet();
         try {
-            return execute(command, workingDirectory, context);
+            preemptLow();
+            if (background != null && input != null && input.path("background").asBoolean(false)) {
+                return startInBackground(command, workingDirectory);
+            }
+            if (!slot.tryAcquire()) {
+                // Pas d'exécution concurrente non bornée : N processus au plus (F-195 / SF-195-02).
+                return ToolOutcome.error("denied", BUSY_MESSAGE);
+            }
+            try {
+                return execute(command, workingDirectory, context);
+            } finally {
+                slot.release();
+            }
         } finally {
-            slot.release();
+            normalInFlight.decrementAndGet();
         }
+    }
+
+    /**
+     * F-247 / SF-247-06 — une commande de <b>basse priorité</b> : processus en priorité basse ({@code nice 19}, ou
+     * {@code BelowNormal} sous Windows), 20 s au plus, tuée dès qu'une commande du PO arrive ({@link #PREEMPTED}),
+     * CPU relevé et remonté. Ne prend pas de jeton du premier plan : elle ne bloque jamais le PO.
+     */
+    private ToolOutcome executeLow(String command, Path workingDirectory, ToolContext context) {
+        List<String> line = lowPriorityLine(shellCommand(command));
+        ProcessBuilder builder = new ProcessBuilder(line).directory(workingDirectory.toFile());
+        builder.redirectErrorStream(false);
+        Process process;
+        try {
+            process = builder.start();
+        } catch (IOException | RuntimeException e) {
+            return ToolOutcome.error("exec_failed", "La commande n'a pas pu être démarrée.");
+        }
+        lowProcesses.add(process);
+        if (WINDOWS) {
+            belowNormal(process.pid());
+        }
+        StreamBudget budget = new StreamBudget(context);
+        closeQuietly(process.getOutputStream());
+        Thread out = pump(process.getInputStream(), "stdout", budget, "runner-bash-low-out");
+        Thread err = pump(process.getErrorStream(), "stderr", budget, "runner-bash-low-err");
+        long cpuMs = 0;
+        boolean cancelled = false;
+        boolean timedOut = false;
+        long deadline = System.nanoTime() + LOW_MAX_MS * 1_000_000;
+        try {
+            while (!process.waitFor(LOW_POLL_MS, TimeUnit.MILLISECONDS)) {
+                cpuMs = Math.max(cpuMs, cpuOf(process));
+                if (System.nanoTime() > deadline) {
+                    timedOut = true;
+                    break;
+                }
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            cancelled = true;
+        } finally {
+            if (process.isAlive()) {
+                process.descendants().forEach(ProcessHandle::destroyForcibly);
+                process.destroyForcibly();
+                waitQuietly(process);
+            }
+            lowProcesses.remove(process);
+            join(out);
+            join(err);
+        }
+        boolean wasPreempted = preempted.remove(process);
+        if (wasPreempted) {
+            return new ToolOutcome(false, null, false, -1, PREEMPTED,
+                    "Relevé interrompu : une commande du poste est passée devant.", null, cpuMs);
+        }
+        if (cancelled) {
+            return ToolOutcome.error("cancelled", "Commande interrompue.");
+        }
+        if (timedOut) {
+            return new ToolOutcome(false, null, false, -1, "timeout", "Sonde trop longue (20 s au plus).", null, cpuMs);
+        }
+        return new ToolOutcome(true, "", budget.truncated(), budget.bytes(), null, null, process.exitValue(), cpuMs);
+    }
+
+    static final boolean WINDOWS = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT)
+            .contains("win");
+
+    /** La ligne en priorité basse : {@code nice -n 19} devant, là où {@code nice} existe (POSIX). */
+    static List<String> lowPriorityLine(List<String> line) {
+        if (WINDOWS) {
+            return line;
+        }
+        for (String nice : new String[] {"/usr/bin/nice", "/bin/nice"}) {
+            if (Files.isExecutable(Path.of(nice))) {
+                List<String> out = new java.util.ArrayList<>(List.of(nice, "-n", "19"));
+                out.addAll(line);
+                return out;
+            }
+        }
+        return line;
+    }
+
+    /** Sous Windows : passe le processus en {@code BelowNormal}, sans attendre (au mieux). */
+    private static void belowNormal(long pid) {
+        try {
+            new ProcessBuilder("powershell", "-NoProfile", "-NonInteractive", "-Command",
+                    "(Get-Process -Id " + pid + ").PriorityClass='BelowNormal'").redirectErrorStream(true)
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
+        } catch (IOException | RuntimeException ignored) {
+            // la sonde reste bornée en durée et préemptible
+        }
+    }
+
+    /** Le CPU consommé par un processus et ses descendants, en ms (0 si inconnu). */
+    private static long cpuOf(Process process) {
+        long total = process.info().totalCpuDuration().map(java.time.Duration::toMillis).orElse(0L);
+        for (ProcessHandle child : (Iterable<ProcessHandle>) process.descendants()::iterator) {
+            total += child.info().totalCpuDuration().map(java.time.Duration::toMillis).orElse(0L);
+        }
+        return total;
     }
 
     /**
@@ -223,13 +380,19 @@ public final class BashTool {
         } catch (ToolException e) {
             return ToolOutcome.error(e);
         }
-        if (!slot.tryAcquire()) {
-            return ToolOutcome.error("denied", BUSY_MESSAGE);
-        }
+        normalInFlight.incrementAndGet();
         try {
-            return ProofRun.execute(shell, proofHost(), workingDirectory, commands, context);
+            preemptLow();
+            if (!slot.tryAcquire()) {
+                return ToolOutcome.error("denied", BUSY_MESSAGE);
+            }
+            try {
+                return ProofRun.execute(shell, proofHost(), workingDirectory, commands, context);
+            } finally {
+                slot.release();
+            }
         } finally {
-            slot.release();
+            normalInFlight.decrementAndGet();
         }
     }
 

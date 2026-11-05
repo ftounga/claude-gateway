@@ -137,6 +137,9 @@ public final class ToolRouter implements ToolExecutor {
             // F-212 / SF-212-01 : sessions de preuve (proof_run). Sans cette annonce (runner ancien),
             // la gateway répond « mettez à jour le poste » au lieu d'émettre l'appel.
             capabilities.add(ProofRun.CAPABILITY);
+            // F-247 / SF-247-06 : ce poste sait céder la place (priorité basse, refus busy_deferred,
+            // préemption). Sans cette annonce, la gateway n'envoie AUCUN relevé.
+            capabilities.add(BashTool.LOW_PRIORITY_CAPABILITY);
         }
         // F-121 / SF-121-07 : l'arrière-plan (run_in_background + bash_output/kill_shell) n'est annoncé
         // que si l'exécution est autorisée ET qu'un registre est monté. Sans cette annonce, la gateway

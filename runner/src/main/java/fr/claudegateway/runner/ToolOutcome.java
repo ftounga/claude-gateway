@@ -14,7 +14,13 @@ package fr.claudegateway.runner;
  *                  {@code null} pour tout autre outil (contrat §2.4)
  */
 public record ToolOutcome(boolean ok, String content, boolean truncated, long bytes,
-        String errorCode, String errorMessage, Integer exitCode) {
+        String errorCode, String errorMessage, Integer exitCode, Long cpuMs) {
+
+    /** Sans relevé de CPU (tout sauf une commande de basse priorité, F-247 / SF-247-06). */
+    public ToolOutcome(boolean ok, String content, boolean truncated, long bytes, String errorCode,
+            String errorMessage, Integer exitCode) {
+        this(ok, content, truncated, bytes, errorCode, errorMessage, exitCode, null);
+    }
 
     public static ToolOutcome ok(String content, boolean truncated, long bytes) {
         return new ToolOutcome(true, content == null ? "" : content, truncated, bytes, null, null, null);
