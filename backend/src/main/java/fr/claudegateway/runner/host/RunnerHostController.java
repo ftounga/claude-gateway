@@ -425,6 +425,8 @@ public class RunnerHostController {
         // il n'observe plus aucun navigateur. Son droit n'est PAS exigé ici — on supprime, et on ne
         // demande pas à quelqu'un qui a résilié l'option de la reprendre pour effacer ses traces.
         workspaceService.deleteTeamsTerminal(userId, hostId);
+        // Et le SUJET DÉDIÉ AU RELEVÉ (F-247 / SF-247-18) : il n'inventorie plus rien sans sa machine.
+        workspaceService.deleteJarvisReleve(userId, hostId);
         killSwitchService.kill(userId, hostId);
         hostService.deleteWithCredentials(userId, hostId);
         return ResponseEntity.noContent().build();

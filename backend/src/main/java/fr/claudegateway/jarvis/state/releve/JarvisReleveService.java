@@ -1,13 +1,13 @@
 package fr.claudegateway.jarvis.state.releve;
 
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 import java.util.UUID;
 
 import org.slf4j.Logger;
@@ -16,7 +16,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import fr.claudegateway.atelier.Workspace;
-import fr.claudegateway.atelier.live.LiveTurnRegistry;
+import fr.claudegateway.atelier.live.HostTurnActivity;
 import fr.claudegateway.atelier.veille.JarvisWatch;
 import fr.claudegateway.atelier.veille.JarvisWatchItems;
 import fr.claudegateway.atelier.veille.JarvisWatchStateHook;
@@ -51,15 +51,15 @@ public class JarvisReleveService implements JarvisWatchStateHook {
     private final JarvisStateProperties properties;
     private final JarvisStateRegistry registry;
     private final RunnerHostService hosts;
-    private final LiveTurnRegistry liveTurns;
+    private final HostTurnActivity activity;
     private final JdbcTemplate jdbc;
 
     public JarvisReleveService(JarvisStateProperties properties, JarvisStateRegistry registry, RunnerHostService hosts,
-            LiveTurnRegistry liveTurns, JdbcTemplate jdbc) {
+            HostTurnActivity activity, JdbcTemplate jdbc) {
         this.properties = properties;
         this.registry = registry;
         this.hosts = hosts;
-        this.liveTurns = liveTurns;
+        this.activity = activity;
         this.jdbc = jdbc;
     }
 
@@ -86,23 +86,12 @@ public class JarvisReleveService implements JarvisWatchStateHook {
     }
 
     /**
-     * Z4 (1) — aucun tour vivant connu sur les sujets du poste, et aucune entrée du journal du runner hors relevés et
-     * veilles depuis 2 min (index {@code user_id, workspace_id, created_at}).
+     * Z4 (1) — aucun tour vivant ni en attente sur les sujets du poste, <b>quel que soit le pod</b> (F-247 / SF-247-18 :
+     * registre de ce pod, demande sans réponse en base, routine ou chantier autonome en cours), et aucune entrée du
+     * journal du runner hors relevés et veilles depuis 2 min.
      */
     public boolean quiet(UUID userId, UUID hostId, OffsetDateTime now) {
-        Set<UUID> subjects = new java.util.HashSet<>(jdbc.queryForList(
-                "SELECT id FROM workspaces WHERE user_id = ? AND host_id = ?", UUID.class, userId, hostId));
-        if (subjects.isEmpty()) {
-            return true;
-        }
-        if (liveTurns.liveTurnsOf(userId).stream().anyMatch(t -> subjects.contains(t.workspaceId()))) {
-            return false;
-        }
-        Integer recent = jdbc.queryForObject("SELECT count(*) FROM runner_audit a WHERE a.user_id = ? AND "
-                + "a.workspace_id IN (SELECT w.id FROM workspaces w WHERE w.user_id = ? AND w.host_id = ?) "
-                + "AND a.created_at >= ? AND a.tool NOT LIKE 'veille_sonde%' AND a.tool NOT LIKE 'releve_sonde%'",
-                Integer.class, userId, userId, hostId, Timestamp.from(now.minusMinutes(QUIET_MINUTES).toInstant()));
-        return recent == null || recent == 0;
+        return !activity.hostBusy(userId, hostId, Duration.ofMinutes(QUIET_MINUTES), false, now);
     }
 
     /** D12 — plus de 3 préemptions aujourd'hui sur ce poste : désarmé jusqu'au lendemain. */

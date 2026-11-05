@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-247 / SF-247-18 - LE SUJET DEDIE AU RELEVE (correctif de l'incident du 2026-11-05).
+
+      workspaces.jarvis_releve_host_id : NULL pour toute ligne existante ; egal a host_id sur l'unique sujet
+      "Jarvis - releve" du poste, ou tourne la mise en place du releve (jamais dans un sujet de travail du PO).
+      La contrainte UNIQUE porte "un sujet dedie par poste", y compris sous deux creations concurrentes (H2 et
+      PostgreSQL acceptent plusieurs NULL). Meme patron que jarvis_thread_user_id (F-245).
+
+      Rollback : la contrainte puis la colonne se retirent.
+    -->
+
+    <changeSet id="247-18-workspaces-jarvis-releve" author="claude-gateway">
+        <addColumn tableName="workspaces">
+            <column name="jarvis_releve_host_id" type="uuid"/>
+        </addColumn>
+        <addUniqueConstraint tableName="workspaces" columnNames="jarvis_releve_host_id"
+                             constraintName="uq_workspaces_jarvis_releve_host"/>
+        <rollback>
+            <dropUniqueConstraint tableName="workspaces" constraintName="uq_workspaces_jarvis_releve_host"/>
+            <dropColumn tableName="workspaces" columnName="jarvis_releve_host_id"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

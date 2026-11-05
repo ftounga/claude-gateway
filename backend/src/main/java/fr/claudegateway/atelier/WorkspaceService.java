@@ -332,8 +332,10 @@ public class WorkspaceService {
      * F-69 — veulent tous les trois <b>les projets</b>.</p>
      */
     public List<Workspace> listByHost(UUID userId, UUID hostId) {
+        // F-247 / SF-247-18 : le sujet dédié au relevé n'est pas un projet du poste non plus (même raisons que le
+        // terminal du poste : carte, doublon sur la racine, garde de suppression du poste).
         return workspaceRepository.findByUserIdAndHostIdAndHostTerminalFalseAndTeamsTerminalFalse(
-                userId, hostId);
+                userId, hostId).stream().filter(w -> !w.isJarvisReleve()).toList();
     }
 
     /**
@@ -435,6 +437,45 @@ public class WorkspaceService {
     @Transactional
     public void deleteTeamsTerminal(UUID userId, UUID hostId) {
         findTeamsTerminal(userId, hostId).ifPresent(terminal -> delete(userId, terminal.getId()));
+    }
+
+    /** Nom du sujet dédié au relevé d'un poste (F-247 / SF-247-18). */
+    public static final String JARVIS_RELEVE_NAME = "Jarvis — relevé";
+
+    /**
+     * <b>Le sujet dédié au relevé</b> d'un poste (F-247 / SF-247-18) : celui qui existe, ou celui qu'on crée. La mise en
+     * place du relevé y tourne, <b>jamais</b> dans un sujet de travail du PO (incident du 2026-11-05 : la consigne
+     * d'inventaire écrite au milieu d'un tour de correctif).
+     *
+     * <p>Cible {@code RUNNER} sur ce poste, à la <b>racine</b> (le runner refuse un dossier de projet inexistant ; la
+     * racine existe toujours, et l'inventaire est l'affaire de la machine). Idempotent ; deux créations concurrentes
+     * butent sur la contrainte {@code UNIQUE} de {@code jarvis_releve_host_id}.</p>
+     *
+     * @param hostId poste, dont l'appartenance a <b>déjà</b> été vérifiée par l'appelant
+     */
+    @Transactional
+    public Workspace openJarvisReleve(UUID userId, UUID hostId) {
+        return findJarvisReleve(userId, hostId).orElseGet(() -> {
+            Workspace subject = createLocal(userId, JARVIS_RELEVE_NAME);
+            subject.setHostId(hostId);
+            subject.setProjectPath("");
+            subject.setJarvisReleveHostId(hostId);
+            return workspaceRepository.saveAndFlush(subject);
+        });
+    }
+
+    /** Le sujet dédié au relevé d'un poste, s'il existe (isolation {@code user_id}). */
+    public Optional<Workspace> findJarvisReleve(UUID userId, UUID hostId) {
+        if (userId == null || hostId == null) {
+            return Optional.empty();
+        }
+        return workspaceRepository.findFirstByUserIdAndJarvisReleveHostId(userId, hostId);
+    }
+
+    /** Supprime le sujet dédié au relevé d'un poste s'il en a un (avec le poste). Sans effet sinon. */
+    @Transactional
+    public void deleteJarvisReleve(UUID userId, UUID hostId) {
+        findJarvisReleve(userId, hostId).ifPresent(subject -> delete(userId, subject.getId()));
     }
 
 

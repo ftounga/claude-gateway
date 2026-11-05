@@ -92,6 +92,30 @@ public class AtelierMcpTurnLauncher {
     }
 
     /**
+     * F-247 / SF-247-18 — lance un tour <b>seulement si le sujet est libre</b> sur ce pod, jamais une précision
+     * ({@link LiveTurnRegistry#openIfIdle}) : pour un tour que personne n'a tapé dans ce sujet, une consigne ne doit
+     * jamais tomber au milieu d'un tour vivant (incident du 2026-11-05). Les autres pods sont l'affaire de l'appelant
+     * ({@link fr.claudegateway.atelier.live.HostTurnActivity}).
+     *
+     * @return l'identifiant du tour ouvert, ou vide si un tour vit déjà dans ce sujet
+     */
+    public java.util.Optional<UUID> launchIfIdle(UUID userId, UUID workspaceId, String message, String banner) {
+        String text = message == null ? "" : message.trim();
+        java.util.Optional<LiveTurn> opened = liveTurns.openIfIdle(userId, workspaceId, text);
+        if (opened.isEmpty()) {
+            return java.util.Optional.empty();
+        }
+        LiveTurn turn = opened.get();
+        try {
+            chatStreamExecutor.execute(() -> runLoop(turn, userId, workspaceId, text, banner));
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            liveTurns.close(turn);
+            throw e;
+        }
+        return java.util.Optional.of(turn.turnId());
+    }
+
+    /**
      * La boucle tool-use, en tâche de fond, publiant chaque étape dans le tour vivant — reflet du
      * relais du flux web (F-84 / SF-84-01), sans l'émetteur SSE.
      */

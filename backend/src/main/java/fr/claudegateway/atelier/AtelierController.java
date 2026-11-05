@@ -152,6 +152,9 @@ public class AtelierController {
         // F-245 / SF-245-01 (D9) : le fil Jarvis en tête de la liste (tri stable : l'ordre des autres est inchangé).
         return workspaceService.list(userId).stream()
                 .filter(workspace -> !vigie || workspace.isTeamsTerminal())
+                // F-247 / SF-247-18 : le sujet dédié au relevé est rangé hors de la liste (visible dans la bande
+                // des tours du poste quand il tourne, et dans « Ce que je sais » par ses sondes).
+                .filter(workspace -> !workspace.isJarvisReleve())
                 .sorted(java.util.Comparator.comparing((Workspace workspace) -> !workspace.isJarvisThread()))
                 .map(workspace -> {
                     fr.claudegateway.runner.host.RunnerHost host =

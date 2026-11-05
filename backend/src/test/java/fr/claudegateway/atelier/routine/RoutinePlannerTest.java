@@ -103,6 +103,21 @@ class RoutinePlannerTest {
     }
 
     @Test
+    void subjectBusyElsewhereNoTurnIsPreparedAndTheSlotIsKept() {
+        // F-247 / SF-247-18 : le tour du PO tourne sur un autre pod (ou un autre fil) — jamais d'écriture au milieu.
+        fr.claudegateway.atelier.live.HostTurnActivity activity =
+                mock(fr.claudegateway.atelier.live.HostTurnActivity.class);
+        when(activity.subjectBusy(userId, workspaceId)).thenReturn(true);
+        planner.setActivity(activity);
+        assertThat(planner.plan(routine, MONDAY)).isFalse();
+        verify(runner, never()).prepare(any());
+        verify(routines, never()).claimSlot(any(), any());
+
+        when(activity.subjectBusy(userId, workspaceId)).thenReturn(false);
+        assertThat(planner.plan(routine, MONDAY.plusMinutes(1))).isTrue();
+    }
+
+    @Test
     void saturdayNothingDueSinceFridayWasConsumed() {
         routine.setLastSlotAt(OffsetDateTime.parse("2026-10-16T08:00:00+02:00"));
         assertThat(planner.plan(routine, OffsetDateTime.parse("2026-10-17T08:00:30+02:00"))).isFalse();
