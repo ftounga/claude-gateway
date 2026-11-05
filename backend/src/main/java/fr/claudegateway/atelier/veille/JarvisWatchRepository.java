@@ -26,6 +26,9 @@ public interface JarvisWatchRepository extends JpaRepository<JarvisWatch, UUID> 
 
     long countByUserIdAndWorkspaceId(UUID userId, UUID workspaceId);
 
+    /** F-247 / SF-247-08 — le plafond par sujet se compte par usage (veilles d'alerte, relevés). */
+    long countByUserIdAndWorkspaceIdAndPurpose(UUID userId, UUID workspaceId, String purpose);
+
     /** Les veilles programmées (actives, validées), par page — ce que le planificateur examine (SF-230-02). */
     List<JarvisWatch> findByActiveTrueAndProposedFalseOrderByIdAsc(Pageable page);
 

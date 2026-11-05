@@ -79,6 +79,10 @@ public class JarvisStateSettings {
     @Column(name = "capture_retention_days", nullable = false)
     private int captureRetentionDays = DEFAULT_CAPTURE_RETENTION_DAYS;
 
+    /** F-247 / SF-247-08 — la dernière mise en place du relevé (tour d'inventaire), {@code null} = jamais. */
+    @Column(name = "releve_setup_at")
+    private OffsetDateTime releveSetupAt;
+
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 

@@ -17,7 +17,18 @@ public final class JarvisWatchDtos {
 
     /** Ce que l'agent demande avec {@code veille_poser} (SF-230-01). */
     public record ProposeRequest(String name, String platform, String scope, String command, String scriptPath,
-            List<String> runTimes, Integer chantierNumber) {
+            List<String> runTimes, Integer chantierNumber, String usage) {
+
+        /** Une veille d'alerte (F-230), sans usage précisé. */
+        public ProposeRequest(String name, String platform, String scope, String command, String scriptPath,
+                List<String> runTimes, Integer chantierNumber) {
+            this(name, platform, scope, command, scriptPath, runTimes, chantierNumber, null);
+        }
+
+        /** F-247 / SF-247-08 — {@code usage: etat} : un relevé d'état (sans alerte ni IA). */
+        public boolean state() {
+            return usage != null && "etat".equalsIgnoreCase(usage.strip().replace("é", "e"));
+        }
     }
 
     /** Une veille, telle que l'écran la lit. */
@@ -26,7 +37,7 @@ public final class JarvisWatchDtos {
             boolean active, boolean proposed, String origin, OffsetDateTime testedAt, Integer testItemCount,
             String testSummary, OffsetDateTime nextRunAt, OffsetDateTime createdAt, OffsetDateTime updatedAt,
             OffsetDateTime lastRunAt, String lastRunStatus, boolean broken, int consecutiveFailures,
-            BigDecimal monthlyBudgetEur, BigDecimal monthSpentEur) {
+            BigDecimal monthlyBudgetEur, BigDecimal monthSpentEur, String purpose) {
 
         static JarvisWatchView of(JarvisWatch watch, OffsetDateTime now) {
             return of(watch, now, DEFAULT_USD_TO_EUR, null);
@@ -46,7 +57,8 @@ public final class JarvisWatchDtos {
                     watch.getCreatedAt(), watch.getUpdatedAt(), watch.getLastRunAt(), watch.getLastRunStatus(),
                     watch.isBroken(), watch.getConsecutiveFailures(),
                     budget.multiply(rate).setScale(2, RoundingMode.HALF_UP),
-                    spentUsd == null ? null : spentUsd.multiply(rate).setScale(2, RoundingMode.HALF_UP));
+                    spentUsd == null ? null : spentUsd.multiply(rate).setScale(2, RoundingMode.HALF_UP),
+                    watch.getPurpose() == null ? JarvisWatch.PURPOSE_ALERT : watch.getPurpose());
         }
     }
 
@@ -76,6 +88,10 @@ public final class JarvisWatchDtos {
                     run.getStatus(), run.getChangeCount(), run.getErrorCode(), run.getDurationMs(), run.getStartedAt(),
                     run.getFinishedAt());
         }
+    }
+
+    /** F-247 / SF-247-08 — le résultat de « Tout valider » pour une sonde de relevé. */
+    public record ValidateResult(UUID watchId, String name, boolean activated, String error) {
     }
 
     /** Le résultat d'un test de sonde devant le PO (SF-230-01). */
