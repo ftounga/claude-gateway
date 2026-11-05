@@ -1053,6 +1053,29 @@ par la garde G6.
 - **Icônes** officielles, jamais recolorées ni approchantes ; un type sans icône = boîte rouge pointillée « ? ».
 - Tout rendu passe les gardes **G1–G6** (`diagram-renderer/gardes.js`).
 
+## 25 — Les pancartes de Jarvis (ajout F-248 / SF-248-03, 2026-11-05)
+
+**Aucune couleur ni police nouvelle** : la pancarte reprend la palette holographique §23 (3D) et §22 (repli 2D).
+Source unique des gabarits : `frontend/src/app/jarvis/cards/jarvis-card-templates.ts` (`CARD_TEMPLATES`,
+`TONE_TOKENS`) ; côté passerelle, la liste blanche des champs : `JarvisCardTemplates`.
+
+- **Un seul composant** (`JarvisCardComponent`) pour tous les faits ; le type ne change que des données : une
+  **forme** (glyphe) et un **mot** (Space Grotesk 600 capitales `.12em`, 11 px).
+- **Statut** : le mot est **toujours écrit** (pastille Inter 600 12 px, texte navy sur le ton) ; ton → couleur §23 :
+  `normal` orange `--cg-holo`, `ok` vert `--cg-holo-green`, `attend` cyan `--cg-holo-wait`, `alerte` rouge
+  `--cg-holo-red` (**réservé aux alertes**), `eteint` gris bleuté `--cg-holo-off` (mot en crème).
+- **Corps** : titre Space Grotesk 600 15/20 px crème `--cg-holo-core` (deux lignes au plus) ; 3 à 5 champs en grille
+  libellé (Inter 12 px, 75 %) / valeur (crème ; clés, commandes, versions en JetBrains Mono) ; lien « Ouvrir le lien ↗ »
+  (externe, nouvel onglet, `noopener`) ou « Voir le chantier › » (route de l'application).
+- **Fraîcheur** : badge JetBrains Mono 11 px — « à l'instant », « relevé 18 h 40 », « relevé hier 18 h 40 »,
+  « relevé lun. 18 h 40 » ; au-delà de 24 h, mot **« ancien »** liseré et pancarte au palier **0,45**.
+- **Peau verre (3D)** : navy 72 %, liseré du ton à 55 %, halo 12 px à 18 %, flou d'arrière-plan 10 px, coins chanfreinés
+  12 px (comme le cockpit §23) ; citée à l'instant ⇒ halo 24 px à 45 % (`sortie`, 320 ms).
+- **Peau plate (repli 2D, téléphone, dégradation)** : `--cg-navy-2`, texte `--cg-cream`, rayon 8 px, **sans flou ni
+  perspective** (§23 « téléphone allégé »).
+- **Accessibilité** : chaque pancarte est un bouton « Ouvrir *titre* » (≥ 44 px) ; la couleur ne porte jamais seule
+  l'information (forme + mot du type + mot du statut).
+
 ## Logo & marque (ajout 2026-07-03)
 
 - **Logo de l'application** : `frontend/public/ng-portal-logo.png` (« NG Portal » — bouclier hexagonal, tête + étincelle, bulle de chat, orbite). Utilisé comme **favicon** (`index.html`) et sur la **landing** (nav, hero, footer). Nom de marque affiché : **« NG Portal »** (renommé en F-29 SF-29-01 : le terme « Proxy » faisait classer le domaine en catégorie « anonymizer » par les filtres d'entreprise).
