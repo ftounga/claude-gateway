@@ -46,8 +46,26 @@ public class StateExtractors {
         all.add(new CiExtractors.GitLabPipelines());
         all.add(new CiExtractors.GitLabJobs());
         all.add(new CiExtractors.GitHubRuns());
+        // SF-247-05 — lot 2 : déploiements, cloud, infra, base, git ; identités ACCESS (amendement F-248 D14).
+        all.add(new DeployExtractors.KubeJson());
+        all.add(new DeployExtractors.KubeTable());
+        all.add(new DeployExtractors.KubeRollout());
+        all.add(new DeployExtractors.Helm());
+        all.add(new DeployExtractors.Argo());
+        all.add(new CloudExtractors.Aws());
+        all.add(new CloudExtractors.Az());
+        all.add(new CloudExtractors.Terraform());
+        all.add(new RepoExtractors.Git());
+        all.add(new RepoExtractors.SchemaVersion());
+        all.add(new AccessExtractors.AwsIdentity());
+        all.add(new AccessExtractors.AzAccount());
+        all.add(new AccessExtractors.KubeContext());
+        all.add(new AccessExtractors.CliAuth());
         return all;
     }
+
+    /** SF-247-05 — le repli des API génériques, appliqué seulement si aucun extracteur spécialisé n'a couvert. */
+    private static final StateExtractor FALLBACK = new GenericApiExtractor();
 
     /** Le résultat d'une sortie : la forme de la commande, si c'est une commande d'état, et les faits lus. */
     public record Result(String form, boolean stateCommand, boolean usable, List<StateExtractor.Extracted> facts) {
@@ -63,15 +81,26 @@ public class StateExtractors {
             return new Result(form, state, out.usable(), List.of());
         }
         List<StateExtractor.Extracted> facts = new ArrayList<>();
+        boolean accepted = false;
         for (StateExtractor e : extractors) {
             try {
                 if (e.accepts(command)) {
+                    accepted = true;
                     facts.addAll(e.extract(command, out.body()));
                 }
             } catch (RuntimeException ignored) {
                 // un extracteur en défaut ne fait rien écrire (en cas de doute, rien)
             }
         }
+        if (!accepted && FALLBACK.accepts(command)) {
+            try {
+                facts.addAll(FALLBACK.extract(command, out.body()));
+            } catch (RuntimeException ignored) {
+                // rien
+            }
+        }
+        // SF-247-05 — « aucun secret » : toute valeur qui ressemble à un secret est rejetée, quel que soit l'extracteur.
+        facts.removeIf(f -> SecretFilter.looksSecret(f.value()) || SecretFilter.looksSecret(f.key()));
         return new Result(form, true, true, List.copyOf(facts));
     }
 
@@ -99,13 +128,17 @@ public class StateExtractors {
         if (tool.equals("curl") || tool.startsWith("invoke-") || tool.equals("irm")) {
             Matcher api = API_PATH.matcher(first);
             if (!api.find()) {
-                return null;
+                // SF-247-05 — API générique : la forme est son premier segment de chemin (« curl /health »).
+                Matcher url = Pattern.compile("https?://[^/\\s\"']+(/[\\w.\\-]*)?").matcher(first);
+                return url.find() ? "curl " + (url.group(1) == null ? "/" : url.group(1)) : null;
             }
             String path = api.group(1);
             return "curl " + (path.startsWith("/rest/api/") ? path : path.replaceAll("/\\d+", "/N"));
         }
         String verb = sub(m.group(2));
         if (tool.equals("git")) {
+            Matcher g = Pattern.compile("\\bgit\\s+(?:-C\\s+(?:\"[^\"]+\"|\\S+)\\s+)?([a-z\\-]+)").matcher(first);
+            verb = g.find() ? g.group(1) : null;
             return verb != null && List.of("status", "log", "branch", "describe", "rev-parse").contains(verb)
                     ? "git " + verb : null;
         }
