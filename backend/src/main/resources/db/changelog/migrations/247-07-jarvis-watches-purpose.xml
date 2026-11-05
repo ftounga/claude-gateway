@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-247 / SF-247-07 - LE RELEVE COTE PASSERELLE (cadrage par 4.3, D5).
+
+      jarvis_watches.purpose : ALERT (veille F-230, defaut : les veilles existantes ne changent pas) ou STATE (releve
+      d'etat : l'instantane devient des faits, sans alerte ni IA, en basse priorite). Le planificateur des veilles,
+      deja verrouille en multi-pod, sert aux deux (D5).
+
+      Rollback : la colonne se retire.
+    -->
+
+    <changeSet id="247-07-jarvis-watches-purpose" author="claude-gateway">
+        <addColumn tableName="jarvis_watches">
+            <column name="purpose" type="varchar(8)" defaultValue="ALERT">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="jarvis_watches" columnName="purpose"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

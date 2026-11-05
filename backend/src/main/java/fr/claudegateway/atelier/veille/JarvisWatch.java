@@ -42,6 +42,11 @@ public class JarvisWatch {
     /** Origine : proposée par l'agent (outil {@code veille_poser}). */
     public static final String ORIGIN_AGENT = "AGENT";
 
+    /** F-247 / SF-247-07 — une veille d'alerte (F-230) : diff, rédaction, notification. */
+    public static final String PURPOSE_ALERT = "ALERT";
+    /** F-247 / SF-247-07 — un relevé d'état : l'instantané devient des faits, sans alerte ni IA, en basse priorité. */
+    public static final String PURPOSE_STATE = "STATE";
+
     @Id
     @GeneratedValue
     @UuidGenerator
@@ -138,6 +143,11 @@ public class JarvisWatch {
     @Column(name = "monthly_budget_usd", nullable = false, precision = 10, scale = 2)
     private BigDecimal monthlyBudgetUsd = JarvisWatchService.DEFAULT_MONTHLY_BUDGET_USD;
 
+    /** F-247 / SF-247-07 — {@link #PURPOSE_ALERT} (défaut) ou {@link #PURPOSE_STATE}. */
+    @Builder.Default
+    @Column(name = "purpose", nullable = false, length = 8)
+    private String purpose = PURPOSE_ALERT;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -147,5 +157,10 @@ public class JarvisWatch {
     /** Vrai si le planificateur doit l'examiner : active et validée. */
     public boolean isScheduled() {
         return active && !proposed;
+    }
+
+    /** F-247 / SF-247-07 — un relevé d'état (pas une veille d'alerte). */
+    public boolean isState() {
+        return PURPOSE_STATE.equals(purpose);
     }
 }
