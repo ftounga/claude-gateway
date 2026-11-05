@@ -78,6 +78,23 @@ public class RoutinePlanner {
         this.staleAfter = staleAfter;
     }
 
+    /**
+     * F-247 / SF-247-18 — le sujet est-il occupé, sur n'importe lequel de ses fils et sur n'importe quel pod ? Une
+     * routine ne s'écrit jamais au milieu du tour du PO. Absente des tests unitaires historiques.
+     */
+    private fr.claudegateway.atelier.live.HostTurnActivity activity;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setActivity(fr.claudegateway.atelier.live.HostTurnActivity activity) {
+        this.activity = activity;
+    }
+
+    /** Un tour vit ici (fil commun), ou le sujet est occupé ailleurs (tous fils, pairs, demande sans réponse). */
+    private boolean subjectBusy(UUID userId, UUID workspaceId) {
+        return liveTurns.find(userId, workspaceId).isPresent()
+                || (activity != null && activity.subjectBusy(userId, workspaceId));
+    }
+
     /** La notification d'une exécution manquée ou non lancée (SF-183-04). */
     private RoutineNotifier notifier;
 
@@ -148,7 +165,7 @@ public class RoutinePlanner {
             skipForBudget(routine, due, trigger);
             return false; // budget du mois épuisé : le créneau est consommé, rien ne part
         }
-        if (liveTurns.find(routine.getUserId(), routine.getWorkspaceId()).isPresent()) {
+        if (subjectBusy(routine.getUserId(), routine.getWorkspaceId())) {
             return false; // l'utilisateur travaille : on réessaie à la minute suivante
         }
         Optional<LiveTurn> turn = runner.prepare(routine);
@@ -236,8 +253,7 @@ public class RoutinePlanner {
             throw new RoutineConflictException("routine_host_offline",
                     "Le poste est hors ligne : la routine ne peut pas tourner maintenant.");
         }
-        Optional<LiveTurn> turn = liveTurns.find(userId, workspaceId).isPresent()
-                ? Optional.empty() : runner.prepare(routine);
+        Optional<LiveTurn> turn = subjectBusy(userId, workspaceId) ? Optional.empty() : runner.prepare(routine);
         if (turn.isEmpty()) {
             throw new RoutineConflictException("routine_busy",
                     "Un tour tourne déjà dans ce sujet : réessayez quand il sera fini.");

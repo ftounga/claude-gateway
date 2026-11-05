@@ -75,7 +75,7 @@ public class JarvisActivityService {
         Map<UUID, int[]> counts = new LinkedHashMap<>();
         for (Workspace w : workspaces.list(userId)) {
             // F-245 / SF-245-01 : le fil Jarvis n'est pas un sujet de l'activité.
-            if (userId.equals(w.getUserId()) && !w.isTeamsTerminal() && !w.isJarvisThread()) {
+            if (userId.equals(w.getUserId()) && !w.isTeamsTerminal() && !w.isJarvisThread() && !w.isJarvisReleve()) {
                 counts.put(w.getId(), new int[days]);
             }
         }

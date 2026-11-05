@@ -1,18 +1,18 @@
 package fr.claudegateway.jarvis.state.releve;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.OffsetDateTime;
-import java.util.Comparator;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 import fr.claudegateway.atelier.AtelierMcpTurnLauncher;
 import fr.claudegateway.atelier.Workspace;
-import fr.claudegateway.atelier.WorkspaceRepository;
-import fr.claudegateway.atelier.veille.JarvisWatchService;
+import fr.claudegateway.atelier.WorkspaceService;
+import fr.claudegateway.atelier.live.HostTurnActivity;
 import fr.claudegateway.jarvis.state.JarvisStateProperties;
 import fr.claudegateway.jarvis.state.JarvisStateRegistry;
 import fr.claudegateway.jarvis.state.JarvisStateSettings;
@@ -21,7 +21,8 @@ import fr.claudegateway.runner.host.RunnerHostService;
 
 /**
  * <b>La mise en place du relevé maximal</b> (F-247 / SF-247-08, cadrage §4.3) : un tour d'agent <b>unique</b> par
- * client, lancé à la demande du PO, poste allumé et inactif, dans le sujet le plus récent du client. L'agent fait
+ * client, lancé à la demande du PO, poste allumé et inactif, dans le <b>sujet dédié</b> « Jarvis — relevé » du poste
+ * (SF-247-18 : jamais dans un sujet de travail du PO — incident du 2026-11-05). L'agent fait
  * l'inventaire des moyens de lecture du poste (CLIs installés et authentifiés, contextes), sans lire aucun secret, et
  * propose <b>une sonde par famille disponible</b> par {@code veille_poser(usage: etat)}, testée une fois chacune. Rien ne
  * tourne avant la validation du PO (« Tout valider », F-230 D5).
@@ -50,6 +51,8 @@ public class JarvisReleveSetupService {
             d'éléments. Le PO validera tout d'un geste dans « Ce que je sais ».
             """;
     public static final String BANNER = "_Jarvis — mise en place du relevé d'état (inventaire, une fois)._\n";
+    static final String BUSY = "Le poste travaille (un tour est en cours ou attend sur l'un de ses sujets) : relancez la "
+            + "mise en place quand il est inactif.";
 
     /** L'issue d'une demande de mise en place. */
     public record Setup(boolean started, String code, String message, UUID workspaceId, UUID turnId) {
@@ -63,20 +66,20 @@ public class JarvisReleveSetupService {
     private final JarvisStateRegistry registry;
     private final RunnerHostService hosts;
     private final RunnerLiveness liveness;
-    private final JarvisReleveService releve;
-    private final WorkspaceRepository workspaces;
+    private final WorkspaceService workspaces;
+    private final HostTurnActivity activity;
     private final AtelierMcpTurnLauncher launcher;
     private final Clock clock;
 
     public JarvisReleveSetupService(JarvisStateProperties properties, JarvisStateRegistry registry,
-            RunnerHostService hosts, RunnerLiveness liveness, JarvisReleveService releve,
-            WorkspaceRepository workspaces, AtelierMcpTurnLauncher launcher, Clock clock) {
+            RunnerHostService hosts, RunnerLiveness liveness,
+            WorkspaceService workspaces, HostTurnActivity activity, AtelierMcpTurnLauncher launcher, Clock clock) {
         this.properties = properties;
         this.registry = registry;
         this.hosts = hosts;
         this.liveness = liveness;
-        this.releve = releve;
         this.workspaces = workspaces;
+        this.activity = activity;
         this.launcher = launcher;
         this.clock = clock;
     }
@@ -98,28 +101,23 @@ public class JarvisReleveSetupService {
                     + "céder la place à votre travail.");
         }
         OffsetDateTime now = OffsetDateTime.now(clock);
-        if (!releve.quiet(userId, hostId, now)) {
-            return Setup.refused("host_busy", "Le poste travaille : relancez la mise en place quand il est inactif.");
+        // SF-247-18 : tout le poste (tous sujets), ce pod ET les pairs, demandes sans réponse en base comprises.
+        if (activity.hostBusy(userId, hostId, Duration.ofMinutes(JarvisReleveService.QUIET_MINUTES), true, now)) {
+            return Setup.refused("host_busy", BUSY);
         }
-        Optional<Workspace> subject = subjectOf(userId, hostId);
-        if (subject.isEmpty()) {
-            return Setup.refused("no_subject", "Ce client n'a encore aucun sujet sur son poste.");
+        Workspace subject;
+        try {
+            subject = workspaces.openJarvisReleve(userId, hostId);
+        } catch (DataIntegrityViolationException e) {
+            return Setup.refused("host_busy", BUSY); // deux mises en place simultanées : la seconde s'efface
         }
-        AtelierMcpTurnLauncher.LaunchResult launched = launcher.launchWithBanner(userId, subject.get().getId(),
-                PROMPT, BANNER);
-        if (launched.steered() || launched.steerRejected()) {
-            return Setup.refused("host_busy", "Un tour est déjà en cours dans ce sujet.");
+        // Jamais une précision : un tour vivant dans le sujet dédié ⇒ refus, rien n'est déposé.
+        Optional<UUID> turnId = launcher.launchIfIdle(userId, subject.getId(), PROMPT, BANNER);
+        if (turnId.isEmpty()) {
+            return Setup.refused("host_busy", BUSY);
         }
         s.setReleveSetupAt(now);
         registry.save(s);
-        return new Setup(true, null, null, subject.get().getId(), launched.turnId());
-    }
-
-    /** Le sujet le plus récent du client qui peut porter une sonde (sujet sur poste, pas un terminal de poste). */
-    Optional<Workspace> subjectOf(UUID userId, UUID hostId) {
-        List<Workspace> all = workspaces.findByUserIdAndHostId(userId, hostId);
-        return all.stream().filter(w -> userId.equals(w.getUserId()) && JarvisWatchService.isWatchCapable(w))
-                .max(Comparator.comparing(w -> w.getUpdatedAt() != null ? w.getUpdatedAt() : w.getCreatedAt(),
-                        Comparator.nullsFirst(Comparator.naturalOrder())));
+        return new Setup(true, null, null, subject.getId(), turnId.get());
     }
 }

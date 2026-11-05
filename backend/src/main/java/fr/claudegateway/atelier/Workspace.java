@@ -182,6 +182,22 @@ public class Workspace {
     }
 
     /**
+     * Le <b>sujet dédié au relevé</b> d'un poste (F-247 / SF-247-18) : égal à {@link #hostId} sur l'unique sujet
+     * « Jarvis — relevé » du poste, {@code null} partout ailleurs. C'est là, et jamais dans un sujet de travail du PO,
+     * que tourne la mise en place du relevé (incident du 2026-11-05). Contrainte {@code UNIQUE} : un par poste.
+     *
+     * <p>Rangé discrètement : absent de la liste des sujets, des projets du poste ({@code listByHost}), de l'univers et
+     * de l'activité de Jarvis ; supprimé avec le poste.</p>
+     */
+    @Column(name = "jarvis_releve_host_id")
+    private UUID jarvisReleveHostId;
+
+    /** Vrai si cette ligne est le sujet dédié au relevé de son poste (F-247 / SF-247-18). */
+    public boolean isJarvisReleve() {
+        return jarvisReleveHostId != null;
+    }
+
+    /**
      * Vrai si le projet est adossé à un dépôt Git (F-31 / SF-31-02). Volontairement null-tolérant :
      * une entité construite hors du builder (tests, désérialisation partielle) n'est pas un projet
      * Git, et le chemin le plus sûr — celui de l'archive — reste le comportement par défaut.
