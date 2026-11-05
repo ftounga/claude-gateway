@@ -48,6 +48,14 @@ public interface JarvisWatchRepository extends JpaRepository<JarvisWatch, UUID> 
             + "and (w.lastSlotAt is null or w.lastSlotAt < :slot)")
     int markMissed(@Param("id") UUID id, @Param("slot") OffsetDateTime slot);
 
+    /**
+     * F-247 / SF-247-09 — réserve le relevé d'inactivité d'un poste (un seul pod gagne) : la sonde n'a pas tourné
+     * depuis {@code before}.
+     */
+    @Modifying
+    @Query("update JarvisWatch w set w.lastRunAt = :at where w.id = :id and (w.lastRunAt is null or w.lastRunAt < :before)")
+    int claimRun(@Param("id") UUID id, @Param("at") OffsetDateTime at, @Param("before") OffsetDateTime before);
+
     /** F-247 / SF-247-07 — rend un créneau pris (relevé qui a cédé la place) : il sera repris au passage suivant. */
     @Modifying
     @Query("update JarvisWatch w set w.lastSlotAt = null where w.id = :id and w.lastSlotAt = :slot")

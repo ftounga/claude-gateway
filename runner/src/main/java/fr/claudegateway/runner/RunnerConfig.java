@@ -198,6 +198,11 @@ public final class RunnerConfig {
         return gatewayBaseUrl + "/runner/send";
     }
 
+    /** F-247 / SF-247-09 — le relevé de départ, {@code {gateway}/runner/departure}. */
+    public String departureUrl() {
+        return gatewayBaseUrl + "/runner/departure";
+    }
+
     /** Arrêt propre du repli, {@code {gateway}/runner/disconnect}. */
     public String disconnectUrl() {
         return gatewayBaseUrl + "/runner/disconnect";

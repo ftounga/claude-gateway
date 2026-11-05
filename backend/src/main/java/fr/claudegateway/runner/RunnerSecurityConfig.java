@@ -98,6 +98,9 @@ public class RunnerSecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/runner/poll").permitAll()
                         .requestMatchers(HttpMethod.POST, "/runner/send").permitAll()
                         .requestMatchers(HttpMethod.POST, "/runner/disconnect").permitAll()
+                        // F-247 / SF-247-09 : le relevé de départ — même nature que /runner/disconnect (jeton
+                        // X-Runner-Token vérifié PAR LE CONTRÔLEUR, rien dans le SecurityContext, D9).
+                        .requestMatchers(HttpMethod.POST, "/runner/departure").permitAll()
                         // Remontée des captures de réunion (F-90 / SF-90-03) : même nature que les
                         // trois entrées ci-dessus — le jeton runner voyage dans X-Runner-Token et
                         // est vérifié PAR LE CONTRÔLEUR (RunnerTeamsMomentController), qui ne pose
