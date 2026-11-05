@@ -107,6 +107,10 @@ import { JarvisAgendaComponent } from './jarvis-agenda.component';
 import { AgendaView, agendaPieceView } from './jarvis-calendar';
 import { JarvisThreadPanelComponent } from './jarvis-thread-panel.component';
 import { JarvisMailCardComponent } from './jarvis-mail-card.component';
+import { JarvisCardDetailComponent } from './cards/jarvis-card-detail.component';
+import { JarvisCardClient, JarvisCardDetail } from './cards/jarvis-card-client';
+import { cardVoiceCommand } from './cards/jarvis-card-voice';
+import { JarvisCard } from './cards/jarvis-card.models';
 import { JarvisMailClient, MailCard, bodyCard, briefCard, mailPieceId } from './jarvis-mail';
 import { JarvisCostPanelComponent } from './jarvis-cost-panel.component';
 import {
@@ -189,7 +193,7 @@ export function companionOffer(version: JarvisCompanionVersion, installed: numbe
  */
 @Component({
   selector: 'app-jarvis',
-  imports: [JarvisPieceGalleryComponent, JarvisCockpitComponent, JarvisCompanionsComponent, JarvisCostPanelComponent, JarvisPortraitComponent, JarvisMailboxesComponent, JarvisCalendarsComponent, JarvisStatePanelComponent, JarvisAgendaComponent, JarvisThreadPanelComponent, JarvisMailCardComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatMenuModule],
+  imports: [JarvisPieceGalleryComponent, JarvisCockpitComponent, JarvisCompanionsComponent, JarvisCostPanelComponent, JarvisPortraitComponent, JarvisMailboxesComponent, JarvisCalendarsComponent, JarvisStatePanelComponent, JarvisAgendaComponent, JarvisThreadPanelComponent, JarvisMailCardComponent, JarvisCardDetailComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatMenuModule],
   templateUrl: './jarvis.component.html',
   styleUrl: './jarvis.component.scss',
   providers: [JarvisAppUpdate],
@@ -1990,6 +1994,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
       await this.pauseConversation(true);
       return;
     }
+    // F-248 / SF-248-06 — les ordres des pancartes, sur l'appareil, sans IA (liste fermée, jeu ouvert seulement).
+    if (await this.applyCardVoice(text)) {
+      return;
+    }
     // F-237 / SF-237-05 (§5.3) — navigation parmi les pièces sur l'appareil, sans IA : liste fermée, phrase entière.
     const pieceAction = pieceVoiceCommand(text, this.pieces.nav());
     // F-237 / SF-237-12 — « note ici : … » sur une vidéo ouverte : reformulé, puis confirmé.
@@ -2810,6 +2818,100 @@ export class JarvisComponent implements OnInit, OnDestroy {
         this.state.set('reflexion');
       }
     }));
+  }
+
+  /** F-248 / SF-248-06 — le plein écran ouvert : la pancarte, son détail (lu à l'ouverture), la seconde comparée. */
+  readonly cardDetail = signal<{ card: JarvisCard; detail: JarvisCardDetail | null; loading: boolean;
+    other: JarvisCard | null; otherDetail: JarvisCardDetail | null } | null>(null);
+  private readonly cardClient = inject(JarvisCardClient);
+  private cardDetailLoad: AbortController | null = null;
+
+  /**
+   * F-248 / SF-248-06 (D6, D9) — ouvrir une pancarte : un courriel ouvre sa visionneuse F-242 ; les autres, le plein
+   * écran, dont le détail est lu à l'ouverture (jamais porté par l'événement). Rien en présentation.
+   */
+  openCardDetail(card: JarvisCard): void {
+    if (this.presentation()) {
+      return;
+    }
+    this.pieces.count('c_open');
+    if (card.type === 'COURRIEL' && card.id.startsWith('fait:courriel:')) {
+      this.showMail(card.id.slice('fait:courriel:'.length));
+      return;
+    }
+    this.loadCardDetail(card, null);
+  }
+
+  /** F-248 / SF-248-06 — deux pancartes côte à côte, champs alignés (comparaison). */
+  compareCards(a: JarvisCard, b: JarvisCard): void {
+    if (this.presentation()) {
+      return;
+    }
+    this.pieces.count('c_cmp');
+    this.loadCardDetail(a, b);
+  }
+
+  private loadCardDetail(card: JarvisCard, other: JarvisCard | null): void {
+    this.cardDetailLoad?.abort();
+    const controller = new AbortController();
+    this.cardDetailLoad = controller;
+    this.cardDetail.set({ card, detail: null, loading: true, other, otherDetail: null });
+    void Promise.all([this.cardClient.detail(card.id, controller.signal),
+      other ? this.cardClient.detail(other.id, controller.signal) : Promise.resolve(null)])
+      .then(([detail, otherDetail]) => this.zone.run(() => {
+        if (controller.signal.aborted || this.cardDetail()?.card.id !== card.id) {
+          return;
+        }
+        this.cardDetail.set({ card, detail, loading: false, other, otherDetail });
+      }));
+  }
+
+  /** F-248 / SF-248-06 — « Ouvrir sur le grand écran » : la pancarte choisie part au cockpit externe (SF-236-24). */
+  async cardOnBigScreen(card: JarvisCard): Promise<void> {
+    const index = this.pieces.nav().items.findIndex((i) => i.id === card.id) + 1;
+    if (index > 0) {
+      this.pieces.dispatch({ type: 'select', ref: index }, 'touch');
+    }
+    this.pieces.count('c_big');
+    await this.pinToCockpit();
+  }
+
+  /** F-248 / SF-248-06 — un ordre vocal local sur le jeu ouvert ; vrai s'il a été appliqué. */
+  private async applyCardVoice(text: string): Promise<boolean> {
+    const deck = this.pieces.deck();
+    if (this.pieces.mode() !== 'cards' || !this.pieces.open() || !deck.length) {
+      return false;
+    }
+    const action = cardVoiceCommand(text, deck.length);
+    if (!action) {
+      return false;
+    }
+    this.pieces.count('c_voice');
+    switch (action.type) {
+      case 'close':
+        this.cardDetail.set(null);
+        this.pieces.closeCards();
+        return true;
+      case 'page':
+        if (!this.pieces.nextDeckPage()) {
+          await this.say('Il n’y en a pas d’autre.');
+        }
+        return true;
+      case 'select':
+        this.pieces.dispatch({ type: 'select', ref: action.index });
+        return true;
+      case 'compare':
+        this.compareCards(deck[action.a - 1], deck[action.b - 1]);
+        return true;
+      case 'detail': {
+        const selected = this.pieces.nav().selected;
+        const card = deck[(selected ?? 1) - 1];
+        if (card) {
+          this.openCardDetail(card);
+        }
+        return true;
+      }
+    }
   }
 
   /** F-248 / SF-248-05 — le jeu de la réponse en cours (une seule à la fois). */

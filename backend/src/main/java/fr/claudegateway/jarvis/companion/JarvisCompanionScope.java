@@ -43,6 +43,8 @@ public final class JarvisCompanionScope {
             // Le cerveau rapide.
             new Route("POST", "/jarvis/converse"),
             new Route("POST", "/jarvis/converse/warm"),
+            // F-248 / SF-248-06 — le plein écran d'une pancarte (lecture, une ligne sous le compte).
+            new Route("GET", "/jarvis/cards/*"),
             // La scène, l'activité, la mesure.
             new Route("GET", "/jarvis/universe"),
             new Route("GET", "/jarvis/activity"),

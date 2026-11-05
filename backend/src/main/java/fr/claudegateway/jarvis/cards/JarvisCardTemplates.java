@@ -126,7 +126,7 @@ public final class JarvisCardTemplates {
 
     private static void add(List<JarvisCard.Field> out, Set<String> labels, String label, String name, String raw) {
         String value = clean(raw, MAX_VALUE);
-        if (value.isEmpty() || secretLike(name, value) || !labels.add(label)) {
+        if (value.isEmpty() || secretLike(name, raw) || secretLike(name, value) || !labels.add(label)) {
             return;
         }
         out.add(new JarvisCard.Field(label, value));
@@ -137,9 +137,25 @@ public final class JarvisCardTemplates {
         return s.isEmpty() ? "" : Character.toUpperCase(s.charAt(0)) + s.substring(1);
     }
 
-    /** Une ligne, sans contrôle ni balise, bornée. */
+    private static final Pattern MASK_ASSIGN = Pattern.compile(
+            "(?i)((?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|mot de passe)\\s*[=:]\\s*)[^\\s&\"']+");
+    private static final Pattern MASK_BEARER = Pattern.compile("(?i)\\b(bearer|basic)\\s+[^\\s\"']+");
+    private static final Pattern MASK_TOKEN = Pattern.compile(
+            "\\b(?:glpat-|ghp_|gho_|ghs_|github_pat_|xox[abprs]-|sk-)[A-Za-z0-9_-]{6,}|\\bA[KS]IA[0-9A-Z]{12,}");
+
+    /** Masque, dans un texte libre, ce qui a la forme d'un secret (« password=••• », jetons connus). */
+    public static String mask(String text) {
+        if (text == null) {
+            return null;
+        }
+        String s = MASK_ASSIGN.matcher(text).replaceAll("$1•••");
+        s = MASK_BEARER.matcher(s).replaceAll("$1 •••");
+        return MASK_TOKEN.matcher(s).replaceAll("•••");
+    }
+
+    /** Une ligne, sans contrôle ni balise, bornée ; ce qui a la forme d'un secret est masqué. */
     public static String clean(String raw, int max) {
-        String s = raw == null ? "" : raw.replaceAll("[\\p{Cntrl}<>`]", " ").replaceAll("\\s+", " ").strip();
+        String s = raw == null ? "" : mask(raw).replaceAll("[\\p{Cntrl}<>`]", " ").replaceAll("\\s+", " ").strip();
         return s.length() <= max ? s : s.substring(0, Math.max(0, max - 1)).strip() + "…";
     }
 
@@ -221,6 +237,28 @@ public final class JarvisCardTemplates {
             }
         }
         return List.copyOf(out);
+    }
+
+    /**
+     * F-248 / SF-248-06 — les champs du <b>plein écran</b> : libellé → valeur, dans l'ordre, chacun passé par le même
+     * filtre (vide, secret ⇒ écarté) ; 12 au plus.
+     */
+    public static List<JarvisCard.Field> detailFields(Map<String, String> labeled) {
+        List<JarvisCard.Field> out = new ArrayList<>();
+        if (labeled == null) {
+            return out;
+        }
+        Set<String> labels = new LinkedHashSet<>();
+        for (Map.Entry<String, String> e : labeled.entrySet()) {
+            if (out.size() >= 12) {
+                break;
+            }
+            String value = clean(e.getValue(), 400);
+            if (!value.isEmpty() && !secretLike(e.getKey(), e.getValue()) && labels.add(e.getKey())) {
+                out.add(new JarvisCard.Field(e.getKey(), value));
+            }
+        }
+        return out;
     }
 
     /** Une fiche, champs passés par la liste blanche de son type. */
