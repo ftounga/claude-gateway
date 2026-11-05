@@ -96,6 +96,18 @@ public class JarvisStateTool {
                     .JarvisStateCards.fromFacts(kept, names).stream()
                     .map(fr.claudegateway.jarvis.cards.JarvisCard::asTargeted).toList());
             StringBuilder b = new StringBuilder(OPEN).append('\n');
+            // F-248 / SF-248-09 — « mes accès » : les accès reliés (boîtes, agendas, jeton du runner, accès obtenus)
+            // rejoignent le résultat lu (compte, type, validité, état ; jamais une valeur) et ses pancartes ciblées.
+            if ("access".equals(famille) && accessCards != null) {
+                List<fr.claudegateway.jarvis.cards.JarvisAccessCards.Access> linked = accessCards.accesses(userId,
+                        targets.stream().map(RunnerHost::getId).toList());
+                linked.forEach(a -> b.append(a.line()).append('\n'));
+                fr.claudegateway.jarvis.cards.JarvisCardCatalog.collectAll(() -> linked.stream()
+                        .map(a -> a.card().asTargeted()).toList());
+                if (lines.isEmpty() && !linked.isEmpty()) {
+                    return new Read(b.append(CLOSE).toString(), lines);
+                }
+            }
             if (lines.isEmpty()) {
                 b.append("Rien de relevé").append(cle.isEmpty() ? "" : " sur " + cle).append(" chez ")
                         .append(names(targets)).append(".\n");
@@ -106,6 +118,14 @@ public class JarvisStateTool {
         } catch (RuntimeException e) {
             return new Read(OPEN + "\nRien de relevé.\n" + CLOSE, List.of());
         }
+    }
+
+    /** F-248 / SF-248-09 — les accès reliés (facultatif : sans lui, « access » ne lit que le registre). */
+    private fr.claudegateway.jarvis.cards.JarvisAccessCards accessCards;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setAccessCards(fr.claudegateway.jarvis.cards.JarvisAccessCards accessCards) {
+        this.accessCards = accessCards;
     }
 
     /** Les clients visés : celui qui est nommé, sinon celui du sujet courant, sinon tous (12 au plus). */
