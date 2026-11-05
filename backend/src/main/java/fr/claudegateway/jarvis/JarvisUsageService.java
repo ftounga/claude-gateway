@@ -258,6 +258,29 @@ public class JarvisUsageService {
         bump(userId, day -> day.setMailCostUsd(day.getMailCostUsd().add(costUsd == null ? BigDecimal.ZERO : costUsd)));
     }
 
+    /** F-247 / SF-247-12 — la lecture d'une capture de conversation, en dollars. */
+    public void addCaptureCost(UUID userId, BigDecimal costUsd) {
+        bump(userId, day -> day.setCaptureCostUsd(day.getCaptureCostUsd()
+                .add(costUsd == null ? BigDecimal.ZERO : costUsd)));
+    }
+
+    /** F-247 / SF-247-14 — un constat rédigé en différé, en dollars. */
+    public void addNotesCost(UUID userId, BigDecimal costUsd) {
+        bump(userId, day -> day.setNotesCostUsd(day.getNotesCostUsd().add(costUsd == null ? BigDecimal.ZERO : costUsd)));
+    }
+
+    /** F-247 — la dépense du mois en captures (dollars). */
+    public BigDecimal monthCaptureCostUsd(UUID userId) {
+        BigDecimal sum = repository.sumCaptureCostUsdSince(userId, today().withDayOfMonth(1));
+        return sum == null ? BigDecimal.ZERO : sum;
+    }
+
+    /** F-247 — la dépense du mois en constats rédigés (dollars). */
+    public BigDecimal monthNotesCostUsd(UUID userId) {
+        BigDecimal sum = repository.sumNotesCostUsdSince(userId, today().withDayOfMonth(1));
+        return sum == null ? BigDecimal.ZERO : sum;
+    }
+
     /** F-242 / SF-242-03 — une correction du tri au toucher. */
     public void addMailTriageCorrected(UUID userId) {
         bump(userId, day -> day.setMailTriageCorrected(day.getMailTriageCorrected() + 1));

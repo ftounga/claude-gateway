@@ -53,6 +53,9 @@ public class WorkspaceDepositService {
     private final int chunkBytes;
     private final Clock clock;
 
+    /** F-247 / SF-247-12 — qui veut savoir qu'un fichier a été reçu (lecture des captures, hors du chemin). */
+    private DepositReceivedListener receivedListener;
+
     public WorkspaceDepositService(WorkspaceService workspaceService,
             RunnerToolGateway runnerToolGateway, RunnerLiveness runnerLiveness,
             AtelierDepositedFileRepository depositedFileRepository,
@@ -70,6 +73,11 @@ public class WorkspaceDepositService {
         this.maxFiles = maxFiles;
         this.chunkBytes = chunkBytes;
         this.clock = clock;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setReceivedListener(DepositReceivedListener receivedListener) {
+        this.receivedListener = receivedListener;
     }
 
     /** Un fichier reçu (nom brut du client, type de média, octets). */
@@ -110,6 +118,7 @@ public class WorkspaceDepositService {
                     ? depositToRunner(workspace, name, bytes)
                     : depositToHosted(userId, workspaceId, name, bytes, file.contentType());
             UUID depositId = record(userId, workspaceId, path, bytes.length);
+            notifyReceived(workspace, depositId, file.contentType(), bytes);
             results.add(new DepositResponse.DepositedFile(depositId, path, bytes.length,
                     runner ? "RUNNER" : "HOSTED"));
         }
@@ -209,6 +218,18 @@ public class WorkspaceDepositService {
                 .path(path)
                 .sizeBytes(size)
                 .build()).getId();
+    }
+
+    /** F-247 / SF-247-12 (porte Z1b) — une remise en mémoire, jamais une attente ; un échec n'affecte pas le dépôt. */
+    private void notifyReceived(Workspace workspace, UUID depositId, String contentType, byte[] bytes) {
+        if (receivedListener == null) {
+            return;
+        }
+        try {
+            receivedListener.received(workspace, depositId, contentType, bytes, clock.instant());
+        } catch (RuntimeException ignored) {
+            // la lecture des captures ne doit jamais casser un dépôt
+        }
     }
 
     private static String callId() {

@@ -206,7 +206,11 @@ public class UsageTurn {
         /** Le courrier (F-242). */
         MAIL,
         /** L'agenda (F-243). */
-        AGENDA
+        AGENDA,
+        /** La lecture des captures de conversations (F-247 / SF-247-12). */
+        CAPTURE,
+        /** Les constats rédigés en différé du registre d'état (F-247 / SF-247-14). */
+        ETAT
     }
 
     /** La nature d'une ligne du journal (F-224 / SF-224-03). */

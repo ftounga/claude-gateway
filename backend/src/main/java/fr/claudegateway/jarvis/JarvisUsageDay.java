@@ -169,6 +169,15 @@ public class JarvisUsageDay {
     @Column(name = "agenda_cost_usd", nullable = false, precision = 12, scale = 6)
     private BigDecimal agendaCostUsd = BigDecimal.ZERO;
 
+    /** F-247 / SF-247-12 et SF-247-14 (D16) — la lecture des captures et les constats rédigés, au budget Jarvis. */
+    @Builder.Default
+    @Column(name = "capture_cost_usd", nullable = false, precision = 12, scale = 6)
+    private BigDecimal captureCostUsd = BigDecimal.ZERO;
+
+    @Builder.Default
+    @Column(name = "notes_cost_usd", nullable = false, precision = 12, scale = 6)
+    private BigDecimal notesCostUsd = BigDecimal.ZERO;
+
     /** F-242 / SF-242-02 — les relèves du courrier, les relèves sans rien de neuf (0 FETCH, 0 IA), les courriers
      * mis en cache ; SF-242-03 — les corrections du tri au toucher. Compteurs seuls, aucun contenu. */
     @Builder.Default
@@ -207,10 +216,11 @@ public class JarvisUsageDay {
         return nz(speechCostUsd).add(nz(sttStreamCostUsd)).add(nz(sttUtteranceCostUsd)).add(nz(dictationCostUsd));
     }
 
-    /** F-244 / SF-244-01 — <b>tout</b> ce que Jarvis a coûté ce jour-là, en dollars : voix, cerveau rapide, Opus, courrier, agenda. */
+    /** F-244 / SF-244-01 — <b>tout</b> ce que Jarvis a coûté ce jour-là, en dollars : voix, cerveau rapide, Opus, courrier, agenda,
+     * captures et constats du registre d'état (F-247). */
     public BigDecimal totalCostUsd() {
         return voiceCostUsd().add(nz(fastBrainCostUsd)).add(nz(opusCostUsd)).add(nz(mailCostUsd))
-                .add(nz(agendaCostUsd));
+                .add(nz(agendaCostUsd)).add(nz(captureCostUsd)).add(nz(notesCostUsd));
     }
 
     private static BigDecimal nz(BigDecimal value) {
