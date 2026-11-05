@@ -1812,6 +1812,14 @@ public class AtelierChatService implements RelayInterruptTarget {
     /** F-245 / SF-245-03 — la ligne-lien du fil Jarvis, terminée à la fin d'un tour délégué. Facultative. */
     private fr.claudegateway.jarvis.thread.JarvisLinkService jarvisLinks;
 
+    /** F-247 / SF-247-04 — la remise d'un tour à l'extraction d'état (facultative). */
+    private fr.claudegateway.jarvis.state.extract.StateExtractEnqueuer stateExtract;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setStateExtract(fr.claudegateway.jarvis.state.extract.StateExtractEnqueuer stateExtract) {
+        this.stateExtract = stateExtract;
+    }
+
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setJarvisLinks(fr.claudegateway.jarvis.thread.JarvisLinkService jarvisLinks) {
         this.jarvisLinks = jarvisLinks;
@@ -4972,6 +4980,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         // F-162 / SF-162-06 : embed la réponse de l'assistant pour le rappel sémantique — asynchrone,
         // best-effort (NONE par défaut ⇒ ne fait rien).
         embedForRecall(assistant);
+        // F-247 / SF-247-04 (Z1) — les sorties d'outils du tour partent à l'extraction d'état : une soumission en
+        // mémoire, le travail s'insère dans la file durable sur un fil de remise. Jamais bloquant.
+        if (stateExtract != null) {
+            stateExtract.afterTurn(userId, workspaceId, assistant.getId());
+        }
         // F-245 / SF-245-03 (D5) — la ligne-lien du fil Jarvis passe à « fait » (ligne 🎙 de la réponse) ou
         // « interrompu », et pointe la réponse. Best-effort, jamais bloquant.
         if (jarvisLinks != null && jarvisLinkId != null) {

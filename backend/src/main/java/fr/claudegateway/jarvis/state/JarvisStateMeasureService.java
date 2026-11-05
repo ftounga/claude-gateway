@@ -55,7 +55,8 @@ public class JarvisStateMeasureService {
         Latency all = latency(rows, r -> true);
         Latency onState = latency(rows, r -> Boolean.TRUE.equals(r.getStateQuestion()));
         return new Measure(window, rows.size(), questions.size(), offline.size(), answers, unknownRate, all, onState,
-                p(rows, JarvisTurnTiming::getStateBlockMs, 95), opusTurns(userId, since), runnerLoad(userId, since));
+                p(rows, JarvisTurnTiming::getStateBlockMs, 95), opusTurns(userId, since), runnerLoad(userId, since),
+                coverage(userId, since), jobs == null ? Map.of() : jobs.measure(userId, since.toInstant()));
     }
 
     static Latency latency(List<JarvisTurnTiming> rows, Predicate<JarvisTurnTiming> keep) {
@@ -98,6 +99,39 @@ public class JarvisStateMeasureService {
         return sorted.get(Math.max(0, Math.min(sorted.size() - 1, rank - 1)));
     }
 
+    /**
+     * SF-247-04 — le taux de couverture des extracteurs : appels {@code bash} d'état vus, couverts (au moins un fait),
+     * faits, et les 20 formes les plus fréquentes restées sans fait (la liste de travail de l'extracteur suivant).
+     */
+    Coverage coverage(UUID userId, OffsetDateTime since) {
+        java.sql.Date from = java.sql.Date.valueOf(since.toLocalDate());
+        List<Form> forms = jdbc.query("SELECT form, sum(calls), sum(covered), sum(facts) FROM jarvis_state_coverage "
+                + "WHERE user_id = ? AND obs_day >= ? GROUP BY form ORDER BY sum(calls) DESC", (rs, i) -> new Form(
+                        rs.getString(1), rs.getLong(2), rs.getLong(3), rs.getLong(4)), userId, from);
+        long calls = forms.stream().mapToLong(Form::calls).sum();
+        long covered = forms.stream().mapToLong(Form::covered).sum();
+        long facts = forms.stream().mapToLong(Form::facts).sum();
+        List<Form> uncovered = forms.stream().filter(f -> f.covered() < f.calls()).limit(20).toList();
+        return new Coverage(calls, covered, facts, calls == 0 ? null : Math.round(covered * 1000.0 / calls) / 1000.0,
+                uncovered);
+    }
+
+    /** Une forme de commande d'état et ses compteurs. */
+    public record Form(String form, long calls, long covered, long facts) {
+    }
+
+    /** Le taux de couverture. */
+    public record Coverage(long stateCalls, long covered, long facts, Double rate, List<Form> uncoveredForms) {
+    }
+
+    /** SF-247-04 — la file durable, pour la mesure par type (facultative). */
+    private fr.claudegateway.shared.jobs.AsyncJobQueue jobs;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJobs(fr.claudegateway.shared.jobs.AsyncJobQueue jobs) {
+        this.jobs = jobs;
+    }
+
     /** Premier son dit et premier jeton du cerveau rapide, p50/p90 en ms. */
     public record Latency(int turns, Integer firstSoundP50, Integer firstSoundP90, Integer fastFirstTokenP50,
             Integer fastFirstTokenP90) {
@@ -115,6 +149,7 @@ public class JarvisStateMeasureService {
      */
     public record Measure(int days, int turns, int stateQuestions, int offlineStateQuestions,
             Map<String, Long> offlineAnswers, Double unknownRate, Latency voice, Latency voiceOnStateQuestions,
-            Integer stateBlockMsP95, Durations opusTurns, Durations runnerCalls) {
+            Integer stateBlockMsP95, Durations opusTurns, Durations runnerCalls, Coverage coverage,
+            Map<String, fr.claudegateway.shared.jobs.AsyncJobQueue.KindMeasure> jobs) {
     }
 }
