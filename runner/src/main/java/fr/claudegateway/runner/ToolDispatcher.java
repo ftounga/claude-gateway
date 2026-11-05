@@ -165,7 +165,12 @@ public final class ToolDispatcher implements AutoCloseable {
         if (timeoutMs <= 0) {
             timeoutMs = DEFAULT_TIMEOUT_MS;
         }
-        JsonNode input = frame.get("input");
+        JsonNode rawInput = frame.get("input");
+        // F-247 / SF-247-06 : une trame `priority: low` (le relevé) est portée jusqu'à l'outil dans son
+        // entrée ; un runner ancien ignore ce champ, et la gateway ne lui envoie d'ailleurs aucun relevé.
+        final JsonNode input = "low".equals(text(frame, "priority"))
+                && rawInput instanceof com.fasterxml.jackson.databind.node.ObjectNode o
+                        ? o.deepCopy().put("priority", "low") : rawInput;
         // Le PROJET du tour (F-48 / SF-48-02). Un champ absent vaut la racine du poste : c'est le
         // cas d'un poste qui n'héberge qu'un projet, et celui d'une gateway antérieure à F-48.
         String project = frame.path("project").isTextual() ? frame.path("project").asText() : "";
@@ -317,6 +322,10 @@ public final class ToolDispatcher implements AutoCloseable {
             ObjectNode error = frame.putObject("error");
             error.put("code", outcome.errorCode());
             error.put("message", outcome.errorMessage());
+        }
+        if (outcome.cpuMs() != null) {
+            // F-247 / SF-247-06 (Z5) : le CPU consommé par une commande de basse priorité, remonté.
+            frame.put("cpuMs", outcome.cpuMs());
         }
         frame.put("durationMs", durationMs);
         return write(frame);
