@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-248 / SF-248-01 - MESURER D'ABORD (cadrage par 7).
+
+      jarvis_turn_timings recoit deux colonnes, sans contenu :
+        cards_lag_ms : delai entre la premiere phrase jouee et la premiere pancarte montree (portes K2, K3) ;
+        cards_count  : nombre de pancartes du jeu montre.
+      Facultatives : les tours d'avant F-248 restent a null.
+
+      jarvis_usage_days.render_counts passe de 1000 a 2000 caracteres : le vocabulaire ferme des compteurs a grandi
+      (cles c_*). La contrainte NOT NULL et le defaut "" sont reposes (H2 les perd sur un changement de type).
+
+      Rollback : les colonnes se retirent ; render_counts revient a 1000 (une ligne plus longue doit etre tronquee
+      avant ; RenderCounts.format ecarte deja les plus petits compteurs au-dela de la borne).
+    -->
+
+    <changeSet id="248-01-jarvis-cards-measure" author="claude-gateway">
+        <addColumn tableName="jarvis_turn_timings">
+            <column name="cards_lag_ms" type="int"/>
+            <column name="cards_count" type="int"/>
+        </addColumn>
+        <modifyDataType tableName="jarvis_usage_days" columnName="render_counts" newDataType="varchar(2000)"/>
+        <addDefaultValue tableName="jarvis_usage_days" columnName="render_counts" columnDataType="varchar(2000)"
+                         defaultValue=""/>
+        <addNotNullConstraint tableName="jarvis_usage_days" columnName="render_counts"
+                              columnDataType="varchar(2000)" defaultNullValue=""/>
+        <rollback>
+            <modifyDataType tableName="jarvis_usage_days" columnName="render_counts" newDataType="varchar(1000)"/>
+            <dropColumn tableName="jarvis_turn_timings" columnName="cards_count"/>
+            <dropColumn tableName="jarvis_turn_timings" columnName="cards_lag_ms"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

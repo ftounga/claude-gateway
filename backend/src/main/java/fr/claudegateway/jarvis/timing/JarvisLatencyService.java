@@ -141,6 +141,9 @@ public class JarvisLatencyService {
                 .stateQuestion(report.stateQuestion())
                 .stateAnswer(closed(report.stateAnswer(), STATE_ANSWERS))
                 .stateBlockMs(mark(report.stateBlockMs()))
+                // F-248 / SF-248-01 — le délai premier mot → pancartes et leur nombre, sans contenu.
+                .cardsLagMs(mark(report.cardsLagMs()))
+                .cardsCount(report.cardsCount() == null ? null : counter(report.cardsCount()))
                 .build());
     }
 
@@ -331,7 +334,9 @@ public class JarvisLatencyService {
             // F-241 / SF-241-04 — facultatif : l'allusion personnelle du tour (SPONTANEE, REPONSE, AUCUNE).
             String personalAllusion,
             // F-247 / SF-247-01 — facultatifs : poste éteint, question d'état, réponse, lecture du bloc.
-            Boolean hostOffline, Boolean stateQuestion, String stateAnswer, Integer stateBlockMs) {
+            Boolean hostOffline, Boolean stateQuestion, String stateAnswer, Integer stateBlockMs,
+            // F-248 / SF-248-01 — facultatifs : délai première phrase jouée → première pancarte, nombre de pancartes.
+            Integer cardsLagMs, Integer cardsCount) {
     }
 
     /** F-247 / SF-247-01 — les valeurs admises de {@code stateAnswer}. */

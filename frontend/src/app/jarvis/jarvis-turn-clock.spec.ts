@@ -38,6 +38,14 @@ describe('TurnClock (F-233 / SF-233-01)', () => {
     expect(report.stateBlockMs).toBe(2);
   });
 
+  it('F-248 / SF-248-01 — recopie le délai premier mot → pancartes et leur nombre', () => {
+    const clock = new TurnClock(0, null, () => 0);
+    clock.fast = { brain: 'FAST', cardsLagMs: 140, cardsCount: 3 };
+    const report = clock.takeReport()!;
+    expect(report.cardsLagMs).toBe(140);
+    expect(report.cardsCount).toBe(3);
+  });
+
   it('ne se déclare qu’une fois, et écarte une marque au-delà de 10 minutes', () => {
     let now = 0;
     const clock = new TurnClock(0, null, () => now);

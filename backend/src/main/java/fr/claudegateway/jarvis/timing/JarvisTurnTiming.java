@@ -219,4 +219,14 @@ public class JarvisTurnTiming {
     /** La lecture du bloc « État connu » tout prêt dans la réplique, en ms (SF-247-10). */
     @Column(name = "state_block_ms")
     private Integer stateBlockMs;
+
+    // ---- F-248 / SF-248-01 — les pancartes (cadrage §7). Jamais de contenu.
+
+    /** Délai entre la première phrase jouée et la première pancarte montrée (ms, K2/K3) ; {@code null} sans jeu. */
+    @Column(name = "cards_lag_ms")
+    private Integer cardsLagMs;
+
+    /** Nombre de pancartes du jeu montré ; {@code null} sans jeu. */
+    @Column(name = "cards_count")
+    private Integer cardsCount;
 }

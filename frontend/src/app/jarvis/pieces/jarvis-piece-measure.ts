@@ -24,6 +24,10 @@ export const PIECE_COUNT_KEYS = [
   'p_fclose',
   // délai parole → pièce (s) : 5 classes
   'lat_0_1', 'lat_1_2', 'lat_2_3', 'lat_3_5', 'lat_5p',
+  // F-248 / SF-248-01 — les pancartes : jeux montrés et taille (1, 2-6, ≥ 7), ciblés / cités, plein écran, lien,
+  // grand écran, comparaison, « et N autres », ordres voix / toucher, fermés < 2 s, « ancien », dégradés en 2D
+  'c_set', 'c_n1', 'c_n2_6', 'c_n7p', 'c_tgt', 'c_cit', 'c_open', 'c_link', 'c_big', 'c_cmp', 'c_more',
+  'c_voice', 'c_touch', 'c_close2s', 'c_old', 'c_2d',
 ] as const;
 
 export type PieceCountKey = typeof PIECE_COUNT_KEYS[number];
