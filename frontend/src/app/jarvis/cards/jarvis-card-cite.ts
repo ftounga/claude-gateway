@@ -132,6 +132,11 @@ export class CardShowing {
     return this.event?.responseId ?? null;
   }
 
+  /** F-248 / SF-248-07 — la mention du pied du jeu, ou `null`. */
+  get offline(): string | null {
+    return this.event?.offline ?? null;
+  }
+
   get hasCatalogue(): boolean {
     return (this.event?.cards?.length ?? 0) > 0;
   }

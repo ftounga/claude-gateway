@@ -2960,7 +2960,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
     const now = performance.now();
     const flat = this.cardsFlat();
-    const shown = this.pieces.showCards(showing.responseId, visible, { flat });
+    const shown = this.pieces.showCards(showing.responseId, visible, { flat, note: showing.offline });
     if (!shown.ok && shown.reason !== 'BUSY') {
       return;
     }

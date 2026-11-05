@@ -32,6 +32,7 @@ public final class JarvisCardCatalog {
     private final Map<String, JarvisCard> cards = new LinkedHashMap<>();
     private int version;
     private int sent = -1;
+    private String offline;
 
     /** Ouvre le catalogue de la réplique sur le fil courant ; {@link #close} le referme. */
     public static JarvisCardCatalog open() {
@@ -76,6 +77,22 @@ public final class JarvisCardCatalog {
             list.get().forEach(c::add);
         } catch (RuntimeException e) {
             log.debug("Pancartes : fiches omises ({})", e.getClass().getSimpleName());
+        }
+    }
+
+    /**
+     * F-248 / SF-248-07 — la mention du pied du jeu (« Poste CAGIP éteint depuis 18 h 05 »), une fois par jeu ; la
+     * première posée reste.
+     */
+    public static void note(String text) {
+        JarvisCardCatalog c = CURRENT.get();
+        if (c != null && text != null && !text.isBlank()) {
+            synchronized (c) {
+                if (c.offline == null) {
+                    c.offline = text;
+                    c.version++;
+                }
+            }
         }
     }
 
@@ -130,10 +147,14 @@ public final class JarvisCardCatalog {
         }
         sent = version;
         List<JarvisCard> list = cards();
-        return new Event(responseId, list.stream().anyMatch(JarvisCard::targeted), list);
+        return new Event(responseId, list.stream().anyMatch(JarvisCard::targeted), list, offline);
     }
 
-    /** L'événement SSE {@code cards} : le jeu complet de la réponse (il remplace le précédent du même {@code responseId}). */
-    public record Event(UUID responseId, boolean targeted, List<JarvisCard> cards) {
+    /**
+     * L'événement SSE {@code cards} : le jeu complet de la réponse (il remplace le précédent du même {@code responseId}).
+     *
+     * @param offline F-248 / SF-248-07 — « Poste … éteint depuis … », en pied du jeu, ou {@code null}
+     */
+    public record Event(UUID responseId, boolean targeted, List<JarvisCard> cards, String offline) {
     }
 }

@@ -165,6 +165,7 @@ public class JarvisStateBlock {
     public Prepared compose(UUID userId) {
         OffsetDateTime now = OffsetDateTime.now(clock);
         List<Client> clients = new ArrayList<>();
+        Map<String, List<JarvisStateRegistry.Fact>> facts = new LinkedHashMap<>();
         for (RunnerHost h : hosts.list(userId)) {
             if (!userId.equals(h.getUserId()) || !registry.settingsOf(userId, h.getId()).isEnabled()) {
                 continue;
@@ -180,14 +181,49 @@ public class JarvisStateBlock {
             if (!connected) {
                 lastDisconnect(userId, h.getId(), since, cause);
             }
-            List<Line> lines = lines(registry.recent(userId, h.getId(), CANDIDATES_PER_HOST), now);
+            List<JarvisStateRegistry.Fact> recent = registry.recent(userId, h.getId(), CANDIDATES_PER_HOST);
+            List<Line> lines = lines(recent, now);
+            // F-248 / SF-248-07 (Z12) — les faits des lignes gardés dans le même cache : leurs pancartes se fabriquent
+            // en mémoire, sans relire le registre dans la réplique.
+            for (JarvisStateRegistry.Fact f : recent) {
+                facts.computeIfAbsent(h.getId() + "|" + f.objectKey(), k -> new ArrayList<>()).add(f);
+            }
             clients.add(new Client(h.getId(), h.getName(), connected, since[0], cause[0], openWaits(userId, h.getId()),
                     lines));
             if (clients.size() >= 12) {
                 break;
             }
         }
+        preparedFacts.put(userId, facts);
         return new Prepared(now, List.copyOf(clients));
+    }
+
+    /** F-248 / SF-248-07 — les faits préparés de chaque objet (client + clé), par compte. */
+    private final Map<UUID, Map<String, List<JarvisStateRegistry.Fact>>> preparedFacts = new ConcurrentHashMap<>();
+
+    /**
+     * F-248 / SF-248-07 (Z12) — <b>dans la réplique</b> : les faits préparés des lignes retenues, lus en mémoire (jamais
+     * de requête). Cache absent ⇒ rien.
+     */
+    public List<JarvisStateRegistry.Fact> factsFor(UUID userId, List<Line> lines) {
+        Map<String, List<JarvisStateRegistry.Fact>> facts = userId == null ? null : preparedFacts.get(userId);
+        if (facts == null || lines == null) {
+            return List.of();
+        }
+        List<JarvisStateRegistry.Fact> out = new ArrayList<>();
+        for (Line l : lines) {
+            List<JarvisStateRegistry.Fact> fs = facts.get(l.hostId() + "|" + l.objectKey());
+            if (fs != null) {
+                out.addAll(fs);
+            }
+        }
+        return out;
+    }
+
+    /** F-248 / SF-248-07 — les clients préparés d'un compte (nom, connexion, coupure), ou rien. */
+    public List<Client> preparedClients(UUID userId) {
+        Prepared p = userId == null ? null : cache.get(userId);
+        return p == null ? List.of() : p.clients();
     }
 
     /** Les faits regroupés par objet : une ligne par objet, ses attributs ensemble, datée du plus récent. */
@@ -376,7 +412,7 @@ public class JarvisStateBlock {
     }
 
     /** Un libellé court et dicible de la clé ({@code JIRA:PROJ-123} → {@code PROJ-123}). */
-    static String label(String key) {
+    public static String label(String key) {
         int i = key.indexOf(':');
         String prefix = i < 0 ? "" : key.substring(0, i);
         String rest = i < 0 ? key : key.substring(i + 1);

@@ -85,8 +85,16 @@ public class JarvisStateTool {
                     facts.addAll(registry.recent(userId, h.getId(), left));
                 }
             }
-            List<JarvisStateBlock.Line> lines = JarvisStateBlock.lines(facts.size() > JarvisStateRegistry.MAX_READ
-                    ? facts.subList(0, JarvisStateRegistry.MAX_READ) : facts, now);
+            List<JarvisStateRegistry.Fact> kept = facts.size() > JarvisStateRegistry.MAX_READ
+                    ? facts.subList(0, JarvisStateRegistry.MAX_READ) : facts;
+            List<JarvisStateBlock.Line> lines = JarvisStateBlock.lines(kept, now);
+            // F-248 / SF-248-07 (D2) — lecture ciblée : tout le résultat devient des pancartes montrées d'office,
+            // dérivées des faits déjà lus pour fabriquer le résultat d'outil (aucune requête de plus).
+            Map<UUID, String> names = new LinkedHashMap<>();
+            targets.forEach(h -> names.put(h.getId(), h.getName()));
+            fr.claudegateway.jarvis.cards.JarvisCardCatalog.collectAll(() -> fr.claudegateway.jarvis.cards
+                    .JarvisStateCards.fromFacts(kept, names).stream()
+                    .map(fr.claudegateway.jarvis.cards.JarvisCard::asTargeted).toList());
             StringBuilder b = new StringBuilder(OPEN).append('\n');
             if (lines.isEmpty()) {
                 b.append("Rien de relevé").append(cle.isEmpty() ? "" : " sur " + cle).append(" chez ")
