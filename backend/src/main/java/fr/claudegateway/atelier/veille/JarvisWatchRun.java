@@ -40,6 +40,8 @@ public class JarvisWatchRun {
     /** Poste hors ligne au créneau : rattrapé une fois à la reconnexion. */
     public static final String MISSED_OFFLINE = "MISSED_OFFLINE";
 
+    /** F-247 / SF-247-07 — relevé qui a cédé la place (poste occupé, préempté) : repris plus tard, jamais un échec. */
+    public static final String YIELDED = "YIELDED";
     public static final String SCHEDULED = "SCHEDULED";
     public static final String CATCH_UP = "CATCH_UP";
     public static final String MANUAL = "MANUAL";

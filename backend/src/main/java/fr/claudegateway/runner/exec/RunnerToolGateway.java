@@ -515,6 +515,22 @@ public class RunnerToolGateway {
      * (la boucle maison ne déclare {@code run_in_background} que là) ; un runner ancien ignorerait le
      * drapeau et bloquerait, d'où le garde-fou de déclaration côté gateway.
      */
+    /**
+     * F-247 / SF-247-06/07 — une commande de <b>basse priorité</b> (un relevé) : le poste la refuse
+     * ({@code busy_deferred}) s'il travaille et la tue ({@code preempted}) dès qu'une commande du PO arrive.
+     * À n'envoyer qu'à un runner qui annonce {@code low_priority}.
+     */
+    public RunnerCallResult bashLow(RunnerTarget target, String callId, String command, long timeoutMs) {
+        ObjectNode input = objectMapper.createObjectNode();
+        RunnerCallResult prepared = prepareBashInput(input, command, null);
+        if (prepared != null) {
+            return prepared;
+        }
+        input.put("priority", "low");
+        long effective = Math.max(MIN_BASH_TIMEOUT_MS, Math.min(MAX_BASH_TIMEOUT_MS, timeoutMs));
+        return unsupportedBash(router.call(target, callId, "bash", input, effective, null));
+    }
+
     public RunnerCallResult bashBackground(RunnerTarget target, String callId, String command, String cwd) {
         ObjectNode input = objectMapper.createObjectNode();
         RunnerCallResult prepared = prepareBashInput(input, command, cwd);

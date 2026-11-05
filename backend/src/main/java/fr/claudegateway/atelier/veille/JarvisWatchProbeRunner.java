@@ -57,6 +57,11 @@ public class JarvisWatchProbeRunner {
     public static final String ERR_EXIT = "probe_exit";
     public static final String ERR_OUTPUT = "probe_output";
     public static final String ERR_TRANSPORT = "probe_transport";
+    /** F-247 / SF-247-07 — le poste a refusé ou interrompu le relevé pour laisser passer le PO. */
+    public static final String ERR_YIELDED = "yielded";
+    /** Délai d'une sonde de relevé (porte Z5). */
+    public static final long RELEVE_TIMEOUT_MS = 20_000L;
+    static final String AUDIT_TOOL_RELEVE = "releve_sonde";
 
     private final RunnerToolGateway gateway;
     private RunnerAuditService audit;
@@ -85,7 +90,7 @@ public class JarvisWatchProbeRunner {
         String callId = "veille-" + UUID.randomUUID();
         try {
             RunnerCallResult result = gateway.readFile(target, callId, path);
-            record(userId, target, callId, "read_file", path, result);
+            record(userId, target, callId, AUDIT_TOOL, "read_file", path, result);
             return result.ok() ? Optional.ofNullable(result.content()) : Optional.empty();
         } catch (RuntimeException e) {
             log.debug("Script de sonde illisible ({})", e.getClass().getSimpleName());
@@ -111,12 +116,20 @@ public class JarvisWatchProbeRunner {
         String callId = "veille-" + UUID.randomUUID();
         RunnerCallResult result;
         try {
-            result = gateway.bash(target, callId, watch.getProbeCommand(), null, PROBE_TIMEOUT_MS, null);
+            result = watch.isState()
+                    ? gateway.bashLow(target, callId, watch.getProbeCommand(), RELEVE_TIMEOUT_MS)
+                    : gateway.bash(target, callId, watch.getProbeCommand(), null, PROBE_TIMEOUT_MS, null);
         } catch (RuntimeException e) {
             log.warn("Sonde de veille non lancée ({})", e.getClass().getSimpleName());
             return Outcome.failure(ERR_TRANSPORT, "La sonde n'a pas pu être lancée sur le poste.", elapsed(started));
         }
-        record(watch.getUserId(), target, callId, "bash", watch.getProbeCommand(), result);
+        record(watch.getUserId(), target, callId, watch.isState() ? AUDIT_TOOL_RELEVE : AUDIT_TOOL, "bash",
+                watch.getProbeCommand(), result);
+        if (result != null && !result.ok() && ("busy_deferred".equals(result.errorCode())
+                || "preempted".equals(result.errorCode()))) {
+            return Outcome.failure(ERR_YIELDED + ":" + result.errorCode(), "Le poste travaillait : relevé remis.",
+                    elapsed(started));
+        }
         if (result == null || !result.ok()) {
             String code = result != null && "runner_unavailable".equals(result.errorCode()) ? ERR_OFFLINE : ERR_TRANSPORT;
             String message = result != null && result.errorMessage() != null ? result.errorMessage()
@@ -150,13 +163,13 @@ public class JarvisWatchProbeRunner {
         }
     }
 
-    private void record(UUID userId, RunnerTarget target, String callId, String tool, String what,
+    private void record(UUID userId, RunnerTarget target, String callId, String prefix, String tool, String what,
             RunnerCallResult result) {
         if (audit == null || result == null) {
             return;
         }
         try {
-            audit.recordCall(userId, target, callId, AUDIT_TOOL + ":" + tool, what, result);
+            audit.recordCall(userId, target, callId, prefix + ":" + tool, what, result);
         } catch (RuntimeException e) {
             log.debug("Journal du runner : sonde non inscrite ({})", e.getClass().getSimpleName());
         }

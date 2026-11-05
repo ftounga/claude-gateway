@@ -45,6 +45,11 @@ public interface JarvisWatchRepository extends JpaRepository<JarvisWatch, UUID> 
             + "and (w.lastSlotAt is null or w.lastSlotAt < :slot)")
     int markMissed(@Param("id") UUID id, @Param("slot") OffsetDateTime slot);
 
+    /** F-247 / SF-247-07 — rend un créneau pris (relevé qui a cédé la place) : il sera repris au passage suivant. */
+    @Modifying
+    @Query("update JarvisWatch w set w.lastSlotAt = null where w.id = :id and w.lastSlotAt = :slot")
+    int releaseSlot(@Param("id") UUID id, @Param("slot") OffsetDateTime slot);
+
     /**
      * L'issue d'un passage (SF-230-02), par un {@code UPDATE} ciblé : une pause posée par le PO pendant le passage
      * n'est jamais écrasée.

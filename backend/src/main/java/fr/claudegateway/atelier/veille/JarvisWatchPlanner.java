@@ -80,6 +80,14 @@ public class JarvisWatchPlanner {
         this.catchUpGrace = catchUpGrace;
     }
 
+    /** F-247 / SF-247-07 — la garde et le rangement du relevé d'état (facultatifs : sans eux, aucun relevé ne part). */
+    private JarvisWatchStateHook stateHook;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setStateHook(JarvisWatchStateHook stateHook) {
+        this.stateHook = stateHook;
+    }
+
     /** Tests : exécuter les passages sur le fil appelant. */
     void setExecutor(Executor executor) {
         this.executor = executor;
@@ -130,7 +138,14 @@ public class JarvisWatchPlanner {
         if (workspace.isEmpty() || !JarvisWatchService.isWatchCapable(workspace.get())) {
             return false; // le sujet n'est plus sur un poste : rien ne part
         }
-        if (!liveness.isAlive(watch.getUserId(), workspace.get().getHostId())) {
+        if (watch.isState()) {
+            // F-247 / SF-247-07 (Z4) : un relevé ne part que poste en ligne, capable de céder la place, inactif.
+            // Hors de ces conditions, rien n'est pris : le créneau reste dû et sera retenté au passage suivant.
+            if (!liveness.isAlive(watch.getUserId(), workspace.get().getHostId()) || stateHook == null
+                    || !stateHook.mayRun(watch, workspace.get(), now)) {
+                return false;
+            }
+        } else if (!liveness.isAlive(watch.getUserId(), workspace.get().getHostId())) {
             recordMissedOnce(watch, due);
             return false; // poste hors ligne : rattrapage à la reconnexion
         }

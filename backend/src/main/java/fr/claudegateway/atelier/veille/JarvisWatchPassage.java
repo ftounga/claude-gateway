@@ -58,6 +58,14 @@ public class JarvisWatchPassage {
         this.push = push;
     }
 
+    /** F-247 / SF-247-07 — instantanés → faits du registre (relevés et veilles existantes). Facultatif. */
+    private JarvisWatchStateHook stateHook;
+
+    @Autowired(required = false)
+    public void setStateHook(JarvisWatchStateHook stateHook) {
+        this.stateHook = stateHook;
+    }
+
     @Autowired(required = false)
     public void setListeners(List<JarvisWatchChangeListener> listeners) {
         this.listeners = listeners == null ? List.of() : List.copyOf(listeners);
@@ -71,8 +79,18 @@ public class JarvisWatchPassage {
         JarvisWatchRun run = JarvisWatchRun.builder().userId(watch.getUserId()).workspaceId(watch.getWorkspaceId())
                 .watchId(watch.getId()).slotAt(slot).trigger(trigger).startedAt(started).finishedAt(finished)
                 .durationMs(outcome.durationMs()).build();
+        if (!outcome.ok() && outcome.errorCode().startsWith(JarvisWatchProbeRunner.ERR_YIELDED)) {
+            return yielded(watch, run, slot, outcome);
+        }
         if (!outcome.ok()) {
             return failed(watch, run, outcome);
+        }
+        if (stateHook != null) {
+            try {
+                stateHook.record(watch, workspace, outcome.items(), finished);
+            } catch (RuntimeException e) {
+                log.warn("Veille : faits non rangés ({})", e.getClass().getSimpleName());
+            }
         }
         Optional<JarvisWatchSnapshot> previous = snapshots.findByWatchIdAndUserId(watch.getId(), watch.getUserId());
         List<JarvisWatchDiff.Change> changes = previous.isEmpty() ? List.of()
@@ -94,6 +112,9 @@ public class JarvisWatchPassage {
             watches.recordOutcome(watch.getId(), watch.getUserId(), finished, status, 0, false);
             return runs.save(run);
         });
+        if (watch.isState()) {
+            return saved; // un relevé ne parle jamais : ni note au fil, ni alerte, ni IA
+        }
         if (wasBroken) {
             threadNote.post(watch, "réparée : la sonde répond de nouveau.");
         }
@@ -107,6 +128,23 @@ public class JarvisWatchPassage {
             }
         }
         return saved;
+    }
+
+    /**
+     * F-247 / SF-247-07 — le poste a cédé la place (occupé, ou préempté par le PO) : ni échec, ni panne ; le créneau
+     * est rendu pour être repris au passage suivant.
+     */
+    private JarvisWatchRun yielded(JarvisWatch watch, JarvisWatchRun run, OffsetDateTime slot,
+            JarvisWatchProbeRunner.Outcome outcome) {
+        run.setStatus(JarvisWatchRun.YIELDED);
+        String code = outcome.errorCode().substring(outcome.errorCode().indexOf(':') + 1);
+        run.setErrorCode(code.length() > 32 ? code.substring(0, 32) : code);
+        return transactions.execute(tx -> {
+            if (slot != null) {
+                watches.releaseSlot(watch.getId(), slot);
+            }
+            return runs.save(run);
+        });
     }
 
     /** Un échec : compté ; au 2ᵉ d'affilée, la veille passe en panne, une seule fois notifiée (D6). */
