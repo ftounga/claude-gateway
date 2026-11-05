@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-247 / SF-247-08 - LA MISE EN PLACE DU RELEVE : la date du dernier tour d'inventaire d'un client (null = jamais),
+      et jarvis_watches.run_times elargi a 128 (un releve passe toutes les heures de 8 h a 20 h : 13 heures).
+
+      Rollback : la colonne se retire.
+    -->
+
+    <changeSet id="247-08-jarvis-state-releve-setup" author="claude-gateway">
+        <addColumn tableName="jarvis_state_settings">
+            <column name="releve_setup_at" type="timestamptz"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="jarvis_state_settings" columnName="releve_setup_at"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="247-08-jarvis-watches-run-times" author="claude-gateway">
+        <modifyDataType tableName="jarvis_watches" columnName="run_times" newDataType="varchar(128)"/>
+        <rollback>
+            <modifyDataType tableName="jarvis_watches" columnName="run_times" newDataType="varchar(64)"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

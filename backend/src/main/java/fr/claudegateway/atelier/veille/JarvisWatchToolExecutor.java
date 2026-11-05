@@ -42,7 +42,12 @@ public class JarvisWatchToolExecutor {
                     ? input.get("chantier").asInt() : null;
             JarvisWatchView view = service.propose(userId, workspace, new ProposeRequest(str(input, "nom"),
                     str(input, "plateforme"), str(input, "perimetre"), str(input, "commande"), str(input, "script"),
-                    times(input), chantier));
+                    times(input), chantier, str(input, "usage")));
+            if ("STATE".equals(view.purpose())) {
+                return new Outcome("Sonde de relevé proposée (« " + view.name() + " ») : elle N'EST PAS active. "
+                        + "Lance-la une fois et dis ce que tu vois ; le PO validera toutes les sondes d'un geste "
+                        + "(« Tout valider », dans « Ce que je sais »).", false);
+            }
             return new Outcome("Veille proposée (« " + view.name() + " », " + String.join(", ", view.runTimes())
                     + ", du lundi au vendredi) : elle N'EST PAS active. Dis au PO qu'une carte au-dessus du fil lui "
                     + "montre la commande ; il la teste, puis l'active ou la refuse.", false);

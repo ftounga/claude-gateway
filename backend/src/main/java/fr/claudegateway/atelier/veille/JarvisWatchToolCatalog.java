@@ -37,7 +37,11 @@ public class JarvisWatchToolCatalog {
                     + "cours, 2 bloqués… »). La veille N'EST PAS active : le PO la teste et l'active d'une carte. "
                     + "Pour réparer une veille en panne, rappelle l'outil avec le MÊME nom. À l'ouverture d'un "
                     + "chantier sur un client suivi par une plateforme de tickets, tu peux PROPOSER une veille en "
-                    + "une phrase ; ne la pose qu'après l'accord du PO.",
+                    + "une phrase ; ne la pose qu'après l'accord du PO. RELEVÉ D'ÉTAT (usage « etat ») : une sonde "
+                    + "de relevé ne fait que lire l'état (tickets, MR, pipelines, déploiements…) pour que Jarvis le "
+                    + "sache poste éteint ; elle ne prévient jamais et n'utilise aucune IA ; heures facultatives "
+                    + "(toutes les heures de 8 h à 20 h par défaut) ; seuls les verbes de lecture sont admis (get, "
+                    + "list, view, describe, status, show, log, output, history).",
             Map.of("type", "object",
                     "properties", Map.of(
                             "nom", Map.of("type", "string", "description", "Nom court (80 caractères au plus)."),
@@ -55,8 +59,11 @@ public class JarvisWatchToolCatalog {
                                     "description", "Heures de passage HH:mm (1 à 6), heure du poste, données par le "
                                             + "PO. Jours : lundi→vendredi, imposés."),
                             "chantier", Map.of("type", "integer",
-                                    "description", "Numéro du chantier suivi, s'il y en a un.")),
-                    "required", List.of("nom", "plateforme", "perimetre", "commande", "heures")));
+                                    "description", "Numéro du chantier suivi, s'il y en a un."),
+                            "usage", Map.of("type", "string", "enum", List.of("alerte", "etat"),
+                                    "description", "alerte (défaut) : une veille qui prévient ; etat : un relevé "
+                                            + "d'état silencieux pour le registre de Jarvis.")),
+                    "required", List.of("nom", "plateforme", "perimetre", "commande")));
 
     /** Vrai si ce nom est l'outil de ce catalogue. */
     public static boolean isWatchTool(String name) {

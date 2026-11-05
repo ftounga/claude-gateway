@@ -92,7 +92,8 @@ public class JarvisWatchService {
         String platform = text(request.platform(), "La plateforme", MAX_PLATFORM);
         String scope = text(request.scope(), "Le périmètre", MAX_SCOPE);
         String command = text(request.command(), "La commande", MAX_COMMAND);
-        String runTimes = runTimes(request.runTimes());
+        boolean state = request.state();
+        String runTimes = state ? stateRunTimes(request.runTimes()) : runTimes(request.runTimes());
         Integer chantier = request.chantierNumber();
         if (chantier != null && chantier < 1) {
             throw new InvalidWatchException("Le chantier est un numéro à partir de 1.");
@@ -100,6 +101,12 @@ public class JarvisWatchService {
         JarvisWatchProbeGuard.problemIn(command, "la commande").ifPresent(problem -> {
             throw new UnsafeProbeException(problem);
         });
+        if (state) {
+            // F-247 / SF-247-08 : un relevé ne lit qu'avec des verbes de lecture, refusé à l'enregistrement sinon.
+            JarvisWatchProbeGuard.stateVerbProblem(command, "la commande").ifPresent(problem -> {
+                throw new UnsafeProbeException(problem);
+            });
+        }
         String scriptPath = scriptPath(request.scriptPath(), command);
         String scriptHash = null;
         if (scriptPath != null) {
@@ -110,11 +117,22 @@ public class JarvisWatchService {
             JarvisWatchProbeGuard.problemIn(script, "le script").ifPresent(problem -> {
                 throw new UnsafeProbeException(problem);
             });
+            if (state) {
+                JarvisWatchProbeGuard.stateVerbProblem(script, "le script").ifPresent(problem -> {
+                    throw new UnsafeProbeException(problem);
+                });
+            }
             scriptHash = JarvisWatchProbeRunner.sha256(script);
         }
         Optional<JarvisWatch> existing = watches.findFirstByUserIdAndWorkspaceIdAndNameIgnoreCase(userId,
                 workspace.getId(), name);
-        if (existing.isEmpty() && watches.countByUserIdAndWorkspaceId(userId, workspace.getId()) >= MAX_PER_SUBJECT) {
+        String purpose = state ? JarvisWatch.PURPOSE_STATE : JarvisWatch.PURPOSE_ALERT;
+        if (existing.isPresent() && !purpose.equals(existing.get().getPurpose())) {
+            throw new WatchConflictException("watch_conflict", "Une " + (state ? "veille" : "sonde de relevé")
+                    + " porte déjà ce nom dans ce sujet : choisis un autre nom.");
+        }
+        if (existing.isEmpty() && watches.countByUserIdAndWorkspaceIdAndPurpose(userId, workspace.getId(), purpose)
+                >= MAX_PER_SUBJECT) {
             throw new WatchConflictException("watch_limit",
                     "Ce sujet a déjà " + MAX_PER_SUBJECT + " veilles : supprimez-en une d'abord.");
         }
@@ -129,6 +147,7 @@ public class JarvisWatchService {
         watch.setProbeScriptHash(scriptHash);
         watch.setRunTimes(runTimes);
         watch.setChantierNumber(chantier);
+        watch.setPurpose(purpose);
         // Une proposition — neuve ou réparée — ne tourne pas tant que le PO ne l'a pas retestée et activée.
         watch.setProposed(true);
         watch.setActive(false);
@@ -368,6 +387,53 @@ public class JarvisWatchService {
     }
 
     /** 1 à 6 heures {@code HH:mm}, distinctes, triées, rangées {@code "09:00,14:00"}. */
+    /** F-247 / SF-247-08 — un relevé passe toutes les heures de 8 h à 20 h par défaut ; 13 heures au plus. */
+    public static final String RELEVE_DEFAULT_TIMES = "08:00,09:00,10:00,11:00,12:00,13:00,14:00,15:00,16:00,17:00,"
+            + "18:00,19:00,20:00";
+    static final int RELEVE_MAX_TIMES = 13;
+
+    static String stateRunTimes(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return RELEVE_DEFAULT_TIMES;
+        }
+        TreeSet<String> times = new TreeSet<>();
+        for (String value : values) {
+            times.addAll(List.of(runTimes(List.of(value)).split(",")));
+        }
+        if (times.size() > RELEVE_MAX_TIMES) {
+            throw new InvalidWatchException("Un relevé passe au plus " + RELEVE_MAX_TIMES + " fois par jour.");
+        }
+        return String.join(",", times);
+    }
+
+    /**
+     * F-247 / SF-247-08 — <b>« Tout valider »</b> : chaque sonde de relevé proposée sur les sujets de ce client est
+     * testée une fois puis activée si le test réussit ; les autres restent proposées, avec leur erreur. La validation
+     * du PO reste obligatoire (F-230 D5), en un geste.
+     */
+    public List<JarvisWatchDtos.ValidateResult> validateAllState(UUID userId, UUID hostId) {
+        List<JarvisWatchDtos.ValidateResult> out = new java.util.ArrayList<>();
+        if (workspaces == null) {
+            return out;
+        }
+        for (JarvisWatchDtos.JarvisWatchSummaryView s : listForAccount(userId, hostId)) {
+            JarvisWatchView v = s.watch();
+            if (!"STATE".equals(v.purpose()) || !v.proposed()) {
+                continue;
+            }
+            try {
+                JarvisWatchTestView test = test(userId, v.workspaceId(), v.id());
+                if (test.ok()) {
+                    accept(userId, v.workspaceId(), v.id());
+                }
+                out.add(new JarvisWatchDtos.ValidateResult(v.id(), v.name(), test.ok(), test.ok() ? null : test.errorMessage()));
+            } catch (JarvisWatchExceptions.WatchException e) {
+                out.add(new JarvisWatchDtos.ValidateResult(v.id(), v.name(), false, e.getMessage()));
+            }
+        }
+        return out;
+    }
+
     static String runTimes(List<String> values) {
         if (values == null || values.isEmpty()) {
             throw new InvalidWatchException("Donne au moins une heure de passage (HH:mm), heure du poste.");

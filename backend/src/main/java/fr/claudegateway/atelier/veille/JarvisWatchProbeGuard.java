@@ -1,5 +1,6 @@
 package fr.claudegateway.atelier.veille;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -115,6 +116,115 @@ public final class JarvisWatchProbeGuard {
                     + "que lire (GET, ou requête GraphQL sans mutation).");
         }
         return Optional.empty();
+    }
+
+    // ------------------------------------------------------- F-247 / SF-247-08 : relevé, verbes de lecture
+
+    /** Les verbes de lecture admis pour une sonde de relevé (cadrage §4.3). */
+    static final java.util.Set<String> READ_VERBS = java.util.Set.of("get", "list", "ls", "view", "describe",
+            "status", "show", "log", "output", "history", "top", "version", "info", "search", "checks", "diff",
+            "branch", "rev-parse", "logs", "whoami", "current-context", "get-contexts");
+
+    /** Les outils dont le verbe se lit au premier mot non-option après le nom (et son sous-groupe éventuel). */
+    private static final java.util.Map<String, Integer> VERB_DEPTH = java.util.Map.ofEntries(
+            java.util.Map.entry("kubectl", 2), java.util.Map.entry("oc", 2), java.util.Map.entry("helm", 1),
+            java.util.Map.entry("argocd", 2), java.util.Map.entry("glab", 2), java.util.Map.entry("gh", 2),
+            java.util.Map.entry("terraform", 2), java.util.Map.entry("git", 1), java.util.Map.entry("jira", 2),
+            java.util.Map.entry("acli", 2), java.util.Map.entry("docker", 1), java.util.Map.entry("az", -1),
+            java.util.Map.entry("aws", 2), java.util.Map.entry("gcloud", -1));
+
+    /** Les écritures SQL, interdites dans un relevé. */
+    private static final Pattern SQL_WRITE = Pattern.compile(
+            "(?i)\\b(insert|update|delete|drop|alter|create|truncate|grant|revoke|merge|call)\\b\\s");
+
+    /**
+     * Le problème d'une sonde de relevé qui utiliserait un autre verbe que la lecture : pour chaque appel d'un outil
+     * connu (kubectl, helm, argocd, glab, gh, terraform, git, aws, az…), le verbe doit être de lecture ; {@code aws}
+     * n'admet que {@code describe-*}, {@code get-*}, {@code list-*} ; {@code psql}/{@code sqlcmd} aucune écriture.
+     */
+    public static Optional<String> stateVerbProblem(String text, String where) {
+        if (text == null || text.isBlank()) {
+            return Optional.empty();
+        }
+        for (String segment : text.split("[\\n;|&]+|\\$\\(|`")) {
+            String[] words = segment.strip().split("\\s+");
+            for (int i = 0; i < words.length; i++) {
+                String tool = words[i].replaceAll("^.*/", "").toLowerCase(Locale.ROOT);
+                Integer depth = VERB_DEPTH.get(tool);
+                if (depth == null) {
+                    if ((tool.equals("psql") || tool.equals("sqlcmd") || tool.equals("mysql"))
+                            && SQL_WRITE.matcher(segment).find()) {
+                        return Optional.of(capital(where) + " écrit en base : un relevé ne fait que lire.");
+                    }
+                    continue;
+                }
+                List<String> verbs = new java.util.ArrayList<>();
+                for (int j = i + 1; j < words.length && verbs.size() < Math.max(1, Math.abs(depth)); j++) {
+                    if (!words[j].startsWith("-")) {
+                        verbs.add(words[j].toLowerCase(Locale.ROOT));
+                    } else if (j + 1 < words.length && !words[j].contains("=") && takesValue(words[j])) {
+                        j++;
+                    }
+                }
+                if (verbs.isEmpty()) {
+                    break;
+                }
+                if (!readVerb(tool, depth, verbs, words, i)) {
+                    return Optional.of(capital(where) + " appelle « " + tool + " " + String.join(" ", verbs)
+                            + " » : un relevé n'admet que les verbes de lecture (get, list, view, describe, status, "
+                            + "show, log, output, history).");
+                }
+                break;
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static boolean readVerb(String tool, int depth, List<String> verbs, String[] words, int at) {
+        String last = verbs.get(verbs.size() - 1);
+        if ("aws".equals(tool)) {
+            return verbs.size() < 2 || last.startsWith("describe-") || last.startsWith("get-")
+                    || last.startsWith("list-") || "ls".equals(last);
+        }
+        if (depth < 0) {
+            // az / gcloud : le verbe est le DERNIER mot non-option de l'appel
+            String verb = null;
+            for (int j = at + 1; j < words.length; j++) {
+                if (!words[j].startsWith("-")) {
+                    verb = words[j].toLowerCase(Locale.ROOT);
+                } else {
+                    break;
+                }
+            }
+            return verb == null || READ_VERBS.contains(verb) || verb.startsWith("show") || verb.startsWith("list");
+        }
+        // glab mr view / gh pr list : le verbe est le 2ᵉ mot ; « gh api » n'est admis qu'en GET (garde générale).
+        if (("gh".equals(tool) || "glab".equals(tool)) && "api".equals(verbs.get(0))) {
+            return true;
+        }
+        if ("git".equals(tool)) {
+            return READ_VERBS.contains(verbs.get(0)) || "describe".equals(verbs.get(0)) || "remote".equals(verbs.get(0))
+                    || "for-each-ref".equals(verbs.get(0)) || "rev-list".equals(verbs.get(0));
+        }
+        String second = verbs.size() > 1 ? verbs.get(1) : "";
+        if ("terraform".equals(tool)) {
+            return "state".equals(verbs.get(0)) ? READ_VERBS.contains(second)
+                    : READ_VERBS.contains(verbs.get(0));
+        }
+        if ("kubectl".equals(tool) || "oc".equals(tool)) {
+            if ("rollout".equals(verbs.get(0)) || "config".equals(verbs.get(0))) {
+                return READ_VERBS.contains(second); // rollout status|history, config view|current-context
+            }
+            return READ_VERBS.contains(verbs.get(0)) || "api-resources".equals(verbs.get(0));
+        }
+        return READ_VERBS.contains(last);
+    }
+
+    /** Les options courantes qui prennent une valeur séparée (-n prod, --context x, -o json…). */
+    private static boolean takesValue(String option) {
+        return java.util.Set.of("-n", "--namespace", "--context", "-o", "--output", "-R", "--repo", "-C",
+                "--profile", "--region", "-p", "--project", "-g", "--resource-group", "--subscription", "-c", "-l",
+                "--selector", "-A").contains(option) && !"-A".equals(option);
     }
 
     /** Vrai si la commande appelle un fichier de script (qui doit alors être déclaré). */

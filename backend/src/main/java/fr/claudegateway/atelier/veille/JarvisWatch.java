@@ -87,7 +87,7 @@ public class JarvisWatch {
     private String probeScriptHash;
 
     /** {@code HH:mm} séparées par des virgules, triées. */
-    @Column(name = "run_times", nullable = false, length = 64)
+    @Column(name = "run_times", nullable = false, length = 128)
     private String runTimes;
 
     @Column(name = "time_zone", nullable = false, length = 64)

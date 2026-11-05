@@ -71,6 +71,14 @@ public class AtelierMcpTurnLauncher {
      * @param originLabel libellé du client MCP, publié dans le fil (« Tour lancé depuis … »)
      */
     public LaunchResult launch(UUID userId, UUID workspaceId, String message, String originLabel) {
+        return launchWithBanner(userId, workspaceId, message, "_Tour lancé depuis " + originLabel + " (MCP)._\n");
+    }
+
+    /**
+     * F-247 / SF-247-08 — même lancement, avec sa propre ligne d'origine dans le fil (ex. la mise en place du relevé
+     * par Jarvis).
+     */
+    public LaunchResult launchWithBanner(UUID userId, UUID workspaceId, String message, String banner) {
         String text = message == null ? "" : message.trim();
         LiveTurnRegistry.Entry entry = liveTurns.openOrSteer(userId, workspaceId, text);
         if (entry.receipt() != null) {
@@ -79,7 +87,7 @@ public class AtelierMcpTurnLauncher {
                     entry.steered() ? entry.receipt().steerId() : null, !entry.steered());
         }
         LiveTurn turn = entry.turn();
-        chatStreamExecutor.execute(() -> runLoop(turn, userId, workspaceId, text, originLabel));
+        chatStreamExecutor.execute(() -> runLoop(turn, userId, workspaceId, text, banner));
         return new LaunchResult(turn.turnId(), false, null, false);
     }
 
@@ -88,14 +96,13 @@ public class AtelierMcpTurnLauncher {
      * relais du flux web (F-84 / SF-84-01), sans l'émetteur SSE.
      */
     private void runLoop(LiveTurn turn, UUID userId, UUID workspaceId, String message,
-            String originLabel) {
+            String banner) {
         String outcome = "echec_fatal";
         try {
             turn.publish("started", Map.of(
                     "turnId", turn.turnId().toString(), "startedAt", turn.startedAtMs()));
             // Origine MCP dans le fil (cadrage §6.6) : visible par tout spectateur du tour.
-            turn.publish("text", Map.of("text",
-                    "_Tour lancé depuis " + originLabel + " (MCP)._\n"));
+            turn.publish("text", Map.of("text", banner));
             AtelierProgressListener listener = mcpListener(turn, () -> { });
             String demand = message;
             for (;;) {
