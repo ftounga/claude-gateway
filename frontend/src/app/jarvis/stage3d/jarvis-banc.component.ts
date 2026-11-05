@@ -19,6 +19,8 @@ import { JarvisPieceGalleryComponent } from '../pieces/jarvis-piece-gallery.comp
 import { JarvisPieceClient } from '../pieces/jarvis-piece-client';
 import { JarvisPieceStore } from '../pieces/jarvis-piece-store';
 import { BANC_PIECE_CLIENT, stageBancPieces } from '../pieces/jarvis-piece-banc';
+import { JarvisCardDetailComponent } from '../cards/jarvis-card-detail.component';
+import { bancCardDetail, stageBancCards } from '../cards/jarvis-card-banc';
 
 /**
  * F-236 / SF-236-01 — **la page du banc de captures** (`/jarvis-banc?banc=<scène>&t=<ms>`), <b>développement
@@ -30,7 +32,7 @@ import { BANC_PIECE_CLIENT, stageBancPieces } from '../pieces/jarvis-piece-banc'
 @Component({
   selector: 'app-jarvis-banc',
   imports: [JarvisStage3dComponent, JarvisCockpitComponent, JarvisReplayComponent, JarvisNightComponent,
-    JarvisPieceGalleryComponent],
+    JarvisPieceGalleryComponent, JarvisCardDetailComponent],
   template: `
     <app-jarvis-stage-3d #stage [withCore]="true" [planOverride]="staged.plan" [voiceLevel]="voice"
                          [labelLayer]="labels" [insets]="cockpit ? cockpitRef()?.insets() ?? noInsets : noInsets" />
@@ -45,6 +47,13 @@ import { BANC_PIECE_CLIENT, stageBancPieces } from '../pieces/jarvis-piece-banc'
       <!-- F-237 / SF-237-14 — les pièces du banc : galerie, héros, avant / après, planche (aucun réseau). -->
       <app-jarvis-piece-gallery [threeD]="scene === 'pieces-galerie' || scene === 'pieces-proactif'"
                                 [subjectLabel]="'Edenred'" />
+    }
+    @if (cards) {
+      <!-- F-248 / SF-248-10 — les pancartes du banc : bloc, éventail, mur, plein écran, comparaison (aucun réseau). -->
+      <app-jarvis-piece-gallery [threeD]="!flatCards" [subjectLabel]="null" />
+      @if (cardDetail; as d) {
+        <app-jarvis-card-detail [card]="d.card" [detail]="d.detail" [other]="d.other" />
+      }
     }
     @if (scene === 'cockpit-replay') {
       <app-jarvis-replay #replayRef />
@@ -75,6 +84,10 @@ export class JarvisBancComponent {
   protected readonly cockpit = this.scene.startsWith('cockpit');
   /** F-237 / SF-237-14 — les scènes `pieces-*` posent la galerie des pièces. */
   protected readonly pieces = this.scene.startsWith('pieces');
+  /** F-248 / SF-248-10 — les scènes `pancartes-*` posent un jeu de pancartes. */
+  protected readonly cards = this.scene.startsWith('pancartes');
+  protected readonly flatCards = this.scene === 'pancartes-plat';
+  protected readonly cardDetail = bancCardDetail(this.scene);
   private readonly pieceStore = inject(JarvisPieceStore);
   protected readonly screen = bancScreen(this.scene);
   protected readonly noInsets = { left: 0, right: 0 };
@@ -88,6 +101,9 @@ export class JarvisBancComponent {
   constructor() {
     if (this.pieces) {
       stageBancPieces(this.pieceStore, this.scene);
+    }
+    if (this.cards) {
+      stageBancCards(this.pieceStore, this.scene);
     }
     if (this.cockpit) {
       writeFolds(this.scene === 'cockpit-replie' ? { left: true, right: true } : OPEN_FOLDS);

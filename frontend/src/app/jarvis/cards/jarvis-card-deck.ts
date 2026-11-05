@@ -62,7 +62,8 @@ export function deckSlots(count: number): DeckSlot[] {
     const rad = (angle * Math.PI) / 180;
     out.push({
       index: i + 1, angle: Math.round(angle * 100) / 100, y: 0, scale: 1,
-      x: Math.round(Math.sin(rad) * RADIUS_PX * 0.6),
+      // 0,75 : des pancartes de 240 px côte à côte sans se masquer (2 à 6), et le jeu tient dans 1366 px.
+      x: Math.round(Math.sin(rad) * RADIUS_PX * 0.75),
       z: Math.round((Math.cos(rad) - 1) * RADIUS_PX * 0.4) + (i % 2 === 0 ? 0 : -40),
     });
   }
