@@ -30,6 +30,8 @@ const DEFAULT_VIEWERS: Record<PieceKind, PieceViewer> = {
   DIAGRAM: { name: 'schema-svg', paged: false, timed: false, zoomable: true },
   TEXT: { name: 'texte', paged: false, timed: false, zoomable: false },
   FILE: FICHE,
+  // F-248 / SF-248-04 (D1) — la visionneuse des faits : la pancarte (zoomable, plein écran en SF-248-06).
+  FAIT: { name: 'pancarte', paged: false, timed: false, zoomable: true },
 };
 
 /** Le registre courant (modifiable par {@link registerViewer}). */

@@ -12,7 +12,7 @@ export const SCREEN_TITLE_CHARS = 60;
 
 const KIND_LABELS: Record<PieceKind, string> = {
   IMAGE: 'image', VIDEO: 'vidéo', AUDIO: 'audio', PDF: 'PDF', PAGE: 'page', SLIDES: 'diaporama',
-  ARCHITECTURE: 'architecture', DIAGRAM: 'schéma', TEXT: 'texte', FILE: 'fichier',
+  ARCHITECTURE: 'architecture', DIAGRAM: 'schéma', TEXT: 'texte', FILE: 'fichier', FAIT: 'pancarte',
 };
 
 const WHEN = new Intl.DateTimeFormat('fr-FR', {

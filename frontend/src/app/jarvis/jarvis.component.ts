@@ -1,5 +1,6 @@
 import { JarvisPieceGalleryComponent } from './pieces/jarvis-piece-gallery.component';
 import { JarvisPieceStore, refusalPhrase } from './pieces/jarvis-piece-store';
+import { cardsAllowedOnDevice, setCardsAllowedOnDevice } from './cards/jarvis-card-deck';
 import { pieceVoiceCommand } from './pieces/jarvis-piece-voice';
 import { screenBlock } from './pieces/jarvis-piece-screen';
 import { ShowCommand } from './pieces/jarvis-piece-show';
@@ -753,6 +754,33 @@ export class JarvisComponent implements OnInit, OnDestroy {
   }
 
   /** Bascule « Humour : aucun / léger » ; revient en arrière si l'enregistrement échoue. */
+  /** F-248 / SF-248-04 (D12) — le réglage « Pancartes » de cet appareil (défaut oui). */
+  readonly cardsOn = signal(cardsAllowedOnDevice());
+  /** F-248 / SF-248-05 — les pancartes citées par la phrase jouée à l'instant. */
+  readonly litCards = signal<readonly string[]>([]);
+  /** F-248 / SF-248-04 — le jeu de la dernière réponse (pour la pastille). */
+  private cardsResponseId: string | null = null;
+
+  toggleCards(): void {
+    const on = !this.cardsOn();
+    this.cardsOn.set(on);
+    setCardsAllowedOnDevice(on);
+    if (!on) {
+      this.pieces.closeCards();
+    }
+  }
+
+  /** F-248 / SF-248-04 — la pastille « N pancartes » touchée : le jeu remplace la galerie demandée. */
+  showPendingCards(): void {
+    this.pieces.openPendingCards(this.cardsResponseId ?? 'pastille', { flat: this.cardsFlat() });
+  }
+
+  /** F-248 / SF-248-04 (D7, D13) — le jeu se dessine à plat (2D, sobre, qualité Basse, téléphone). */
+  private cardsFlat(): boolean {
+    const phone = typeof matchMedia === 'function' && matchMedia('(max-width: 767px)').matches;
+    return phone || this.stage3dRef?.rendering() !== '3d' || this.sober() || this.stage3dRef?.level() === 'low';
+  }
+
   toggleHumour(): void {
     const previous = this.humour();
     const next: JarvisHumour = previous === 'LIGHT' ? 'NONE' : 'LIGHT';

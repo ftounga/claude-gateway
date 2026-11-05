@@ -36,7 +36,9 @@ export interface ShowCommand {
 }
 
 /** Comment la galerie se présente : éventail normal, comparaison, récit, planche contact (SF-237-10/11). */
-export type GalleryMode = 'fan' | 'compare' | 'story' | 'contact';
+export type GalleryMode = 'fan' | 'compare' | 'story' | 'contact'
+  /** F-248 / SF-248-04 (D1) — les pancartes : un jeu de faits lus. */
+  | 'cards';
 
 export type ShowRefusal = 'PRESENTATION' | 'NOT_IN_SCOPE' | 'RECENT' | 'NOTHING';
 
