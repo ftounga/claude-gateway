@@ -170,6 +170,9 @@ public class JarvisFastContextBuilder {
             return "";
         }
         JarvisUniverse u = universe.universe(userId);
+        // F-248 / SF-248-02 — les personnes lues deviennent des fiches (lecture d'office : montrées si citées).
+        fr.claudegateway.jarvis.cards.JarvisCardCatalog.collectAll(
+                () -> fr.claudegateway.jarvis.cards.JarvisCardSources.personnes(u, OffsetDateTime.now(clock)));
         StringBuilder b = new StringBuilder();
         for (JarvisUniverse.Client client : u.clients()) {
             b.append("Client ").append(client.name());
@@ -219,6 +222,9 @@ public class JarvisFastContextBuilder {
             if (n++ >= MAX_ITEMS) {
                 break;
             }
+            // F-248 / SF-248-02 — la ligne lue devient une fiche (aucune lecture de plus).
+            fr.claudegateway.jarvis.cards.JarvisCardCatalog.collect(
+                    () -> fr.claudegateway.jarvis.cards.JarvisCardSources.attente(a, null));
             b.append("- ").append(cut(oneLine(a.getDescription()), 200));
             if (a.getStatus() != null) {
                 b.append(" (").append(a.getStatus().name().toLowerCase(Locale.ROOT)).append(')');
@@ -242,6 +248,8 @@ public class JarvisFastContextBuilder {
             if (n++ >= MAX_ITEMS) {
                 break;
             }
+            fr.claudegateway.jarvis.cards.JarvisCardCatalog.collect(
+                    () -> fr.claudegateway.jarvis.cards.JarvisCardSources.envoi(item));
             b.append("- ").append(item.workspaceName());
             if (item.recipient() != null) {
                 b.append(" — pour ").append(item.recipient());

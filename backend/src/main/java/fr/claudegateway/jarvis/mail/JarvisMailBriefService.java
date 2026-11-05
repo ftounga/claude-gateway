@@ -154,6 +154,11 @@ public class JarvisMailBriefService {
         StringBuilder lines = new StringBuilder();
         for (JarvisMailItem item : recent) {
             MailHeaders h = itemService.headers(item);
+            // F-248 / SF-248-02 — l'en-tête lu devient une fiche (jamais le corps) ; aucune lecture de plus.
+            fr.claudegateway.jarvis.cards.JarvisCardCatalog.collect(
+                    () -> fr.claudegateway.jarvis.cards.JarvisCardSources.courriel(item.getId(),
+                            item.getTriage() == JarvisMailItem.Triage.A_TRAITER, item.getReceivedAt(), h.from(),
+                            h.fromName(), h.subject()));
             lines.append("- courriel:").append(item.getId()).append(" — ")
                     .append(item.getTriage() == JarvisMailItem.Triage.A_TRAITER ? "à traiter" : "à lire")
                     .append(" — reçu ").append(item.getReceivedAt().atZoneSameInstant(ZONE).format(HOUR))
