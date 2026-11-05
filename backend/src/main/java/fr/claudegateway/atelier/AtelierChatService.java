@@ -7880,9 +7880,12 @@ public class AtelierChatService implements RelayInterruptTarget {
         // retrouve « VPC CIDR » sans le mot exact. Isolé user + workspace, relecture re-filtrée (défense
         // en profondeur). Repli mot-clé si éteint, en échec, ou 0 résultat (un message pas encore embeddé
         // reste ainsi retrouvable par le mot).
+        // F-247 / SF-247-13 (D14) : les captures de conversations du sujet, en UNION (table propre, jamais
+        // rejouées dans le contexte), mêmes bornes, même repli mot-clé.
+        String captures = captureExtracts(userId, workspace, needle);
         List<AtelierMessage> semantic = semanticRecallMatches(userId, workspace, needle);
         if (semantic != null && !semantic.isEmpty()) {
-            return formatRecall(semantic, needle, true, workspace, userId, listener);
+            return withCaptures(formatRecall(semantic, needle, true, workspace, userId, listener), captures);
         }
 
         // Repli mot-clé (SF-162-01, INCHANGÉ) : le filet qui ne casse jamais.
@@ -7890,10 +7893,41 @@ public class AtelierChatService implements RelayInterruptTarget {
         List<AtelierMessage> matches = messageRepository.searchByContent(workspace.getId(), userId,
                 term, org.springframework.data.domain.PageRequest.of(0, RECALL_MAX_EXTRACTS));
         if (matches.isEmpty()) {
+            if (!captures.isEmpty()) {
+                return ToolOutcome.info("Aucun extrait trouvé pour « " + needle + " » dans l'historique de ce fil.\n"
+                        + captures);
+            }
             return ToolOutcome.info(
                     "Aucun extrait trouvé pour « " + needle + " » dans l'historique de ce fil.");
         }
-        return formatRecall(matches, needle, false, workspace, userId, listener);
+        return withCaptures(formatRecall(matches, needle, false, workspace, userId, listener), captures);
+    }
+
+    /** F-247 / SF-247-13 — les captures du sujet pour {@code recall} (facultatif). */
+    private fr.claudegateway.atelier.recall.CaptureRecall captureRecall;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setCaptureRecall(fr.claudegateway.atelier.recall.CaptureRecall captureRecall) {
+        this.captureRecall = captureRecall;
+    }
+
+    private String captureExtracts(UUID userId, Workspace workspace, String needle) {
+        if (captureRecall == null) {
+            return "";
+        }
+        try {
+            String s = captureRecall.extracts(userId, workspace.getId(), needle);
+            return s == null ? "" : s;
+        } catch (RuntimeException ex) {
+            return "";
+        }
+    }
+
+    private static ToolOutcome withCaptures(ToolOutcome base, String captures) {
+        if (captures == null || captures.isEmpty() || base == null || base.isError()) {
+            return base;
+        }
+        return new ToolOutcome(base.content() + "\n\n" + captures, false, base.action(), base.mediaBlocks());
     }
 
     /**

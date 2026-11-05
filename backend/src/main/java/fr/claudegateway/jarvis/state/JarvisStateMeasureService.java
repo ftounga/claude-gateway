@@ -56,7 +56,31 @@ public class JarvisStateMeasureService {
         Latency onState = latency(rows, r -> Boolean.TRUE.equals(r.getStateQuestion()));
         return new Measure(window, rows.size(), questions.size(), offline.size(), answers, unknownRate, all, onState,
                 p(rows, JarvisTurnTiming::getStateBlockMs, 95), opusTurns(userId, since), runnerLoad(userId, since),
-                coverage(userId, since), jobs == null ? Map.of() : jobs.measure(userId, since.toInstant()));
+                coverage(userId, since), jobs == null ? Map.of() : jobs.measure(userId, since.toInstant()),
+                captures(userId, since), conversationReads(userId, since));
+    }
+
+    /** SF-247-12/13 — les captures du compte par issue (lues, pas une conversation, illisibles) et leurs lignes. */
+    Captures captures(UUID userId, OffsetDateTime since) {
+        Map<String, Long> byStatus = new LinkedHashMap<>();
+        jdbc.query("SELECT status, count(*) FROM jarvis_conversation_captures WHERE user_id = ? AND created_at >= ? "
+                + "GROUP BY status ORDER BY status", rs -> {
+                    byStatus.put(rs.getString(1), rs.getLong(2));
+                }, userId, Timestamp.from(since.toInstant()));
+        Long lines = jdbc.queryForObject("SELECT count(*) FROM jarvis_capture_lines WHERE user_id = ? AND created_at >= ?",
+                Long.class, userId, Timestamp.from(since.toInstant()));
+        return new Captures(byStatus, lines == null ? 0 : lines);
+    }
+
+    /** SF-247-13 — les « qu'a dit X » : lectures de l'outil {@code conversations} sur la période. */
+    long conversationReads(UUID userId, OffsetDateTime since) {
+        Long n = jdbc.queryForObject("SELECT coalesce(sum(conversation_reads), 0) FROM jarvis_usage_days WHERE "
+                + "user_id = ? AND usage_day >= ?", Long.class, userId, java.sql.Date.valueOf(since.toLocalDate()));
+        return n == null ? 0 : n;
+    }
+
+    /** Les captures lues. */
+    public record Captures(Map<String, Long> byStatus, long lines) {
     }
 
     static Latency latency(List<JarvisTurnTiming> rows, Predicate<JarvisTurnTiming> keep) {
@@ -150,6 +174,7 @@ public class JarvisStateMeasureService {
     public record Measure(int days, int turns, int stateQuestions, int offlineStateQuestions,
             Map<String, Long> offlineAnswers, Double unknownRate, Latency voice, Latency voiceOnStateQuestions,
             Integer stateBlockMsP95, Durations opusTurns, Durations runnerCalls, Coverage coverage,
-            Map<String, fr.claudegateway.shared.jobs.AsyncJobQueue.KindMeasure> jobs) {
+            Map<String, fr.claudegateway.shared.jobs.AsyncJobQueue.KindMeasure> jobs, Captures captures,
+            long conversationQuestions) {
     }
 }

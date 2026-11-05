@@ -269,6 +269,11 @@ public class JarvisUsageService {
         bump(userId, day -> day.setNotesCostUsd(day.getNotesCostUsd().add(costUsd == null ? BigDecimal.ZERO : costUsd)));
     }
 
+    /** F-247 / SF-247-13 — une lecture de l'outil {@code conversations}. */
+    public void addConversationRead(UUID userId) {
+        bump(userId, day -> day.setConversationReads(day.getConversationReads() + 1));
+    }
+
     /** F-247 — la dépense du mois en captures (dollars). */
     public BigDecimal monthCaptureCostUsd(UUID userId) {
         BigDecimal sum = repository.sumCaptureCostUsdSince(userId, today().withDayOfMonth(1));

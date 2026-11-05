@@ -205,11 +205,11 @@ public class JarvisCaptureStore {
         return n;
     }
 
-    private static final String LINE_SELECT = "SELECT l.id, l.capture_id, l.workspace_id, c.platform, c.title, "
+    static final String LINE_SELECT = "SELECT l.id, l.capture_id, l.workspace_id, c.platform, c.title, "
             + "c.deposited_at, l.speaker, l.speaker_known, l.said_at, l.said_at_approx, l.text FROM jarvis_capture_lines l "
             + "JOIN jarvis_conversation_captures c ON c.id = l.capture_id";
 
-    private static LineView line(java.sql.ResultSet rs) throws java.sql.SQLException {
+    static LineView line(java.sql.ResultSet rs) throws java.sql.SQLException {
         return new LineView(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class), rs.getObject(3, UUID.class),
                 rs.getString(4), rs.getString(5), at(rs.getTimestamp(6)), rs.getString(7), rs.getBoolean(8),
                 at(rs.getTimestamp(9)), rs.getBoolean(10), rs.getString(11));
