@@ -215,7 +215,7 @@ class AnthropicAgentProviderTest {
 
     @Test
     void theKillSwitchTurnsTheFallbackOff() {
-        buildWith(new AgentApiFeaturesProperties(false, null, null, null, null, null, null, null));
+        buildWith(new AgentApiFeaturesProperties(false, null, null, null, null, null, null, null, null, null, null));
         server.expect(requestTo(URL))
                 .andExpect(jsonPath("$.fallbacks").doesNotExist())
                 .andRespond(withSuccess("""
@@ -2138,5 +2138,219 @@ class AnthropicAgentProviderTest {
         assertThat(AnthropicAgentProvider.isServerToolBlock("web_fetch_tool_result")).isTrue();
         assertThat(AnthropicAgentProvider.isServerToolBlock("server_tool_use")).isTrue();
         assertThat(AnthropicAgentProvider.isServerToolBlock("tool_use")).isFalse();
+    }
+
+    // ------------------------------------------------- F-172 / SF-172-07 : emballement
+
+    /** Horloge simulée : chaque lecture avance de 20 s — un contrôle du détecteur = 3 000 jetons estimés. */
+    private void runawayClock() {
+        java.util.concurrent.atomic.AtomicLong now = new java.util.concurrent.atomic.AtomicLong();
+        provider.useRunawayClock(() -> now.addAndGet(20_000L), 5L);
+    }
+
+    private static String pings(int count) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < count; i++) {
+            sb.append("data: {\"type\":\"ping\"}\n\n");
+        }
+        return sb.toString();
+    }
+
+    /** Raisonnement caché qui ne rend jamais rien (diagnostic du 2026-11-05) : 3 événements, puis le silence. */
+    private static final String RUNAWAY_SSE = String.join("\n",
+            "data: {\"type\":\"message_start\",\"message\":{\"model\":\"claude-opus-5-5\","
+                    + "\"usage\":{\"input_tokens\":100,\"cache_read_input_tokens\":180000,"
+                    + "\"cache_creation_input_tokens\":50,\"output_tokens\":1}}}",
+            "",
+            "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":"
+                    + "{\"type\":\"thinking\",\"thinking\":\"\"}}",
+            "",
+            "") + pings(12) + String.join("\n",
+            "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":"
+                    + "{\"type\":\"signature_delta\",\"signature\":\"sig\"}}",
+            "",
+            "data: {\"type\":\"content_block_stop\",\"index\":0}",
+            "",
+            "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"max_tokens\"},"
+                    + "\"usage\":{\"output_tokens\":32768}}",
+            "",
+            "data: {\"type\":\"message_stop\"}",
+            "");
+
+    /** Le même message, renvoyé : il répond tout de suite. */
+    private static final String ANSWER_SSE = String.join("\n",
+            "data: {\"type\":\"message_start\",\"message\":{\"model\":\"claude-opus-5-5\","
+                    + "\"usage\":{\"input_tokens\":100,\"cache_read_input_tokens\":180050,\"output_tokens\":1}}}",
+            "",
+            "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":"
+                    + "{\"type\":\"text\",\"text\":\"\"}}",
+            "",
+            "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":"
+                    + "{\"type\":\"text_delta\",\"text\":\"Réponse\"}}",
+            "",
+            "") + pings(12) + String.join("\n",
+            "data: {\"type\":\"content_block_stop\",\"index\":0}",
+            "",
+            "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},"
+                    + "\"usage\":{\"output_tokens\":500}}",
+            "",
+            "data: {\"type\":\"message_stop\"}",
+            "");
+
+    private AgentTurn streamOpus(List<String> screen) {
+        return provider.nextTurn(new AgentTurnRequest("claude-opus-5-5", "consigne",
+                List.of(AgentMessage.userText("bonjour")), List.of(), null, new AgentReasoning(true, "high")),
+                screen::add);
+    }
+
+    @Test
+    void aRunawayCallIsCutAndRelaunchedOnceWithTheSameBody() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        runawayClock();
+        List<String> bodies = new ArrayList<>();
+        org.springframework.test.web.client.RequestMatcher capture = request -> bodies.add(
+                ((org.springframework.mock.http.client.MockClientHttpRequest) request).getBodyAsString());
+        server.expect(requestTo(URL)).andExpect(capture)
+                .andRespond(withSuccess(RUNAWAY_SSE, MediaType.TEXT_EVENT_STREAM));
+        server.expect(requestTo(URL)).andExpect(capture)
+                .andRespond(withSuccess(ANSWER_SSE, MediaType.TEXT_EVENT_STREAM));
+        List<String> screen = new ArrayList<>();
+
+        AgentTurn turn = streamOpus(screen);
+
+        server.verify();
+        assertThat(bodies).hasSize(2);
+        assertThat(bodies.get(1)).isEqualTo(bodies.get(0));
+        assertThat(turn.text()).isEqualTo("Réponse");
+        assertThat(turn.truncated()).isFalse();
+        assertThat(turn.runawayRelaunches()).isEqualTo(1);
+        // L'appel coupé n'a rien montré : seul le texte de la relance est parti à l'écran.
+        assertThat(String.join("", screen)).isEqualTo("Réponse");
+        // Son usage est compté : entrée exacte (message_start), sortie estimée au-delà du seuil.
+        assertThat(turn.inputTokens()).isEqualTo(180_150 + 180_150);
+        assertThat(turn.cacheReadTokens()).isEqualTo(180_000 + 180_050);
+        assertThat(turn.cacheWriteTokens()).isEqualTo(50);
+        assertThat(turn.outputTokens()).isGreaterThan(500 + 16_000).isLessThan(500 + 32_768);
+        assertThat(turn.usageByModel()).hasSize(2);
+        assertThat(turn.usageByModel().stream().mapToInt(AgentTurn.ModelUsage::outputTokens).sum())
+                .isEqualTo(turn.outputTokens());
+    }
+
+    @Test
+    void aSecondRunawayGivesUpWithoutAThirdCall() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        runawayClock();
+        server.expect(ExpectedCount.times(2), requestTo(URL))
+                .andRespond(withSuccess(RUNAWAY_SSE, MediaType.TEXT_EVENT_STREAM));
+
+        assertThatThrownBy(() -> streamOpus(new ArrayList<>()))
+                .isInstanceOfSatisfying(AgentRunawayException.class, ex -> {
+                    assertThat(ex.inputTokens()).isEqualTo(2 * 180_150);
+                    assertThat(ex.cacheReadTokens()).isEqualTo(2 * 180_000);
+                    assertThat(ex.outputTokens()).isGreaterThan(2 * 16_000);
+                });
+        server.verify();
+    }
+
+    @Test
+    void aLongReasoningThatEndsInTextIsNeverCut() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        runawayClock();
+        // 4 événements de silence (≈ 12 000 jetons estimés), puis la réponse, puis un long flux.
+        String sse = String.join("\n",
+                "data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":10,\"output_tokens\":1}}}",
+                "",
+                "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":"
+                        + "{\"type\":\"thinking\",\"thinking\":\"\"}}",
+                "",
+                "") + pings(2) + String.join("\n",
+                "data: {\"type\":\"content_block_stop\",\"index\":0}",
+                "",
+                "data: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":"
+                        + "{\"type\":\"text\",\"text\":\"\"}}",
+                "",
+                "data: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":"
+                        + "{\"type\":\"text_delta\",\"text\":\"Fin\"}}",
+                "",
+                "") + pings(20) + String.join("\n",
+                "data: {\"type\":\"content_block_stop\",\"index\":1}",
+                "",
+                "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},"
+                        + "\"usage\":{\"output_tokens\":15000}}",
+                "",
+                "data: {\"type\":\"message_stop\"}",
+                "");
+        server.expect(requestTo(URL)).andRespond(withSuccess(sse, MediaType.TEXT_EVENT_STREAM));
+
+        AgentTurn turn = streamOpus(new ArrayList<>());
+
+        server.verify();
+        assertThat(turn.text()).isEqualTo("Fin");
+        assertThat(turn.runawayRelaunches()).isZero();
+        assertThat(turn.outputTokens()).isEqualTo(15_000);
+    }
+
+    @Test
+    void aToolBeingWrittenIsNeverCut() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        runawayClock();
+        String sse = String.join("\n",
+                "data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":10,\"output_tokens\":1}}}",
+                "",
+                "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":"
+                        + "{\"type\":\"tool_use\",\"id\":\"tu_1\",\"name\":\"write_file\",\"input\":{}}}",
+                "",
+                "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":"
+                        + "{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"path\\\":\\\"a.txt\\\"\"}}",
+                "",
+                "") + pings(20) + String.join("\n",
+                "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":"
+                        + "{\"type\":\"input_json_delta\",\"partial_json\":\"}\"}}",
+                "",
+                "data: {\"type\":\"content_block_stop\",\"index\":0}",
+                "",
+                "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},"
+                        + "\"usage\":{\"output_tokens\":20000}}",
+                "",
+                "data: {\"type\":\"message_stop\"}",
+                "");
+        server.expect(requestTo(URL)).andRespond(withSuccess(sse, MediaType.TEXT_EVENT_STREAM));
+
+        AgentTurn turn = streamOpus(new ArrayList<>());
+
+        server.verify();
+        assertThat(turn.toolCalls()).hasSize(1);
+        assertThat(turn.toolCalls().get(0).name()).isEqualTo("write_file");
+        assertThat(turn.runawayRelaunches()).isZero();
+    }
+
+    @Test
+    void theKillSwitchLeavesARunawayToTheOutputCap() {
+        buildWith(new AgentApiFeaturesProperties(null, null, null, null, null, null, null, null, false, null,
+                null));
+        runawayClock();
+        server.expect(requestTo(URL)).andRespond(withSuccess(RUNAWAY_SSE, MediaType.TEXT_EVENT_STREAM));
+
+        AgentTurn turn = streamOpus(new ArrayList<>());
+
+        server.verify();
+        assertThat(turn.truncated()).isTrue();
+        assertThat(turn.runawayRelaunches()).isZero();
+        assertThat(turn.outputTokens()).isEqualTo(32_768);
+    }
+
+    @Test
+    void aThresholdAboveTheCapIsNotWatched() {
+        // Seuil au-dessus du plafond de l'appel (32 768) : rien à surveiller.
+        buildWith(new AgentApiFeaturesProperties(null, null, null, null, null, null, null, null, null, 40_000,
+                null));
+        runawayClock();
+        server.expect(requestTo(URL)).andRespond(withSuccess(RUNAWAY_SSE, MediaType.TEXT_EVENT_STREAM));
+
+        AgentTurn turn = streamOpus(new ArrayList<>());
+
+        server.verify();
+        assertThat(turn.truncated()).isTrue();
+        assertThat(turn.runawayRelaunches()).isZero();
     }
 }

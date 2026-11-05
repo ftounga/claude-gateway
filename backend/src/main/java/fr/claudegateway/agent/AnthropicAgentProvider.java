@@ -172,6 +172,19 @@ public class AnthropicAgentProvider implements AiAgentProvider {
     private final RestClient restClient;
     private final AgentRetryPolicy retryPolicy;
     private final Sleeper sleeper;
+    /**
+     * Horloge de la surveillance d'emballement (F-172 / SF-172-07), en millisecondes. Remplaçable par
+     * les tests : c'est le seul point de la lecture du flux qui dépend du temps qui passe.
+     */
+    private java.util.function.LongSupplier clock = System::currentTimeMillis;
+    /** Attente maximale entre deux contrôles du détecteur quand le flux se tait (SF-172-07). */
+    private long watchTickMillis = 1_000L;
+
+    /** Horloge et pas de contrôle de la surveillance d'emballement — tests seulement. */
+    void useRunawayClock(java.util.function.LongSupplier clock, long tickMillis) {
+        this.clock = clock;
+        this.watchTickMillis = Math.max(1L, tickMillis);
+    }
 
     /** Constructeur d'injection — désigné explicitement, la classe en ayant deux. */
     @Autowired
@@ -253,6 +266,40 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         // Plafond relevé en flux seulement (SF-172-05) : le repli non streamé garde le sien.
         streamBody.put("max_tokens", prepared.streamedMaxTokens());
         try {
+            return streamOrFallback(request, prepared, streamBody, sink);
+        } catch (RunawayCut first) {
+            // Emballement (F-172 / SF-172-07) : raisonnement caché sans rien de visible au-delà du
+            // seuil. L'appel coupé n'a produit ni texte, ni note, ni bloc d'outil — aucun tour n'en
+            // est sorti, donc AUCUN outil n'a pu être exécuté. On relance le MÊME corps, une fois :
+            // marqueurs de cache, raisonnement signé, effort et plafond inchangés.
+            log.warn("Emballement du raisonnement : appel coupé puis relancé à l'identique (modèle={}, "
+                    + "contexte_entrée={}, seuil={} jetons) — {}", request.model(), first.contextTokens(),
+                    features.runawayTokens(), first.diagnostic());
+            try {
+                AgentTurn relaunched = streamOrFallback(request, prepared, streamBody, sink);
+                return relaunched.withRunawayRelaunch(first.usage());
+            } catch (RunawayCut second) {
+                log.warn("Emballement du raisonnement : la relance s'est emballée aussi, abandon sans rien "
+                        + "exécuter (modèle={}, contexte_entrée={}) — {}", request.model(),
+                        second.contextTokens(), second.diagnostic());
+                AgentTurn.ModelUsage a = first.usage();
+                AgentTurn.ModelUsage b = second.usage();
+                throw new AgentRunawayException("Le raisonnement du modèle s'est emballé deux fois.",
+                        a.fullPriceInputTokens() + a.cacheReadTokens() + a.cacheWriteTokens()
+                                + b.fullPriceInputTokens() + b.cacheReadTokens() + b.cacheWriteTokens(),
+                        a.outputTokens() + b.outputTokens(), a.cacheReadTokens() + b.cacheReadTokens(),
+                        a.cacheWriteTokens() + b.cacheWriteTokens());
+            }
+        }
+    }
+
+    /**
+     * Un appel en flux, avec le repli non streamé sur échec du flux (F-116 / SF-116-01, D5). Une
+     * coupure d'emballement ({@link RunawayCut}) n'est pas un échec du flux : elle traverse.
+     */
+    private AgentTurn streamOrFallback(AgentTurnRequest request, Prepared prepared,
+            Map<String, Object> streamBody, AgentTextListener sink) {
+        try {
             return callWithRetry(request.model(), prepared.contextEditing(),
                     () -> streamTurn(prepared, streamBody, sink));
         } catch (StreamingFallbackException ex) {
@@ -269,7 +316,7 @@ public class AnthropicAgentProvider implements AiAgentProvider {
     /** Corps de requête prêt à partir, calculé <b>une fois</b> et partagé streamé/non streamé. */
     private record Prepared(String apiKey, Map<String, Object> body, boolean contextEditing,
             boolean perMessageEffort, List<String> extraBetas, String model, boolean progressUpdates,
-            int streamedMaxTokens) {
+            int streamedMaxTokens, boolean reasoningActive) {
     }
 
     /**
@@ -305,7 +352,7 @@ public class AnthropicAgentProvider implements AiAgentProvider {
                     ? "between_tools" : "disabled"));
             boolean contextEditingOff = applyContextPolicy(body, request.contextPolicy());
             return new Prepared(apiKey, body, contextEditingOff, false, List.of(), request.model(), false,
-                    shape.maxTokens() != null ? shape.maxTokens() : streamedMaxTokens(request));
+                    shape.maxTokens() != null ? shape.maxTokens() : streamedMaxTokens(request), false);
         }
         boolean contextEditing = applyContextPolicy(body, request.contextPolicy());
         // L'en-tête n'est posé QUE si une consigne d'effort voyage réellement dans la conversation :
@@ -347,7 +394,7 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         }
         return new Prepared(apiKey, body, contextEditing, perMessageEffort, List.copyOf(extraBetas),
                 request.model(), progressUpdates,
-                shape.maxTokens() != null ? shape.maxTokens() : streamedMaxTokens(request));
+                shape.maxTokens() != null ? shape.maxTokens() : streamedMaxTokens(request), true);
     }
 
     @SuppressWarnings("unchecked")
@@ -523,6 +570,11 @@ public class AnthropicAgentProvider implements AiAgentProvider {
      */
     private AgentTurn streamTurn(Prepared prepared, Map<String, Object> streamBody,
             AgentTextListener textListener) {
+        // Surveillance d'emballement (F-172 / SF-172-07) : seulement si le raisonnement est actif et
+        // que le plafond laisse la place de dépasser le seuil. Sinon, lecture strictement antérieure.
+        if (prepared.reasoningActive() && features.runawayWatchFor(prepared.streamedMaxTokens())) {
+            return watchedStreamTurn(prepared, streamBody, textListener);
+        }
         return requestSpec(prepared)
                 .accept(MediaType.TEXT_EVENT_STREAM)
                 .body(streamBody)
@@ -541,6 +593,197 @@ public class AnthropicAgentProvider implements AiAgentProvider {
                     return toTurn(parseSse(response.getBody(), textListener, prepared.progressUpdates()),
                             prepared);
                 });
+    }
+
+    /**
+     * Appel streamé <b>surveillé</b> (F-172 / SF-172-07) : même requête, même reconstitution, mais le
+     * flux est lu par un fil dédié et le fil de l'appel interroge le détecteur d'emballement à chaque
+     * événement et à chaque seconde de silence — un raisonnement caché n'émet rien.
+     *
+     * <p>La réponse HTTP n'est pas fermée par le client ({@code close=false}) : elle l'est par le fil
+     * lecteur, le seul qui puisse le faire sans attendre (la lecture tient un verrou, et la fermeture
+     * standard viderait d'abord le flux jusqu'à son terme). Sur coupure, il ferme la connexion dès
+     * qu'il reprend la main, ce qui arrête la génération chez le fournisseur.</p>
+     */
+    private AgentTurn watchedStreamTurn(Prepared prepared, Map<String, Object> streamBody,
+            AgentTextListener textListener) {
+        return requestSpec(prepared)
+                .accept(MediaType.TEXT_EVENT_STREAM)
+                .body(streamBody)
+                .exchange((request, response) -> {
+                    HttpStatusCode status = response.getStatusCode();
+                    if (status.isError()) {
+                        try {
+                            // 429/529 : rejoués par la boucle de retry, avec l'en-tête Retry-After.
+                            if (AgentRetryPolicy.retryableStatus(status.value())) {
+                                throw new RestClientResponseException("Refus temporaire du flux",
+                                        status, status.toString(), response.getHeaders(),
+                                        readErrorBody(response.getBody()), StandardCharsets.UTF_8);
+                            }
+                            throw new StreamingFallbackException("statut " + status.value());
+                        } finally {
+                            response.close();
+                        }
+                    }
+                    InputStream body;
+                    try {
+                        body = response.getBody();
+                    } catch (IOException ex) {
+                        response.close();
+                        throw new StreamingFallbackException("flux illisible");
+                    }
+                    if (body == null) {
+                        response.close();
+                        throw new StreamingFallbackException("flux vide");
+                    }
+                    return toTurn(readWatched(body, response, textListener, prepared), prepared);
+                }, false);
+    }
+
+    /** Fin du flux, posée par le fil lecteur (SF-172-07). */
+    private static final Object END_OF_STREAM = new Object();
+
+    /** Coupure du flux, posée par le fil lecteur (SF-172-07). */
+    private record ReaderFailure(IOException cause) {
+    }
+
+    /**
+     * Lit le flux SSE par un fil dédié et le reconstitue sur le fil de l'appel, sous la surveillance
+     * du détecteur d'emballement (F-172 / SF-172-07). Mêmes événements, même ordre, même état que
+     * {@link #parseSse} : seule la source des lignes change, et le texte part à l'écran depuis le même
+     * fil qu'avant.
+     */
+    private JsonNode readWatched(InputStream body, org.springframework.http.client.ClientHttpResponse response,
+            AgentTextListener textListener, Prepared prepared) {
+        java.util.concurrent.BlockingQueue<Object> lines = new java.util.concurrent.LinkedBlockingQueue<>();
+        java.util.concurrent.atomic.AtomicBoolean cancelled = new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.concurrent.atomic.AtomicLong cutAt = new java.util.concurrent.atomic.AtomicLong(-1L);
+        Thread.ofVirtual().name("agent-sse-reader").start(() -> {
+            try (BufferedReader reader =
+                    new BufferedReader(new InputStreamReader(body, StandardCharsets.UTF_8))) {
+                String line;
+                while (!cancelled.get() && (line = reader.readLine()) != null) {
+                    lines.add(line);
+                }
+                lines.add(END_OF_STREAM);
+            } catch (IOException ex) {
+                lines.add(new ReaderFailure(ex));
+            } finally {
+                response.close();
+                long cut = cutAt.get();
+                if (cut >= 0) {
+                    // Rien n'est caché : jusqu'ici, la génération a pu continuer chez le fournisseur.
+                    log.info("Flux coupé pour emballement fermé {} ms après la coupure.",
+                            Math.max(0L, clock.getAsLong() - cut));
+                }
+            }
+        });
+        RunawayDetector detector = new RunawayDetector(features.runawayTokens(),
+                features.runawayTokensPerSecond(), clock.getAsLong());
+        ParseState state = new ParseState(textListener, prepared.progressUpdates());
+        state.detector = detector;
+        state.clock = clock;
+        boolean interrupted = false;
+        try {
+            StringBuilder data = new StringBuilder();
+            while (true) {
+                Object item;
+                try {
+                    item = lines.poll(watchTickMillis, java.util.concurrent.TimeUnit.MILLISECONDS);
+                } catch (InterruptedException ex) {
+                    // Comme la lecture bloquante d'avant : une interruption ne coupe pas le flux.
+                    interrupted = true;
+                    continue;
+                }
+                if (item == null) {
+                    checkRunaway(detector, state, prepared);
+                    continue;
+                }
+                if (item == END_OF_STREAM) {
+                    break;
+                }
+                if (item instanceof ReaderFailure) {
+                    throw new StreamingFallbackException("flux coupé");
+                }
+                String line = (String) item;
+                if (line.isEmpty()) {
+                    // Ligne vide = fin d'un événement : on traite la donnée accumulée.
+                    if (handleEvent(data, state)) {
+                        break;
+                    }
+                    checkRunaway(detector, state, prepared);
+                } else if (line.startsWith("data:")) {
+                    data.append(line.substring(5).stripLeading());
+                }
+            }
+            if (!state.completed) {
+                handleEvent(data, state);
+            }
+        } catch (RunawayCut cut) {
+            cutAt.set(clock.getAsLong());
+            cancelled.set(true);
+            throw cut;
+        } catch (RuntimeException ex) {
+            cancelled.set(true);
+            throw ex;
+        } finally {
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        if (!state.completed) {
+            throw new StreamingFallbackException("flux clos avant la fin");
+        }
+        return state.toMessage();
+    }
+
+    /** Coupe l'appel si le détecteur conclut à l'emballement (F-172 / SF-172-07). */
+    private void checkRunaway(RunawayDetector detector, ParseState state, Prepared prepared) {
+        long now = clock.getAsLong();
+        if (!detector.runaway(now)) {
+            return;
+        }
+        int input = state.usage.path("input_tokens").asInt(0);
+        int cacheRead = state.usage.path("cache_read_input_tokens").asInt(0);
+        int cacheWrite = state.usage.path("cache_creation_input_tokens").asInt(0);
+        AgentTurn.ModelUsage usage = new AgentTurn.ModelUsage(prepared.model(), input,
+                detector.producedTokens(now), cacheRead, cacheWrite);
+        throw new RunawayCut(usage, input + cacheRead + cacheWrite, detector.diagnostic(now));
+    }
+
+    /**
+     * Coupure d'un appel emballé (F-172 / SF-172-07). Ni un refus temporaire (non rejouée par la boucle
+     * de retry), ni un échec du flux (pas de repli non streamé) : elle remonte jusqu'à la relance.
+     */
+    private static final class RunawayCut extends RuntimeException {
+        private final transient AgentTurn.ModelUsage usage;
+        private final int contextTokens;
+        private final String diagnostic;
+
+        /**
+         * @param usage         usage de l'appel coupé : entrée exacte ({@code message_start}), sortie
+         *                      rapportée ou estimée
+         * @param contextTokens contexte d'entrée (entrée + cache lu + cache écrit)
+         * @param diagnostic    résumé chiffré du flux, sans contenu
+         */
+        RunawayCut(AgentTurn.ModelUsage usage, int contextTokens, String diagnostic) {
+            super("emballement", null, false, false);
+            this.usage = usage;
+            this.contextTokens = contextTokens;
+            this.diagnostic = diagnostic;
+        }
+
+        AgentTurn.ModelUsage usage() {
+            return usage;
+        }
+
+        int contextTokens() {
+            return contextTokens;
+        }
+
+        String diagnostic() {
+            return diagnostic;
+        }
     }
 
     /** Lit au mieux le corps d'erreur pour l'en-tête de retry ; jamais bloquant. */
@@ -646,6 +889,9 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         /** Blocs de raisonnement écartés par le fournisseur (D5), annoncés par le message. */
         private JsonNode inputTransformations;
         private boolean completed;
+        /** Détecteur d'emballement (F-172 / SF-172-07), {@code null} hors surveillance. */
+        private RunawayDetector detector;
+        private java.util.function.LongSupplier clock;
 
         /** Vrai si les blocs {@code thinking} non vides sont des notes de progression (SF-172-04). */
         private final boolean progressUpdates;
@@ -671,7 +917,39 @@ public class AnthropicAgentProvider implements AiAgentProvider {
             lastEmittedWasProgress = progress;
         }
 
+        /** Rapporte l'événement au détecteur d'emballement, s'il y en a un (F-172 / SF-172-07). */
+        private void observe(JsonNode event, String type) {
+            if (detector == null) {
+                return;
+            }
+            switch (type) {
+                case "message_start" -> detector.messageStarted(clock.getAsLong());
+                case "content_block_start" -> detector.blockStarted(
+                        event.path("content_block").path("type").asText(""),
+                        event.path("content_block").path("name").asText(""));
+                case "content_block_stop" -> detector.blockStopped();
+                case "content_block_delta" -> {
+                    JsonNode delta = event.path("delta");
+                    switch (delta.path("type").asText("")) {
+                        case "text_delta" -> detector.text(delta.path("text").asText(""));
+                        case "thinking_delta" -> detector.reasoning(delta.path("thinking").asText(""));
+                        case "input_json_delta" -> detector.toolInput(delta.path("partial_json").asText(""));
+                        default -> detector.otherEvent();
+                    }
+                }
+                case "message_delta" -> {
+                    detector.otherEvent();
+                    JsonNode output = event.path("usage").path("output_tokens");
+                    if (output.isNumber()) {
+                        detector.reportedOutput(output.asInt(0));
+                    }
+                }
+                default -> detector.otherEvent();
+            }
+        }
+
         void apply(JsonNode event, String type) {
+            observe(event, type);
             switch (type) {
                 case "message_start" -> {
                     copyUsage(event.path("message").path("usage"), usage, true);
@@ -1210,6 +1488,9 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         // Un cache qui ne prend pas ne lève aucune erreur : seuls ces compteurs le disent.
         log.debug("Tour d'agent : {} tokens d'entrée (dont {} écrits en cache, {} lus en cache).",
                 inputTokens, cacheCreation, cacheRead);
+        if (truncated) {
+            logOutputCapStop(response, requestedModel, inputTokens, outputTokens);
+        }
         logAppliedContextEdits(response);
         // La recherche web est facturée À LA REQUÊTE (10 $ les mille), en plus des tokens qu'elle
         // rapporte : c'est le seul endroit où le compte existe (F-133 / SF-133-08). Sans lui, un
@@ -1246,6 +1527,34 @@ public class AnthropicAgentProvider implements AiAgentProvider {
                     + "(modèle={}).", dropped, byReason, paths, model);
         }
         return dropped;
+    }
+
+    /**
+     * Journal d'un arrêt au plafond de sortie (F-172 / SF-172-07) : de quoi distinguer un emballement
+     * du raisonnement caché d'une réponse réellement trop longue. Des nombres et des types de blocs —
+     * jamais de contenu.
+     */
+    private static void logOutputCapStop(JsonNode response, String model, int contextTokens, int outputTokens) {
+        List<String> types = new ArrayList<>();
+        int reasoningChars = 0;
+        int textChars = 0;
+        String lastTool = "aucun";
+        int lastToolInputChars = 0;
+        for (JsonNode block : response.path("content")) {
+            String type = block.path("type").asText("?");
+            types.add(type);
+            if ("thinking".equals(type)) {
+                reasoningChars += block.path("thinking").asText("").length();
+            } else if ("text".equals(type)) {
+                textChars += block.path("text").asText("").length();
+            } else if ("tool_use".equals(type) || "server_tool_use".equals(type)) {
+                lastTool = block.path("name").asText("?");
+                lastToolInputChars = block.path("input").toString().length();
+            }
+        }
+        log.warn("Arrêt au plafond de sortie (stop_reason=max_tokens, modèle={}) : blocs={} raisonnement_car={} "
+                + "texte_car={} dernier_outil={}({} car) jetons_sortie={} contexte_entrée={}.", model, types,
+                reasoningChars, textChars, lastTool, lastToolInputChars, outputTokens, contextTokens);
     }
 
     /** Tokens d'un tour, totaux et ventilation par modèle servi (F-172 / SF-172-03). */
