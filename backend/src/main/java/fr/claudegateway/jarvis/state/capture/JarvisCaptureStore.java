@@ -146,6 +146,12 @@ public class JarvisCaptureStore {
         return rows;
     }
 
+    /** Les premières lignes d'une capture du compte (écran), par index sur {@code capture_id}. */
+    public List<LineView> firstLines(UUID userId, UUID captureId, int limit) {
+        return jdbc.query(LINE_SELECT + " WHERE l.user_id = ? AND l.capture_id = ? ORDER BY l.position LIMIT ?",
+                (rs, i) -> line(rs), userId, captureId, Math.max(1, Math.min(limit, MAX_READ)));
+    }
+
     /** Les captures récentes du client (écran). */
     public List<CaptureView> recentCaptures(UUID userId, UUID hostId, int limit) {
         return jdbc.query("SELECT id, workspace_id, platform, title, deposited_at, status, line_count FROM "
