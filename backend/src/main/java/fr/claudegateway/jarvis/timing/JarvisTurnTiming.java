@@ -201,4 +201,22 @@ public class JarvisTurnTiming {
     /** F-241 / SF-241-04 (D11) — {@code SPONTANEE}, {@code REPONSE} ou {@code AUCUNE} ; jamais le texte. */
     @Column(name = "personal_allusion", length = 9)
     private String personalAllusion;
+
+    // ---- F-247 / SF-247-01 — la question d'état et sa réponse (cadrage §7). Jamais le texte.
+
+    /** Le poste visé était déconnecté au moment de la question ; {@code null} avant F-247. */
+    @Column(name = "host_offline")
+    private Boolean hostOffline;
+
+    /** La question est une question d'état (classification déterministe, {@code JarvisStateQuestion}). */
+    @Column(name = "state_question")
+    private Boolean stateQuestion;
+
+    /** {@code UNKNOWN}, {@code KNOWN_STALE}, {@code KNOWN_FRESH} ou {@code NA}. */
+    @Column(name = "state_answer", length = 12)
+    private String stateAnswer;
+
+    /** La lecture du bloc « État connu » tout prêt dans la réplique, en ms (SF-247-10). */
+    @Column(name = "state_block_ms")
+    private Integer stateBlockMs;
 }

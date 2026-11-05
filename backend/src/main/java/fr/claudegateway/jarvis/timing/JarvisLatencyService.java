@@ -136,6 +136,11 @@ public class JarvisLatencyService {
                 .portraitBlocked(report.portraitBlocked() == null ? null : counter(report.portraitBlocked()))
                 .personalAllusion(report.personalAllusion() == null ? null
                         : ALLUSIONS.contains(report.personalAllusion()) ? report.personalAllusion() : null)
+                // F-247 / SF-247-01 — la question d'état et sa réponse, sans contenu.
+                .hostOffline(report.hostOffline())
+                .stateQuestion(report.stateQuestion())
+                .stateAnswer(closed(report.stateAnswer(), STATE_ANSWERS))
+                .stateBlockMs(mark(report.stateBlockMs()))
                 .build());
     }
 
@@ -324,8 +329,13 @@ public class JarvisLatencyService {
             // F-241 / SF-241-03 — facultatifs : le portrait servait, phrases écartées par ses interdits.
             Boolean portraitOn, Integer portraitBlocked,
             // F-241 / SF-241-04 — facultatif : l'allusion personnelle du tour (SPONTANEE, REPONSE, AUCUNE).
-            String personalAllusion) {
+            String personalAllusion,
+            // F-247 / SF-247-01 — facultatifs : poste éteint, question d'état, réponse, lecture du bloc.
+            Boolean hostOffline, Boolean stateQuestion, String stateAnswer, Integer stateBlockMs) {
     }
+
+    /** F-247 / SF-247-01 — les valeurs admises de {@code stateAnswer}. */
+    public static final List<String> STATE_ANSWERS = List.of("UNKNOWN", "KNOWN_STALE", "KNOWN_FRESH", "NA");
 
     /** F-241 / SF-241-04 — les valeurs admises de {@code personalAllusion}. */
     static final java.util.Set<String> ALLUSIONS = java.util.Set.of("SPONTANEE", "REPONSE", "AUCUNE");
