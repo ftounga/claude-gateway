@@ -28,6 +28,16 @@ describe('TurnClock (F-233 / SF-233-01)', () => {
     expect(report.listenMode).toBe('BATCH');
   });
 
+  it('F-247 / SF-247-01 — recopie la mesure d’état de la réplique (poste éteint, question, issue)', () => {
+    const clock = new TurnClock(0, null, () => 0);
+    clock.fast = { brain: 'FAST', hostOffline: true, stateQuestion: true, stateAnswer: 'UNKNOWN', stateBlockMs: 2 };
+    const report = clock.takeReport()!;
+    expect(report.hostOffline).toBeTrue();
+    expect(report.stateQuestion).toBeTrue();
+    expect(report.stateAnswer).toBe('UNKNOWN');
+    expect(report.stateBlockMs).toBe(2);
+  });
+
   it('ne se déclare qu’une fois, et écarte une marque au-delà de 10 minutes', () => {
     let now = 0;
     const clock = new TurnClock(0, null, () => now);

@@ -43,6 +43,16 @@ export interface FastDone {
   budget?: 'soft' | 'hard' | null;
   /** F-241 / SF-241-03 — le portrait servait à l'échange (mesure, jamais le texte). */
   portrait?: boolean;
+  /** F-247 / SF-247-01 — poste éteint, question d'état et issue de la réponse (mesure, jamais le texte). */
+  state?: FastStateMeasure | null;
+}
+
+/** F-247 / SF-247-01 — la mesure d'état d'une réplique, calculée par la passerelle. */
+export interface FastStateMeasure {
+  hostOffline: boolean | null;
+  stateQuestion: boolean;
+  stateAnswer: 'UNKNOWN' | 'KNOWN_STALE' | 'KNOWN_FRESH' | 'NA';
+  stateBlockMs: number | null;
 }
 
 /** Les compteurs des garde-fous du serveur (SF-235-03, SF-235-09). */

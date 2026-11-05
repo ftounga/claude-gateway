@@ -153,7 +153,7 @@ public class JarvisFastBrainController {
             }
             send(emitter, "done", new DoneEvent(brainOf(outcome), outcome.spokenText(), outcome.firstTokenMs(),
                     outcome.model(), turnSeq, outcome.guards(), budgetOf(outcome),
-                    service.portraitInUse(call.userId(), call.presentation())));
+                    service.portraitInUse(call.userId(), call.presentation()), stateOf(call, outcome)));
             emitter.complete();
         } catch (RuntimeException e) {
             log.warn("Cerveau rapide : flux interrompu ({})", e.getClass().getSimpleName());
@@ -225,7 +225,25 @@ public class JarvisFastBrainController {
      *               (plafond dur : réponse fixe), sinon {@code null}
      */
     record DoneEvent(String brain, String spokenText, long firstTokenMs, String model, Long turnSeq,
-            JarvisFastBrainService.Guards guards, String budget, boolean portrait) {
+            JarvisFastBrainService.Guards guards, String budget, boolean portrait,
+            fr.claudegateway.jarvis.state.JarvisStateTurnMeter.Measure state) {
+    }
+
+    /** F-247 / SF-247-01 — la mesure d'état de la réplique (facultative). */
+    private fr.claudegateway.jarvis.state.JarvisStateTurnMeter stateMeter;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setStateMeter(fr.claudegateway.jarvis.state.JarvisStateTurnMeter stateMeter) {
+        this.stateMeter = stateMeter;
+    }
+
+    /** F-247 / SF-247-01 — poste éteint, question d'état, réponse ; calculée après la réponse, jamais d'exception. */
+    fr.claudegateway.jarvis.state.JarvisStateTurnMeter.Measure stateOf(JarvisFastBrainService.Request call,
+            JarvisFastBrainService.Outcome outcome) {
+        if (stateMeter == null) {
+            return fr.claudegateway.jarvis.state.JarvisStateTurnMeter.NONE;
+        }
+        return stateMeter.measure(call.userId(), call.workspace(), call.text(), outcome);
     }
 
     static String budgetOf(JarvisFastBrainService.Outcome outcome) {

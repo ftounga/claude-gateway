@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-247 / SF-247-01 - MESURER D'ABORD (cadrage par 7).
+
+      jarvis_turn_timings recoit quatre colonnes, sans contenu :
+        host_offline   : le poste vise etait deconnecte au moment de la question ;
+        state_question : classification deterministe de la question (question d'etat) ;
+        state_answer   : UNKNOWN, KNOWN_STALE, KNOWN_FRESH ou NA ;
+        state_block_ms : lecture du bloc "Etat connu" tout pret dans la replique (SF-247-10).
+      Toutes facultatives : les tours d'avant F-247 restent a null.
+
+      Rollback : les colonnes se retirent.
+    -->
+
+    <changeSet id="247-01-jarvis-turn-timings-state" author="claude-gateway">
+        <addColumn tableName="jarvis_turn_timings">
+            <column name="host_offline" type="boolean"/>
+            <column name="state_question" type="boolean"/>
+            <column name="state_answer" type="varchar(12)"/>
+            <column name="state_block_ms" type="int"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="jarvis_turn_timings" columnName="state_block_ms"/>
+            <dropColumn tableName="jarvis_turn_timings" columnName="state_answer"/>
+            <dropColumn tableName="jarvis_turn_timings" columnName="state_question"/>
+            <dropColumn tableName="jarvis_turn_timings" columnName="host_offline"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

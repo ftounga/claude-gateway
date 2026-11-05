@@ -2185,6 +2185,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
           personalAllusion: guards?.personalAllusion ?? null,
           forcedDelegation: guards?.forcedDelegation ?? false,
           delegationReason,
+          // F-247 / SF-247-01 — la mesure d'état de la réplique (sans contenu), recopiée telle quelle.
+          hostOffline: done.state?.hostOffline ?? null,
+          stateQuestion: done.state?.stateQuestion ?? null,
+          stateAnswer: done.state?.stateAnswer ?? null,
+          stateBlockMs: done.state?.stateBlockMs ?? null,
         };
         if (done.brain === 'FAST') {
           this.lastFastAnswerAt = Date.now();
