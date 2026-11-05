@@ -1812,6 +1812,14 @@ public class AtelierChatService implements RelayInterruptTarget {
     /** F-245 / SF-245-03 — la ligne-lien du fil Jarvis, terminée à la fin d'un tour délégué. Facultative. */
     private fr.claudegateway.jarvis.thread.JarvisLinkService jarvisLinks;
 
+    /** F-247 / SF-247-11 — l'état connu joint au message d'un tour Jarvis, poste éteint (facultatif). */
+    private fr.claudegateway.jarvis.state.JarvisStateNote jarvisStateNote;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJarvisStateNote(fr.claudegateway.jarvis.state.JarvisStateNote jarvisStateNote) {
+        this.jarvisStateNote = jarvisStateNote;
+    }
+
     /** F-247 / SF-247-04 — la remise d'un tour à l'extraction d'état (facultative). */
     private fr.claudegateway.jarvis.state.extract.StateExtractEnqueuer stateExtract;
 
@@ -3641,6 +3649,11 @@ public class AtelierChatService implements RelayInterruptTarget {
             // propre au compte ; bornes figées `RULES`) ; en présentation, la note figée et aucun portrait. La consigne
             // système du terminal reste identique à l'octet près.
             consigne = withPortrait(userId, consigne, voiceMark.presentation());
+            // F-247 / SF-247-11 — poste du sujet hors ligne : l'état connu (bloc préparé, daté par la passerelle) est
+            // joint AU MESSAGE ; poste connecté ou présentation : consigne inchangée à l'octet près.
+            if (jarvisStateNote != null) {
+                consigne = jarvisStateNote.appendTo(userId, workspace, consigne, voiceMark.presentation());
+            }
         }
         // F-235 / SF-235-04 (D10) — une délégation du cerveau rapide : sa demande reformulée attend ce fil ; elle est
         // jointe AU MESSAGE (la parole du PO reste mot pour mot dans le fil, la consigne système est intouchée).
