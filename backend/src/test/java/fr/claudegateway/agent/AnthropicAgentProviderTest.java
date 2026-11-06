@@ -178,6 +178,192 @@ class AnthropicAgentProviderTest {
         assertThat(turn.outputTokens()).isEqualTo(7);
     }
 
+    // ------------------------------------------------- F-172 / SF-172-08 : relance sur refus non replié
+
+    /** Refus d'Opus 5.5 tel qu'observé en prod : aucun repli serveur, catégorie choisie. */
+    private static String refusal(String category, String recommended, String extraContent) {
+        return """
+                {"model": "claude-opus-5-5", "content": [%s], "stop_reason": "refusal",
+                 "stop_details": {"type": "refusal", "category": "%s", "recommended_model": %s},
+                 "usage": {"input_tokens": 100, "output_tokens": 0}}
+                """.formatted(extraContent, category, recommended == null ? "null" : "\"" + recommended + "\"");
+    }
+
+    private static final String SERVED = """
+            {"model": "%s", "content": [{"type": "text", "text": "Règle WAF prête."}],
+             "stop_reason": "end_turn", "usage": {"input_tokens": 120, "output_tokens": 30}}
+            """;
+
+    private AgentTurn callOpusWithEffortDirective() {
+        return provider.nextTurn(new AgentTurnRequest("claude-opus-5-5", "consigne",
+                List.of(AgentMessage.userText("configure le waf"), AgentMessage.effort("xhigh")), List.of(), null,
+                new AgentReasoning(true, "high")));
+    }
+
+    @Test
+    void anUnreplayedCyberRefusalIsRetriedOnTheRecommendedModel() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        server.expect(requestTo(URL)).andExpect(jsonPath("$.model").value("claude-opus-5-5"))
+                .andRespond(withSuccess(refusal("cyber", "claude-opus-5", ""), MediaType.APPLICATION_JSON));
+        server.expect(requestTo(URL))
+                .andExpect(jsonPath("$.model").value("claude-opus-5"))
+                .andRespond(withSuccess(SERVED.formatted("claude-opus-5"), MediaType.APPLICATION_JSON));
+
+        AgentTurn turn = callModel("claude-opus-5-5");
+
+        server.verify();
+        assertThat(turn.refused()).isFalse();
+        assertThat(turn.text()).isEqualTo("Règle WAF prête.");
+        assertThat(turn.servedModel()).isEqualTo("claude-opus-5");
+        // La tentative refusée reste comptée, à son modèle ; la relance au sien.
+        assertThat(turn.inputTokens()).isEqualTo(220);
+        assertThat(turn.outputTokens()).isEqualTo(30);
+        assertThat(turn.usageByModel()).extracting(AgentTurn.ModelUsage::model)
+                .containsExactly("claude-opus-5-5", "claude-opus-5");
+    }
+
+    @Test
+    void withoutRecommendationTheRetryGoesToTheConfiguredModelRebuiltForIt() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        server.expect(requestTo(URL))
+                .andExpect(jsonPath("$.fallbacks").value("default"))
+                .andRespond(withSuccess(refusal("cyber", null, ""), MediaType.APPLICATION_JSON));
+        server.expect(requestTo(URL))
+                .andExpect(jsonPath("$.model").value("claude-opus-4-8"))
+                // Requête reconstruite pour la cible : ni repli, ni notes de progression, ni liaison.
+                .andExpect(jsonPath("$.fallbacks").doesNotExist())
+                .andExpect(jsonPath("$.thinking.type").value("adaptive"))
+                .andExpect(jsonPath("$.thinking.display").doesNotExist())
+                .andExpect(jsonPath("$.thinking.block_binding").doesNotExist())
+                // Opus 4.8 ne connaît pas l'effort par message : l'effort effectif passe à la racine.
+                .andExpect(jsonPath("$.output_config.effort").value("xhigh"))
+                .andExpect(jsonPath("$.messages.length()").value(1))
+                .andExpect(request -> assertThat(String.valueOf(request.getHeaders().getFirst("anthropic-beta")))
+                        .doesNotContain("server-side-fallback")
+                        .doesNotContain("mid-conversation-output-config"))
+                .andRespond(withSuccess(SERVED.formatted("claude-opus-4-8"), MediaType.APPLICATION_JSON));
+
+        AgentTurn turn = callOpusWithEffortDirective();
+
+        server.verify();
+        assertThat(turn.refused()).isFalse();
+        assertThat(turn.servedModel()).isEqualTo("claude-opus-4-8");
+    }
+
+    @Test
+    void aRetryThatIsRefusedTooReturnsTheOriginalRefusal() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        server.expect(requestTo(URL)).andRespond(withSuccess(refusal("cyber", null, ""), MediaType.APPLICATION_JSON));
+        server.expect(requestTo(URL)).andRespond(withSuccess("""
+                {"model": "claude-opus-4-8", "content": [], "stop_reason": "refusal",
+                 "stop_details": {"type": "refusal", "category": "general_harms"},
+                 "usage": {"input_tokens": 5, "output_tokens": 0}}
+                """, MediaType.APPLICATION_JSON));
+
+        AgentTurn turn = callModel("claude-opus-5-5");
+
+        server.verify();
+        assertThat(turn.refused()).isTrue();
+        assertThat(turn.refusalCategory()).isEqualTo("cyber");
+        assertThat(turn.inputTokens()).isEqualTo(100);
+        assertThat(turn.servedModel()).isEqualTo("claude-opus-5-5");
+    }
+
+    @Test
+    void aRetryThatFailsReturnsTheOriginalRefusal() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        server.expect(requestTo(URL)).andRespond(withSuccess(refusal("cyber", null, ""), MediaType.APPLICATION_JSON));
+        server.expect(requestTo(URL)).andRespond(withStatus(HttpStatusCode.valueOf(400))
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"x\"}}"));
+
+        AgentTurn turn = callModel("claude-opus-5-5");
+
+        server.verify();
+        assertThat(turn.refused()).isTrue();
+        assertThat(turn.refusalCategory()).isEqualTo("cyber");
+    }
+
+    @Test
+    void aBioRefusalIsNotRetried() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        server.expect(ExpectedCount.once(), requestTo(URL))
+                .andRespond(withSuccess(refusal("bio", "claude-opus-4-8", ""), MediaType.APPLICATION_JSON));
+
+        AgentTurn turn = callModel("claude-opus-5-5");
+
+        server.verify();
+        assertThat(turn.refused()).isTrue();
+        assertThat(turn.refusalCategory()).isEqualTo("bio");
+    }
+
+    @Test
+    void theRefusalRetryKillSwitchLeavesTheRefusal() {
+        buildWith(new AgentApiFeaturesProperties(null, null, null, null, null, null, null, null, null, null, null,
+                false, null));
+        server.expect(ExpectedCount.once(), requestTo(URL))
+                .andRespond(withSuccess(refusal("cyber", null, ""), MediaType.APPLICATION_JSON));
+
+        AgentTurn turn = callModel("claude-opus-5-5");
+
+        server.verify();
+        assertThat(turn.refused()).isTrue();
+    }
+
+    @Test
+    void aRefusalAfterAServerFallbackIsNotRetried() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        server.expect(ExpectedCount.once(), requestTo(URL)).andRespond(withSuccess(refusal("cyber", null,
+                "{\"type\": \"fallback\", \"from\": {\"model\": \"claude-opus-5-5\"}, "
+                        + "\"to\": {\"model\": \"claude-opus-4-8\"}}"), MediaType.APPLICATION_JSON));
+
+        AgentTurn turn = callModel("claude-opus-5-5");
+
+        server.verify();
+        assertThat(turn.refused()).isTrue();
+    }
+
+    @Test
+    void anUnlistedModelIsNeverRetried() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        server.expect(ExpectedCount.once(), requestTo(URL))
+                .andRespond(withSuccess(refusal("cyber", null, ""), MediaType.APPLICATION_JSON));
+
+        assertThat(callModel("claude-sonnet-5").refused()).isTrue();
+        server.verify();
+    }
+
+    @Test
+    void aStreamedCyberRefusalIsRetriedOnTheStreamToo() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        String refusedSse = String.join("\n",
+                "data: {\"type\":\"message_start\",\"message\":{\"model\":\"claude-opus-5-5\","
+                        + "\"usage\":{\"input_tokens\":100,\"output_tokens\":0}}}",
+                "",
+                "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"refusal\","
+                        + "\"stop_details\":{\"type\":\"refusal\",\"category\":\"cyber\","
+                        + "\"recommended_model\":null}},\"usage\":{\"output_tokens\":0}}",
+                "",
+                "data: {\"type\":\"message_stop\"}",
+                "");
+        server.expect(requestTo(URL))
+                .andExpect(jsonPath("$.stream").value(true))
+                .andExpect(jsonPath("$.fallbacks").value("default"))
+                .andRespond(withSuccess(refusedSse, MediaType.TEXT_EVENT_STREAM));
+        server.expect(requestTo(URL))
+                .andExpect(jsonPath("$.stream").value(true))
+                .andExpect(jsonPath("$.model").value("claude-opus-4-8"))
+                .andRespond(withSuccess(OK_SSE, MediaType.TEXT_EVENT_STREAM));
+        StringBuilder screen = new StringBuilder();
+
+        AgentTurn turn = provider.nextTurn(new AgentTurnRequest("claude-opus-5-5", "consigne",
+                List.of(AgentMessage.userText("configure le waf")), List.of(), null), screen::append);
+
+        server.verify();
+        assertThat(turn.refused()).isFalse();
+        assertThat(screen.toString()).isEqualTo("ok");
+    }
+
     // ------------------------------------------------- F-172 / SF-172-02 : repli serveur
 
     @Test
@@ -215,7 +401,8 @@ class AnthropicAgentProviderTest {
 
     @Test
     void theKillSwitchTurnsTheFallbackOff() {
-        buildWith(new AgentApiFeaturesProperties(false, null, null, null, null, null, null, null, null, null, null));
+        buildWith(new AgentApiFeaturesProperties(false, null, null, null, null, null, null, null, null, null, null,
+                null, null));
         server.expect(requestTo(URL))
                 .andExpect(jsonPath("$.fallbacks").doesNotExist())
                 .andRespond(withSuccess("""
@@ -2327,7 +2514,7 @@ class AnthropicAgentProviderTest {
     @Test
     void theKillSwitchLeavesARunawayToTheOutputCap() {
         buildWith(new AgentApiFeaturesProperties(null, null, null, null, null, null, null, null, false, null,
-                null));
+                null, null, null));
         runawayClock();
         server.expect(requestTo(URL)).andRespond(withSuccess(RUNAWAY_SSE, MediaType.TEXT_EVENT_STREAM));
 
@@ -2343,7 +2530,7 @@ class AnthropicAgentProviderTest {
     void aThresholdAboveTheCapIsNotWatched() {
         // Seuil au-dessus du plafond de l'appel (32 768) : rien à surveiller.
         buildWith(new AgentApiFeaturesProperties(null, null, null, null, null, null, null, null, null, 40_000,
-                null));
+                null, null, null));
         runawayClock();
         server.expect(requestTo(URL)).andRespond(withSuccess(RUNAWAY_SSE, MediaType.TEXT_EVENT_STREAM));
 

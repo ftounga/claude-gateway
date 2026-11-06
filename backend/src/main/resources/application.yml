@@ -552,6 +552,12 @@ app:
       runaway-enabled: ${APP_AGENT_RUNAWAY_ENABLED:true}
       runaway-tokens: ${APP_AGENT_RUNAWAY_TOKENS:16000}
       runaway-tokens-per-second: ${APP_AGENT_RUNAWAY_TOKENS_PER_SECOND:150}
+      # Relance client sur refus non replie (F-172 / SF-172-08) : un refus `cyber`/`frontier_llm` d'un
+      # modele liste ci-dessus, sans repli serveur (ni bloc `fallback`, ni `fallback_message`), est
+      # relance UNE fois sur `stop_details.recommended_model`, a defaut sur refusal-retry-model.
+      # Coupe-circuit sans livraison : APP_AGENT_REFUSAL_RETRY=false.
+      refusal-retry: ${APP_AGENT_REFUSAL_RETRY:true}
+      refusal-retry-model: ${APP_AGENT_REFUSAL_RETRY_MODEL:claude-opus-4-8}
   stt:
     # SERVICE DE TRANSCRIPTION (F-128 / SF-128-04), relais compatible Whisper/OpenAI. BRANCHÉ SUR OPENAI
     # (SF-128-18) : base-url + model fournis par backend-config (https://api.openai.com/v1, whisper-1).

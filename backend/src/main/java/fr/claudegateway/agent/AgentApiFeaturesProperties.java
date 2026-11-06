@@ -45,6 +45,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param runawayTokensPerSecond débit servant à estimer, en cours de flux, la sortie d'un raisonnement
  *                       caché (le flux ne la rapporte qu'à la fin), défaut 150 — le débit mesuré des
  *                       emballements
+ * @param refusalRetry   coupe-circuit de la relance client sur refus non replié (F-172 / SF-172-08) —
+ *                       {@code APP_AGENT_REFUSAL_RETRY}, défaut {@code true}
+ * @param refusalRetryModel modèle de la relance quand le fournisseur n'en recommande aucun
+ *                       ({@code stop_details.recommended_model} absent), défaut {@code claude-opus-4-8}
  */
 @ConfigurationProperties(prefix = "app.agent.api-features")
 public record AgentApiFeaturesProperties(
@@ -58,13 +62,16 @@ public record AgentApiFeaturesProperties(
         List<String> bindingControlModels,
         Boolean runawayEnabled,
         Integer runawayTokens,
-        Integer runawayTokensPerSecond) {
+        Integer runawayTokensPerSecond,
+        Boolean refusalRetry,
+        String refusalRetryModel) {
 
     static final int DEFAULT_STREAMED_MAX_TOKENS = 32_768;
     static final int DEFAULT_ESCALATED_MAX_TOKENS = 65_536;
     static final String DEFAULT_EFFORT = "high";
     static final int DEFAULT_RUNAWAY_TOKENS = 16_000;
     static final int DEFAULT_RUNAWAY_TOKENS_PER_SECOND = 150;
+    static final String DEFAULT_REFUSAL_RETRY_MODEL = "claude-opus-4-8";
     static final List<String> DEFAULT_EXPLICIT_EFFORT_MODELS = List.of("claude-opus-5-5");
     static final List<String> DEFAULT_BINDING_CONTROL_MODELS = List.of("claude-opus-5-5", "claude-fable-5-1");
 
@@ -95,11 +102,15 @@ public record AgentApiFeaturesProperties(
         runawayTokens = runawayTokens == null || runawayTokens <= 0 ? DEFAULT_RUNAWAY_TOKENS : runawayTokens;
         runawayTokensPerSecond = runawayTokensPerSecond == null || runawayTokensPerSecond <= 0
                 ? DEFAULT_RUNAWAY_TOKENS_PER_SECOND : runawayTokensPerSecond;
+        refusalRetry = refusalRetry == null ? Boolean.TRUE : refusalRetry;
+        refusalRetryModel = refusalRetryModel == null || refusalRetryModel.isBlank()
+                ? DEFAULT_REFUSAL_RETRY_MODEL : refusalRetryModel.trim();
     }
 
     /** Réglages par défaut — ceux d'un environnement qui ne configure rien. */
     public static AgentApiFeaturesProperties defaults() {
-        return new AgentApiFeaturesProperties(null, null, null, null, null, null, null, null, null, null, null);
+        return new AgentApiFeaturesProperties(null, null, null, null, null, null, null, null, null, null, null,
+                null, null);
     }
 
     /** Vrai si la requête vers ce modèle doit porter le repli côté serveur. */
@@ -128,6 +139,15 @@ public record AgentApiFeaturesProperties(
      */
     public boolean runawayWatchFor(int maxTokens) {
         return Boolean.TRUE.equals(runawayEnabled) && maxTokens > runawayTokens;
+    }
+
+    /**
+     * Vrai si un refus de ce modèle peut être relancé côté client (F-172 / SF-172-08) : coupe-circuit
+     * ouvert et modèle à classifieurs — c'est-à-dire listé pour le repli serveur. Indépendant du
+     * coupe-circuit du repli serveur lui-même : la relance est le plancher quand celui-ci n'a pas servi.
+     */
+    public boolean refusalRetryFor(String model) {
+        return Boolean.TRUE.equals(refusalRetry) && listed(fallbackModels, model);
     }
 
     static boolean listed(List<String> models, String model) {
