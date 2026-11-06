@@ -45,4 +45,11 @@ public class OAuth2ClientConfig {
             @Value("${app.frontend-url:http://localhost:4200}") String frontendUrl) {
         return new OAuth2LoginSuccessHandler(userService, jwtService, frontendUrl);
     }
+
+    /** SF-01-09 — l'échec du retour Google : cause journalisée, SPA renvoyée vers son écran d'échec. */
+    @Bean
+    public OAuth2LoginFailureHandler oauth2LoginFailureHandler(
+            @Value("${app.frontend-url:http://localhost:4200}") String frontendUrl) {
+        return new OAuth2LoginFailureHandler(frontendUrl);
+    }
 }

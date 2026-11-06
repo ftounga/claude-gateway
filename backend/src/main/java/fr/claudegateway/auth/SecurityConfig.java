@@ -40,16 +40,19 @@ public class SecurityConfig {
     private final RestAuthenticationEntryPoint authenticationEntryPoint;
     private final ObjectProvider<ClientRegistrationRepository> clientRegistrationRepositoryProvider;
     private final ObjectProvider<OAuth2LoginSuccessHandler> oauth2LoginSuccessHandlerProvider;
+    private final ObjectProvider<OAuth2LoginFailureHandler> oauth2LoginFailureHandlerProvider;
 
     public SecurityConfig(
             JwtAuthenticationFilter jwtAuthenticationFilter,
             RestAuthenticationEntryPoint authenticationEntryPoint,
             ObjectProvider<ClientRegistrationRepository> clientRegistrationRepositoryProvider,
-            ObjectProvider<OAuth2LoginSuccessHandler> oauth2LoginSuccessHandlerProvider) {
+            ObjectProvider<OAuth2LoginSuccessHandler> oauth2LoginSuccessHandlerProvider,
+            ObjectProvider<OAuth2LoginFailureHandler> oauth2LoginFailureHandlerProvider) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.authenticationEntryPoint = authenticationEntryPoint;
         this.clientRegistrationRepositoryProvider = clientRegistrationRepositoryProvider;
         this.oauth2LoginSuccessHandlerProvider = oauth2LoginSuccessHandlerProvider;
+        this.oauth2LoginFailureHandlerProvider = oauth2LoginFailureHandlerProvider;
     }
 
     @Bean
@@ -110,7 +113,8 @@ public class SecurityConfig {
             http.oauth2Login(oauth -> oauth
                     .authorizationEndpoint(authorization -> authorization
                             .authorizationRequestRepository(authorizationRequestRepository))
-                    .successHandler(successHandler));
+                    .successHandler(successHandler)
+                    .failureHandler(oauth2LoginFailureHandlerProvider.getObject()));
         }
 
         return http.build();
