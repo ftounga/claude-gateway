@@ -26,6 +26,7 @@ import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
+import android.provider.Settings;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
 import android.util.Log;
@@ -39,6 +40,7 @@ import fr.claudegateway.jarvis.companion.core.SpeechInterruptPolicy;
 
 import fr.claudegateway.jarvis.companion.core.BatteryPolicy;
 import fr.claudegateway.jarvis.companion.core.WakeEngine;
+import fr.claudegateway.jarvis.companion.core.WakeLaunchPolicy;
 import fr.claudegateway.jarvis.companion.core.WakeListener;
 import fr.claudegateway.jarvis.companion.core.WakeProfile;
 
@@ -90,6 +92,8 @@ public final class CompanionService extends Service {
     private String status = "";
 
     private final Runnable resumeAfterWake = this::resumeAfterWake;
+    /** SF-232-10 — après un lancement direct : la notification de repli, seulement si l'écran ne s'est pas ouvert. */
+    private final Runnable directOpenCheck = this::directOpenCheck;
     private final Runnable retryMic = this::refresh;
 
     // ---- SF-232-03 : les annonces ----
@@ -185,6 +189,7 @@ public final class CompanionService extends Service {
             jarvisOpen = true;
             awaitingResume = true;
             replyWindow = false;
+            main.removeCallbacks(directOpenCheck);
             main.removeCallbacks(endReplyWindow);
             main.removeCallbacks(resumeAfterWake);
             if (speaking) {
@@ -603,13 +608,46 @@ public final class CompanionService extends Service {
     }
 
     /**
-     * Le réveil de l'écran Jarvis. Intention plein écran : téléphone verrouillé, elle allume l'écran et
-     * lance {@link WakeActivity} ; téléphone en main, Android l'affiche en bannière, qu'un toucher ouvre.
-     * Sans le droit « plein écran » (Android 14+), il reste la bannière.
+     * Le réveil de l'écran Jarvis (SF-232-10, {@link WakeLaunchPolicy}). <b>Ouverture directe autorisée</b>
+     * ({@code SYSTEM_ALERT_WINDOW}) : le service lance {@link WakeActivity} lui-même, verrouillé comme en main, sans
+     * notification ; si l'écran ne s'est pas ouvert {@link WakeLaunchPolicy#DIRECT_OPEN_CHECK_MS} plus tard, la
+     * notification de repli est publiée (jamais deux ouvertures : l'activité est {@code singleInstance}).
+     * <b>Sinon</b> : intention plein écran — téléphone verrouillé, elle allume l'écran et lance l'activité ; téléphone en
+     * main, Android l'affiche en bannière, qu'un toucher ouvre. Sans le droit « plein écran » (Android 14+), la bannière.
      */
     private void showWake() {
-        PendingIntent open = activity(new Intent(this, WakeActivity.class)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_USER_ACTION), 20);
+        NotificationManager nm = getSystemService(NotificationManager.class);
+        boolean fullScreen = Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+                || nm.canUseFullScreenIntent();
+        if (WakeLaunchPolicy.launch(Settings.canDrawOverlays(this), fullScreen) == WakeLaunchPolicy.Launch.DIRECT) {
+            try {
+                startActivity(wakeIntent());
+                main.removeCallbacks(directOpenCheck);
+                main.postDelayed(directOpenCheck, WakeLaunchPolicy.DIRECT_OPEN_CHECK_MS);
+                return;
+            } catch (RuntimeException e) {
+                Log.w(TAG, "Ouverture directe refusée : " + e.getClass().getSimpleName());
+            }
+        }
+        notifyWake(fullScreen);
+    }
+
+    /** SF-232-10 — l'écran lancé directement ne s'est pas ouvert (lancement bloqué en silence) : la notification. */
+    private void directOpenCheck() {
+        if (awaitingResume && WakeLaunchPolicy.needsFallback(jarvisOpen)) {
+            Log.w(TAG, "Écran Jarvis non ouvert : notification de repli");
+            NotificationManager nm = getSystemService(NotificationManager.class);
+            notifyWake(Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE || nm.canUseFullScreenIntent());
+        }
+    }
+
+    private Intent wakeIntent() {
+        return new Intent(this, WakeActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_USER_ACTION);
+    }
+
+    private void notifyWake(boolean fullScreen) {
+        PendingIntent open = activity(wakeIntent(), 20);
         Notification.Builder b = new Notification.Builder(this, CHANNEL_WAKE)
                 .setSmallIcon(R.drawable.ic_jarvis)
                 .setContentTitle("Jarvis vous écoute")
@@ -618,13 +656,10 @@ public final class CompanionService extends Service {
                 .setAutoCancel(true)
                 .setTimeoutAfter(60_000)
                 .setContentIntent(open);
-        NotificationManager nm = getSystemService(NotificationManager.class);
-        boolean fullScreen = Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE
-                || nm.canUseFullScreenIntent();
         if (fullScreen) {
             b.setFullScreenIntent(open, true);
         }
-        nm.notify(ID_WAKE, b.build());
+        getSystemService(NotificationManager.class).notify(ID_WAKE, b.build());
     }
 
     private PendingIntent activity(Intent intent, int code) {
