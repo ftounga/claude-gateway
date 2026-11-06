@@ -29,6 +29,8 @@ export class DictationService {
   private chunks: Blob[] = [];
   private startedAt = 0;
   private stopTimer: ReturnType<typeof setTimeout> | null = null;
+  /** F-232 / SF-232-09 — le nom de la dernière erreur du micro (`NotReadableError`…), pour dire la cause. */
+  lastMicError: string | null = null;
 
   /** Le navigateur sait-il enregistrer ? (contexte non sécurisé, navigateur ancien…) */
   get supported(): boolean {
@@ -64,7 +66,8 @@ export class DictationService {
     try {
       // F-233 / SF-233-05 : Jarvis demande l'annulation d'écho (sa propre voix au haut-parleur).
       stream = await navigator.mediaDevices.getUserMedia({ audio });
-    } catch {
+    } catch (error) {
+      this.lastMicError = (error as { name?: string } | null)?.name || null;
       throw 'micro-refuse' as DictationError;
     }
     this.chunks = [];

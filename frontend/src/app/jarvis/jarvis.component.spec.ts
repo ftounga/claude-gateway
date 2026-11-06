@@ -4,7 +4,7 @@ import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angul
 import { HttpErrorResponse } from '@angular/common/http';
 import { Subject, of, throwError } from 'rxjs';
 
-import { BUDGET_SOFT_NOTICE, JARVIS_USER_AGENT, JarvisComponent, UNLOCK_ASK_PHRASE, UNLOCK_REFUSED_PHRASE, companionOffer, euros } from './jarvis.component';
+import { BUDGET_SOFT_NOTICE, JARVIS_USER_AGENT, JarvisComponent, UNLOCK_ASK_PHRASE, UNLOCK_REFUSED_PHRASE, companionMicMessage, companionOffer, dictationMessage, euros } from './jarvis.component';
 import { JarvisSceneBus } from './scenes/jarvis-scene-bus.service';
 import { testUniverse } from './scenes/jarvis-universe.fixture';
 import { NotificationCenterService } from '../core/services/notification-center.service';
@@ -2726,3 +2726,16 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
   }));
 });
 
+describe('companionMicMessage (F-232 / SF-232-09)', () => {
+  it('dit la cause technique dans le compagnon', () => {
+    expect(companionMicMessage('NotReadableError')).toBe('Le micro n’a pas pu s’ouvrir dans le compagnon (NotReadableError).');
+  });
+
+  it('reste lisible sans nom d’erreur', () => {
+    expect(companionMicMessage(null)).toContain('(inconnue)');
+  });
+
+  it('ne change pas le message hors compagnon', () => {
+    expect(dictationMessage('micro-refuse')).toBe('Le micro est refusé : autorise-le dans le navigateur.');
+  });
+});

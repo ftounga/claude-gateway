@@ -1308,7 +1308,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
       try {
         await this.dictation.start(LISTEN_AUDIO);
       } catch (error) {
-        this.notice.set(dictationMessage(error as DictationError));
+        this.notice.set(this.companionBridge.available && error === 'micro-refuse'
+          ? companionMicMessage(this.dictation.lastMicError)
+          : dictationMessage(error as DictationError));
         // SF-233-11 — micro refusé : la conversation se met en pause plutôt que de réessayer en boucle.
         this.conversation.pause();
         return;
@@ -4051,6 +4053,14 @@ function readStoredSubject(): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * F-232 / SF-232-09 — dans le compagnon, « autorise-le dans le navigateur » n'a pas de sens : la cause technique est
+ * dite, pour qu'un échec du micro se diagnostique au premier essai.
+ */
+export function companionMicMessage(errorName: string | null): string {
+  return `Le micro n’a pas pu s’ouvrir dans le compagnon (${errorName || 'inconnue'}).`;
 }
 
 /** Ce qui a empêché la dictée, en mots du PO. */
