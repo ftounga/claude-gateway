@@ -45,6 +45,8 @@ public final class MainActivity extends Activity {
     private Button learn;
     private Button toggle;
     private Button pair;
+    /** SF-232-10 — l'ouverture directe de Jarvis au mot (SYSTEM_ALERT_WINDOW). */
+    private Button direct;
     private TextView pairing;
     private volatile boolean enrolling;
 
@@ -112,6 +114,14 @@ public final class MainActivity extends Activity {
         batteryButton.setText("Ne pas couper Jarvis pour économiser la batterie");
         batteryButton.setOnClickListener(v -> askBatteryExemption());
         column.addView(batteryButton);
+
+        // SF-232-10 — sans elle, téléphone en main, Android n'affiche qu'une bannière « Toucher pour ouvrir Jarvis ».
+        column.addView(text("Pour que Jarvis s'ouvre tout seul au mot, comme « OK Google », même téléphone en main "
+                + "(sinon Android n'affiche qu'une bannière à toucher). Activez « Jarvis » dans la liste.", 14));
+        direct = new Button(this);
+        direct.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:" + getPackageName()))));
+        column.addView(direct);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             column.addView(text("Pour allumer l'écran au mot, téléphone verrouillé.", 14));
@@ -188,6 +198,8 @@ public final class MainActivity extends Activity {
         boolean mic = hasMic();
         boolean learned = prefs.profile() != null;
         renderPairing();
+        direct.setText(Settings.canDrawOverlays(this) ? "Ouverture directe autorisée"
+                : "Autoriser l'ouverture directe de Jarvis");
         learn.setText(enrolling ? "Annuler l'apprentissage" : learned ? "Réapprendre « Jarvis »" : "Apprendre « Jarvis »");
         learn.setEnabled(mic);
         toggle.setText(prefs.listening() ? "Arrêter l'écoute" : "Démarrer l'écoute");

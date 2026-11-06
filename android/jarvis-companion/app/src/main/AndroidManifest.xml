@@ -5,6 +5,8 @@
   micro entend AVANT le mot ne sort jamais du téléphone.
   SF-232-08 (amendement du 2026-11-04) : au mot, l'écran Jarvis s'ouvre DANS le compagnon (WakeActivity,
   WebView par-dessus l'écran verrouillé), avec une session courte à portée « jarvis-compagnon ».
+  SF-232-10 : WakeActivity sans noHistory (la transition du verrou la fermait aussitôt) ; ouverture directe au mot
+  (SYSTEM_ALERT_WINDOW).
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
@@ -19,6 +21,9 @@
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- SF-232-10 : « ouverture directe » — accordée par le PO dans les réglages, elle permet au service d'ouvrir
+         l'écran Jarvis lui-même au mot, téléphone en main (sinon Android n'affiche qu'une bannière). -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <application
         android:allowBackup="false"
@@ -43,7 +48,6 @@
             android:excludeFromRecents="true"
             android:exported="false"
             android:launchMode="singleInstance"
-            android:noHistory="true"
             android:showWhenLocked="true"
             android:taskAffinity=""
             android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"

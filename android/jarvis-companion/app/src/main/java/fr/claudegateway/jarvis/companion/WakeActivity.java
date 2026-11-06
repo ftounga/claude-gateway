@@ -5,7 +5,10 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.KeyguardManager;
 import android.content.ActivityNotFoundException;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
@@ -35,6 +38,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import fr.claudegateway.jarvis.companion.core.JarvisScreenPolicy;
+import fr.claudegateway.jarvis.companion.core.WakeLaunchPolicy;
 
 /**
  * <b>L'écran Jarvis, dans le compagnon</b> (F-232 / SF-232-08, amendement du 2026-11-04, D5 à D8).
@@ -53,8 +57,11 @@ import fr.claudegateway.jarvis.companion.core.JarvisScreenPolicy;
  *   <li><b>Verrouillé</b> (D8) : au « oui » d'une action engageante, la page appelle {@code requestUnlock()} — la
  *   demande de déverrouillage s'affiche au-dessus de l'écran Jarvis visible ; réussie, une session déverrouillée est
  *   émise et la page reprend.</li>
- *   <li><b>Fermeture</b> : la page la demande (fin de conversation), l'écran s'éteint, retour, ou {@link
- *   JarvisScreenPolicy#IDLE_CLOSE_MS} sans signe de vie.</li>
+ *   <li><b>Fermeture</b> (SF-232-10) : la page la demande (fin de conversation), l'écran s'éteint
+ *   ({@code ACTION_SCREEN_OFF}), bouton accueil ({@code onUserLeaveHint}), retour, {@link
+ *   JarvisScreenPolicy#IDLE_CLOSE_MS} sans signe de vie, ou restée invisible plus de {@link
+ *   WakeLaunchPolicy#STOPPED_CLOSE_MS}. <b>Jamais à {@code onStop}</b> : la transition du verrou et de l'allumage y fait
+ *   passer l'activité, qui se fermait aussitôt (écran noir qui clignote, constat du 2026-11-06).</li>
  * </ul>
  */
 public final class WakeActivity extends Activity {
@@ -71,6 +78,28 @@ public final class WakeActivity extends Activity {
     private long sessionExpiresAt;
     private boolean unlocking;
     private boolean closed;
+    /** SF-232-10 — l'instant où l'activité est passée « arrêtée » (0 : visible). */
+    private long stoppedAt;
+    private boolean screenOffRegistered;
+
+    /** SF-232-10 — l'écran s'éteint (bouton) : la conversation s'arrête et le micro revient au mot d'éveil. */
+    private final BroadcastReceiver screenOff = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (WakeLaunchPolicy.closeOnLeave(unlocking)) {
+                Log.i(TAG, "Écran Jarvis fermé : écran éteint");
+                finish();
+            }
+        }
+    };
+
+    /** SF-232-10 — filet : un écran Jarvis resté invisible ne garde pas le micro. */
+    private final Runnable stoppedCheck = () -> {
+        if (WakeLaunchPolicy.closeWhileStopped(SystemClock.elapsedRealtime(), stoppedAt, unlocking)) {
+            Log.i(TAG, "Écran Jarvis fermé : resté invisible");
+            finish();
+        }
+    };
 
     private final Runnable idleCheck = new Runnable() {
         @Override
@@ -99,6 +128,7 @@ public final class WakeActivity extends Activity {
         prefs = new Prefs(this);
         gateway = prefs.gateway();
         tellService(CompanionService.ACTION_JARVIS_OPENED);
+        registerScreenOff();
         if (prefs.token() == null) {
             showMessage("Appairez d'abord le compagnon : ouvrez l'application Jarvis, étape « Les annonces ».");
             main.postDelayed(this::finish, 6_000L);
@@ -178,17 +208,50 @@ public final class WakeActivity extends Activity {
     }
 
     @Override
+    protected void onStart() {
+        super.onStart();
+        stoppedAt = 0;
+        main.removeCallbacks(stoppedCheck);
+    }
+
+    @Override
     protected void onStop() {
         super.onStop();
-        // L'écran s'éteint (bouton), ou une autre application passe devant : la conversation s'arrête et le micro
-        // revient au mot d'éveil. Pendant la demande de déverrouillage, l'activité reste.
-        if (!unlocking && !isChangingConfigurations()) {
-            finish();
+        // SF-232-10 — JAMAIS fermer ici : par-dessus le verrou, l'allumage et le keyguard font passer l'activité par
+        // onPause/onStop, ce qui la fermait avant même que la page ne charge. Restée invisible trop longtemps, elle se
+        // ferme (stoppedCheck) ; l'écran éteint et le bouton accueil la ferment tout de suite.
+        if (!isChangingConfigurations()) {
+            stoppedAt = SystemClock.elapsedRealtime();
+            main.removeCallbacks(stoppedCheck);
+            main.postDelayed(stoppedCheck, WakeLaunchPolicy.STOPPED_CLOSE_MS);
         }
     }
 
     @Override
+    protected void onUserLeaveHint() {
+        super.onUserLeaveHint();
+        // SF-232-10 — bouton accueil (ou une autre application ouverte par le PO) : la conversation s'arrête.
+        if (WakeLaunchPolicy.closeOnLeave(unlocking)) {
+            finish();
+        }
+    }
+
+    private void registerScreenOff() {
+        IntentFilter filter = new IntentFilter(Intent.ACTION_SCREEN_OFF);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(screenOff, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(screenOff, filter);
+        }
+        screenOffRegistered = true;
+    }
+
+    @Override
     protected void onDestroy() {
+        if (screenOffRegistered) {
+            screenOffRegistered = false;
+            unregisterReceiver(screenOff);
+        }
         main.removeCallbacksAndMessages(null);
         network.shutdownNow();
         if (web != null) {
