@@ -94,7 +94,7 @@ Features livrées (PR + CI verts) ; liste des ARBITRAGES (quoi/pourquoi/alternat
 ---
 
 ## Concurrence
-`CONCURRENCY` (défaut 6) borné par le **rate-limit Anthropic** (TPM/RPM du tier), pas le CPU. Le Workflow met l'excédent en file. Calibrer : monter jusqu'aux 429, redescendre d'un cran.
+`CONCURRENCY` (défaut 6) borné par le **rate-limit Anthropic** (TPM/RPM du tier). **Le CPU est borné à part** : toute commande lourde passe par `scripts/build-slot.sh` (2 créneaux par poste, règle V3 de `testing-strategy.md`) — au-delà, les agents attendent leur tour au lieu de doubler la durée de la suite pour tous.
 
 ## Anti-patterns interdits
 | ❌ | ✅ |
@@ -124,11 +124,13 @@ tienne.
 
 ## Règles apprises en production — à imposer à CHAQUE agent de la vague
 
-Ces cinq règles viennent d'échecs réels. Sans elles, la vague les reproduit.
+Ces règles viennent d'échecs réels. Sans elles, la vague les reproduit.
 
 | Règle | Pourquoi |
 |---|---|
 | **Lancer Maven au PREMIER PLAN**, jamais en tâche de fond, et **merger avant de rendre la main**. | En tâche de fond les agents calent : ils rendent « terminé » sur un build jamais relevé. Vérifier `origin/main` avant de croire un agent qui se dit terminé ; `TaskStop` avant toute relance, sinon doublon et collision de branches. |
+| **Vitesse (V1→V8 de `project-governance/playbooks/testing-strategy.md`)** : tests ciblés pendant le dev, **suite complète UNE fois** à la review, commandes lourdes via `scripts/build-slot.sh`, worktree supprimé après merge. | 939 classes de test backend : ~18 min par suite seule, ~30 min à plusieurs. Rejouée à chaque étape, elle a fait durer des features 1 à 3 jours (2026-11). |
+| **Garde anti-calage** : l'orchestrateur surveille chaque agent (aucun fichier écrit en 30 min = calé) et reprend la main. | Un agent a attendu 11 h une notification qui ne venait pas (2026-11-04). |
 | **`git add` CIBLÉ**, jamais `git add -A`. | Plusieurs sessions partagent le même checkout : un `add -A` emporte le travail en cours d'une autre session dans ton commit. |
 | **Ne jamais rédiger de rapport de retour** (`SendFeedback`) — et l'interdire explicitement aux sous-agents. | Décision PO. |
 | **Travailler dans un worktree isolé — TOUT le travail, pas seulement le déploiement** : une branche par agent, jamais le checkout partagé, et `git worktree` dédié sur `origin/main` pour build et déploiement. | Le checkout principal est partagé entre sessions : y écrire, y basculer de branche ou y lancer un build casse le WIP d'une autre session. Deux agents sur la même branche = collision (signal W5 du contrôle de vol). |

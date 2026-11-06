@@ -191,3 +191,23 @@ la règle supprime une redondance, pas une vérification.
 
 **Ce qui ne change pas** : un test rouge reste bloquant, l'isolation `user_id` reste exigée, et le
 plan de test de la mini-spec reste écrit avant le développement.
+
+## Vitesse de livraison — règles opposables (2026-11-07)
+
+**Mesure qui motive cette mise à jour** : la suite a grossi — **939 classes de test backend** (131 au
+1er septembre), **420 specs** frontend. La suite backend complète dure **~18 min** seule et **28 à 31 min**
+quand plusieurs agents la jouent en même temps sur le poste. La règle du 2026-09-10 ci-dessus existait,
+mais le script des vagues ordonnait la suite complète à chaque subfeature : des features ont pris 1 à
+3 jours. Ces règles priment sur toute consigne contraire d'un prompt, d'un script ou d'une mémoire.
+
+| # | Règle | Comment |
+|---|---|---|
+| V1 | **Pendant le dev : tests ciblés seulement** | `./mvnw -q test -Dtest='Classe1Test,Classe2*Test' -Dsurefire.failIfNoSpecifiedTests=false` ; `npx ng test --watch=false --include=src/app/<zone>` |
+| V2 | **Suite complète : UNE fois par subfeature**, à la review checklist, après `git fetch` + rebase sur `origin/main` | Rouge → corriger, rejouer **les classes rouges seulement**, puis une dernière suite complète. Jamais trois suites de suite « pour voir ». |
+| V3 | **Toute commande lourde passe par `scripts/build-slot.sh`** (2 créneaux par poste) | `scripts/build-slot.sh ./mvnw -q test` ; `scripts/build-slot.sh npx ng test --watch=false`. Au-delà de 2, on attend son tour au lieu de ralentir tout le monde. |
+| V4 | **Au premier plan, toujours** | Jamais de build en tâche de fond attendu par notification : les agents calent (11 h perdues le 2026-11-04). |
+| V5 | **Garde anti-calage** | L'orchestrateur surveille chaque agent ; aucun fichier écrit pendant 30 min (`find -mmin -30`) = agent calé → il reprend la main. |
+| V6 | **Worktree supprimé après merge** | `target/` + `node_modules/` d'un worktree ≈ 1 Go : 114 Go saturés le 2026-11-05, plus aucune commande ne répondait. |
+| V7 | **Un seul déploiement par vague**, jamais par subfeature | Le déploiement coûte ~20 min ; il reconstruit le runner seulement si `runner/` a changé (cache d'image). |
+| V8 | **Bancs Jarvis : inchangés** | 2 passages verts avant merge + 1 tour en prod, dès qu'un prompt ou un modèle Jarvis change (décision PO, ne pas alléger). Rien quand aucun prompt ne bouge. |
+

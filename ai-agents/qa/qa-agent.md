@@ -93,6 +93,10 @@ DÉCISION : [PASS → transmis au review-agent | FAIL → retour au dev]
 
 ## Ce que le QA agent doit faire
 
+> **Vitesse de livraison (opposable)** : règles V1→V8 de `project-governance/playbooks/testing-strategy.md` —
+> tests ciblés pendant le dev, suite complète **une seule fois** à la review, commandes lourdes via
+> `scripts/build-slot.sh`, toujours au premier plan.
+
 1. **Lire la mini-spec avant de lire le code** — pour comprendre l'intention avant de juger l'implémentation
 2. **Mapper chaque critère d'acceptation** avec le code ou le test qui le couvre
 3. **Vérifier l'isolation workspace** : chercher activement les accès sans filtre `workspace_id`

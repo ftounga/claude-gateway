@@ -65,6 +65,10 @@ Implémenter les subfeatures backend (API, service, repository, migration SQL) e
 
 ## Ce que le backend-agent doit faire
 
+> **Vitesse de livraison (opposable)** : règles V1→V8 de `project-governance/playbooks/testing-strategy.md` —
+> tests ciblés pendant le dev, suite complète **une seule fois** à la review, commandes lourdes via
+> `scripts/build-slot.sh`, toujours au premier plan.
+
 1. **Lire la mini-spec complète** avant d'écrire la moindre ligne de code
 2. **Implémenter le cas nominal** en premier, puis les cas d'erreur
 3. **Filtrer par `workspace_id`** sur toute requête accédant à des données

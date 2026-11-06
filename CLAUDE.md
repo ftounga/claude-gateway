@@ -113,6 +113,9 @@ Avant de créer la branche et d'écrire le code, passer `project-governance/chec
 Travailler sur une branche `feat/SF-XX-YY-nom-court` créée depuis `master` à jour.
 Respecter `project-governance/playbooks/coding-rules.md`.
 Toute décision technique non prévue dans la mini-spec est documentée dans la PR.
+**Vitesse de livraison** : appliquer les règles V1→V8 de `project-governance/playbooks/testing-strategy.md`
+(tests ciblés pendant le dev, suite complète une seule fois, commandes lourdes via `scripts/build-slot.sh`,
+premier plan, garde anti-calage). Elles priment sur toute consigne contraire.
 
 ---
 

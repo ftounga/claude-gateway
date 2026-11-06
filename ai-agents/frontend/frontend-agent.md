@@ -64,6 +64,10 @@ Implémenter les subfeatures frontend (composants Angular, services, routing) en
 
 ## Ce que le frontend-agent doit faire
 
+> **Vitesse de livraison (opposable)** : règles V1→V8 de `project-governance/playbooks/testing-strategy.md` —
+> tests ciblés pendant le dev, suite complète **une seule fois** à la review, commandes lourdes via
+> `scripts/build-slot.sh`, toujours au premier plan.
+
 1. **Lire la mini-spec, le contrat API et `docs/DESIGN_SYSTEM.md`** avant d'écrire la moindre ligne
 2. **Appliquer la palette de couleurs** définie dans le design system — aucune couleur hors palette
 3. **Utiliser uniquement les polices** Inter, Merriweather, JetBrains Mono
