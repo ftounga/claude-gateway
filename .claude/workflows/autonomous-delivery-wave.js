@@ -107,7 +107,10 @@ for (const f of toDeliver) {
      Séquence CLAUDE.md par SF : cadrage cohérence → mini-spec (docs/features/${f.id}/) → readiness →
      dev (back//front si contrat API figé, worktrees isolés, UUID Liquibase + n° migration pré-assignés,
      isolation user_id sur tout accès données, provider via interface AIProvider jamais Anthropic direct) →
-     compile+tests verts (mvn -pl backend test ; npm run build && npm test) →
+     tests verts selon les règles V1→V8 de project-governance/playbooks/testing-strategy.md : pendant le dev
+     tests CIBLÉS seulement (-Dtest=… ; ng test --include=…), puis la suite complète UNE fois à la review, après
+     rebase sur origin/main ; toute commande lourde via scripts/build-slot.sh (ex. scripts/build-slot.sh ./mvnw -q test),
+     au PREMIER PLAN, jamais en tâche de fond →
      review checklist → release checklist → gh pr create → gh pr merge --squash --delete-branch
      (backend AVANT frontend ; secrets hors du code ; pas de clé loggée).
      RÈGLE GATE: sur un gate produit RÉVERSIBLE (🟠 cohérence écran, choix UX, nouvelle table simple),
@@ -115,6 +118,7 @@ for (const f of toDeliver) {
      ou toute dérive hors périmètre V1 (OCR/RAG/pgvector/Textract) → status 'halted' + haltQuestion.
      INTERDIT: déploiement staging par feature (l'orchestrateur déploie une seule fois à la fin).
      Si main casse post-merge et non résolu en 2 tentatives/30min → revert + status 'failed'.
+     Après merge : git worktree remove de ton worktree (disque). Ne rédige jamais de rapport de retour (SendFeedback).
      NE CRÉE AUCUNE feature. Retourne le JSON DELIVERY_SCHEMA.`,
     { label: `deliver:${f.id}`, phase: 'Livrer', schema: DELIVERY_SCHEMA, isolation: 'worktree' }
   )
