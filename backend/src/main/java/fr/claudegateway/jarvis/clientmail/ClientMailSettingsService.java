@@ -41,8 +41,17 @@ public class ClientMailSettingsService implements JarvisMailPurge {
             OffsetDateTime lastDepositAt, long mails, boolean depositedToday) {
     }
 
-    /** L'état complet. */
-    public record Overview(SettingsView settings, List<ClientView> clients) {
+    /** L'état complet ; SF-249-06 : les mails répétitifs proposés et les règles actives. */
+    public record Overview(SettingsView settings, List<ClientView> clients,
+            List<ClientMailIgnoreService.OfferView> offers, List<ClientMailIgnoreService.RuleView> rules) {
+    }
+
+    /** SF-249-06 — les propositions et règles « ignorer ». Facultatif. */
+    private ClientMailIgnoreService ignore;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setIgnore(ClientMailIgnoreService ignore) {
+        this.ignore = ignore;
     }
 
     /** Une valeur hors bornes (400). */
@@ -150,7 +159,8 @@ public class ClientMailSettingsService implements JarvisMailPurge {
         for (RunnerHost h : hosts.findByUserIdOrderByCreatedAtDesc(userId)) {
             clients.add(client(userId, h, clientHosts.findByUserIdAndHostId(userId, h.getId()).orElse(null)));
         }
-        return new Overview(view(of(userId)), clients);
+        return new Overview(view(of(userId)), clients, ignore == null ? List.of() : ignore.pendingOffers(userId),
+                ignore == null ? List.of() : ignore.activeRules(userId));
     }
 
     private ClientView client(UUID userId, RunnerHost h, ClientMailHost row) {
