@@ -92,6 +92,8 @@ export interface JarvisEngine {
   readonly faceShown?: boolean;
   /** F-250 — allume (construit au premier appel) ou éteint le visage ; le cœur reprend sa place en fondu. */
   setFace?(on: boolean): void;
+  /** F-250 / SF-250-07 — des pancartes ou une galerie sont ouvertes : le visage glisse sur le côté et les regarde. */
+  setFaceAside?(on: boolean): void;
   /** Libère tout (géométries, matières, rendu, contexte, écouteurs) ; idempotent. */
   dispose(): void;
 }

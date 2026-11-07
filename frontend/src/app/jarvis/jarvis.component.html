@@ -1,7 +1,7 @@
 <!-- F-236 / SF-236-01 — la scène 3D, en calque plein écran DERRIÈRE l'écran F-234 (qui reste la référence et le repli).
      SF-236-02 — elle dessine le cœur : l'orbe 2D s'efface quand la 3D est affichée (son bouton reste pour parler). -->
 <app-jarvis-stage-3d #stage3d [sober]="sober()" [presentation]="presentation()" [withCore]="true" [signals]="stageSignals()" [voiceLevel]="orbLevel"
-                     [face]="faceServer()" [mouth]="faceMouth"
+                     [face]="faceOn()" [mouth]="faceMouth" [faceAside]="pieces.open()"
                      [labelLayer]="labels3d" [insets]="cockpit.insets()" (touched)="touched3d($event)"
                      (talk)="talk()" />
 <main class="jv" [attr.data-state]="state()" [class.jv--3d]="stage3d.rendering() === '3d'"
@@ -101,6 +101,13 @@
         <mat-icon aria-hidden="true">{{ cardsOn() ? 'style' : 'hide_source' }}</mat-icon>
         Pancartes : {{ cardsOn() ? 'oui' : 'non' }}
       </button>
+      <!-- F-250 / SF-250-07 — le visage de Jarvis, par appareil (défaut visage) ; le serveur peut l'éteindre. -->
+      @if (faceServer()) {
+        <button mat-button type="button" class="jv__face-toggle" [attr.aria-pressed]="faceDevice()" (click)="toggleFace()">
+          <mat-icon aria-hidden="true">{{ faceDevice() ? 'face' : 'blur_circular' }}</mat-icon>
+          Jarvis : {{ faceDevice() ? 'visage' : 'cœur' }}
+        </button>
+      }
       @if (!presentation()) {
         <!-- F-241 / SF-241-01 — le portrait : ce que Jarvis sait de vous (jamais en présentation). -->
         <button mat-button type="button" class="jv__portrait-open" [attr.aria-expanded]="portraitOpen()"

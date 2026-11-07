@@ -162,6 +162,8 @@ class ThreeJarvisEngine implements JarvisEngine {
   private face: Face3d | null;
   /** F-250 — visage voulu (réglage, coupe-circuit). */
   private faceWanted = false;
+  /** F-250 / SF-250-07 — l'écran a ouvert des pancartes ou une galerie. */
+  private faceAsideWanted = false;
   /** F-250 — l'entrée réutilisée du visage (aucune allocation par image). */
   private readonly faceInput: FaceFrame = {
     now: 0, dt: 0, level: 0, mouth: { open: 0, wide: 0, round: 0, press: 0 }, reduced: false,
@@ -310,6 +312,11 @@ class ThreeJarvisEngine implements JarvisEngine {
     return (this.face?.presence ?? 0) > 0.5;
   }
 
+  /** F-250 / SF-250-07 — une pancarte (F-248) ou une galerie de pièces est ouverte : le visage s'écarte. */
+  setFaceAside(on: boolean): void {
+    this.faceAsideWanted = on;
+  }
+
   setFace(on: boolean): void {
     if (this.disposed || !this.heart) {
       return;
@@ -452,7 +459,9 @@ class ThreeJarvisEngine implements JarvisEngine {
   private coreScreen(): { x: number; y: number; r: number } {
     this.projected.set(0, 0, 0).project(this.camera);
     const halfV = Math.tan((CAMERA_FOV * Math.PI) / 360);
-    const r = Math.max(28, (HEART_RADIUS / (this.camera.position.length() * halfV)) * (this.height / 2));
+    // F-250 — le visage, plus grand que le cœur, garde sa place : les panneaux se posent autour.
+    const radius = Math.max(HEART_RADIUS, this.face && this.face.presence > 0.5 ? this.face.group.scale.y * 1.0 : 0);
+    const r = Math.max(28, (radius / (this.camera.position.length() * halfV)) * (this.height / 2));
     return { x: (this.projected.x + 1) * 0.5 * this.width, y: (1 - this.projected.y) * 0.5 * this.height, r };
   }
 
@@ -643,6 +652,8 @@ class ThreeJarvisEngine implements JarvisEngine {
         face.presence = target > face.presence ? Math.min(target, face.presence + stepP)
           : Math.max(target, face.presence - stepP);
         presence = face.presence;
+        // Pancartes / panneaux (SF-250-07) : le visage glisse sur le côté et les regarde (PC seulement).
+        face.aside = ((this.panels?.count ?? 0) > 0 || this.faceAsideWanted) && this.width >= 768 ? 1 : 0;
         const input = this.faceInput;
         input.now = t;
         input.dt = this.options.replayFromZero ? 16 : dt;
