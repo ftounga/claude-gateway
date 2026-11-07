@@ -1549,6 +1549,66 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       jarvis.ngOnDestroy();
     }));
 
+  it('F-233 / SF-233-13 — en conversation, la réécoute part aussi sans sujet choisi (D19, compagnon)',
+    fakeAsync(() => {
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      const jarvis = fixture.componentInstance;
+      fixture.autoDetectChanges();
+      jarvis.subjectId.set(null);
+      jarvis.startConversation();
+      tick(300);
+      expect(jarvis.state()).toBe('ecoute');
+      expect(dictation.start).toHaveBeenCalledTimes(1);
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-233 / SF-233-13 — le tour dit pourquoi il n’a pas été écouté en flux, et s’il vient du compagnon',
+    fakeAsync(() => {
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      const jarvis = fixture.componentInstance;
+      fixture.autoDetectChanges();
+      // Ticket 503 (configuration par défaut du banc) : flux indisponible.
+      jarvis.startConversation();
+      tick(300);
+      dictation.stop.and.resolveTo('Où en est la migration ?');
+      void jarvis.finishListening();
+      flushMicrotasks();
+      handlers!.onDone({ reply: '🎙 Étape 4.', actions: [], messageId: 'm-1' });
+      flushMicrotasks();
+      jarvis['flushParked']();
+      const report = jarvisApi.timings.calls.mostRecent().args[0];
+      expect(report.listenMode).toBe('CONV_BATCH');
+      expect(report.streamFallback).toBe('ticket_indisponible');
+      expect(report.companion).toBeFalse();
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-233 / SF-233-13 — ticket refusé (403) puis ouverture refusée par le fournisseur : chacun nommé',
+    fakeAsync(() => {
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      const jarvis = fixture.componentInstance;
+      jarvisApi.sttSession.and.returnValue(throwError(() => new HttpErrorResponse({ status: 403 })));
+      void jarvis.talk();
+      flushMicrotasks();
+      expect(jarvis['streamFallback']).toBe('ticket_refuse');
+      jarvis['cancelListening']();
+
+      jarvisApi.sttSession.and.returnValue(of({
+        sessionId: 's-9', provider: 'elevenlabs', url: 'wss://x/realtime?model_id=m', token: 't',
+        expiresAt: '2030-01-01T00:00:00Z', sampleRate: 16000, maxSeconds: 120,
+      }));
+      opener.open.and.returnValue(Promise.reject(new Error('refus')));
+      void jarvis.talk();
+      flushMicrotasks();
+      expect(jarvis['streamFallback']).toBe('ouverture_refusee');
+      expect(jarvisApi.closeSttSession).toHaveBeenCalledWith('s-9', 0);
+      jarvis['cancelListening']();
+      jarvis.ngOnDestroy();
+    }));
+
   it('F-233 / SF-233-11 — un bruit n’envoie rien et l’écoute repart', fakeAsync(() => {
     const fixture = TestBed.createComponent(JarvisComponent);
     fixture.detectChanges();

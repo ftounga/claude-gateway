@@ -47,4 +47,16 @@ class ElevenLabsStreamingTranscriptionProviderTest {
         org.assertj.core.api.Assertions.assertThat(url)
                 .contains("&keyterms=CAGIP&keyterms=LDIC-223&keyterms=Ren%C3%A9+Martin");
     }
+
+    /** F-233 / SF-233-13 — au-delà de 50 termes, ElevenLabs refuse la session : les 50 premiers seulement. */
+    @org.junit.jupiter.api.Test
+    void sf233_13AtMostFiftyKeytermsInTheStreamUrl() {
+        java.util.List<String> vocabulary = java.util.stream.IntStream.range(0, 100).mapToObj(i -> "Terme" + i)
+                .toList();
+        String url = ElevenLabsStreamingTranscriptionProvider.sessionUrl("wss://x", "scribe_v2_realtime", "fr", 0.7,
+                vocabulary);
+        org.assertj.core.api.Assertions.assertThat(url.split("&keyterms=", -1)).hasSize(51);
+        org.assertj.core.api.Assertions.assertThat(url).contains("&keyterms=Terme0&").endsWith("&keyterms=Terme49");
+        org.assertj.core.api.Assertions.assertThat(url).doesNotContain("Terme50");
+    }
 }

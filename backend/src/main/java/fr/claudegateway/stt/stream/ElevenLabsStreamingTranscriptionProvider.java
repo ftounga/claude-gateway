@@ -104,7 +104,14 @@ public class ElevenLabsStreamingTranscriptionProvider implements StreamingTransc
         return sessionUrl(wsBaseUrl, model, languageHint, silenceSeconds, java.util.List.of());
     }
 
-    /** F-239 / SF-239-04 — l'URL, avec un paramètre {@code keyterms} par terme du vocabulaire (accepté en flux). */
+    /**
+     * F-233 / SF-233-13 — le flux ElevenLabs refuse la session au-delà de 50 {@code keyterms} ({@code invalid_request}
+     * « Number of keyterms cannot exceed 50 », vérifié le 2026-11-07) : seuls les premiers termes (les plus prioritaires)
+     * partent. La retranscription batch garde le vocabulaire complet.
+     */
+    static final int MAX_STREAM_KEYTERMS = 50;
+
+    /** F-239 / SF-239-04 — l'URL, avec un paramètre {@code keyterms} par terme du vocabulaire (au plus 50, SF-233-13). */
     static String sessionUrl(String wsBaseUrl, String model, String languageHint, double silenceSeconds,
             java.util.List<String> vocabulary) {
         StringBuilder url = new StringBuilder(wsBaseUrl).append("/v1/speech-to-text/realtime?model_id=")
@@ -116,9 +123,9 @@ public class ElevenLabsStreamingTranscriptionProvider implements StreamingTransc
         if (languageHint != null && !languageHint.isBlank()) {
             url.append("&language_code=").append(encode(languageHint.strip().toLowerCase(Locale.ROOT)));
         }
-        for (String term : vocabulary == null ? java.util.List.<String>of() : vocabulary) {
-            url.append("&keyterms=").append(encode(term));
-        }
+        (vocabulary == null ? java.util.List.<String>of() : vocabulary).stream()
+                .limit(MAX_STREAM_KEYTERMS)
+                .forEach(term -> url.append("&keyterms=").append(encode(term)));
         return url.toString();
     }
 

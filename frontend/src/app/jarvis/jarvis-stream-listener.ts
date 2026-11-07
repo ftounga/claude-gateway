@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 
-import { JarvisSttTicket } from '../core/models/jarvis.models';
+import { JarvisSttTicket, TurnTimingReport } from '../core/models/jarvis.models';
 
 /**
  * **Écouter en flux** (F-233 / SF-233-05, D5, D6) — le navigateur parle **directement** au fournisseur de
@@ -22,6 +22,45 @@ export interface StreamHandlers {
   onError(): void;
 }
 
+/**
+ * F-233 / SF-233-13 — pourquoi l'écoute n'a pas été faite en flux (liste fermée, même liste que la passerelle
+ * `JarvisLatencyService.STREAM_FALLBACKS`). Jamais de contenu.
+ */
+export type StreamFallback = NonNullable<TurnTimingReport['streamFallback']>;
+
+/** SF-233-13 — un échec d'ouverture du flux, classé. */
+export class StreamOpenError extends Error {
+  constructor(readonly kind: StreamFallback) {
+    super(kind);
+  }
+}
+
+/** SF-233-13 — la raison d'un refus de `/jarvis/stt-session` selon son statut HTTP. */
+export function ticketFailureOf(status: number | null | undefined): StreamFallback {
+  if (status === 503) {
+    return 'ticket_indisponible';
+  }
+  if (status === 401 || status === 403 || status === 429) {
+    return 'ticket_refuse';
+  }
+  return 'ticket_echec';
+}
+
+/** SF-233-13 — la raison d'un échec d'ouverture (micro, session du fournisseur, capture). */
+export function streamFailureOf(error: unknown): StreamFallback {
+  if (error instanceof StreamOpenError) {
+    return error.kind;
+  }
+  const message = error instanceof Error ? error.message : '';
+  switch (message) {
+    case 'timeout': return 'ouverture_delai';
+    case 'refus': return 'ouverture_refusee';
+    case 'reseau': return 'ouverture_reseau';
+    case 'ferme': return 'ouverture_fermee';
+    default: return 'autre';
+  }
+}
+
 /** Les contraintes d'écoute (D8) : sans elles, la voix de Jarvis au haut-parleur s'entend elle-même. */
 export const LISTEN_AUDIO: MediaTrackConstraints = {
   echoCancellation: true,
@@ -37,7 +76,7 @@ export interface SttMessage {
 
 /** Lit un message du fournisseur ; un message illisible ne casse rien (`other`). */
 export function parseSttMessage(raw: unknown): SttMessage {
-  let data: { message_type?: unknown; text?: unknown };
+  let data: { message_type?: unknown; text?: unknown; error?: unknown };
   try {
     data = typeof raw === 'string' ? JSON.parse(raw) : {};
   } catch {
@@ -54,7 +93,9 @@ export function parseSttMessage(raw: unknown): SttMessage {
   if (type.startsWith('committed_transcript')) {
     return { kind: 'committed', text };
   }
-  if (type.includes('error') || type === 'quota_exceeded' || type === 'session_time_limit_exceeded') {
+  // F-233 / SF-233-13 — `invalid_request` (ex. plus de 50 keyterms) et tout message porteur d'un `error` sont des erreurs.
+  if (type.includes('error') || type === 'invalid_request' || type === 'quota_exceeded'
+    || type === 'session_time_limit_exceeded' || (typeof data.error === 'string' && data.error !== '')) {
     return { kind: 'error', text: '' };
   }
   return { kind: 'other', text: '' };
@@ -213,7 +254,11 @@ export class StreamingListener {
     if (preRoll) {
       this.sendPreRoll(preRoll);
     }
-    await this.capture();
+    try {
+      await this.capture();
+    } catch {
+      throw new StreamOpenError('capture');
+    }
   }
 
   /** Envoie la pré-écoute par morceaux de 100 ms, au débit de la session. */
@@ -351,7 +396,12 @@ export interface LiveListening {
 export class JarvisStreamOpener {
   async open(ticket: JarvisSttTicket, handlers: StreamHandlers,
              preRoll?: (() => Float32Array | null) | null): Promise<LiveListening> {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: LISTEN_AUDIO });
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: LISTEN_AUDIO });
+    } catch {
+      throw new StreamOpenError('micro');
+    }
     const listener = new StreamingListener(ticket, stream, handlers);
     try {
       await listener.start(preRoll);

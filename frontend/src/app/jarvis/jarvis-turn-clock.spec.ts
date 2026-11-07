@@ -46,6 +46,18 @@ describe('TurnClock (F-233 / SF-233-01)', () => {
     expect(report.cardsCount).toBe(3);
   });
 
+  it('F-233 / SF-233-13 — porte la raison du repli hors flux et le compagnon ; rien quand ils sont absents', () => {
+    const clock = new TurnClock(0, null, () => 0);
+    clock.streamFallback = 'ouverture_refusee';
+    clock.companion = true;
+    const report = clock.takeReport()!;
+    expect(report.streamFallback).toBe('ouverture_refusee');
+    expect(report.companion).toBeTrue();
+    const bare = new TurnClock(0, null, () => 0).takeReport()!;
+    expect('streamFallback' in bare).toBeFalse();
+    expect('companion' in bare).toBeFalse();
+  });
+
   it('ne se déclare qu’une fois, et écarte une marque au-delà de 10 minutes', () => {
     let now = 0;
     const clock = new TurnClock(0, null, () => now);
