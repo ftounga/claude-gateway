@@ -810,6 +810,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
   }
 
   /** Bascule « Humour : aucun / léger » ; revient en arrière si l'enregistrement échoue. */
+  /** F-250 — le coupe-circuit du serveur (`APP_JARVIS_FACE_ENABLED`), lu à l'ouverture (éteint en attendant). */
+  readonly faceServer = signal(false);
   /** F-248 / SF-248-04 (D12) — le réglage « Pancartes » de cet appareil (défaut oui). */
   readonly cardsOn = signal(cardsAllowedOnDevice());
   /** F-248 / SF-248-05 — les pancartes citées par la phrase jouée à l'instant. */
@@ -990,9 +992,12 @@ export class JarvisComponent implements OnInit, OnDestroy {
     void this.voice.preloadClips(FORMULA_CLIPS);
     // SF-233-06 — le fournisseur de la voix, pour la mesure (SF-233-01).
     this.voice.status().subscribe({ next: (status) => this.ttsProvider = status.provider ?? null, error: () => undefined });
-    // F-250 / SF-250-02 — la voix alignée (lèvres du visage) : demandée si le serveur l'allume pour ce compte.
+    // F-250 — le visage (coupe-circuit serveur) et la voix alignée (lèvres) : allumés si le serveur le dit.
     this.voice.faceStatus().subscribe({
-      next: (face) => this.voice.setAligned(face.enabled && face.aligned),
+      next: (face) => {
+        this.faceServer.set(face.enabled);
+        this.voice.setAligned(face.enabled && face.aligned);
+      },
       error: () => undefined,
     });
     // F-243 / SF-243-03 — retour du parcours OAuth Google : le volet « Mes agendas » s'ouvre (jamais en présentation).

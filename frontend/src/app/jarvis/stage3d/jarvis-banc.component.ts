@@ -21,6 +21,8 @@ import { JarvisPieceStore } from '../pieces/jarvis-piece-store';
 import { BANC_PIECE_CLIENT, stageBancPieces } from '../pieces/jarvis-piece-banc';
 import { JarvisCardDetailComponent } from '../cards/jarvis-card-detail.component';
 import { bancCardDetail, stageBancCards } from '../cards/jarvis-card-banc';
+import { EDENRED_ALIGNMENT } from '../face/jarvis-face-fixture';
+import { MouthShape, mouthSample, sampleVisemes, visemesFromAlignment } from '../face/jarvis-visemes';
 
 /**
  * F-236 / SF-236-01 — **la page du banc de captures** (`/jarvis-banc?banc=<scène>&t=<ms>`), <b>développement
@@ -35,6 +37,7 @@ import { bancCardDetail, stageBancCards } from '../cards/jarvis-card-banc';
     JarvisPieceGalleryComponent, JarvisCardDetailComponent],
   template: `
     <app-jarvis-stage-3d #stage [withCore]="true" [planOverride]="staged.plan" [voiceLevel]="voice"
+                         [face]="face" [mouth]="mouth"
                          [labelLayer]="labels" [insets]="cockpit ? cockpitRef()?.insets() ?? noInsets : noInsets" />
     <div #labels class="jv3d-labels"></div>
     @if (cockpit) {
@@ -81,6 +84,20 @@ export class JarvisBancComponent {
   protected readonly staged = bancPlan(this.scene,
     typeof matchMedia === 'function' && matchMedia('(max-width: 767px)').matches);
   protected readonly voice = (): number => this.staged.voice;
+  /** F-250 / SF-250-08 — les scènes `visage-*` posent le visage ; `visage-parole` articule la phrase EDENRED
+   * (alignement réel enregistré) à l'instant `t` du banc. */
+  protected readonly face = this.scene.startsWith('visage');
+  private readonly visemes = visemesFromAlignment(EDENRED_ALIGNMENT);
+  private readonly sample = mouthSample();
+  protected readonly mouth = (out: MouthShape): void => {
+    const speaking = this.scene === 'visage-parole' || this.scene === 'visage-pancarte';
+    const at = (this.t / 1000) % (EDENRED_ALIGNMENT.ends[EDENRED_ALIGNMENT.ends.length - 1] + 0.3);
+    const s = sampleVisemes(this.visemes, speaking ? at : -10, this.sample);
+    out.open = s.open;
+    out.wide = s.wide;
+    out.round = s.round;
+    out.press = s.press;
+  };
   protected readonly cockpit = this.scene.startsWith('cockpit');
   /** F-237 / SF-237-14 — les scènes `pieces-*` posent la galerie des pièces. */
   protected readonly pieces = this.scene.startsWith('pieces');

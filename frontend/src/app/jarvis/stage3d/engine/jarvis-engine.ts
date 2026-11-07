@@ -6,7 +6,7 @@ import {
 
 import { FrameLoop } from '../jarvis-frame-loop';
 import { JarvisEngine, JarvisEngineOptions } from '../jarvis-engine.contract';
-import { HOLO_ALPHA, HOLO_COLORS, HOLO_DIM_OPACITY, MOTION_DURATIONS, rgb } from '../jarvis-motion';
+import { FACE_COLORS, HOLO_ALPHA, HOLO_COLORS, HOLO_DIM_OPACITY, MOTION_DURATIONS, rgb } from '../jarvis-motion';
 import { QualityGovernor } from '../jarvis-quality';
 import { QualityLevel } from '../jarvis-render-capability';
 import { StagePlan } from '../jarvis-stage-director';
@@ -22,10 +22,13 @@ import { fpsClass } from '../jarvis-render-stats';
 import { Gestures } from './jarvis-gestures';
 import { HEART_RADIUS } from './jarvis-heart-3d';
 import { Heart3d } from './jarvis-heart-3d';
+import { FACE_SCALE, Face3d, FaceFrame } from './jarvis-face-3d';
+import { faceScaleFor } from '../../face/jarvis-face-stage';
 import { Universe3d } from './jarvis-universe-3d';
 import { Node3d } from '../jarvis-layout-3d';
 import { CORE_KEY } from '../jarvis-link-graph';
-import { JarvisPost } from './jarvis-post';
+import { BLOOM_THRESHOLD, JarvisPost } from './jarvis-post';
+import { FACE_BLOOM_THRESHOLD } from './jarvis-face-3d';
 import { Effects3d } from './jarvis-effects-3d';
 import { Panels3d } from './jarvis-panels-3d';
 import { boundPanels, panelViewport } from '../jarvis-panels';
@@ -48,6 +51,11 @@ import { deviceProfile, levelBudget } from '../hud/jarvis-device-profile';
 
 /** Le pas d'une image est borné : un onglet revenu ne fait pas « sauter » les animations. */
 const MAX_DT_MS = 50;
+/** F-250 — couleurs du fond, cœur et visage (mélangées selon la présence du visage). */
+const HOLO_ABYSS_RGB = rgb(HOLO_COLORS.abyss);
+const HOLO_NORMAL_RGB = rgb(HOLO_COLORS.normal);
+const FACE_ABYSS_RGB = rgb(FACE_COLORS.abyss);
+const FACE_BASE_RGB = rgb(FACE_COLORS.base);
 
 const BACKDROP_VERTEX = /* glsl */ `
 varying vec2 vUv;
@@ -150,6 +158,14 @@ class ThreeJarvisEngine implements JarvisEngine {
   private readonly backdrop: ShaderMaterial;
   private readonly post: JarvisPost;
   private readonly heart: Heart3d | null;
+  /** F-250 — le visage (à la place du cœur quand Jarvis dialogue), ou `null` (coupe-circuit, réglage). */
+  private face: Face3d | null;
+  /** F-250 — visage voulu (réglage, coupe-circuit). */
+  private faceWanted = false;
+  /** F-250 — l'entrée réutilisée du visage (aucune allocation par image). */
+  private readonly faceInput: FaceFrame = {
+    now: 0, dt: 0, level: 0, mouth: { open: 0, wide: 0, round: 0, press: 0 }, reduced: false,
+  };
   /** SF-236-03 — le grand cerveau et son horloge. */
   private readonly brain: Brain3d | null;
   /** SF-236-04 — l'univers et ses liaisons. */
@@ -239,6 +255,10 @@ class ThreeJarvisEngine implements JarvisEngine {
     const start = options.clock();
     if (options.withCore) {
       this.heart = new Heart3d(this.scene, options.random, options.level, this.renderer.getPixelRatio());
+      this.faceWanted = options.face === true;
+      this.face = this.faceWanted ? new Face3d(this.scene, options.random, options.level,
+        this.renderer.getPixelRatio(), HEART_RADIUS) : null;
+      this.faceInput.reduced = options.reducedMotion === true;
       this.brain = new Brain3d(this.scene, options.random, options.level, this.renderer.getPixelRatio());
       this.universe = new Universe3d(this.scene, options.labelHost, options.level, this.renderer.getPixelRatio(),
         options.onTouch);
@@ -268,6 +288,7 @@ class ThreeJarvisEngine implements JarvisEngine {
       });
     } else {
       this.heart = null;
+      this.face = null;
       this.brain = null;
       this.universe = null;
       this.panels = null;
@@ -283,6 +304,22 @@ class ThreeJarvisEngine implements JarvisEngine {
 
   get frames(): number {
     return this.loop.frames;
+  }
+
+  get faceShown(): boolean {
+    return (this.face?.presence ?? 0) > 0.5;
+  }
+
+  setFace(on: boolean): void {
+    if (this.disposed || !this.heart) {
+      return;
+    }
+    this.faceWanted = on;
+    if (on && !this.face) {
+      this.face = new Face3d(this.scene, this.options.random, this.options.level, this.renderer.getPixelRatio(),
+        HEART_RADIUS);
+      this.face.setMood(this.plan.mood, this.options.clock());
+    }
   }
 
   start(): void {
@@ -504,6 +541,7 @@ class ThreeJarvisEngine implements JarvisEngine {
       this.heart.setMood('repos', 0, true);
       this.heart.setMood(plan.mood, 0, false);
       this.heart.setWakes(plan.wakes, 0);
+      this.face?.setMood(plan.mood, 0);
       this.brains = new BrainsClock(plan.brainsFromDeployed ? 'deployed' : 'folded');
       this.brains.set(plan.brains.target, plan.brains.variant, 0);
       return;
@@ -515,6 +553,7 @@ class ThreeJarvisEngine implements JarvisEngine {
       this.brains.set(plan.brains.target, plan.brains.variant, now);
     }
     this.heart.setMood(plan.mood, now, opening);
+    this.face?.setMood(plan.mood, now);
     if (opening) {
       this.heart.setWakes(0, now);
     }
@@ -593,17 +632,36 @@ class ThreeJarvisEngine implements JarvisEngine {
       // au milieu du champ, baisse sa lumière d'un tiers quand le violet monte (le noyau reste visible, à l'écoute).
       this.heart.lightGain = f.coreLight * (1 - 0.35 * f.hue);
       this.heart.flash = f.flash;
-      this.heart.frame(t, dt, this.options.voiceLevel());
+      const voiceLevel = this.options.voiceLevel();
+      // F-250 — le visage, allumé, prend la place du cœur (transitions : SF-250-05).
+      const face = this.face;
+      let presence = 0;
+      if (face) {
+        face.presence = this.faceWanted ? 1 : 0;
+        presence = face.presence;
+        const input = this.faceInput;
+        input.now = t;
+        input.dt = this.options.replayFromZero ? 16 : dt;
+        input.level = voiceLevel;
+        this.options.mouth?.(input.mouth);
+        face.frame(input, this.rig.yaw.value, this.rig.pitch.value);
+        face.group.scale.multiplyScalar((faceScaleFor(this.rig.dist.value, this.width / Math.max(1, this.height),
+          CAMERA_FOV) / FACE_SCALE) * f.coreScale);
+        this.heart.lightGain *= 1 - presence;
+        this.heart.group.visible = presence < 0.98;
+      }
+      this.heart.frame(t, dt, voiceLevel);
       this.brain.frame(dt, f, this.plan.brains.pearls, this.brains.current === 'deployed' ? 'normal'
         : this.plan.brains.variant);
-      bloom = this.heart.bloom.value(t) + f.bloom * (this.level === 'high' ? 0.6 : 1);
+      bloom = this.heart.bloom.value(t) * (1 - presence) + (face ? face.bloom * presence : 0)
+        + f.bloom * (this.level === 'high' ? 0.6 : 1);
       // SF-236-14 — réserve du PO : le grand cerveau déployé, les étiquettes prennent un fond de verre (lisibles).
       const deep = f.spread > 0.4 ? '1' : '0';
       const host = this.options.labelHost;
       if (host && host.dataset['deep'] !== deep) {
         host.dataset['deep'] = deep;
       }
-      light = this.heart.light;
+      light = this.heart.light * (1 - presence) + (face ? face.light * presence : 0);
       spread = f.spread;
       // Le fond et le sol virent au violet quand le grand cerveau travaille.
       this.backdrop.uniforms['uDeepMix'].value = f.hue;
@@ -624,11 +682,26 @@ class ThreeJarvisEngine implements JarvisEngine {
       ? elapsed * (ENTRY_FULL_MS / this.entryTotal) : elapsed);
     const exit = this.exitStart === null ? null : exitFrame(Math.min(EXIT_MS, frameNow - this.exitStart));
     this.backdrop.uniforms['uGlow'].value = (0.35 + 0.65 * light) * entry.light;
+    if (this.face) {
+      // F-250 — le fond prend l'abysse bleu nuit et la nébuleuse le cyan du visage, à mesure qu'il apparaît.
+      const p = this.face.presence;
+      const abyss = this.backdrop.uniforms['uAbyss'].value as number[];
+      const tint = this.backdrop.uniforms['uTint'].value as number[];
+      for (let k = 0; k < 3; k++) {
+        abyss[k] = HOLO_ABYSS_RGB[k] + (FACE_ABYSS_RGB[k] - HOLO_ABYSS_RGB[k]) * p;
+        tint[k] = HOLO_NORMAL_RGB[k] + (FACE_BASE_RGB[k] - HOLO_NORMAL_RGB[k]) * p;
+      }
+    }
     if (this.heart) {
       this.heart.group.scale.multiplyScalar(Math.max(0.001, entry.core * (exit ? exit.core : 1)));
     }
+    if (this.face) {
+      this.face.group.scale.multiplyScalar(Math.max(0.001, entry.core * (exit ? exit.core : 1)));
+      this.face.syncScale();
+    }
     if (this.floorMaterial) {
-      this.floorMaterial.opacity = HOLO_DIM_OPACITY * entry.orbits;
+      // F-250 — le sol orange s'efface en partie sous le visage (la figure principale reste lisible).
+      this.floorMaterial.opacity = HOLO_DIM_OPACITY * entry.orbits * (1 - 0.7 * (this.face?.presence ?? 0));
     }
     const dt = Math.min(Math.max(frameMs, 0), MAX_DT_MS);
     if (this.universe) {
@@ -660,6 +733,9 @@ class ThreeJarvisEngine implements JarvisEngine {
         this.coreScreen(), this.panelSides));
     }
     this.applyBokeh();
+    if (this.face) {
+      this.post.setThreshold(BLOOM_THRESHOLD + (FACE_BLOOM_THRESHOLD - BLOOM_THRESHOLD) * this.face.presence);
+    }
     this.post.render(bloom, t);
     this.universe?.renderLabels(this.scene, this.camera);
     if (!this.firstFrameSeen) {

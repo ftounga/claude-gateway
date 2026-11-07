@@ -64,7 +64,10 @@ export const BANC_SCENES = [
   // SF-236-21 — séquence T-P4 (repli d'un panneau latéral).
   'cockpit-repli-anim',
   // SF-236-22 → SF-236-26 — itération 4 : replay, présentation, veilleur, radar, activité 7 jours.
-  'cockpit-replay', 'presentation', 'veilleur', 'ambiance-radar', 'cockpit-activite'] as const;
+  'cockpit-replay', 'presentation', 'veilleur', 'ambiance-radar', 'cockpit-activite',
+  // F-250 / SF-250-08 — le visage : états, parole synchronisée (alignement réel), grand cerveau, pancarte.
+  'visage-repos', 'visage-ecoute', 'visage-reflexion', 'visage-parole', 'visage-oui', 'visage-coupure',
+  'visage-veille', 'visage-cerveau', 'visage-pancarte'] as const;
 
 const SCENE_NAME = /^[a-z0-9-]{1,40}$/;
 

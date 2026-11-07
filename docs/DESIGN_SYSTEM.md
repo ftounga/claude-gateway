@@ -1025,6 +1025,20 @@ valeur en dur ailleurs.
   cours ») ; « maintenant » en trait crème ; heures en JetBrains Mono, jours en Space Grotesk capitales. Aucune
   couleur nouvelle ; **jamais en présentation**.
 
+- **Le visage de Jarvis (F-250, exception documentée — décision PO du 2026-11-07)** — le visage holographique qui
+  remplace le cœur quand Jarvis dialogue est **cyan** (style B « cyan holographique » de la maquette) : points
+  `#5FD4FF`, zones incandescentes `#E8FBFF`, traits lumineux et ondes `#BDF3FF`, fil de fer, cadran et socle `#5FD4FF`
+  (≈ 24 % d'opacité, cadran et socle ≈ 22 %), éclairs synaptiques de réflexion `--cg-holo-deep` ; quand le
+  visage est là, la lueur d'abysse du fond passe au bleu nuit `#0E2340` et la nébuleuse prend le cyan, le sol orange
+  s'efface à 30 %. **Ici le cyan est la teinte du visage, pas un
+  état** : le sens « attend votre réponse » reste porté par la **pastille d'état** et les **pancartes** (mot écrit,
+  cyan `--cg-holo-wait`) ; le visage exprime l'attente par sa **posture** (yeux grands ouverts, sourcils levés, ondes
+  lentes) et ne change **jamais** de teinte pour dire un état. **Pourquoi** : c'est le « look film » demandé par le PO
+  (« le plus joli ») ; donner au visage une teinte d'état aurait fait clignoter la couleur à chaque tour et rendu
+  ambiguë la seule figure qui occupe l'écran. Le reste de la grammaire (§23) est inchangé, y compris sur le cœur F-236,
+  qui revient en veille. Source unique : `FACE_COLORS` (`jarvis-motion.ts`). Aucune police nouvelle ; le visage est
+  décoratif (`aria-hidden`), l'état reste écrit.
+
 ## 24 — Conventions AWS des schémas d'architecture (ajout F-238 / SF-238-06, 2026-11-02)
 
 Les schémas d'architecture **livrés** (moteur `cloud` et `drawio` du service de rendu, schéma cadré) suivent les
