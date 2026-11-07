@@ -21,6 +21,7 @@ import fr.claudegateway.jarvis.stt.JarvisSttStreamProperties;
         fr.claudegateway.jarvis.mail.JarvisMailProperties.class,
         fr.claudegateway.jarvis.calendar.JarvisCalendarProperties.class,
         fr.claudegateway.jarvis.calendar.JarvisCalendarOAuthProperties.class,
-        fr.claudegateway.jarvis.clientmail.ClientMailProperties.class })
+        fr.claudegateway.jarvis.clientmail.ClientMailProperties.class,
+        fr.claudegateway.jarvis.notices.JarvisNoticeProperties.class })
 public class JarvisConfig {
 }

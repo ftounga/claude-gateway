@@ -86,12 +86,42 @@ public class JarvisMailItemService implements JarvisMailPurge {
         for (JarvisMailAccount a : accounts.findByUserIdOrderByCreatedAtAsc(userId)) {
             labels.put(a.getId(), a.getLabel());
         }
-        Map<UUID, String> clients = rows.stream().anyMatch(JarvisMailItem::isDeposited) ? clientLabels(userId)
-                : Map.of();
+        boolean anyDeposit = rows.stream().anyMatch(JarvisMailItem::isDeposited);
+        Map<UUID, String> clients = anyDeposit ? clientLabels(userId) : Map.of();
+        Map<UUID, List<String>> subjects = anyDeposit ? subjectsOf(userId, rows) : Map.of();
         return rows.stream().filter(r -> userId.equals(r.getUserId()))
-                .map(r -> view(r, r.isDeposited() ? clients.getOrDefault(r.getHostId(), DEPOSIT_LABEL)
-                        : labels.get(r.getAccountId())))
+                .map(r -> view(r, r.isDeposited() ? depositLabel(clients.getOrDefault(r.getHostId(), DEPOSIT_LABEL),
+                        subjects.get(r.getId())) : labels.get(r.getAccountId())))
                 .toList();
+    }
+
+    /** F-249 / SF-249-03 — « Outlook EDENRED · « Alarme Fortec » » : le client, puis les sujets rattachés. */
+    static String depositLabel(String client, List<String> subjects) {
+        if (subjects == null || subjects.isEmpty()) {
+            return client;
+        }
+        return client + " · " + String.join(", ", subjects.stream().map(n -> "« " + n + " »").toList());
+    }
+
+    /** F-249 / SF-249-03 — les sujets rattachés (résolus à la demande : aucune dépendance au démarrage). */
+    private org.springframework.beans.factory.ObjectProvider<DepositedMailLabels> depositedLabels;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setDepositedLabels(org.springframework.beans.factory.ObjectProvider<DepositedMailLabels> labels) {
+        this.depositedLabels = labels;
+    }
+
+    private Map<UUID, List<String>> subjectsOf(UUID userId, List<JarvisMailItem> rows) {
+        DepositedMailLabels l = depositedLabels == null ? null : depositedLabels.getIfAvailable();
+        if (l == null) {
+            return Map.of();
+        }
+        try {
+            return l.subjectsOf(userId, rows.stream().filter(JarvisMailItem::isDeposited).map(JarvisMailItem::getId)
+                    .toList());
+        } catch (RuntimeException e) {
+            return Map.of();
+        }
     }
 
     /** Le libellé d'un courrier déposé dont le poste est inconnu. */

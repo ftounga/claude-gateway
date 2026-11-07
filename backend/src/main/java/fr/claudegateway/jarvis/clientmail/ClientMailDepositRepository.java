@@ -26,6 +26,10 @@ public interface ClientMailDepositRepository extends JpaRepository<ClientMailDep
 
     boolean existsByUserIdAndHostIdAndDepositedAtGreaterThanEqual(UUID userId, UUID hostId, OffsetDateTime since);
 
+    /** Les comptes qui ont un dépôt accepté depuis {@code since} (récapitulatif du matin). */
+    @Query("select distinct d.userId from ClientMailDeposit d where d.outcome = 'ACCEPTED' and d.depositedAt >= :since")
+    List<UUID> usersWithAcceptedSince(@Param("since") OffsetDateTime since);
+
     long countByUserIdAndHostIdAndOutcome(UUID userId, UUID hostId, String outcome);
 
     @Modifying

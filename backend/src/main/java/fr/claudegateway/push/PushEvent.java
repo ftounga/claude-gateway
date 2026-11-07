@@ -128,7 +128,13 @@ public enum PushEvent {
      * suivant. Une seule par mois ; corps neutre, sans montant.
      */
     JARVIS_NOTES_CAP("Jarvis a cessé de rédiger ses constats",
-            "Le plafond du mois pour les constats est atteint : ouvrez Jarvis, « Ce que je sais ».", true);
+            "Le plafond du mois pour les constats est atteint : ouvrez Jarvis, « Ce que je sais ».", true),
+
+    /**
+     * F-249 / SF-249-03 — des mails déposés depuis l'Outlook d'un client touchent un sujet en cours. Corps neutre :
+     * ni nom de sujet, ni client, ni contenu ; le lien ouvre le sujet. Tue si le sujet est regardé.
+     */
+    CLIENT_MAILS_ON_SUBJECT("Nouveaux mails sur un sujet en cours", "Ouvrez le sujet pour les voir.");
 
     private final String title;
     private final String body;
