@@ -21,6 +21,7 @@ import { ShowPlan3d, directShow } from './scenes3d/jarvis-show-3d';
 import { AmbientPlan3d, COST_VISIBLE_MS, directAmbient } from './scenes3d/jarvis-ambiance-3d';
 import { PANEL_POOL } from './jarvis-panels';
 import { CockpitInsets, NO_INSETS, sameInsets } from './hud/jarvis-cockpit-layout';
+import type { MouthShape } from '../face/jarvis-visemes';
 import {
   IDLE_SCREEN, ScreenSignals, StagePlan, UniverseView, directStage, samePlan, stageScene, universeView,
 } from './jarvis-stage-director';
@@ -109,6 +110,10 @@ export class JarvisStage3dComponent implements OnDestroy {
   readonly voiceLevel = input<() => number>(() => 0);
   /** SF-236-15 — ce que couvrent les panneaux latéraux du cockpit (l'univers se centre dans la zone libre). */
   readonly insets = input<CockpitInsets>(NO_INSETS);
+  /** F-250 — le visage à la place du cœur (coupe-circuit serveur et réglage de l'appareil). */
+  readonly face = input(false);
+  /** F-250 / SF-250-06 — la bouche à l'instant (lue à chaque image, hors zone). */
+  readonly mouth = input<((out: MouthShape) => void) | null>(null);
   /** Téléphone (lu par le cockpit : même relevé que la scène). */
   get isNarrow(): boolean {
     return this.narrow;
@@ -316,6 +321,17 @@ export class JarvisStage3dComponent implements OnDestroy {
     });
   });
 
+  /** F-250 — le visage allumé ou éteint après l'ouverture (l'état du serveur arrive après le montage). */
+  private readonly relayFace = effect(() => {
+    const on = this.face();
+    untracked(() => {
+      const engine = this.engine;
+      if (engine?.setFace) {
+        this.zone.runOutsideAngular(() => engine.setFace!(on));
+      }
+    });
+  });
+
   /** SF-236-15 — les panneaux latéraux relayés au moteur (hors zone). */
   private lastInsets: CockpitInsets = NO_INSETS;
   private readonly relayInsets = effect(() => {
@@ -462,6 +478,9 @@ export class JarvisStage3dComponent implements OnDestroy {
         withCore: untracked(() => this.withCore()),
         plan: untracked(() => this.plan()),
         voiceLevel: untracked(() => this.voiceLevel()),
+        face: untracked(() => this.face()),
+        mouth: (out) => untracked(() => this.mouth())?.(out),
+        reducedMotion: typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches,
         adaptive: this.banc === null,
         replayFromZero: this.banc !== null,
         entry: this.entryFor(),

@@ -106,6 +106,14 @@ export class JarvisPost {
     }
   }
 
+  /**
+   * F-250 — le seuil du bloom (0-1) : le visage, fait de points fins, ne s'illumine qu'avec un seuil bas (il descend
+   * avec la présence du visage, remonte avec le cœur).
+   */
+  setThreshold(threshold: number): void {
+    this.bloom.threshold = threshold;
+  }
+
   /** Dessine l'image avec un bloom d'intensité `strength` (montée à 1,6 aux moments forts), à l'instant `t`. */
   render(strength: number, t = 0): void {
     const bloomOn = BLOOM_SCALE[this.level] > 0 && strength > 0.01;

@@ -42,6 +42,33 @@ export const HOLO_COLORS: Readonly<Record<HoloRole, string>> = {
   text: '#F0954F',
 };
 
+/**
+ * F-250 — **le visage de Jarvis, style B « cyan holographique »** (choix PO du 2026-11-07, DESIGN_SYSTEM §23,
+ * exception documentée). Le cyan est ici la <b>teinte du visage</b>, et seulement de lui : le sens « attend votre
+ * réponse » reste porté par la pastille d'état et les pancartes (le visage, lui, l'exprime par sa posture : yeux
+ * grands ouverts, sourcils levés, ondes lentes), jamais par un changement de teinte.
+ */
+export const FACE_COLORS = {
+  /** Points du visage. */
+  base: '#5FD4FF',
+  /** Zones incandescentes (lèvres, yeux, balayage) : cyan presque blanc. */
+  hot: '#E8FBFF',
+  /** Fil de fer, cadran et socle. */
+  line: '#5FD4FF',
+  /** Traits lumineux (lèvres, paupières, iris, sourcils), ondes. */
+  accent: '#BDF3FF',
+  /** Aura de particules. */
+  aura: '#5FD4FF',
+  /** Lueur d'abysse du fond quand le visage est là (bleu nuit, dégradé vers le navy). */
+  abyss: '#0E2340',
+  /** Les mêmes, en composantes 0-1 (lues par le moteur sans conversion). */
+  accentRgb: [0xbd / 255, 0xf3 / 255, 1] as readonly number[],
+  /** Opacités : points, fil de fer, intensité du balayage. */
+  pointAlpha: 1.05,
+  lineAlpha: 0.24,
+  scan: 1,
+} as const;
+
 /** Les cinq paliers de transparence (§7.1) : aucune valeur intermédiaire arbitraire. */
 export const HOLO_ALPHA = {
   latent: 0.04,

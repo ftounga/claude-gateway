@@ -6,6 +6,7 @@ import { QualityLevel } from './jarvis-render-capability';
 import { EntryKind } from './jarvis-camera-rules';
 import { StagePlan } from './jarvis-stage-director';
 import { UniverseTouch } from './jarvis-layout-3d';
+import type { MouthShape } from '../face/jarvis-visemes';
 
 /**
  * F-236 / SF-236-01 — **le contrat du moteur 3D**, sans `three` : l'écran ne connaît que lui ; le moteur (et `three`)
@@ -45,6 +46,18 @@ export interface JarvisEngineOptions {
   entry: EntryKind;
   /** SF-236-05 — le cœur touché sur le canevas : « parler » (même méthode que l'orbe). */
   onTalk(): void;
+  /**
+   * F-250 — dessiner le **visage** à la place du cœur quand Jarvis dialogue (coupe-circuit `APP_JARVIS_FACE_ENABLED`
+   * et réglage « visage / cœur » de l'appareil). Absent ou faux : le cœur F-236, inchangé.
+   */
+  face?: boolean;
+  /**
+   * F-250 / SF-250-06 — la bouche à l'instant (visèmes calés sur `audio.currentTime`, sinon niveau sonore), lue à
+   * chaque image hors zone ; écrit dans `out`, n'alloue rien.
+   */
+  mouth?(out: MouthShape): void;
+  /** F-250 — mouvements réduits (`prefers-reduced-motion`) : le visage ne balance ni ne scintille. */
+  reducedMotion?: boolean;
   /** Première image dessinée : l'écran lance le fondu 2D → 3D (T-F). */
   onFirstFrame(): void;
   /** Contexte WebGL perdu (T11). */
@@ -75,6 +88,10 @@ export interface JarvisEngine {
   look(key: string): void;
   /** Images dessinées depuis l'ouverture. */
   readonly frames: number;
+  /** F-250 — le visage est-il affiché (présence > 0,5) ? Pour la mesure et le banc. */
+  readonly faceShown?: boolean;
+  /** F-250 — allume (construit au premier appel) ou éteint le visage ; le cœur reprend sa place en fondu. */
+  setFace?(on: boolean): void;
   /** Libère tout (géométries, matières, rendu, contexte, écouteurs) ; idempotent. */
   dispose(): void;
 }

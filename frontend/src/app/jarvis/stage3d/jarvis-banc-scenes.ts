@@ -40,6 +40,9 @@ const BANC_MOODS: Readonly<Record<string, HeartMood>> = {
   veille: 'veille', reveil: 'repos', 'cerveau-aller': 'reflexion', cerveau: 'reflexion', 'cerveau-retour': 'repos',
   'cerveau-annule': 'repos', univers: 'repos', 'univers-cite': 'parole', 'univers-montrer': 'repos',
   'univers-telephone': 'repos',
+  // F-250 — le visage.
+  'visage-repos': 'repos', 'visage-ecoute': 'ecoute', 'visage-reflexion': 'reflexion', 'visage-parole': 'parole',
+  'visage-oui': 'oui', 'visage-coupure': 'coupure', 'visage-veille': 'veille', 'visage-cerveau': 'reflexion',
 };
 
 /** SF-236-03 — les cerveaux posés par chaque scène du banc. */
@@ -47,6 +50,7 @@ function bancBrains(scene: string): { brains: BrainsState; fromDeployed: boolean
   switch (scene) {
     case 'cerveau-aller':
     case 'cerveau':
+    case 'visage-cerveau':
       return { brains: { target: 'deployed', variant: 'normal', pearls: 2 }, fromDeployed: false };
     case 'cerveau-retour':
       return { brains: { target: 'folded', variant: 'normal', pearls: 0 }, fromDeployed: true };
@@ -59,6 +63,11 @@ function bancBrains(scene: string): { brains: BrainsState; fromDeployed: boolean
 
 /** Le plan que le banc pose, et le niveau de voix simulé (ondes ∝ niveau). */
 export function bancPlan(scene: string, narrow: boolean): { plan: StagePlan; voice: number } {
+  if (scene === 'visage-pancarte') {
+    // F-250 / SF-250-07 — un panneau ouvert : le visage glisse sur le côté et le regarde.
+    const staged = bancPlan('scene-sgen', narrow);
+    return { plan: { ...staged.plan, mood: 'parole' }, voice: 0.6 };
+  }
   if (scene.startsWith('ambiance-')) {
     return { plan: bancAmbient(scene.slice('ambiance-'.length), narrow), voice: 0 };
   }
