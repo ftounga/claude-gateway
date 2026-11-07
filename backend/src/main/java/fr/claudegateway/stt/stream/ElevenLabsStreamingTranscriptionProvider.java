@@ -123,10 +123,50 @@ public class ElevenLabsStreamingTranscriptionProvider implements StreamingTransc
         if (languageHint != null && !languageHint.isBlank()) {
             url.append("&language_code=").append(encode(languageHint.strip().toLowerCase(Locale.ROOT)));
         }
-        (vocabulary == null ? java.util.List.<String>of() : vocabulary).stream()
-                .limit(MAX_STREAM_KEYTERMS)
-                .forEach(term -> url.append("&keyterms=").append(encode(term)));
+        streamKeyterms(vocabulary).forEach(term -> url.append("&keyterms=").append(encode(term)));
         return url.toString();
+    }
+
+    /**
+     * F-233 / SF-233-14 — le flux refuse aussi tout terme de plus de 20 caractères ({@code invalid_request} « Each
+     * keyterm must be at most 20 characters », vérifié en prod le 2026-11-07 : « poseidon-decommissionnement »). Un
+     * terme trop long est découpé à ses séparateurs ({@code , / ( ) ;} puis {@code -}) ; les morceaux de 2 à 20
+     * caractères sont gardés, sans doublon (casse ignorée), dans l'ordre de priorité, au plus 50.
+     */
+    static final int MAX_KEYTERM_CHARS = 20;
+
+    static java.util.List<String> streamKeyterms(java.util.List<String> vocabulary) {
+        java.util.LinkedHashMap<String, String> kept = new java.util.LinkedHashMap<>();
+        for (String term : vocabulary == null ? java.util.List.<String>of() : vocabulary) {
+            if (term == null) {
+                continue;
+            }
+            java.util.List<String> pieces = new java.util.ArrayList<>();
+            String t = term.strip();
+            if (t.length() <= MAX_KEYTERM_CHARS) {
+                pieces.add(t);
+            } else {
+                for (String part : t.split("[,/();]+")) {
+                    String p = part.strip();
+                    if (p.length() <= MAX_KEYTERM_CHARS) {
+                        pieces.add(p);
+                    } else {
+                        for (String sub : p.split("-")) {
+                            pieces.add(sub.strip());
+                        }
+                    }
+                }
+            }
+            for (String piece : pieces) {
+                if (piece.length() >= 2 && piece.length() <= MAX_KEYTERM_CHARS) {
+                    kept.putIfAbsent(piece.toLowerCase(Locale.ROOT), piece);
+                }
+            }
+            if (kept.size() >= MAX_STREAM_KEYTERMS) {
+                break;
+            }
+        }
+        return kept.values().stream().limit(MAX_STREAM_KEYTERMS).toList();
     }
 
     private static String encode(String value) {

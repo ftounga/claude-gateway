@@ -59,4 +59,13 @@ class ElevenLabsStreamingTranscriptionProviderTest {
         org.assertj.core.api.Assertions.assertThat(url).contains("&keyterms=Terme0&").endsWith("&keyterms=Terme49");
         org.assertj.core.api.Assertions.assertThat(url).doesNotContain("Terme50");
     }
+
+    @org.junit.jupiter.api.Test
+    void keytermsLongerThan20CharsAreSplitOrDropped() {
+        java.util.List<String> out = ElevenLabsStreamingTranscriptionProvider.streamKeyterms(java.util.List.of(
+                "CAGIP", "poseidon-decommissionnement", "Assa DIABIRA (CA-GIP)", "Credibom / Rémi KEBAILI", "cagip"));
+        org.assertj.core.api.Assertions.assertThat(out)
+                .containsExactly("CAGIP", "poseidon", "decommissionnement", "Assa DIABIRA", "CA-GIP", "Credibom", "Rémi KEBAILI");
+        org.assertj.core.api.Assertions.assertThat(out).allMatch(t -> t.length() <= 20);
+    }
 }
