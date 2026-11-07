@@ -130,8 +130,12 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     dictation.transcribe.and.callFake(() => dictation.stop());
     voice = jasmine.createSpyObj<JarvisVoiceService>('JarvisVoiceService',
       ['speak', 'stop', 'unlock', 'level', 'preloadClips', 'playClip', 'hasClip', 'enqueue', 'idle', 'status',
-        'duck', 'interrupt', 'resetHeard', 'audioAllowed']);
+        'duck', 'interrupt', 'resetHeard', 'audioAllowed', 'faceStatus', 'setAligned', 'playhead', 'alignment']);
     voice.interrupt.and.returnValue(null);
+    // F-250 — le visage et l'alignement allumés (défauts serveur).
+    voice.faceStatus.and.returnValue(of({ enabled: true, aligned: true }));
+    voice.playhead.and.returnValue(-1);
+    voice.alignment.and.returnValue(null);
     // SF-233-12 — par défaut le navigateur bloque le son : l'invite plein écran attend un toucher.
     voice.audioAllowed.and.resolveTo(false);
     voice.status.and.returnValue(of({
