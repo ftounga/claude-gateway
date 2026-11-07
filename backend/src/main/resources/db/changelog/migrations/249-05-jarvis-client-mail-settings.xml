@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-249 / SF-249-05 - LE RAPPEL DU SOIR ET LES REGLAGES.
+
+      jarvis_client_mail_settings : reglages du compte (cle = user_id) : heure du rappel, nombre et intervalle, jours
+      ouvres, delai des alertes avant reunion (SF-249-04).
+      jarvis_client_mail_hosts : un client (poste) ACTIF pour le rappel ; cree d'office au premier depot.
+      jarvis_client_mail_reminders : les rappels envoyes par jour et par client (sent_count avance par UPDATE
+      conditionnel : un seul pod envoie) et l'heure du depot qui fait taire le rappel du jour.
+
+      Rollback : les trois tables sont supprimees.
+    -->
+
+    <changeSet id="249-05-jarvis-client-mail-settings" author="claude-gateway">
+        <createTable tableName="jarvis_client_mail_settings">
+            <column name="user_id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="reminder_time" type="varchar(5)" defaultValue="18:30"><constraints nullable="false"/></column>
+            <column name="reminder_max" type="int" defaultValueNumeric="3"><constraints nullable="false"/></column>
+            <column name="reminder_every_minutes" type="int" defaultValueNumeric="45"><constraints nullable="false"/></column>
+            <column name="weekdays_only" type="boolean" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="meeting_alert_minutes" type="int" defaultValueNumeric="10"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createTable tableName="jarvis_client_mail_hosts">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="reminder_enabled" type="boolean" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="jarvis_client_mail_hosts" columnNames="user_id, host_id"
+                             constraintName="uq_jarvis_client_mail_hosts"/>
+        <createTable tableName="jarvis_client_mail_reminders">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="reminder_day" type="date"><constraints nullable="false"/></column>
+            <column name="sent_count" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="last_sent_at" type="timestamp with time zone"/>
+            <column name="deposited_at" type="timestamp with time zone"/>
+        </createTable>
+        <addUniqueConstraint tableName="jarvis_client_mail_reminders" columnNames="user_id, host_id, reminder_day"
+                             constraintName="uq_jarvis_client_mail_reminders"/>
+        <rollback>
+            <dropTable tableName="jarvis_client_mail_reminders"/>
+            <dropTable tableName="jarvis_client_mail_hosts"/>
+            <dropTable tableName="jarvis_client_mail_settings"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -88,9 +88,24 @@ public class ClientMailDepositService implements JarvisMailPurge {
      * courriers déposés de ce client ⇒ {@code DUPLICATE} ; reçu il y a plus de 30 jours ⇒ {@code IGNORED} ; sinon
      * {@code ACCEPTED} et un travail {@code MAIL_DEPOSIT}.
      */
+    /** SF-249-05 — un dépôt fait taire le rappel du jour et rend le client actif. Facultatif. */
+    private ClientMailSettingsService settingsService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setSettingsService(ClientMailSettingsService settingsService) {
+        this.settingsService = settingsService;
+    }
+
     @Transactional
     public Outcome accept(UUID userId, UUID hostId, String fileName, byte[] bytes) {
         OffsetDateTime now = OffsetDateTime.now(clock);
+        if (settingsService != null) {
+            try {
+                settingsService.onDeposit(userId, hostId);
+            } catch (RuntimeException e) {
+                log.info("Dépôts : rappel du jour non mis à jour ({})", e.getClass().getSimpleName());
+            }
+        }
         String hash = sha256(bytes);
         if (deposits.existsByUserIdAndHostIdAndContentHash(userId, hostId, hash)) {
             return new Outcome(ClientMailDeposit.DUPLICATE, null);
