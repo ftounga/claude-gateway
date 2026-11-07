@@ -24,8 +24,8 @@ class ToolRouterTest {
 
     @Test
     void annonceBashUniquementQuandLaMachineLaAutorise() {
-        assertEquals(List.of("files"), router(false).capabilities());
-        assertEquals(List.of("files", "bash", "bash_parallel_4", "proof", "low_priority"), router(true).capabilities());
+        assertEquals(List.of("files", "mail_deposit"), router(false).capabilities());
+        assertEquals(List.of("files", "bash", "bash_parallel_4", "proof", "low_priority", "mail_deposit"), router(true).capabilities());
     }
 
     @Test
@@ -34,9 +34,9 @@ class ToolRouterTest {
         PathResolver guard = new PathResolver(root);
         ToolRouter withBackground = new ToolRouter(new FileTools(guard),
                 new BashTool(guard, true, ShellElection.elect(), new BackgroundShells()));
-        assertEquals(List.of("files", "bash", "bash_parallel_4", "proof", "low_priority", "bash_background"), withBackground.capabilities());
+        assertEquals(List.of("files", "bash", "bash_parallel_4", "proof", "low_priority", "bash_background", "mail_deposit"), withBackground.capabilities());
         // Sans registre : pas d'arrière-plan annoncé (retro-compat).
-        assertEquals(List.of("files", "bash", "bash_parallel_4", "proof", "low_priority"), router(true).capabilities());
+        assertEquals(List.of("files", "bash", "bash_parallel_4", "proof", "low_priority", "mail_deposit"), router(true).capabilities());
     }
 
     @Test
@@ -105,7 +105,7 @@ class ToolRouterTest {
         ToolRouter router = new ToolRouter(new FileTools(guard),
                 new BashTool(guard, false, ShellElection.elect()), null, null, video.bind(guard));
 
-        assertEquals(List.of("files", "video"), router.capabilities());
+        assertEquals(List.of("files", "video", "mail_deposit"), router.capabilities());
         ToolOutcome outcome = router.execute("video_images_status",
                 MAPPER.createObjectNode().put("job_id", "inconnu"), ToolContext.none());
         assertFalse(outcome.ok());

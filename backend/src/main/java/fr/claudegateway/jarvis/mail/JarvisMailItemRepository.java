@@ -43,6 +43,23 @@ public interface JarvisMailItemRepository extends JpaRepository<JarvisMailItem, 
 
     long countByUserId(UUID userId);
 
+    /** F-249 — un courrier déposé de ce client porte déjà ce {@code Message-ID} (dédoublonnage, D5). */
+    boolean existsByUserIdAndHostIdAndMessageId(UUID userId, UUID hostId, String messageId);
+
+    /** F-249 — les courriers déposés d'un client, les plus récents d'abord. */
+    List<JarvisMailItem> findByUserIdAndHostIdOrderByReceivedAtDesc(UUID userId, UUID hostId, Pageable page);
+
+    long countByUserIdAndHostId(UUID userId, UUID hostId);
+
+    /** F-249 — le compte a-t-il des courriers d'une source ({@code DEPOT}) ? */
+    boolean existsByUserIdAndSource(UUID userId, String source);
+
+    /** F-249 — le poste supprimé emporte ses courriers déposés. */
+    @Modifying
+    @Transactional
+    @Query("delete from JarvisMailItem i where i.userId = :userId and i.hostId = :hostId")
+    int purgeHost(@Param("userId") UUID userId, @Param("hostId") UUID hostId);
+
     @Modifying
     @Transactional
     @Query("delete from JarvisMailItem i where i.userId = :userId and i.accountId = :accountId")

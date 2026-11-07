@@ -97,6 +97,14 @@ public final class MailText {
         }
     }
 
+    /**
+     * F-249 / SF-249-01 — un texte déjà extrait (corps d'un {@code .msg}) réduit comme un courrier IMAP : espaces et
+     * lignes vides resserrés, borné à {@code max} caractères.
+     */
+    public static String plain(String text, int max) {
+        return text == null ? "" : clip(normalize(text), max);
+    }
+
     /** HTML → texte : scripts, styles, commentaires et balises retirés ; quelques entités décodées. */
     public static String htmlToText(String html) {
         if (html == null || html.isEmpty()) {

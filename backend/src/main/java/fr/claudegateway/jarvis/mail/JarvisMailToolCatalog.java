@@ -96,8 +96,7 @@ public class JarvisMailToolCatalog {
 
     /** Les outils du tour : dans le fil Jarvis, avec au moins une boîte reliée ; sinon aucun. */
     public List<AgentTool> toolsFor(UUID userId, Workspace workspace) {
-        if (userId == null || workspace == null || !workspace.isJarvisThread()
-                || accounts.countByUserId(userId) == 0) {
+        if (userId == null || workspace == null || !workspace.isJarvisThread() || !hasMail(userId)) {
             return List.of();
         }
         return definitions();
@@ -108,9 +107,22 @@ public class JarvisMailToolCatalog {
      * moins une boîte reliée ; sinon {@code consigne} inchangée à l'octet près.
      */
     public String withNote(UUID userId, Workspace workspace, String consigne) {
-        boolean linked = userId != null && workspace != null && workspace.isJarvisThread()
-                && accounts.countByUserId(userId) > 0;
+        boolean linked = userId != null && workspace != null && workspace.isJarvisThread() && hasMail(userId);
         return JarvisMailNote.appendTo(consigne, linked);
+    }
+
+    /** Une boîte reliée, ou (F-249) des mails déposés depuis l'Outlook d'un client. */
+    private boolean hasMail(UUID userId) {
+        return accounts.countByUserId(userId) > 0
+                || (itemRepository != null && itemRepository.existsByUserIdAndSource(userId, JarvisMailItem.SOURCE_DEPOT));
+    }
+
+    /** F-249 — le cache, pour savoir si des mails ont été déposés. */
+    private JarvisMailItemRepository itemRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setItemRepository(JarvisMailItemRepository itemRepository) {
+        this.itemRepository = itemRepository;
     }
 
     /** Les définitions figées, dans l'ordre. */
@@ -236,6 +248,7 @@ public class JarvisMailToolCatalog {
     private Result reply(UUID userId, JsonNode input) {
         String raw = text(input, "courriel");
         MailRef ref = box.resolve(userId, raw);
+        JarvisMailBox.requireImap(ref);
         JarvisMailAccount account = box.account(userId, accountDesignation(userId, ref));
         JarvisMailBox.Thread thread = box.thread(userId, ref);
         boolean all = input != null && input.path("tous").asBoolean(false);
@@ -264,6 +277,7 @@ public class JarvisMailToolCatalog {
         JarvisMailAccount account;
         if (!inReplyRaw.isEmpty()) {
             MailRef ref = box.resolve(userId, inReplyRaw);
+            JarvisMailBox.requireImap(ref);
             thread = box.thread(userId, ref);
             String designation = text(input, "boite");
             account = box.account(userId, designation.isEmpty() ? accountDesignation(userId, ref) : designation);
@@ -359,7 +373,9 @@ public class JarvisMailToolCatalog {
         }
         List<MailRef> refs = new ArrayList<>();
         for (JsonNode n : list) {
-            refs.add(box.resolve(userId, n.asText("")));
+            MailRef ref = box.resolve(userId, n.asText(""));
+            JarvisMailBox.requireImap(ref);
+            refs.add(ref);
         }
         UUID account = refs.get(0).accountId();
         if (refs.stream().anyMatch(r -> !r.accountId().equals(account))) {

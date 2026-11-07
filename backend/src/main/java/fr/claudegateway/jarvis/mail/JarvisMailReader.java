@@ -36,6 +36,14 @@ public class JarvisMailReader {
     /** Le courrier du compte, corps relu par IMAP (≈ 8 000 caractères au plus). 404 s'il n'est plus dans la boîte. */
     public Body read(UUID userId, UUID itemId) {
         JarvisMailItem item = items.require(userId, itemId);
+        if (item.isDeposited()) {
+            // F-249 / SF-249-01 — aucun IMAP derrière un courrier déposé : le corps scellé gardé au dépôt.
+            String kept = items.depositedBody(item);
+            String text = kept.isEmpty() ? items.headers(item).snippet() : kept;
+            boolean cut = text.length() > BODY_MAX;
+            return new Body(items.views(userId, java.util.List.of(item)).get(0), cut ? text.substring(0, BODY_MAX)
+                    : text, cut);
+        }
         JarvisMailAccount account = accounts.require(userId, item.getAccountId());
         String text = server.withStore(account.getAddress(), accounts.secret(account), store -> {
             Folder folder = store.getFolder("INBOX");

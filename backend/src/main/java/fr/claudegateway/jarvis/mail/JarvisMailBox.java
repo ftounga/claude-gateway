@@ -106,6 +106,9 @@ public class JarvisMailBox {
 
     /** Lit un courrier : en-têtes et corps borné (texte seul). */
     public JarvisMailReader.Body read(UUID userId, MailRef ref) {
+        if (ref.accountId() == null && ref.itemId() != null) {
+            return deposited(userId, ref.itemId());
+        }
         JarvisMailAccount account = accounts.require(userId, ref.accountId());
         return server.withStore(account.getAddress(), accounts.secret(account), store -> {
             Folder folder = folder(store, ref.all());
@@ -131,8 +134,34 @@ public class JarvisMailBox {
         });
     }
 
+    /**
+     * F-249 / SF-249-01 — un courrier déposé (aucune boîte IMAP derrière) : le corps scellé gardé au dépôt, borné.
+     */
+    public JarvisMailReader.Body deposited(UUID userId, UUID itemId) {
+        JarvisMailItem item = items.require(userId, itemId);
+        if (!item.isDeposited()) {
+            throw new JarvisMailExceptions.MailNotFoundException();
+        }
+        String text = items.depositedBody(item);
+        if (text.isEmpty()) {
+            text = items.headers(item).snippet();
+        }
+        boolean truncated = text.length() > JarvisMailReader.BODY_MAX;
+        JarvisMailItemService.ItemView view = items.views(userId, List.of(item)).get(0);
+        return new JarvisMailReader.Body(view, truncated ? text.substring(0, JarvisMailReader.BODY_MAX) : text,
+                truncated);
+    }
+
+    /** F-249 — refuse une action sur un courrier déposé (on y répond depuis Outlook). */
+    public static void requireImap(MailRef ref) {
+        if (ref == null || ref.accountId() == null) {
+            throw new JarvisMailExceptions.DepositedMailException();
+        }
+    }
+
     /** Les en-têtes de fil d'un courrier (SF-242-06), relus par IMAP. */
     public Thread thread(UUID userId, MailRef ref) {
+        requireImap(ref);
         JarvisMailAccount account = accounts.require(userId, ref.accountId());
         return server.withStore(account.getAddress(), accounts.secret(account), store -> {
             Folder folder = folder(store, ref.all());

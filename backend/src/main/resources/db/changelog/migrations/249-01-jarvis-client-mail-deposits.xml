@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-249 / SF-249-01 - LE DEPOT RECU (mails Outlook deposes sur le poste d'un client).
+
+      jarvis_mail_items accueille une seconde source : source = DEPOT (defaut IMAP), host_id = le poste (le client) du
+      depot, account_id NUL (aucune boite IMAP), uid = uidvalidity = 0. body_sealed garde le corps TEXTE borne
+      (8 000 caracteres) SCELLE (ByokKeyCipher, patron sealed) : aucun IMAP ne permet de le relire.
+
+      jarvis_mail_deposits : le journal des depots (empreinte SHA-256 du fichier, issue), pour le dedoublonnage
+      (unique user_id, host_id, content_hash), le rappel du soir et le recapitulatif. Aucun nom de fichier, aucun
+      contenu. Purge a 30 jours.
+
+      Rollback : les courriers DEPOT sont supprimes (account_id doit redevenir non nul), puis les colonnes et la table.
+    -->
+
+    <changeSet id="249-01-jarvis-mail-items-depot" author="claude-gateway">
+        <addColumn tableName="jarvis_mail_items">
+            <column name="source" type="varchar(8)" defaultValue="IMAP"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"/>
+            <column name="body_sealed" type="varchar(24000)"/>
+        </addColumn>
+        <dropNotNullConstraint tableName="jarvis_mail_items" columnName="account_id" columnDataType="uuid"/>
+        <createIndex tableName="jarvis_mail_items" indexName="idx_jarvis_mail_items_host_message">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="message_id"/>
+        </createIndex>
+        <rollback>
+            <delete tableName="jarvis_mail_items"><where>source = 'DEPOT'</where></delete>
+            <dropIndex tableName="jarvis_mail_items" indexName="idx_jarvis_mail_items_host_message"/>
+            <addNotNullConstraint tableName="jarvis_mail_items" columnName="account_id" columnDataType="uuid"/>
+            <dropColumn tableName="jarvis_mail_items" columnName="body_sealed"/>
+            <dropColumn tableName="jarvis_mail_items" columnName="host_id"/>
+            <dropColumn tableName="jarvis_mail_items" columnName="source"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="249-01-jarvis-mail-deposits" author="claude-gateway">
+        <createTable tableName="jarvis_mail_deposits">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="content_hash" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="item_id" type="uuid"/>
+            <column name="outcome" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="deposited_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="jarvis_mail_deposits" columnNames="user_id, host_id, content_hash"
+                             constraintName="uq_jarvis_mail_deposits_hash"/>
+        <createIndex tableName="jarvis_mail_deposits" indexName="idx_jarvis_mail_deposits_user_at">
+            <column name="user_id"/>
+            <column name="deposited_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="jarvis_mail_deposits"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

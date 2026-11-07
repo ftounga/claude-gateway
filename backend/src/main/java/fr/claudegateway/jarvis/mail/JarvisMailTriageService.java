@@ -120,6 +120,22 @@ public class JarvisMailTriageService implements JarvisMailTriageTrigger {
         });
     }
 
+    /**
+     * F-249 / SF-249-01 — trie <b>tout de suite</b>, dans le fil de l'appelant (un travail asynchrone de la file
+     * durable), sous la même garde « un tri à la fois par compte ». Rend {@code -1} si un tri du compte est déjà en
+     * cours ailleurs (l'appelant réessaie plus tard), sinon le nombre de courriers triés.
+     */
+    public int triageNow(UUID userId) {
+        if (userId == null || !running.add(userId)) {
+            return -1;
+        }
+        try {
+            return triageUser(userId);
+        } finally {
+            running.remove(userId);
+        }
+    }
+
     /** Rattrapage : les comptes qui ont encore des courriers en attente (après une panne, un redémarrage). */
     public void triagePending() {
         for (UUID userId : items.usersWithTriage(JarvisMailItem.Triage.EN_ATTENTE, PageRequest.of(0, 50))) {
@@ -173,7 +189,7 @@ public class JarvisMailTriageService implements JarvisMailTriageTrigger {
                     set(e.getValue(), JarvisMailItem.Triage.A_LIRE, fallback, now);
                 } else {
                     set(e.getValue(), v.triage(), v.reason(), now);
-                    if (v.rdv() != null && calendar != null && !e.getValue().isHasCalendar()) {
+                    if (v.rdv() != null && calendar != null && !e.getValue().isHasCalendar() && !e.getValue().isDeposited()) {
                         try {
                             MailHeaders hh = itemService.headers(e.getValue());
                             calendar.onTextProposal(userId, e.getValue().getAccountId(), e.getValue().getId(),
