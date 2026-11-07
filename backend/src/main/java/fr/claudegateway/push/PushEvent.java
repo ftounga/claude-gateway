@@ -134,7 +134,14 @@ public enum PushEvent {
      * F-249 / SF-249-03 — des mails déposés depuis l'Outlook d'un client touchent un sujet en cours. Corps neutre :
      * ni nom de sujet, ni client, ni contenu ; le lien ouvre le sujet. Tue si le sujet est regardé.
      */
-    CLIENT_MAILS_ON_SUBJECT("Nouveaux mails sur un sujet en cours", "Ouvrez le sujet pour les voir.");
+    CLIENT_MAILS_ON_SUBJECT("Nouveaux mails sur un sujet en cours", "Ouvrez le sujet pour les voir."),
+
+    /**
+     * F-249 / SF-249-05 — le rappel du soir : aucun mail Outlook n'a été déposé aujourd'hui pour un client actif. Corps
+     * neutre (aucun nom de client) ; émis même terminal regardé.
+     */
+    CLIENT_MAIL_DEPOSIT_REMINDER("Pensez à déposer vos mails",
+            "Glissez les mails Outlook du jour dans le dossier du poste.", true);
 
     private final String title;
     private final String body;
