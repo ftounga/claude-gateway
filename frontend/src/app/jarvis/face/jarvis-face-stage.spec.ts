@@ -1,6 +1,6 @@
 import { CAMERA_FOV } from '../stage3d/jarvis-camera-rules';
 import {
-  FACE_MIN_SCALE, FACE_SCREEN_SHARE, facePresenceTarget, faceScaleFor,
+  FACE_MIN_SCALE, FACE_SCREEN_SHARE, faceOnDevice, facePresenceTarget, faceScaleFor, setFaceOnDevice,
 } from './jarvis-face-stage';
 
 describe('F-250 / SF-250-05 / SF-250-07 — la place du visage', () => {
@@ -24,5 +24,17 @@ describe('F-250 / SF-250-05 / SF-250-07 — la place du visage', () => {
     expect(phone).toBeLessThan(pc);
     expect(phone * 1.52).toBeLessThanOrEqual(0.7 * visibleH * (390 / 844) + 1e-6);
     expect(faceScaleFor(1, 1, CAMERA_FOV)).toBe(FACE_MIN_SCALE);
+  });
+
+  it('réglage de l’appareil : visage par défaut, « cœur » retenu, stockage illisible ⇒ visage', () => {
+    const store = new Map<string, string>();
+    const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) };
+    expect(faceOnDevice(storage)).toBeTrue();
+    setFaceOnDevice(false, storage);
+    expect(faceOnDevice(storage)).toBeFalse();
+    setFaceOnDevice(true, storage);
+    expect(faceOnDevice(storage)).toBeTrue();
+    expect(faceOnDevice({ getItem: () => { throw new Error('x'); } })).toBeTrue();
+    expect(() => setFaceOnDevice(true, { setItem: () => { throw new Error('x'); } })).not.toThrow();
   });
 });

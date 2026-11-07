@@ -39,3 +39,31 @@ export function facePresenceTarget(mood: HeartMood, brainSpread: number, _panels
   }
   return 1;
 }
+
+const SETTING_KEY = 'jarvis.face';
+
+/** Le réglage « Jarvis : visage / cœur » de l'appareil (défaut visage) ; illisible ⇒ visage. */
+export function faceOnDevice(storage: Pick<Storage, 'getItem'> | null = safeStorage()): boolean {
+  try {
+    return storage?.getItem(SETTING_KEY) !== 'coeur';
+  } catch {
+    return true;
+  }
+}
+
+/** Pose le réglage de l'appareil ; jamais d'exception. */
+export function setFaceOnDevice(on: boolean, storage: Pick<Storage, 'setItem'> | null = safeStorage()): void {
+  try {
+    storage?.setItem(SETTING_KEY, on ? 'visage' : 'coeur');
+  } catch {
+    // stockage indisponible : le réglage vit le temps de la page
+  }
+}
+
+function safeStorage(): Storage | null {
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage;
+  } catch {
+    return null;
+  }
+}

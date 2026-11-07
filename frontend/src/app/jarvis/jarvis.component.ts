@@ -2,6 +2,7 @@ import { JarvisPieceGalleryComponent } from './pieces/jarvis-piece-gallery.compo
 import { JarvisPieceStore, refusalPhrase } from './pieces/jarvis-piece-store';
 import { cardsAllowedOnDevice, setCardsAllowedOnDevice } from './cards/jarvis-card-deck';
 import { LipSync } from './face/jarvis-lip-sync';
+import { faceOnDevice, setFaceOnDevice } from './face/jarvis-face-stage';
 import type { MouthShape } from './face/jarvis-visemes';
 import { CardShowing } from './cards/jarvis-card-cite';
 import { CardsEvent } from './cards/jarvis-card.models';
@@ -814,6 +815,20 @@ export class JarvisComponent implements OnInit, OnDestroy {
   /** Bascule « Humour : aucun / léger » ; revient en arrière si l'enregistrement échoue. */
   /** F-250 — le coupe-circuit du serveur (`APP_JARVIS_FACE_ENABLED`), lu à l'ouverture (éteint en attendant). */
   readonly faceServer = signal(false);
+  /** F-250 / SF-250-07 — le réglage « Jarvis : visage / cœur » de cet appareil (défaut visage). */
+  readonly faceDevice = signal(faceOnDevice());
+  /** F-250 — le visage est-il demandé à la scène 3D ? (serveur ET appareil) */
+  readonly faceOn = computed(() => this.faceDevice() && this.faceServer());
+  /** F-250 — la voix du compte sait-elle aligner ? */
+  private faceAligned = false;
+
+  /** F-250 / SF-250-07 — bascule « Jarvis : visage / cœur » (cet appareil) ; le cœur n'a pas besoin d'alignement. */
+  toggleFace(): void {
+    const on = !this.faceDevice();
+    this.faceDevice.set(on);
+    setFaceOnDevice(on);
+    this.voice.setAligned(this.faceAligned && on);
+  }
   /** F-250 / SF-250-06 — les lèvres : visèmes sur l'horloge audio, sinon niveau sonore. */
   private readonly lips = new LipSync(this.voice);
   /** F-250 / SF-250-06 — la bouche lue par la scène 3D à chaque image (hors zone, sans allocation). */
@@ -1002,7 +1017,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.voice.faceStatus().subscribe({
       next: (face) => {
         this.faceServer.set(face.enabled);
-        this.voice.setAligned(face.enabled && face.aligned);
+        this.faceAligned = face.enabled && face.aligned;
+        this.voice.setAligned(this.faceAligned && this.faceDevice());
       },
       error: () => undefined,
     });

@@ -114,6 +114,8 @@ export class JarvisStage3dComponent implements OnDestroy {
   readonly face = input(false);
   /** F-250 / SF-250-06 — la bouche à l'instant (lue à chaque image, hors zone). */
   readonly mouth = input<((out: MouthShape) => void) | null>(null);
+  /** F-250 / SF-250-07 — pancartes ou galerie ouvertes : le visage s'écarte. */
+  readonly faceAside = input(false);
   /** Téléphone (lu par le cockpit : même relevé que la scène). */
   get isNarrow(): boolean {
     return this.narrow;
@@ -328,6 +330,17 @@ export class JarvisStage3dComponent implements OnDestroy {
       const engine = this.engine;
       if (engine?.setFace) {
         this.zone.runOutsideAngular(() => engine.setFace!(on));
+      }
+    });
+  });
+
+  /** F-250 / SF-250-07 — pancartes / galerie relayées au moteur. */
+  private readonly relayFaceAside = effect(() => {
+    const on = this.faceAside();
+    untracked(() => {
+      const engine = this.engine;
+      if (engine?.setFaceAside) {
+        this.zone.runOutsideAngular(() => engine.setFaceAside!(on));
       }
     });
   });

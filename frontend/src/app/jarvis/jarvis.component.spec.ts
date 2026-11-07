@@ -221,6 +221,26 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     jarvis.ngOnDestroy();
   }));
 
+  it('F-250 / SF-250-07 — visage allumé par le serveur : alignement demandé ; « Jarvis : cœur » l’éteint et coupe l’alignement', fakeAsync(() => {
+    configure({});
+    localStorage.removeItem('jarvis.face');
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    const c = fixture.componentInstance;
+    expect(c.faceOn()).toBeTrue();
+    expect(voice.setAligned).toHaveBeenCalledWith(true);
+    c.toggleFace();
+    expect(c.faceOn()).toBeFalse();
+    expect(voice.setAligned).toHaveBeenCalledWith(false);
+    expect(localStorage.getItem('jarvis.face')).toBe('coeur');
+    c.toggleFace();
+    expect(c.faceOn()).toBeTrue();
+    localStorage.removeItem('jarvis.face');
+    fixture.destroy();
+    discardPeriodicTasks();
+  }));
+
   it('F-249 / SF-249-07 — « Mails clients » ouvre le volet ; ni bouton ni volet en présentation', fakeAsync(() => {
     configure({});
     const fixture = TestBed.createComponent(JarvisComponent);
