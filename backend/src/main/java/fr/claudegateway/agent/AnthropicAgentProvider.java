@@ -240,9 +240,15 @@ public class AnthropicAgentProvider implements AiAgentProvider {
 
     @Override
     public AgentTurn nextTurn(AgentTurnRequest request) {
+        return withRefusalRetry(request, this::nonStreamedAttempt);
+    }
+
+    /** Un appel complet, et le signal de refus qu'il a éventuellement porté (SF-172-08). */
+    private Attempt nonStreamedAttempt(AgentTurnRequest request) {
         Prepared prepared = prepare(request);
-        return callWithRetry(request.model(), prepared.contextEditing(),
+        AgentTurn turn = callWithRetry(request.model(), prepared.contextEditing(),
                 () -> toTurn(sendNonStreamed(prepared), prepared));
+        return new Attempt(turn, prepared.refusal().get());
     }
 
     /**
@@ -258,8 +264,17 @@ public class AnthropicAgentProvider implements AiAgentProvider {
      */
     @Override
     public AgentTurn nextTurn(AgentTurnRequest request, AgentTextListener textListener) {
-        Prepared prepared = prepare(request);
         AgentTextListener sink = textListener == null ? AgentTextListener.NONE : textListener;
+        return withRefusalRetry(request, r -> streamedAttempt(r, sink));
+    }
+
+    /** Un tour en flux (relance d'emballement comprise), et son signal de refus (SF-172-08). */
+    private Attempt streamedAttempt(AgentTurnRequest request, AgentTextListener sink) {
+        Prepared prepared = prepare(request);
+        return new Attempt(streamedTurn(request, prepared, sink), prepared.refusal().get());
+    }
+
+    private AgentTurn streamedTurn(AgentTurnRequest request, Prepared prepared, AgentTextListener sink) {
         // Corps identique + `stream:true` : le préfixe caché et le retry restent ceux du non streamé.
         Map<String, Object> streamBody = new HashMap<>(prepared.body());
         streamBody.put("stream", true);
@@ -313,10 +328,129 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         }
     }
 
+    /** Ce qu'un refus dit du repli (F-172 / SF-172-08) : catégorie, modèle recommandé, repli tenté. */
+    private record RefusalSignal(String category, String recommendedModel, boolean serverFellBack) {
+    }
+
+    /** Un appel au fournisseur : le tour, et le signal de refus s'il a été refusé. */
+    private record Attempt(AgentTurn turn, RefusalSignal refusal) {
+    }
+
+    /** Catégories que le repli du fournisseur rejoue — et donc que la relance client rejoue aussi. */
+    private static final java.util.Set<String> RETRIED_REFUSAL_CATEGORIES = java.util.Set.of("cyber", "frontier_llm");
+
+    /**
+     * Modèles qui acceptent une consigne d'effort <b>par message</b> (relevé fournisseur, novembre 2026).
+     * Une relance vers un autre modèle (Opus 4.8) reçoit l'effort effectif à la racine à la place.
+     */
+    private static final java.util.Set<String> PER_MESSAGE_EFFORT_MODELS = java.util.Set.of(
+            "claude-fable-5-1", "claude-mythos-5-1", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5",
+            "claude-haiku-5-5");
+
+    /**
+     * Relance client sur un refus que le repli serveur n'a pas rattrapé (F-172 / SF-172-08). Plancher
+     * documenté par le fournisseur : quand le modèle de repli est limité ou surchargé, la tentative de
+     * repli n'est pas faite et le refus revient, avec {@code recommended_model} si une cible est connue.
+     * Une seule relance ; refusée ou en échec, c'est le refus d'origine qui remonte, inchangé.
+     */
+    private AgentTurn withRefusalRetry(AgentTurnRequest request,
+            java.util.function.Function<AgentTurnRequest, Attempt> call) {
+        Attempt first = call.apply(request);
+        String target = refusalRetryTarget(request.model(), first);
+        if (target == null) {
+            return first.turn();
+        }
+        String origin = first.refusal().recommendedModel() != null ? "recommended_model" : "configuration";
+        log.info("Refus non replié par le serveur (catégorie={}) : relance client {} -> {} (cible : {}).",
+                first.refusal().category(), request.model(), target, origin);
+        Attempt second;
+        try {
+            second = call.apply(retryRequest(request, target));
+        } catch (RuntimeException ex) {
+            log.warn("Relance client sur refus en échec ({} -> {}, {}) : refus d'origine conservé.",
+                    request.model(), target, ex.getClass().getSimpleName());
+            return first.turn();
+        }
+        if (second.turn().refused()) {
+            log.info("Relance client sur refus refusée aussi ({} -> {}, catégorie={}) : refus d'origine conservé.",
+                    request.model(), target, second.turn().refusalCategory());
+            return first.turn();
+        }
+        log.info("Relance client sur refus servie ({} -> {}, servi par {}).", request.model(), target,
+                second.turn().servedModel() == null ? target : second.turn().servedModel());
+        return withRefusedAttempt(second.turn(), first.turn());
+    }
+
+    /** Cible de la relance, ou {@code null} si ce refus ne se relance pas (SF-172-08). */
+    private String refusalRetryTarget(String requestedModel, Attempt attempt) {
+        RefusalSignal refusal = attempt.refusal();
+        if (!attempt.turn().refused() || refusal == null || refusal.serverFellBack()
+                || refusal.category() == null || !RETRIED_REFUSAL_CATEGORIES.contains(refusal.category())
+                || !features.refusalRetryFor(requestedModel)) {
+            return null;
+        }
+        String target = refusal.recommendedModel() != null && !refusal.recommendedModel().equals(requestedModel)
+                ? refusal.recommendedModel()
+                : features.refusalRetryModel();
+        return target.equals(requestedModel) ? null : target;
+    }
+
+    /**
+     * La même requête domaine, pour un autre modèle (SF-172-08) : elle repasse par {@link #prepare},
+     * donc les capacités par modèle s'appliquent d'elles-mêmes. Deux ajustements seulement : les
+     * consignes d'effort par message sont repliées à la racine si la cible ne les connaît pas, et le
+     * raisonnement est demandé explicitement (Opus 4.8 sans {@code thinking} ne raisonne pas, quand
+     * le modèle refusé raisonnait toujours) — sauf requête explicitement sans raisonnement.
+     */
+    private static AgentTurnRequest retryRequest(AgentTurnRequest request, String target) {
+        List<AgentMessage> messages = request.messages();
+        String effort = request.reasoning().effort();
+        if (!PER_MESSAGE_EFFORT_MODELS.contains(target)) {
+            List<AgentMessage> kept = new ArrayList<>(messages.size());
+            for (AgentMessage message : messages) {
+                if (message.isEffortDirective()) {
+                    effort = message.effort();
+                } else {
+                    kept.add(message);
+                }
+            }
+            messages = kept;
+        }
+        AgentReasoning reasoning = request.reasoning().disabled()
+                ? request.reasoning()
+                : new AgentReasoning(true, effort);
+        return new AgentTurnRequest(target, request.system(), messages, request.tools(), request.apiKey(),
+                reasoning, request.contextPolicy(), request.mode(), request.shape());
+    }
+
+    /**
+     * Le tour servi par la relance, augmenté de l'usage de la tentative refusée (SF-172-08) : la part
+     * refusée garde son modèle, la relance le sien ; les totaux sont la somme.
+     */
+    private static AgentTurn withRefusedAttempt(AgentTurn served, AgentTurn refused) {
+        List<AgentTurn.ModelUsage> parts = new ArrayList<>(refused.usageByModel());
+        parts.addAll(served.usageByModel());
+        return new AgentTurn(served.text(), served.toolCalls(), served.finished(),
+                served.inputTokens() + refused.inputTokens(), served.outputTokens() + refused.outputTokens(),
+                served.truncated(), served.reasoning(), served.cacheReadTokens() + refused.cacheReadTokens(),
+                served.cacheWriteTokens() + refused.cacheWriteTokens(),
+                served.webSearchRequests() + refused.webSearchRequests(), false, null, served.servedModel(), parts,
+                served.narration(), served.droppedThinkingBlocks(), served.paused(), served.contextEdited(),
+                served.runawayRelaunches());
+    }
+
     /** Corps de requête prêt à partir, calculé <b>une fois</b> et partagé streamé/non streamé. */
     private record Prepared(String apiKey, Map<String, Object> body, boolean contextEditing,
             boolean perMessageEffort, List<String> extraBetas, String model, boolean progressUpdates,
-            int streamedMaxTokens, boolean reasoningActive) {
+            int streamedMaxTokens, boolean reasoningActive,
+            java.util.concurrent.atomic.AtomicReference<RefusalSignal> refusal) {
+
+        Prepared(String apiKey, Map<String, Object> body, boolean contextEditing, boolean perMessageEffort,
+                List<String> extraBetas, String model, boolean progressUpdates, int streamedMaxTokens,
+                boolean reasoningActive) {
+            this(apiKey, body, contextEditing, perMessageEffort, extraBetas, model, progressUpdates,
+                    streamedMaxTokens, reasoningActive, new java.util.concurrent.atomic.AtomicReference<>());
+        }
     }
 
     /**
@@ -1396,10 +1530,11 @@ public class AnthropicAgentProvider implements AiAgentProvider {
     }
 
     private AgentTurn toTurn(JsonNode response, Prepared prepared) {
-        return toTurn(response, prepared.model(), prepared.progressUpdates());
+        return toTurn(response, prepared.model(), prepared.progressUpdates(), prepared.refusal());
     }
 
-    private AgentTurn toTurn(JsonNode response, String requestedModel, boolean progressUpdates) {
+    private AgentTurn toTurn(JsonNode response, String requestedModel, boolean progressUpdates,
+            java.util.concurrent.atomic.AtomicReference<RefusalSignal> refusalSink) {
         if (response == null || !response.hasNonNull("content")) {
             throw new AIProviderException("Réponse vide du fournisseur IA.");
         }
@@ -1408,7 +1543,7 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         // en cours de flux) est jetée : elle n'est ni une réponse, ni un appel d'outil à exécuter.
         // Les tokens restent comptés — la partie déjà produite est facturée.
         if ("refusal".equals(response.path("stop_reason").asText(""))) {
-            return refusedTurn(response, requestedModel);
+            return refusedTurn(response, requestedModel, refusalSink);
         }
         StringBuilder text = new StringBuilder();
         StringBuilder narration = new StringBuilder();
@@ -1655,7 +1790,8 @@ public class AnthropicAgentProvider implements AiAgentProvider {
      * catégorie. Avant cette subfeature, un refus passait pour un tour terminé au texte vide — d'où
      * une réponse vide, sans explication.
      */
-    private AgentTurn refusedTurn(JsonNode response, String requestedModel) {
+    private AgentTurn refusedTurn(JsonNode response, String requestedModel,
+            java.util.concurrent.atomic.AtomicReference<RefusalSignal> refusalSink) {
         JsonNode details = response.path("stop_details");
         String category = details.path("category").isTextual() ? details.path("category").asText() : null;
         JsonNode usage = response.path("usage");
@@ -1665,9 +1801,30 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         int cacheRead = reading.cacheRead();
         int inputTokens = reading.fullInput() + cacheCreation + cacheRead;
         int outputTokens = reading.output();
+        // Pourquoi le repli serveur n'a pas servi (F-172 / SF-172-08) : `recommended_model` n'est posé
+        // que si la tentative de repli N'A PAS PU être faite (cible limitée/surchargée) ; un bloc
+        // `fallback` ou une entrée `fallback_message` disent qu'elle a eu lieu (et a refusé aussi).
+        String recommended = details.path("recommended_model").isTextual()
+                && !details.path("recommended_model").asText().isBlank()
+                ? details.path("recommended_model").asText().trim() : null;
+        JsonNode iterations = usage.path("iterations");
+        int iterationCount = iterations.isArray() ? iterations.size() : 0;
+        boolean fallbackBlock = response.path("content").isArray() && lastFallbackIndex(response.path("content")) >= 0;
+        boolean fallbackMessage = false;
+        for (JsonNode iteration : iterations) {
+            if ("fallback_message".equals(iteration.path("type").asText(""))) {
+                fallbackMessage = true;
+            }
+        }
         // Ni le contenu, ni l'explication : seulement de quoi compter et classer les refus.
-        log.warn("Tour d'agent refusé par le fournisseur (stop_reason=refusal, catégorie={}, modèle={}).",
-                category == null ? "non précisée" : category, response.path("model").asText("?"));
+        log.warn("Tour d'agent refusé par le fournisseur (stop_reason=refusal, catégorie={}, modèle={}, servi={}, "
+                + "recommended_model={}, iterations={}, bloc_fallback={}, fallback_message={}).",
+                category == null ? "non précisée" : category, response.path("model").asText("?"),
+                servedModel == null ? "?" : servedModel, recommended == null ? "aucun" : recommended,
+                iterationCount, fallbackBlock, fallbackMessage);
+        if (refusalSink != null) {
+            refusalSink.set(new RefusalSignal(category, recommended, fallbackBlock || fallbackMessage));
+        }
         return new AgentTurn("", List.of(), true, inputTokens, outputTokens, false, List.of(),
                 cacheRead, cacheCreation, usage.path("server_tool_use").path("web_search_requests").asInt(0),
                 true, category, servedModel, reading.parts());
