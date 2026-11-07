@@ -59,6 +59,14 @@ public class ClientMailDepositJobHandler implements AsyncJobHandler {
         this.meetings = meetings;
     }
 
+    /** SF-249-06 — les règles « ignorer » du client, avant toute IA ; le repérage des mails répétitifs. */
+    private ClientMailIgnoreService ignore;
+
+    @Autowired(required = false)
+    public void setIgnore(ClientMailIgnoreService ignore) {
+        this.ignore = ignore;
+    }
+
     /** SF-249-03 — rattacher aux sujets et annoncer, après le tri. */
     private ClientMailAnnouncer announcer;
 
@@ -96,6 +104,10 @@ public class ClientMailDepositJobHandler implements AsyncJobHandler {
         if (meetings != null && job.payloadBytes() != null) {
             meetings.apply(userId, hostId, item.getId(), invitation(job), item.getReceivedAt());
         }
+        if (ignore != null && item.getTriage() == JarvisMailItem.Triage.EN_ATTENTE && ignore.ignoredByRule(item)) {
+            ignore.detect(userId, hostId);
+            return Outcome.done(); // écarté par règle : ni tri par le modèle, ni rattachement, ni annonce
+        }
         if (item.getTriage() == JarvisMailItem.Triage.EN_ATTENTE && triage != null) {
             int done = triage.triageNow(userId);
             if (done < 0) {
@@ -108,6 +120,9 @@ public class ClientMailDepositJobHandler implements AsyncJobHandler {
         }
         if (announcer != null) {
             announcer.linkAndAnnounce(item);
+        }
+        if (ignore != null) {
+            ignore.detect(userId, hostId);
         }
         return Outcome.done();
     }

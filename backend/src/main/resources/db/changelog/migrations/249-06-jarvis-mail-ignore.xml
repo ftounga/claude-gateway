@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-249 / SF-249-06 - LES MAILS REPETITIFS.
+
+      jarvis_mail_ignore_offers : les propositions « Ignorer ces mails ? » reperees sans IA (expediteur automatique
+      recurrent, objet repete) ; status PENDING, ACCEPTED, DECLINED ; jamais reproposee (unique compte, client, genre,
+      valeur).
+      jarvis_mail_ignore_rules : les regles acceptees, appliquees AVANT toute IA aux mails deposes du client ;
+      retirables d'un clic.
+
+      Rollback : les deux tables sont supprimees.
+    -->
+
+    <changeSet id="249-06-jarvis-mail-ignore" author="claude-gateway">
+        <createTable tableName="jarvis_mail_ignore_offers">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="kind" type="varchar(8)"><constraints nullable="false"/></column>
+            <column name="rule_value" type="varchar(200)"><constraints nullable="false"/></column>
+            <column name="sample" type="varchar(200)"/>
+            <column name="occurrences" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(10)"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="decided_at" type="timestamp with time zone"/>
+        </createTable>
+        <addUniqueConstraint tableName="jarvis_mail_ignore_offers" columnNames="user_id, host_id, kind, rule_value"
+                             constraintName="uq_jarvis_mail_ignore_offers"/>
+        <createTable tableName="jarvis_mail_ignore_rules">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="kind" type="varchar(8)"><constraints nullable="false"/></column>
+            <column name="rule_value" type="varchar(200)"><constraints nullable="false"/></column>
+            <column name="sample" type="varchar(200)"/>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="jarvis_mail_ignore_rules" columnNames="user_id, host_id, kind, rule_value"
+                             constraintName="uq_jarvis_mail_ignore_rules"/>
+        <rollback>
+            <dropTable tableName="jarvis_mail_ignore_rules"/>
+            <dropTable tableName="jarvis_mail_ignore_offers"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
