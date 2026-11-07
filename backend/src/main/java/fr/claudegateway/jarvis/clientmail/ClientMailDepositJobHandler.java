@@ -51,6 +51,14 @@ public class ClientMailDepositJobHandler implements AsyncJobHandler {
         this.triage = triage;
     }
 
+    /** SF-249-03 — rattacher aux sujets et annoncer, après le tri. */
+    private ClientMailAnnouncer announcer;
+
+    @Autowired(required = false)
+    public void setAnnouncer(ClientMailAnnouncer announcer) {
+        this.announcer = announcer;
+    }
+
     @Override
     public String kind() {
         return ClientMailDepositService.JOB_KIND;
@@ -85,6 +93,10 @@ public class ClientMailDepositJobHandler implements AsyncJobHandler {
                         job.payloadBytes(), job.maxAttempts()), Instant.now().plusSeconds(RETRY_SECONDS));
                 return Outcome.done();
             }
+            item = items.findByIdAndUserId(itemId, userId).orElse(item);
+        }
+        if (announcer != null) {
+            announcer.linkAndAnnounce(item);
         }
         return Outcome.done();
     }

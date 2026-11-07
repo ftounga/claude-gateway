@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-249 / SF-249-03 - RATTACHER AUX SUJETS, ANNONCER.
+
+      jarvis_mail_subject_links : un courrier depose rattache (sans IA) a un sujet de son client ; reason = FIL, TICKET
+      ou MOTS. Suit le courrier (purge 30 j, poste, compte).
+
+      jarvis_notices : les ANNONCES D'INTERFACE (jamais un message de conversation) : nouveaux mails sur un sujet, recap
+      du matin, rappel du soir (SF-249-05), reunion imminente (SF-249-04). dedup_key unique par compte : une annonce
+      par sujet qui cumule (count) tant qu'elle n'est pas vue. text = ce qui s'affiche, speech = ce que Jarvis dit.
+      Aucun contenu de mail : des noms de sujets et de clients, des nombres.
+
+      Rollback : les deux tables sont supprimees.
+    -->
+
+    <changeSet id="249-03-jarvis-mail-subject-links" author="claude-gateway">
+        <createTable tableName="jarvis_mail_subject_links">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="item_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="reason" type="varchar(8)"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="jarvis_mail_subject_links" columnNames="item_id, workspace_id"
+                             constraintName="uq_jarvis_mail_subject_links"/>
+        <createIndex tableName="jarvis_mail_subject_links" indexName="idx_jarvis_mail_subject_links_user">
+            <column name="user_id"/>
+            <column name="created_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="jarvis_mail_subject_links"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="249-03-jarvis-notices" author="claude-gateway">
+        <createTable tableName="jarvis_notices">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"/>
+            <column name="workspace_id" type="uuid"/>
+            <column name="kind" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="dedup_key" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="display_text" type="varchar(300)"><constraints nullable="false"/></column>
+            <column name="speech_text" type="varchar(300)"><constraints nullable="false"/></column>
+            <column name="link" type="varchar(200)"/>
+            <column name="item_count" type="int" defaultValueNumeric="1"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="expires_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="seen_at" type="timestamp with time zone"/>
+            <column name="spoken_at" type="timestamp with time zone"/>
+        </createTable>
+        <addUniqueConstraint tableName="jarvis_notices" columnNames="user_id, dedup_key"
+                             constraintName="uq_jarvis_notices_key"/>
+        <createIndex tableName="jarvis_notices" indexName="idx_jarvis_notices_user_open">
+            <column name="user_id"/>
+            <column name="seen_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="jarvis_notices"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

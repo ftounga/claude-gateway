@@ -648,6 +648,10 @@ app:
     client-mail:
       enabled: ${APP_JARVIS_CLIENT_MAIL_ENABLED:true}
       max-bytes: ${APP_JARVIS_CLIENT_MAIL_MAX_BYTES:20971520}
+    # F-249 / SF-249-03 : LES ANNONCES D'INTERFACE (nouveaux mails sur un sujet, recap du matin, rappel, reunion) ;
+    # jamais un message dans le fil d'un sujet. enabled = COUPE-CIRCUIT (aucune annonce creee, liste vide).
+    notices:
+      enabled: ${APP_JARVIS_NOTICES_ENABLED:true}
     # F-243 : LES AGENDAS DE JARVIS (adresse iCal secrete de Google, chiffree par ByokKeyCipher ; lecture seule, sans IA).
     # enabled = COUPE-CIRCUIT de la releve (D2) : false => aucune lecture periodique. allowed-hosts = garde anti-SSRF
     # (l'adresse est saisie par l'utilisateur et lue par le serveur) : HTTPS vers calendar.google.com seulement.
