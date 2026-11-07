@@ -36,6 +36,8 @@ public final class JarvisCompanionScope {
             new Route("POST", "/atelier/transcription"),
             new Route("GET", "/jarvis/voice"),
             new Route("POST", "/jarvis/speech"),
+            // F-250 / SF-233-16 — le coupe-circuit du visage (un booléen) : sans lui, le compagnon montrait le cœur.
+            new Route("GET", "/jarvis/face"),
             new Route("GET", "/jarvis/clips/*"),
             new Route("POST", "/jarvis/stt-session"),
             new Route("POST", "/jarvis/stt-session/*/close"),

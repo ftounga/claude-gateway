@@ -26,6 +26,7 @@ class JarvisCompanionScopeTest {
             "GET,/runner/download/android/version",
             "GET,/jarvis/preferences/",
             "POST,/jarvis/listen-trace",
+            "GET,/jarvis/face",
     })
     void opens(String method, String path) {
         assertThat(JarvisCompanionScope.allows(method, path)).isTrue();

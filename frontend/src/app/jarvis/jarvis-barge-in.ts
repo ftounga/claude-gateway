@@ -148,7 +148,8 @@ export interface VadHandlers {
 
 /** Une détection de voix en marche. */
 export interface RunningVad {
-  stop(): void;
+  /** F-233 / SF-233-16 — peut rendre la promesse de la libération du micro (attendue, bornée, avant la réécoute). */
+  stop(): void | Promise<void>;
 }
 
 /**
@@ -175,6 +176,6 @@ export class JarvisVadService {
       onSpeechEnd: (audio: Float32Array) => handlers.onSpeechEnd(audio),
     });
     await vad.start();
-    return { stop: () => void vad.destroy().catch(() => undefined) };
+    return { stop: () => vad.destroy().catch(() => undefined) };
   }
 }

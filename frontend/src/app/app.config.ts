@@ -6,6 +6,7 @@ import { provideServiceWorker } from '@angular/service-worker';
 
 import { routes } from './app.routes';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
+import { inCompanionWebView } from './core/companion-webview';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -19,8 +20,9 @@ export const appConfig: ApplicationConfig = {
     // d'ailleurs généré que par le build de production (`serviceWorker` dans angular.json). Il ne
     // met en cache que la coquille (ngsw-config.json), jamais l'API/SSE (le tour vit côté serveur,
     // F-84 : rien à répliquer hors ligne).
+    // F-233 / SF-233-16 — jamais dans la WebView du compagnon Android (toujours la dernière version déployée).
     provideServiceWorker('ngsw-worker.js', {
-      enabled: !isDevMode(),
+      enabled: !isDevMode() && !inCompanionWebView(),
       registrationStrategy: 'registerWhenStable:30000',
     }),
   ],

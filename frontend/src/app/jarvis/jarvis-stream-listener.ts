@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 
 import { JarvisSttTicket, TurnTimingReport } from '../core/models/jarvis.models';
+import { MIC_OPEN_TIMEOUT_MS, stopTracks, timed } from '../core/timed';
 
 /**
  * **Écouter en flux** (F-233 / SF-233-05, D5, D6) — le navigateur parle **directement** au fournisseur de
@@ -186,6 +187,8 @@ export const PRE_ROLL_RATE = 16_000;
 
 /** Au-delà, une session qui ne démarre pas est abandonnée (repli sur la dictée). */
 export const START_TIMEOUT_MS = 3_000;
+/** F-233 / SF-233-16 — le chargement du module de capture (AudioWorklet), borné. */
+export const WORKLET_TIMEOUT_MS = 4_000;
 
 /**
  * Une session d'écoute en flux, sur un flux micro déjà ouvert. `start()` se résout quand le fournisseur a accepté la
@@ -362,7 +365,8 @@ export class StreamingListener {
     const rate = context.sampleRate;
     if (context.audioWorklet) {
       this.tapUrl = URL.createObjectURL(new Blob([TAP_SOURCE], { type: 'application/javascript' }));
-      await context.audioWorklet.addModule(this.tapUrl);
+      // F-233 / SF-233-16 — borné : un module audio qui ne se charge pas ne fige plus l'ouverture.
+      await timed(context.audioWorklet.addModule(this.tapUrl), WORKLET_TIMEOUT_MS);
       const node = new AudioWorkletNode(context, 'jarvis-pcm-tap');
       node.port.onmessage = (event: MessageEvent<Float32Array>) => this.push(event.data, rate);
       this.source.connect(node);
@@ -398,7 +402,9 @@ export class JarvisStreamOpener {
              preRoll?: (() => Float32Array | null) | null): Promise<LiveListening> {
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: LISTEN_AUDIO });
+      // F-233 / SF-233-16 — borné : un micro qui ne répond pas ne fige plus l'ouverture de l'écoute.
+      stream = await timed(navigator.mediaDevices.getUserMedia({ audio: LISTEN_AUDIO }), MIC_OPEN_TIMEOUT_MS,
+        stopTracks);
     } catch {
       throw new StreamOpenError('micro');
     }

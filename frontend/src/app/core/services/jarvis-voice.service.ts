@@ -74,6 +74,15 @@ export interface CutSnapshot {
 export const DUCK_GAIN = 0.25;
 /** SF-233-08 — débit moyen de la voix (caractères par seconde), pour estimer la part entendue d'une phrase coupée. */
 export const SPOKEN_CHARS_PER_SECOND = 15;
+/**
+ * F-233 / SF-233-16 — **la lecture a une borne** (audit du 2026-11-07 : 46 s de « parole » pour 6 mots, pendant
+ * lesquelles Jarvis n'écoutait pas). Une lecture jamais démarrée après {@link PLAY_START_LIMIT_MS}, ou dont la position
+ * n'avance plus pendant {@link PLAY_STALL_LIMIT_MS}, est close en échec : la phrase reste écrite, la boucle continue.
+ */
+export const PLAY_START_LIMIT_MS = 10_000;
+export const PLAY_STALL_LIMIT_MS = 8_000;
+/** Le pas du chien de garde de lecture. */
+export const PLAY_WATCH_MS = 1_000;
 
 /** La part entendue d'une phrase coupée après `seconds` de lecture (mots entiers ; `duration` si connue). */
 export function heardPart(text: string, seconds: number, duration: number): string {
@@ -108,6 +117,8 @@ export class JarvisVoiceService {
   /** SF-233-08 — les phrases entendues en entier depuis `resetHeard()`. */
   private heard: string[] = [];
   private current: Playback | null = null;
+  /** F-233 / SF-233-15 — le journal de l'écoute (l'écran Jarvis le branche) : calages de la voix. */
+  traceHook: ((event: string, detail?: string) => void) | null = null;
   /** SF-233-03 — la file de phrases à dire, et l'attente de sa fin. */
   private queue: QueuedSentence[] = [];
   private queueRunning = false;
@@ -395,9 +406,39 @@ export class JarvisVoiceService {
     this.connect(audio);
     this.duck(false);
     return new Promise<void>((resolve, reject) => {
+      // F-233 / SF-233-16 — le chien de garde : jamais de lecture sans fin.
+      const startedAt = Date.now();
+      let lastTime = -1;
+      let lastMove = startedAt;
+      let playing = false;
+      const watch = setInterval(() => {
+        const now = Date.now();
+        const position = audio.currentTime || 0;
+        if (position !== lastTime) {
+          lastTime = position;
+          lastMove = now;
+          return;
+        }
+        if (audio.ended) {
+          playback.done();
+          return;
+        }
+        const stalled = playing ? now - lastMove >= PLAY_STALL_LIMIT_MS : now - startedAt >= PLAY_START_LIMIT_MS;
+        if (stalled) {
+          this.traceHook?.('voice_stall', `${playing ? 'cale' : 'jamais'} ms=${now - startedAt} pos=${
+            position.toFixed(1)} ctx=${this.context?.state ?? 'none'} rs=${audio.readyState} ns=${audio.networkState}`);
+          playback.done('echec');
+        }
+      }, PLAY_WATCH_MS);
+      let settled = false;
       const playback: Playback = {
         audio, abort, url, text, alignment,
         done: (error) => {
+          clearInterval(watch);
+          if (settled) {
+            return;
+          }
+          settled = true;
           if (!error && text) {
             this.heard.push(text);
           }
@@ -417,7 +458,10 @@ export class JarvisVoiceService {
         },
       };
       this.current = playback;
-      audio.onplaying = () => hooks?.onPlaying?.();
+      audio.onplaying = () => {
+        playing = true;
+        hooks?.onPlaying?.();
+      };
       audio.onended = () => playback.done();
       audio.onerror = () => playback.done('echec');
       audio.play().catch(() => playback.done('echec'));
@@ -519,6 +563,10 @@ export class JarvisVoiceService {
     const context = this.ensureContext();
     if (!context || !this.analyser) {
       return;
+    }
+    // F-233 / SF-233-16 — un contexte suspendu rendrait la voix muette (et la lecture sans fin) : on le réveille.
+    if (context.state === 'suspended') {
+      void context.resume().catch(() => undefined);
     }
     try {
       context.createMediaElementSource(audio).connect(this.analyser);
