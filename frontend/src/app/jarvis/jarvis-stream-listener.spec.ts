@@ -1,5 +1,6 @@
 import {
-  StreamingListener, downsample, parseSttMessage, sessionUrl, toBase64, toPcm16,
+  StreamOpenError, StreamingListener, downsample, parseSttMessage, sessionUrl, streamFailureOf, ticketFailureOf,
+  toBase64, toPcm16,
 } from './jarvis-stream-listener';
 
 /** Écouter en flux (F-233 / SF-233-05) : les fonctions pures. */
@@ -15,6 +16,29 @@ describe('Écoute en flux (F-233 / SF-233-05)', () => {
     expect(parseSttMessage('{"message_type":"auth_error"}').kind).toBe('error');
     expect(parseSttMessage('pas du json').kind).toBe('other');
     expect(parseSttMessage(new ArrayBuffer(2)).kind).toBe('other');
+  });
+
+  it('F-233 / SF-233-13 — un refus du fournisseur (`invalid_request`, champ `error`) est une erreur', () => {
+    expect(parseSttMessage('{"message_type":"invalid_request","error":"Number of keyterms cannot exceed 50."}').kind)
+      .toBe('error');
+    expect(parseSttMessage('{"message_type":"whatever","error":"boom"}').kind).toBe('error');
+    expect(parseSttMessage('{"message_type":"whatever","error":""}').kind).toBe('other');
+  });
+
+  it('F-233 / SF-233-13 — classe la raison d’un repli hors flux', () => {
+    expect(ticketFailureOf(503)).toBe('ticket_indisponible');
+    expect(ticketFailureOf(401)).toBe('ticket_refuse');
+    expect(ticketFailureOf(403)).toBe('ticket_refuse');
+    expect(ticketFailureOf(429)).toBe('ticket_refuse');
+    expect(ticketFailureOf(502)).toBe('ticket_echec');
+    expect(ticketFailureOf(null)).toBe('ticket_echec');
+    expect(streamFailureOf(new StreamOpenError('micro'))).toBe('micro');
+    expect(streamFailureOf(new StreamOpenError('capture'))).toBe('capture');
+    expect(streamFailureOf(new Error('timeout'))).toBe('ouverture_delai');
+    expect(streamFailureOf(new Error('refus'))).toBe('ouverture_refusee');
+    expect(streamFailureOf(new Error('reseau'))).toBe('ouverture_reseau');
+    expect(streamFailureOf(new Error('ferme'))).toBe('ouverture_fermee');
+    expect(streamFailureOf('???')).toBe('autre');
   });
 
   it('rééchantillonne par moyenne, PCM 16 bits petit-boutiste, base64', () => {

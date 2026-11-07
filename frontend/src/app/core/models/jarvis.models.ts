@@ -157,6 +157,13 @@ export interface TurnTimingReport {
   cardsLagMs?: number | null;
   cardsCount?: number | null;
   /**
+   * F-233 / SF-233-13 — pourquoi l'écoute n'a pas été faite en flux (liste fermée, `null` si le flux a servi), et la
+   * page tournait dans le compagnon Android. Jamais de contenu.
+   */
+  streamFallback?: 'ticket_refuse' | 'ticket_indisponible' | 'ticket_echec' | 'micro' | 'ouverture_delai'
+    | 'ouverture_refusee' | 'ouverture_reseau' | 'ouverture_fermee' | 'capture' | 'coupe' | 'autre' | null;
+  companion?: boolean | null;
+  /**
    * F-239 / SF-239-01 (D3b) — une parole refusée par la porte de parole réelle (aucun tour) : la raison et la longueur
    * du texte transcrit, **jamais le texte**.
    */

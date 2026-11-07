@@ -144,6 +144,9 @@ public class JarvisLatencyService {
                 // F-248 / SF-248-01 — le délai premier mot → pancartes et leur nombre, sans contenu.
                 .cardsLagMs(mark(report.cardsLagMs()))
                 .cardsCount(report.cardsCount() == null ? null : counter(report.cardsCount()))
+                // F-233 / SF-233-13 — pourquoi le flux n'a pas servi (liste fermée), et la page du compagnon.
+                .streamFallback(closed(report.streamFallback(), STREAM_FALLBACKS))
+                .companion(report.companion())
                 .build());
     }
 
@@ -267,6 +270,14 @@ public class JarvisLatencyService {
     static final List<String> BRAINS = List.of("FAST", "FAST_DELEGATED", "OPUS");
     /** F-239 / SF-239-02 — les raisons d'un refus de parole (liste fermée de la porte de l'écran). */
     static final List<String> REJECTIONS = List.of("empty", "noise", "hallucination", "no_voice", "implausible");
+    /**
+     * F-233 / SF-233-13 — pourquoi l'écoute n'a pas été faite en flux (liste fermée) : le jeton de session (refusé,
+     * indisponible, en échec), le micro, l'ouverture chez le fournisseur (délai, refus, réseau, fermeture), la capture
+     * audio, une session coupée pendant l'écoute, ou autre.
+     */
+    static final List<String> STREAM_FALLBACKS = List.of("ticket_refuse", "ticket_indisponible", "ticket_echec",
+            "micro", "ouverture_delai", "ouverture_refusee", "ouverture_reseau", "ouverture_fermee", "capture", "coupe",
+            "autre");
     /** F-239 / SF-239-02 — borne de la longueur rapportée. */
     static final int MAX_REJECTED_CHARS = 10_000;
     /** F-235 / SF-235-07 — les raisons d'une délégation d'office ou d'un repli (liste fermée). */
@@ -336,7 +347,9 @@ public class JarvisLatencyService {
             // F-247 / SF-247-01 — facultatifs : poste éteint, question d'état, réponse, lecture du bloc.
             Boolean hostOffline, Boolean stateQuestion, String stateAnswer, Integer stateBlockMs,
             // F-248 / SF-248-01 — facultatifs : délai première phrase jouée → première pancarte, nombre de pancartes.
-            Integer cardsLagMs, Integer cardsCount) {
+            Integer cardsLagMs, Integer cardsCount,
+            // F-233 / SF-233-13 — facultatifs : raison du repli hors flux (liste fermée), page ouverte dans le compagnon.
+            String streamFallback, Boolean companion) {
     }
 
     /** F-247 / SF-247-01 — les valeurs admises de {@code stateAnswer}. */

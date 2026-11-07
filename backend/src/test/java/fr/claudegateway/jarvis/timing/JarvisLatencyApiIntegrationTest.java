@@ -162,6 +162,28 @@ class JarvisLatencyApiIntegrationTest {
     }
 
     @Test
+    @DisplayName("F-233 / SF-233-13 — la raison du repli hors flux (liste fermée) et le compagnon sont gardés")
+    void streamFallbackAndCompanionAreTraced() throws Exception {
+        report(adminToken, "{\"listenMode\":\"CONV_BATCH\",\"streamFallback\":\"ouverture_refusee\","
+                + "\"companion\":true}").andExpect(status().isNoContent());
+        report(adminToken, "{\"listenMode\":\"CONV_STREAM\"}").andExpect(status().isNoContent());
+        report(adminToken, "{\"streamFallback\":\"lune\"}").andExpect(status().isBadRequest());
+
+        var rows = timings.findByUserIdAndCreatedAtGreaterThanEqual(admin.getId(), OffsetDateTime.now().minusDays(1));
+        assertThat(rows).hasSize(2);
+        assertThat(rows).anySatisfy(r -> {
+            assertThat(r.getStreamFallback()).isEqualTo("ouverture_refusee");
+            assertThat(r.getCompanion()).isTrue();
+        });
+        assertThat(rows).anySatisfy(r -> {
+            assertThat(r.getStreamFallback()).isNull();
+            assertThat(r.getCompanion()).isNull();
+        });
+        assertThat(timings.findByUserIdAndCreatedAtGreaterThanEqual(otherAdmin.getId(),
+                OffsetDateTime.now().minusDays(1))).isEmpty();
+    }
+
+    @Test
     @DisplayName("F-239 / SF-239-02 — une parole refusée : raison (liste fermée) et longueur gardées, jamais le texte")
     void rejectedSpeechIsTracedWithoutText() throws Exception {
         report(adminToken, "{\"listenMode\":\"CONV_STREAM\",\"falseTriggers\":1,\"rejectedKind\":\"hallucination\","

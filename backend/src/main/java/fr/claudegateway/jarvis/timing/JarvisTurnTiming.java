@@ -229,4 +229,14 @@ public class JarvisTurnTiming {
     /** Nombre de pancartes du jeu montré ; {@code null} sans jeu. */
     @Column(name = "cards_count")
     private Integer cardsCount;
+
+    // ---- F-233 / SF-233-13 — l'écoute en flux. Jamais de contenu.
+
+    /** Pourquoi le flux n'a pas servi (liste fermée {@code JarvisLatencyService.STREAM_FALLBACKS}) ; {@code null} sinon. */
+    @Column(name = "stream_fallback", length = 24)
+    private String streamFallback;
+
+    /** La page tournait dans le compagnon Android ; {@code null} pour un écran d'avant SF-233-13. */
+    @Column(name = "companion")
+    private Boolean companion;
 }

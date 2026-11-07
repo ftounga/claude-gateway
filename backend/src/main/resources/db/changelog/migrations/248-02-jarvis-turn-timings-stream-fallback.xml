@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-233 / SF-233-13 - POURQUOI L'ECOUTE N'A PAS ETE FAITE EN FLUX.
+
+      jarvis_turn_timings + stream_fallback (liste fermee : ticket_refuse, ticket_indisponible, ticket_echec, micro,
+      ouverture_delai, ouverture_refusee, ouverture_reseau, ouverture_fermee, capture, coupe, autre) et companion
+      (page ouverte dans le compagnon Android). Jamais de contenu. Colonnes additives, NULL pour les lignes existantes
+      et les ecrans d'avant. Purge 90 j existante inchangee.
+
+      Numero 248-02 = apres la plus haute migration existante (248-01). Rollback : les colonnes se retirent.
+    -->
+
+    <changeSet id="248-02-jarvis-turn-timings-stream-fallback" author="claude-gateway">
+        <addColumn tableName="jarvis_turn_timings">
+            <column name="stream_fallback" type="varchar(24)"/>
+            <column name="companion" type="boolean"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="jarvis_turn_timings" columnName="companion"/>
+            <dropColumn tableName="jarvis_turn_timings" columnName="stream_fallback"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

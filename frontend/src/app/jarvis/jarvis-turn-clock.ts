@@ -40,6 +40,9 @@ export class TurnClock {
   spoken: Partial<Pick<TurnTimingReport, 'spokenWords' | 'spokenChars' | 'spokenMs' | 'announceWords' | 'oralCut'
     | 'invitation'>> = {};
   private depth: Pick<TurnTimingReport, 'depthReached' | 'depthVia'> | null = null;
+  /** F-233 / SF-233-13 — pourquoi le flux n'a pas servi (`null` : il a servi, ou rien à dire) ; la page du compagnon. */
+  streamFallback: TurnTimingReport['streamFallback'] = null;
+  companion: boolean | null = null;
   private reported = false;
 
   /**
@@ -129,6 +132,8 @@ export class TurnClock {
       ...(this.rejected ?? {}),
       ...this.spoken,
       ...(this.depth ?? {}),
+      ...(this.streamFallback ? { streamFallback: this.streamFallback } : {}),
+      ...(this.companion !== null ? { companion: this.companion } : {}),
     };
   }
 }

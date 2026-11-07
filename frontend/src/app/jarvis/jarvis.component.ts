@@ -40,7 +40,9 @@ import {
 } from './jarvis-more';
 import { BargeInController, JarvisVadService, RunningVad, bargeInEnabled, encodeWav } from './jarvis-barge-in';
 import { CutSnapshot } from '../core/services/jarvis-voice.service';
-import { JarvisStreamOpener, LISTEN_AUDIO, LiveListening } from './jarvis-stream-listener';
+import {
+  JarvisStreamOpener, LISTEN_AUDIO, LiveListening, StreamFallback, streamFailureOf, ticketFailureOf,
+} from './jarvis-stream-listener';
 import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import {
@@ -1393,6 +1395,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
   readonly partial = signal<string | null>(null);
   /** Vrai quand la passerelle a dit que le flux n'est pas configuré : on n'essaie plus pendant cette ouverture. */
   private streamOff = false;
+  /** F-233 / SF-233-13 — pourquoi l'écoute en cours n'est pas en flux (ou a été coupée) : porté par la mesure du tour. */
+  private streamFallback: StreamFallback | null = null;
   private live: {
     ticket: JarvisSttTicket;
     listening: LiveListening;
@@ -1414,16 +1418,20 @@ export class JarvisComponent implements OnInit, OnDestroy {
    * l'audio envoyé avant le micro.
    */
   private async startStreaming(preRoll: (() => Float32Array) | null = null): Promise<boolean> {
+    this.streamFallback = null;
     if (this.streamOff) {
+      this.streamFallback = 'ticket_indisponible';
       return false;
     }
     let ticket: JarvisSttTicket;
     try {
       ticket = await firstValueFrom(this.jarvis.sttSession());
     } catch (error) {
-      if (error instanceof HttpErrorResponse && error.status === 503) {
+      const status = error instanceof HttpErrorResponse ? error.status : null;
+      if (status === 503) {
         this.streamOff = true;
       }
+      this.streamFallback = ticketFailureOf(status);
       return false;
     }
     const live = { ticket, listening: null as unknown as LiveListening, committed: [] as string[], lastPartial: '',
@@ -1454,12 +1462,14 @@ export class JarvisComponent implements OnInit, OnDestroy {
         onError: () => this.zone.run(() => {
           live.onCommit?.();
           if (this.live === live && this.state() === 'ecoute') {
+            this.streamFallback = 'coupe';
             void this.finishListening();
           }
         }),
       }, preRoll);
-    } catch {
+    } catch (error) {
       this.jarvis.closeSttSession(ticket.sessionId, 0);
+      this.streamFallback = streamFailureOf(error);
       return false;
     }
     this.live = live;
@@ -1763,6 +1773,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const clock = new TurnClock(endOfSpeech, endOfSpeech - this.listenStartedAt);
     clock.workspaceId = this.subjectId();
     clock.ttsProvider = this.ttsProvider;
+    // F-233 / SF-233-13 — pourquoi ce tour n'a pas été écouté en flux (ou coupé), et s'il vient du compagnon.
+    clock.streamFallback = this.streamFallback;
+    clock.companion = this.companionBridge.available;
     this.applyPendingCounts(clock);
     // SF-233-11 — plus de réaction immédiate : une seule formule d'attente, et seulement si la réponse tarde (send).
     // SF-231-05 — la mesure d'adoption : les secondes parlées (D9).
@@ -4012,7 +4025,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
     this.relistenTimer = setTimeout(() => {
       this.relistenTimer = null;
-      if (!this.conversation.shouldRelisten(this.state(), this.turnRunning) || !this.subjectId()) {
+      // F-233 / SF-233-13 — sans sujet aussi (F-235 D19 : aucun sujet par défaut ; le compagnon a son propre stockage,
+      // vide) : le cerveau rapide répond sans sujet, et un envoi qui en exige un le demande (ASK_SUBJECT).
+      if (!this.conversation.shouldRelisten(this.state(), this.turnRunning)) {
         return;
       }
       if (this.conversation.idleExpired()) {
