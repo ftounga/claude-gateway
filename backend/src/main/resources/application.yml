@@ -718,6 +718,13 @@ app:
       max-chars: ${APP_JARVIS_VOICE_MAX_CHARS:600}
       # F-233 / D-PO-4 : 100 EUR/mois, lecture ET ecoute en flux (SF-233-04).
       monthly-budget-eur: ${APP_JARVIS_VOICE_MONTHLY_BUDGET_EUR:100}
+    # F-250 : LE VISAGE DE JARVIS (porte P5). enabled : le visage remplace le coeur 3D de /jarvis (repli orbe 2D sans
+    # WebGL inchange). align-enabled : la voix ElevenLabs passe par /stream/with-timestamps (meme requete, meme
+    # facturation au caractere - banc P0 du 2026-11-07) et relaie l'alignement par caractere en NDJSON ; eteint =
+    # chemin mp3 seul, levres sur le niveau sonore.
+    face:
+      enabled: ${APP_JARVIS_FACE_ENABLED:true}
+      align-enabled: ${APP_JARVIS_FACE_ALIGN_ENABLED:true}
     # F-233 / SF-233-04 : L'ECOUTE EN FLUX (transcription pendant la parole). Fournisseur retenu (D-PO-1 b) :
     # ElevenLabs Scribe v2 Realtime, par JETON EPHEMERE (D-PO-3) : la passerelle obtient un jeton a usage
     # unique, le navigateur parle directement au fournisseur ; la cle ne quitte jamais le serveur.

@@ -15,6 +15,7 @@ import fr.claudegateway.atelier.Workspace;
 import fr.claudegateway.atelier.WorkspaceRepository;
 import fr.claudegateway.jarvis.audition.JarvisVoiceChoiceRepository;
 import fr.claudegateway.quota.ProviderPricingProperties;
+import fr.claudegateway.speech.AlignedSpeech;
 import fr.claudegateway.speech.SpeechProperties;
 import fr.claudegateway.speech.elevenlabs.ElevenLabsProperties;
 import fr.claudegateway.speech.elevenlabs.ElevenLabsSpeechProvider;
@@ -52,6 +53,8 @@ public class JarvisVoiceService {
     private ElevenLabsSpeechProvider elevenLabs;
     private ElevenLabsProperties elevenLabsProperties;
     private JarvisVoiceChoiceRepository choices;
+    /** F-250 — les coupe-circuits du visage (absents hors contexte Spring : visage et alignement allumés). */
+    private JarvisFaceProperties face = new JarvisFaceProperties(null, null);
 
     public JarvisVoiceService(SpeechProvider provider, SpeechProperties speech, JarvisVoiceProperties properties,
             SpeechUsage ledger, JarvisUsageService usage, WorkspaceRepository workspaces) {
@@ -81,6 +84,28 @@ public class JarvisVoiceService {
     @Autowired(required = false)
     public void setChoices(JarvisVoiceChoiceRepository choices) {
         this.choices = choices;
+    }
+
+    /** F-250 — les coupe-circuits du visage. */
+    @Autowired(required = false)
+    public void setFace(JarvisFaceProperties face) {
+        if (face != null) {
+            this.face = face;
+        }
+    }
+
+    /**
+     * F-250 / SF-250-01 — la voix de ce compte relaiera-t-elle l'alignement ? Visage et alignement allumés, voix
+     * appelable, fournisseur capable d'aligner. Aucun appel.
+     */
+    public boolean aligns(UUID userId) {
+        VoiceRef voice = current(userId);
+        return face.aligns() && available(voice) && providerFor(voice) instanceof AlignedSpeech;
+    }
+
+    /** F-250 — ce que l'écran doit savoir du visage : allumé, et lèvres alignées pour ce compte. */
+    public FaceStatus face(UUID userId) {
+        return new FaceStatus(face.enabled(), aligns(userId));
     }
 
     /** F-233 / SF-233-06 — la voix de Jarvis par défaut (configuration) : fournisseur et voix. */
@@ -161,6 +186,23 @@ public class JarvisVoiceService {
                 out);
         account(reading.userId(), reading.workspaceId(), reading.hostId(), voice, reading.text().length());
         return written;
+    }
+
+    /**
+     * F-250 / SF-250-01 — lit à voix haute <b>avec l'alignement</b>, en flux, puis compte la lecture exactement comme
+     * {@link #speak} (même nombre de caractères : la facturation du fournisseur est identique, porte P0).
+     *
+     * @return le nombre de morceaux relayés
+     * @throws fr.claudegateway.speech.SpeechProviderUnavailableException si la voix ne sait pas aligner
+     */
+    public long speakAligned(Reading reading, AlignedSpeech.AlignedSink sink) throws IOException {
+        VoiceRef voice = current(reading.userId());
+        if (!(providerFor(voice) instanceof AlignedSpeech aligned)) {
+            throw new SpeechProviderUnavailableException("Cette voix ne fournit pas d'alignement.");
+        }
+        long chunks = aligned.synthesizeAligned(reading.text(), voice.voice(), properties.instructions(), sink);
+        account(reading.userId(), reading.workspaceId(), reading.hostId(), voice, reading.text().length());
+        return chunks;
     }
 
     /**
@@ -288,6 +330,10 @@ public class JarvisVoiceService {
     /** L'état de la voix pour l'écran, montants en euros. */
     public record VoiceStatus(boolean enabled, String voice, BigDecimal monthlyBudgetEur, BigDecimal monthSpentEur,
             boolean budgetReached, String provider) {
+    }
+
+    /** F-250 — le visage : allumé ({@code APP_JARVIS_FACE_ENABLED}) et lèvres alignées pour ce compte. */
+    public record FaceStatus(boolean enabled, boolean aligned) {
     }
 
     /** F-233 / SF-233-06 — une voix : son fournisseur ({@code openai}, {@code elevenlabs}) et son nom ou identifiant. */
