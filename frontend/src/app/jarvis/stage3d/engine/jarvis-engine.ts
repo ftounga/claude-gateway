@@ -23,7 +23,7 @@ import { Gestures } from './jarvis-gestures';
 import { HEART_RADIUS } from './jarvis-heart-3d';
 import { Heart3d } from './jarvis-heart-3d';
 import { FACE_SCALE, Face3d, FaceFrame } from './jarvis-face-3d';
-import { faceScaleFor } from '../../face/jarvis-face-stage';
+import { faceScaleFor, facePresenceTarget } from '../../face/jarvis-face-stage';
 import { Universe3d } from './jarvis-universe-3d';
 import { Node3d } from '../jarvis-layout-3d';
 import { CORE_KEY } from '../jarvis-link-graph';
@@ -633,11 +633,15 @@ class ThreeJarvisEngine implements JarvisEngine {
       this.heart.lightGain = f.coreLight * (1 - 0.35 * f.hue);
       this.heart.flash = f.flash;
       const voiceLevel = this.options.voiceLevel();
-      // F-250 — le visage, allumé, prend la place du cœur (transitions : SF-250-05).
+      // F-250 — le visage : il prend la place du cœur quand Jarvis dialogue (T-F1, 900 ms), cède la scène au grand
+      // cerveau déployé, revient pour parler ; le cœur s'éteint à mesure que ses particules se recomposent en visage.
       const face = this.face;
       let presence = 0;
       if (face) {
-        face.presence = this.faceWanted ? 1 : 0;
+        const target = this.faceWanted ? facePresenceTarget(this.plan.mood, f.spread, this.panels?.count ?? 0) : 0;
+        const stepP = this.options.replayFromZero ? 1 : dt / 900;
+        face.presence = target > face.presence ? Math.min(target, face.presence + stepP)
+          : Math.max(target, face.presence - stepP);
         presence = face.presence;
         const input = this.faceInput;
         input.now = t;

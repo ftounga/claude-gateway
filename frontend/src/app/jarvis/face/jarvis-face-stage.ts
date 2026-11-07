@@ -1,3 +1,5 @@
+import { HeartMood } from '../stage3d/jarvis-heart';
+
 /**
  * F-250 / SF-250-05 / SF-250-07 — **la place du visage dans la scène** (cadrage §5). Fichier <b>pur</b>.
  */
@@ -21,4 +23,19 @@ export function faceScaleFor(distance: number, aspect: number, fovDeg: number): 
   const byHeight = (FACE_SCREEN_SHARE * visibleH) / FACE_HEIGHT;
   const byWidth = (FACE_WIDTH_SHARE * visibleH * Math.max(aspect, 0.2)) / 1.52;
   return Math.max(FACE_MIN_SCALE, Math.min(byHeight, byWidth));
+}
+
+/**
+ * Le visage est-il là (1) ou le cœur (0) ? Le visage <b>est</b> le cœur quand Jarvis dialogue ; il redevient cœur
+ * en veille (repos prolongé, > 60 s) ; il se dissout vers la scène des deux cerveaux quand le grand cerveau est
+ * déployé (Opus travaille longtemps), et revient pour parler.
+ */
+export function facePresenceTarget(mood: HeartMood, brainSpread: number, _panels: number): number {
+  if (mood === 'veille') {
+    return 0;
+  }
+  if (brainSpread > 0.4 && mood !== 'parole' && mood !== 'ecoute' && mood !== 'coupure') {
+    return 0;
+  }
+  return 1;
 }
