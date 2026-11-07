@@ -103,6 +103,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { JarvisOrbComponent, JarvisState } from './jarvis-orb.component';
 import { JarvisAppUpdate } from './jarvis-app-update';
+import { JarvisListenTrace, errorName } from './jarvis-listen-trace';
 import { JarvisCompanionsComponent } from './jarvis-companions.component';
 import { JarvisPortraitComponent } from './jarvis-portrait.component';
 import { JarvisMailboxesComponent } from './jarvis-mailboxes.component';
@@ -217,6 +218,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   /** F-232 / SF-232-07 — le pont du compagnon Android ; absent (navigateur, PWA) : rien ne change (D10). */
   private readonly companionBridge = inject(CompanionBridgeService);
+  /** F-233 / SF-233-15 — le journal de l'écoute : transitions et erreurs de la boucle, sans contenu. */
+  private readonly trace = inject(JarvisListenTrace);
   private readonly router = inject(Router);
   private readonly zone = inject(NgZone);
   private readonly destroyRef = inject(DestroyRef);
@@ -956,6 +959,21 @@ export class JarvisComponent implements OnInit, OnDestroy {
         }
       });
     });
+    // F-233 / SF-233-15 — chaque transition d'état ou de mode entre au journal de l'écoute.
+    effect(() => {
+      const state = this.state();
+      const mode = this.conversation.mode();
+      untracked(() => {
+        if (state !== this.tracedState) {
+          this.trace.mark('state', `${this.tracedState}>${state}`);
+          this.tracedState = state;
+        }
+        if (mode !== this.tracedMode) {
+          this.trace.mark('mode', `${this.tracedMode}>${mode}`);
+          this.tracedMode = mode;
+        }
+      });
+    });
     // F-233 / SF-233-11 — la conversation mains libres : revenu au repos sans tour, Jarvis se remet à écouter.
     effect(() => {
       const state = this.state();
@@ -995,7 +1013,13 @@ export class JarvisComponent implements OnInit, OnDestroy {
     });
   }
 
+  /** F-233 / SF-233-15 — le dernier état et le dernier mode journalisés. */
+  private tracedState: string = 'repos';
+  private tracedMode: string = 'idle';
+
   ngOnInit(): void {
+    this.trace.start({ companion: this.companionBridge.available, state: () => this.state(),
+      mode: () => this.conversation.mode() });
     this.useJarvisManifest();
     // SF-236-26 — l'ouverture en présentation ou en vue cockpit est comptée (la scène existe dès la vue créée).
     queueMicrotask(() => {
@@ -1008,7 +1032,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     });
     this.jarvis.usage('SESSION');
     // SF-233-12 — mise à jour automatique : vérifiée à l'ouverture et toutes les 10 min, appliquée au repos.
-    this.appUpdate.start(() => this.isQuiet());
+    this.appUpdate.start(() => this.isQuiet(), () => this.trace.mark('appupdate_reload'));
     // F-233 / SF-233-02 — les clips de réaction, chargés une fois, joués localement au moment de réagir.
     void this.voice.preloadClips(FORMULA_CLIPS);
     // SF-233-06 — le fournisseur de la voix, pour la mesure (SF-233-01).
@@ -1035,6 +1059,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const listenNow = this.route.snapshot.queryParamMap.get('ecoute') === '1';
     const rawInstalled = Number(this.route.snapshot.queryParamMap.get('compagnon'));
     const installed = fromCompanion && Number.isInteger(rawInstalled) && rawInstalled >= 1 ? rawInstalled : null;
+    this.trace.mark('page_load', `src=${fromCompanion ? 'compagnon' : 'web'} ecoute=${listenNow ? 1 : 0} sw=${
+      swControlled() ? 1 : 0} vis=${typeof document === 'undefined' ? '' : document.visibilityState} bridge=${
+      this.companionBridge.available ? 1 : 0}`);
     this.loadCompanion(installed);
     this.loadPreferences();
     this.loadInterviewOffer();
@@ -1118,6 +1145,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.stopVad();
     this.wakeEngine.stop();
     this.restoreManifest();
+    this.trace.stop();
   }
 
   /**
@@ -1237,8 +1265,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
     // F-236 / SF-236-02 (N2) — le réveil se voit : onde de choc du cœur 3D.
     this.wakeCalls.update((n) => n + 1);
     if (this.state() === 'ecoute' || this.waking) {
+      this.trace.mark('wake_skip', this.waking ? 'waking' : 'ecoute');
       return;
     }
+    this.trace.mark('wake', event ? 'mot' : 'ouverture');
     this.waking = true;
     try {
       await this.wakeUpOn(event);
@@ -1350,13 +1380,16 @@ export class JarvisComponent implements OnInit, OnDestroy {
    */
   async listen(preRoll: WakeEvent | null = null): Promise<void> {
     if (!this.dictation.supported) {
+      this.trace.mark('listen_unsupported');
       this.notice.set('Ce navigateur ne sait pas enregistrer la voix.');
       this.conversation.pause();
       return;
     }
     if (this.listenOpening || this.state() === 'ecoute') {
+      this.trace.mark('listen_skip', this.listenOpening ? 'opening' : 'ecoute');
       return;
     }
+    this.trace.mark('listen_open', preRoll ? 'preroll' : '');
     this.listenOpening = true;
     try {
       await this.openListening(preRoll);
@@ -1386,14 +1419,18 @@ export class JarvisComponent implements OnInit, OnDestroy {
       return audio;
     } : null);
     this.wakeEngine.stop();
+    this.trace.mark(streaming ? 'stream_open' : 'stream_fallback', streaming ? '' : this.streamFallback);
     if (!streaming) {
       try {
         await this.dictation.start(LISTEN_AUDIO);
+        this.trace.mark('mic_open', 'batch');
       } catch (error) {
+        this.trace.mark('mic_fail', `${errorName(error)} ${this.dictation.lastMicError ?? ''}`);
         this.notice.set(this.companionBridge.available && error === 'micro-refuse'
           ? companionMicMessage(this.dictation.lastMicError)
           : dictationMessage(error as DictationError));
         // SF-233-11 — micro refusé : la conversation se met en pause plutôt que de réessayer en boucle.
+        this.trace.mark('conv_pause', 'micro');
         this.conversation.pause();
         return;
       }
@@ -1403,6 +1440,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
     if (stream) {
       this.meter = new MicMeter(stream);
       this.voicedMs = this.meter.available ? 0 : null;
+      // F-233 / SF-233-15 — un niveau mesuré dans un AudioContext suspendu reste à 0 : l'écoute serait sourde.
+      this.trace.mark('meter', `ctx=${this.meter.contextState} avail=${this.meter.available ? 1 : 0} tracks=${
+        liveTracks(stream)}`);
+      this.listenPeak = 0;
       // F-239 / SF-239-10 — en flux, le fournisseur décide de la fin ; le silence mesuré par l'écran n'est qu'un filet.
       // F-241 / SF-241-06 (E1) — pendant un entretien actif, l'écran tient la fin : 3,5 s de silence au moins.
       const endMs = () => (this.interviewListening() ? Math.max(silenceMs(), INTERVIEW_END_MS)
@@ -1415,6 +1456,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       this.zone.runOutsideAngular(() => {
         const tick = () => {
           this.micLevel = this.meter?.level() ?? 0;
+          this.listenPeak = Math.max(this.listenPeak, this.micLevel);
           const now = performance.now();
           // F-239 / SF-239-01 (D3b) — le temps de voix réellement entendu au micro (porte de parole réelle).
           if (floor.update(this.micLevel)) {
@@ -1429,6 +1471,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
           if (now - this.listenStartedAt >= MAX_LISTEN_MS) {
             // F-241 / SF-241-06 (E2) — en entretien, ce n'est qu'un segment : la réponse continue.
             this.listenCapped = this.interviewListening();
+            this.trace.mark('listen_max');
             this.zone.run(() => void this.finishListening());
             return;
           }
@@ -1437,11 +1480,13 @@ export class JarvisComponent implements OnInit, OnDestroy {
             // elle continue jusqu'à la fin de la conversation.
             if (!end.spoke && this.conversation.active && !this.heardText()) {
               if (this.conversation.idleExpired()) {
+                this.trace.mark('listen_idle_expired');
                 this.zone.run(() => void this.endConversation());
                 return;
               }
               if (!this.live) {
                 // Dictée batch : un enregistrement neuf plutôt qu'un long silence à transcrire (la réécoute le rouvre).
+                this.trace.mark('listen_silence', `peak=${this.listenPeak.toFixed(2)}`);
                 this.zone.run(() => this.cancelListening());
                 return;
               }
@@ -1541,6 +1586,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
         }),
         onError: () => this.zone.run(() => {
           live.onCommit?.();
+          this.trace.mark('stream_error');
           if (this.live === live && this.state() === 'ecoute') {
             this.streamFallback = 'coupe';
             void this.finishListening();
@@ -1688,6 +1734,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     speaking: () => this.state() === 'parole',
     duck: (on) => this.voice.duck(on),
     cut: () => {
+      this.trace.mark('barge_cut');
       this.lastCut = this.voice.interrupt();
       this.scenes.cut(); // F-234 / SF-234-11 (D13) : la scène se fige 1 s, puis s'efface
       this.clearAck();
@@ -1729,8 +1776,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
       if (this.state() !== 'parole' && !this.bargeIn.capturing) {
         this.stopVad();
       }
-    } catch {
+    } catch (error) {
       // Modèle ou micro indisponible : Jarvis reste interruptible par l'appui et le mot d'éveil.
+      this.trace.mark('vad_fail', errorName(error));
       this.vadFailed = true;
     } finally {
       this.vadStarting = false;
@@ -1844,8 +1892,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
   /** Arrête l'écoute, transcrit, puis agit sur ce qui a été dit. */
   async finishListening(): Promise<void> {
     if (this.state() !== 'ecoute' || this.bargeIn.capturing) {
+      this.trace.mark('finish_skip', this.bargeIn.capturing ? 'capturing' : 'not_ecoute');
       return;
     }
+    this.trace.mark('listen_end', `voiced=${this.voicedMs ?? -1} peak=${this.listenPeak.toFixed(2)} live=${
+      this.live ? 1 : 0}`);
     this.stopMeter();
     this.state.set('reflexion');
     // F-233 / SF-233-01 — t0 = la fin de parole détectée ; le chronomètre suit le tour jusqu'à la réponse dite.
@@ -1884,11 +1935,13 @@ export class JarvisComponent implements OnInit, OnDestroy {
       try {
         text = (await this.transcribeClip(await this.dictation.stopRecording(), null, 'dictee.webm', clock)).trim();
       } catch (error) {
+        this.trace.mark('transcribe_fail', errorName(error));
         this.state.set('repos');
         this.notice.set(dictationMessage(error as DictationError));
         return;
       }
     }
+    this.trace.mark('transcript', `chars=${text.length} mode=${clock.listenMode}`);
     // SF-233-11 — un bruit ou une phrase vide n'est jamais envoyé ; en conversation, l'écoute repart sans un mot.
     // F-239 / SF-239-01 (D3b) — la porte de parole réelle : sans parole réelle, AUCUN tour (ni cerveau rapide, ni
     // Opus) ; la mesure garde la raison et la longueur, jamais le texte.
@@ -1919,6 +1972,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
    * mesure ; elle ne compte pas comme activité (la conversation s'éteint après le silence habituel).
    */
   private rejectSpeech(clock: TurnClock, kind: SpeechRejection, chars: number): void {
+    this.trace.mark('speech_rejected', `${kind} chars=${chars}`);
     clock.count('falseTriggers');
     clock.rejected = { rejectedKind: kind, rejectedChars: Math.min(10_000, Math.max(0, chars)) };
     const report = clock.takeReport();
@@ -2298,6 +2352,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
         finished = done;
       },
     });
+    this.trace.mark('brain_done', `${outcome}${fellBack ? ' repli' : ''} said=${said.length}`);
     await this.zone.run(async () => {
       if (outcome === 'unavailable') {
         this.fastBrainOn.set(false);
@@ -2361,7 +2416,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
       const ending = this.clock;
       this.clock = null;
       this.refreshCosts();
+      const waitFrom = performance.now();
       await this.voice.idle();
+      this.trace.mark('voice_idle', `ms=${Math.round(performance.now() - waitFrom)}`);
       // F-248 / SF-248-05 (D10, D11) — rien n'a été dit : le jeu ciblé part à la fin ; aucun jeu : l'ancien reste 60 s.
       if (latest()) {
         this.endCards(showing);
@@ -3801,6 +3858,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       return;
     }
     const elapsed = Date.now() - this.turnStartedAt;
+    this.trace.mark('turn_done', `ms=${elapsed}`);
     this.filler.answered();
     this.endTurn();
     this.showAnswer(done.reply, this.clock);
@@ -3909,6 +3967,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
   }
 
   private onTurnError(code: string, reason?: string, retry?: () => void): void {
+    this.trace.mark('turn_error', code);
     this.reportClock();
     this.oral = null;
     this.streamedText = '';
@@ -3926,9 +3985,13 @@ export class JarvisComponent implements OnInit, OnDestroy {
   async say(phrase: string, hooks?: SpeakHooks): Promise<void> {
     this.spoken.set(phrase);
     this.state.set('parole');
+    const startedAt = performance.now();
+    this.trace.mark('say_start', `chars=${phrase.length}`);
     try {
       await (hooks ? this.voice.speak(phrase, this.subjectId(), hooks) : this.voice.speak(phrase, this.subjectId()));
+      this.trace.mark('say_end', `ms=${Math.round(performance.now() - startedAt)}`);
     } catch (error) {
+      this.trace.mark('say_fail', `${errorName(error)} ms=${Math.round(performance.now() - startedAt)}`);
       this.notice.set(voiceMessage(error as JarvisVoiceError));
     }
     if (this.state() === 'parole') {
@@ -4029,6 +4092,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   /** La pause : micro coupé, voix coupée ; le tour en cours continue. `say` : Jarvis le dit (ordre vocal). */
   async pauseConversation(say: boolean): Promise<void> {
+    this.trace.mark('conv_pause', say ? 'voix' : 'bouton');
     // F-241 / SF-241-06 (E4) — la pause suspend l'entretien.
     this.suspendInterview();
     this.conversation.pause();
@@ -4047,6 +4111,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     if (!this.conversation.active) {
       return;
     }
+    this.trace.mark('conv_idle_end');
     // F-241 / SF-241-06 (E4) — la mise en veille suspend l'entretien.
     this.suspendInterview();
     this.conversation.rest();
@@ -4101,19 +4166,25 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
     this.previousState = state;
     if (mode !== 'active' || !this.conversation.shouldRelisten(state, this.turnRunning) || this.relistenTimer) {
+      if (mode === 'active' && state === 'repos' && this.turnRunning) {
+        this.trace.mark('relisten_wait', 'tour');
+      }
       return;
     }
+    this.trace.mark('relisten_arm');
     this.relistenTimer = setTimeout(() => {
       this.relistenTimer = null;
       // F-233 / SF-233-13 — sans sujet aussi (F-235 D19 : aucun sujet par défaut ; le compagnon a son propre stockage,
       // vide) : le cerveau rapide répond sans sujet, et un envoi qui en exige un le demande (ASK_SUBJECT).
       if (!this.conversation.shouldRelisten(this.state(), this.turnRunning)) {
+        this.trace.mark('relisten_skip', `${this.state()} tour=${this.turnRunning ? 1 : 0}`);
         return;
       }
       if (this.conversation.idleExpired()) {
         void this.endConversation();
         return;
       }
+      this.trace.mark('relisten_fire');
       void this.listen();
     }, RELISTEN_DELAY_MS);
   }
@@ -4124,6 +4195,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
       this.relistenTimer = null;
     }
   }
+
+  /** F-233 / SF-233-15 — le pic de niveau du micro pendant l'écoute en cours (0 à 1). */
+  private listenPeak = 0;
 
   private stopMeter(): void {
     cancelAnimationFrame(this.listenFrame);
@@ -4140,6 +4214,25 @@ export const BUDGET_HARD_NOTICE = 'Plafond mensuel de la conversation atteint : 
 /** F-239 / SF-239-12 — un montant en euros, à la française. */
 export function euros(value: number): string {
   return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value);
+}
+
+/** F-233 / SF-233-15 — la page est-elle servie par le service worker ? (une ancienne version peut l'être) */
+function swControlled(): boolean {
+  try {
+    return typeof navigator !== 'undefined' && !!navigator.serviceWorker?.controller;
+  } catch {
+    return false;
+  }
+}
+
+/** F-233 / SF-233-15 — les pistes du micro encore vivantes (`live`) sur le total. */
+function liveTracks(stream: MediaStream): string {
+  try {
+    const tracks = stream.getAudioTracks();
+    return `${tracks.filter((t) => t.readyState === 'live' && !t.muted).length}/${tracks.length}`;
+  } catch {
+    return '?';
+  }
 }
 
 function readStoredSubject(): string | null {

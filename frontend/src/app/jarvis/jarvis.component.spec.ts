@@ -34,6 +34,7 @@ import { INTERVIEW_END_MS, INTERVIEW_QUESTIONS, JarvisInterviewClient } from './
 import { JarvisPortraitClient } from './jarvis-portrait';
 import { JarvisMailClient, MailBrief } from './jarvis-mail';
 import { JARVIS_NOTICE_POLL_MS, JarvisNotice, JarvisNoticesClient } from './jarvis-notices';
+import { JarvisListenTrace, JarvisTraceSink, TraceBatch } from './jarvis-listen-trace';
 import { JarvisCalendarClient } from './jarvis-calendar';
 import { JARVIS_RENDER_PROBE, RenderProbe } from './stage3d/jarvis-render-capability';
 import { FakeEngine, NO_WEBGL_PROBE, PC_PROBE, fakeEngineFactory } from './stage3d/jarvis-stage3d.testing';
@@ -75,8 +76,11 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
   let fast: FastBrainHandlers | null;
   let renderProbe: RenderProbe;
   let loader3d: jasmine.Spy<() => Promise<JarvisEngineFactory>>;
+  /** F-233 / SF-233-15 — les lots du journal de l'écoute (aucun réseau). */
+  let traceBatches: TraceBatch[];
 
   beforeEach(() => {
+    traceBatches = [];
     renderProbe = NO_WEBGL_PROBE;
     loader3d = jasmine.createSpy('loader3d').and.callFake(() => Promise.resolve(fakeEngineFactory([])));
     try {
@@ -188,6 +192,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
         { provide: JarvisMailClient, useValue: mailClient },
         { provide: JarvisNoticesClient, useValue: noticesClient },
         { provide: JARVIS_NOTICE_POLL_MS, useValue: 0 },
+        { provide: JarvisTraceSink, useValue: { send: (batch: TraceBatch) => traceBatches.push(batch) } },
         { provide: JARVIS_USER_AGENT, useFactory: () => userAgent },
         { provide: NotificationCenterService, useValue: notificationCenter },
         { provide: LiveTerminalService, useValue: liveTerminals },
@@ -1677,6 +1682,41 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       expect(jarvis['streamFallback']).toBe('ouverture_refusee');
       expect(jarvisApi.closeSttSession).toHaveBeenCalledWith('s-9', 0);
       jarvis['cancelListening']();
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-233 / SF-233-15 — le journal de l’écoute : ouverture, transitions, réécoute, sans aucun texte dit',
+    fakeAsync(() => {
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      const jarvis = fixture.componentInstance;
+      fixture.autoDetectChanges();
+      jarvis.startConversation();
+      tick(300);
+      dictation.stop.and.resolveTo('Où en est la migration Poséidon ?');
+      void jarvis.finishListening();
+      flushMicrotasks();
+      handlers!.onDone({ reply: '🎙 Étape 4.', actions: [], messageId: 'm-1' });
+      flushMicrotasks();
+      tick(300);
+      TestBed.inject(JarvisListenTrace).flush();
+      const events = traceBatches.flatMap((b) => b.events);
+      const names = events.map((e) => e.ev);
+      expect(names).toContain('page_load');
+      expect(names).toContain('relisten_arm');
+      expect(names).toContain('relisten_fire');
+      expect(names).toContain('listen_open');
+      expect(names).toContain('stream_fallback');
+      expect(names).toContain('mic_open');
+      expect(names).toContain('transcript');
+      expect(events.some((e) => e.ev === 'state' && e.d === 'repos>ecoute')).toBeTrue();
+      expect(events.some((e) => e.ev === 'mode' && e.d === 'idle>active')).toBeTrue();
+      // Jamais de contenu : ni la demande, ni la réponse.
+      const all = JSON.stringify(traceBatches);
+      expect(all).not.toContain('migration');
+      expect(all).not.toContain('Poséidon');
+      expect(all).not.toContain('Étape');
+      expect(traceBatches.every((b) => b.companion === false && !!b.pageId)).toBeTrue();
       jarvis.ngOnDestroy();
     }));
 

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-233 / SF-233-15 - LE JOURNAL DE L'ECOUTE.
+
+      jarvis_listen_traces : les transitions et erreurs de la boucle d'ecoute mains libres de l'ecran /jarvis, une
+      ligne par evenement (un evenement repete garde une seule ligne et son compteur). AUCUN contenu : ni texte dit ou
+      entendu, ni audio ; des noms d'evenements, des etats, des durees, des noms d'erreurs. Retention 7 jours (purge
+      quotidienne). Lecture par l'equipe en SQL (audit 2026-11-07), toujours filtree par user_id.
+
+      Rollback : la table est supprimee.
+    -->
+
+    <changeSet id="250-01-jarvis-listen-traces" author="claude-gateway">
+        <createTable tableName="jarvis_listen_traces">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="page_id" type="varchar(36)"><constraints nullable="false"/></column>
+            <column name="page_version" type="varchar(24)"/>
+            <column name="companion" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="seq" type="int"><constraints nullable="false"/></column>
+            <column name="at_ms" type="bigint"><constraints nullable="false"/></column>
+            <column name="event" type="varchar(40)"><constraints nullable="false"/></column>
+            <column name="state" type="varchar(16)"/>
+            <column name="mode" type="varchar(16)"/>
+            <column name="detail" type="varchar(120)"/>
+            <column name="repeat_count" type="int" defaultValueNumeric="1"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="jarvis_listen_traces" indexName="idx_jarvis_listen_traces_user">
+            <column name="user_id"/>
+            <column name="created_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="jarvis_listen_traces"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

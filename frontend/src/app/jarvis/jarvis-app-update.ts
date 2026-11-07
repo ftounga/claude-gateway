@@ -21,13 +21,16 @@ export class JarvisAppUpdate implements OnDestroy {
   readonly pending = signal(false);
 
   private idle: () => boolean = () => false;
+  /** F-233 / SF-233-15 — prévenu juste avant le rechargement (journal de l'écoute). */
+  private onApply: () => void = () => undefined;
   private subscription: Subscription | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private applying = false;
 
   /** Démarre la surveillance ; `idle` dit si Jarvis est au repos (rien en cours). */
-  start(idle: () => boolean): void {
+  start(idle: () => boolean, onApply: () => void = () => undefined): void {
     this.idle = idle;
+    this.onApply = onApply;
     if (!this.sw?.isEnabled || this.subscription) {
       return;
     }
@@ -77,6 +80,11 @@ export class JarvisAppUpdate implements OnDestroy {
 
   private async apply(): Promise<void> {
     this.applying = true;
+    try {
+      this.onApply();
+    } catch {
+      // le journal ne retient jamais la mise à jour
+    }
     try {
       await this.sw?.activateUpdate();
     } catch {
