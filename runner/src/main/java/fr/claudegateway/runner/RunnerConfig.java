@@ -203,6 +203,11 @@ public final class RunnerConfig {
         return gatewayBaseUrl + "/runner/departure";
     }
 
+    /** F-249 / SF-249-02 — le dépôt d'un mail Outlook, {@code {gateway}/runner/mail-deposit}. */
+    public String mailDepositUrl() {
+        return gatewayBaseUrl + "/runner/mail-deposit";
+    }
+
     /** Arrêt propre du repli, {@code {gateway}/runner/disconnect}. */
     public String disconnectUrl() {
         return gatewayBaseUrl + "/runner/disconnect";

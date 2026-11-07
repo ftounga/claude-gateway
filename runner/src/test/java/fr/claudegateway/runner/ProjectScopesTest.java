@@ -151,8 +151,8 @@ class ProjectScopesTest {
         // F-121 / SF-121-07 : quand bash est autorisé, ProjectScopes monte un registre de fond, donc
         // la capacité bash_background est aussi annoncée (le montage par projet passe le registre au
         // BashTool). Sans bash, aucune de ces capacités n'apparaît.
-        assertEquals(java.util.List.of("files", "bash", "bash_parallel_4", "proof", "low_priority", "bash_background"), scopes().capabilities());
-        assertEquals(java.util.List.of("files"),
+        assertEquals(java.util.List.of("files", "bash", "bash_parallel_4", "proof", "low_priority", "bash_background", "mail_deposit"), scopes().capabilities());
+        assertEquals(java.util.List.of("files", "mail_deposit"),
                 new ProjectScopes(hostRoot, false, ShellElection.elect(), new Console())
                         .capabilities());
     }

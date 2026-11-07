@@ -209,6 +209,11 @@ public final class RunnerMain {
         // (SIGKILL, fin de session brutale) ne doit pas laisser un runner orphelin connecté.
         fr.claudegateway.runner.launcher.LauncherWatch.startIfUnderLauncher(env, console);
 
+        // F-249 / SF-249-02 : le dossier des mails Outlook, surveillé en arrière-plan (priorité minimale, jamais
+        // pendant un travail). Le jeton est relu à chaque envoi : un réappairage le remplace.
+        AtomicReference<String> currentToken = new AtomicReference<>(token);
+        startMailDeposit(config, currentToken, console);
+
         console.info("Appuyez sur Ctrl-C pour arrêter le runner.");
         try {
             runSession(token, config, console, httpClient, connection, fallbackPolicy, polling,
@@ -223,6 +228,7 @@ public final class RunnerMain {
                     String fresh = new TokenAcquisition(console).obtain(Optional.empty(), true,
                             tokenStore.tokenFile(), () -> pairAndStore(config, tokenStore, httpClient, home))
                             .orElseThrow().token();
+                    currentToken.set(fresh);
                     runSession(fresh, config, console, httpClient, connection, fallbackPolicy, polling,
                             shuttingDown, journal);
                     return transportVerdict(console, journal, shuttingDown);
@@ -241,6 +247,24 @@ public final class RunnerMain {
             return 1;
         } finally {
             stopped.countDown();
+        }
+    }
+
+    /** F-249 / SF-249-02 — prépare {@code <racine>/jarvis/mails/} et lance sa surveillance ; ne casse jamais le démarrage. */
+    static void startMailDeposit(RunnerConfig config, AtomicReference<String> token, Console console) {
+        try {
+            fr.claudegateway.runner.mail.MailDepositWatcher watcher =
+                    fr.claudegateway.runner.mail.MailDepositWatcher.forRuntime(config.hostRoot(),
+                            config.mailDepositUrl(), token::get, console::info);
+            if (watcher.prepare()) {
+                console.info("Mails     : glissez vos mails Outlook dans " + watcher.dir()
+                        + " (envoyés à Jarvis en arrière-plan).");
+                watcher.start();
+            } else {
+                console.info("Mails     : dossier " + watcher.dir() + " impossible à créer — dépôt des mails inactif.");
+            }
+        } catch (RuntimeException e) {
+            console.info("Mails     : surveillance du dossier indisponible.");
         }
     }
 
