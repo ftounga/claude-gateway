@@ -103,6 +103,8 @@ class JarvisCompanionSessionApiIntegrationTest {
         asUser(jwt, get("/api/jarvis/preferences")).andExpect(status().isOk());
         asUser(jwt, get("/api/workspaces")).andExpect(status().isOk());
         asUser(jwt, get("/api/jarvis/companions")).andExpect(status().isOk());
+        // SF-233-16 — le visage F-250 : son coupe-circuit se lit aussi depuis le compagnon (403 avant : cœur affiché).
+        asUser(jwt, get("/api/jarvis/face")).andExpect(status().isOk());
 
         for (MockHttpServletRequestBuilder outside : List.of(
                 get("/api/me"),

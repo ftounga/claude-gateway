@@ -35,6 +35,7 @@ import { JarvisPortraitClient } from './jarvis-portrait';
 import { JarvisMailClient, MailBrief } from './jarvis-mail';
 import { JARVIS_NOTICE_POLL_MS, JarvisNotice, JarvisNoticesClient } from './jarvis-notices';
 import { JarvisListenTrace, JarvisTraceSink, TraceBatch } from './jarvis-listen-trace';
+import { JARVIS_LOOP_WATCHDOG_MS, MIC_PAUSE_PHRASE, MIC_RETRY_MS } from './jarvis-conversation';
 import { JarvisCalendarClient } from './jarvis-calendar';
 import { JARVIS_RENDER_PROBE, RenderProbe } from './stage3d/jarvis-render-capability';
 import { FakeEngine, NO_WEBGL_PROBE, PC_PROBE, fakeEngineFactory } from './stage3d/jarvis-stage3d.testing';
@@ -192,6 +193,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
         { provide: JarvisMailClient, useValue: mailClient },
         { provide: JarvisNoticesClient, useValue: noticesClient },
         { provide: JARVIS_NOTICE_POLL_MS, useValue: 0 },
+        { provide: JARVIS_LOOP_WATCHDOG_MS, useValue: 0 },
         { provide: JarvisTraceSink, useValue: { send: (batch: TraceBatch) => traceBatches.push(batch) } },
         { provide: JARVIS_USER_AGENT, useFactory: () => userAgent },
         { provide: NotificationCenterService, useValue: notificationCenter },
@@ -1719,6 +1721,106 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       expect(traceBatches.every((b) => b.companion === false && !!b.pageId)).toBeTrue();
       jarvis.ngOnDestroy();
     }));
+
+  function traced(): string[] {
+    TestBed.inject(JarvisListenTrace).flush();
+    return traceBatches.flatMap((b) => b.events).map((e) => e.ev);
+  }
+
+  it('F-233 / SF-233-16 — chien de garde : conversation active au repos sans rien d’armé ⇒ elle réécoute',
+    fakeAsync(() => {
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      const jarvis = fixture.componentInstance;
+      jarvis.conversation.start();
+      // Aucun changement d'état : l'effet de réécoute ne part pas (le cas de l'audit).
+      jarvis['clearRelisten']();
+      expect(jarvis.state()).toBe('repos');
+      jarvis.watchLoop();
+      expect(dictation.start).not.toHaveBeenCalled();
+      jarvis.watchLoop();
+      flushMicrotasks();
+      expect(dictation.start).toHaveBeenCalledTimes(1);
+      expect(jarvis.state()).toBe('ecoute');
+      expect(traced()).toContain('watchdog_relisten');
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-233 / SF-233-16 — chien de garde : « écoute » sans micro (coupure sans capture) ⇒ close', fakeAsync(() => {
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    jarvis.state.set('ecoute');
+    jarvis.watchLoop();
+    expect(jarvis.state()).toBe('ecoute');
+    jarvis.watchLoop();
+    expect(jarvis.state()).toBe('repos');
+    expect(traced()).toContain('watchdog_orphan_ecoute');
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-233 / SF-233-16 — chien de garde : une ouverture d’écoute figée est abandonnée', fakeAsync(() => {
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    jarvis['listenOpening'] = true;
+    jarvis['openingSince'] = performance.now() - 16_000;
+    jarvis.watchLoop();
+    expect(jarvis['listenOpening']).toBeFalse();
+    expect(traced()).toContain('listen_open_timeout');
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-233 / SF-233-16 — micro refusé : un second essai, puis la pause est DITE (plus de pause muette)',
+    fakeAsync(() => {
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      const jarvis = fixture.componentInstance;
+      fixture.autoDetectChanges();
+      dictation.start.and.rejectWith('micro-refuse');
+      jarvis.startConversation();
+      tick(300);
+      expect(dictation.start).toHaveBeenCalledTimes(1);
+      tick(MIC_RETRY_MS);
+      flushMicrotasks();
+      expect(dictation.start).toHaveBeenCalledTimes(2);
+      expect(jarvis.conversation.mode()).toBe('paused');
+      expect(voice.speak).toHaveBeenCalledWith(MIC_PAUSE_PHRASE, jasmine.anything());
+      const names = traced();
+      expect(names).toContain('mic_retry');
+      expect(names).toContain('conv_pause');
+      tick(1_000);
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-233 / SF-233-16 — micro refusé une fois seulement : le second essai ouvre l’écoute', fakeAsync(() => {
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    fixture.autoDetectChanges();
+    let calls = 0;
+    dictation.start.and.callFake(() => (++calls === 1 ? Promise.reject('micro-refuse') : Promise.resolve()));
+    jarvis.startConversation();
+    tick(300);
+    tick(MIC_RETRY_MS);
+    flushMicrotasks();
+    expect(jarvis.state()).toBe('ecoute');
+    expect(jarvis.conversation.mode()).toBe('active');
+    expect(voice.speak).not.toHaveBeenCalled();
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-233 / SF-233-16 — jamais de rechargement de mise à jour en pleine conversation', fakeAsync(() => {
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    expect(jarvis['isQuiet']()).toBeTrue();
+    jarvis.conversation.start();
+    expect(jarvis['isQuiet']()).toBeFalse();
+    jarvis.conversation.pause();
+    expect(jarvis['isQuiet']()).toBeTrue();
+    jarvis.ngOnDestroy();
+  }));
 
   it('F-233 / SF-233-11 — un bruit n’envoie rien et l’écoute repart', fakeAsync(() => {
     const fixture = TestBed.createComponent(JarvisComponent);

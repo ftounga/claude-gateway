@@ -82,6 +82,10 @@ export class MicMeter {
     }
     try {
       this.context = new Ctor();
+      // F-233 / SF-233-16 — un contexte suspendu mesure 0 : l'écoute serait sourde (fin au silence en boucle).
+      if (this.context.state === 'suspended') {
+        void this.context.resume().catch(() => undefined);
+      }
       this.analyser = this.context.createAnalyser();
       this.analyser.fftSize = 512;
       this.samples = new Uint8Array(this.analyser.fftSize);

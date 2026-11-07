@@ -2,6 +2,8 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
+import { MIC_OPEN_TIMEOUT_MS, stopTracks, timed } from '../timed';
+
 /** Ce qui peut empêcher une dictée (F-145 / SF-145-01). */
 export type DictationError = 'micro-refuse' | 'non-configure' | 'echec' | 'trop-long';
 
@@ -65,9 +67,11 @@ export class DictationService {
     let stream: MediaStream;
     try {
       // F-233 / SF-233-05 : Jarvis demande l'annulation d'écho (sa propre voix au haut-parleur).
-      stream = await navigator.mediaDevices.getUserMedia({ audio });
+      // F-233 / SF-233-16 — jamais d'attente sans fin : un micro qui ne répond pas est un micro refusé.
+      stream = await timed(navigator.mediaDevices.getUserMedia({ audio }), MIC_OPEN_TIMEOUT_MS, stopTracks);
     } catch (error) {
-      this.lastMicError = (error as { name?: string } | null)?.name || null;
+      this.lastMicError = (error as { message?: string } | null)?.message === 'timeout' ? 'Timeout'
+        : (error as { name?: string } | null)?.name || null;
       throw 'micro-refuse' as DictationError;
     }
     this.chunks = [];

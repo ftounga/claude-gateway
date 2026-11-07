@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { InjectionToken, signal } from '@angular/core';
 
 import { normalize } from './jarvis-oral';
 
@@ -21,6 +21,24 @@ export const MIN_CONVERSATION_IDLE_MS = 15_000;
 export const MAX_CONVERSATION_IDLE_MS = 600_000;
 /** Le délai avant de rouvrir l'écoute : le temps que la voix se taise et que le micro se libère. */
 export const RELISTEN_DELAY_MS = 250;
+
+/**
+ * F-233 / SF-233-16 — **le chien de garde de la boucle** (audit du 2026-11-07) : toutes les 3 s, la conversation active
+ * qui ne fait rien (ni écoute, ni tour, ni réécoute armée) depuis deux passages réécoute ; une ouverture d'écoute figée
+ * est abandonnée ; une écoute sans micro est close ; le compagnon reçoit un signe de vie. 0 : éteint (tests).
+ */
+export const JARVIS_LOOP_WATCHDOG_MS = new InjectionToken<number>('JARVIS_LOOP_WATCHDOG_MS', {
+  providedIn: 'root',
+  factory: () => 3_000,
+});
+/** Une ouverture d'écoute plus longue est abandonnée (chaque étape a déjà sa borne, celle-ci est le filet). */
+export const LISTEN_OPEN_LIMIT_MS = 15_000;
+/** Le micro refusé est réessayé une fois après ce délai (une capture précédente se libère). */
+export const MIC_RETRY_MS = 700;
+/** La libération du micro de la détection de voix est attendue au plus autant avant de rouvrir l'écoute. */
+export const VAD_RELEASE_WAIT_MS = 800;
+/** Ce que Jarvis dit quand le micro reste fermé : la pause n'est plus muette. */
+export const MIC_PAUSE_PHRASE = 'Je n’arrive pas à ouvrir le micro : je me mets en pause. Dites « Jarvis » pour reprendre.';
 
 /** Ce que Jarvis dit en se mettant en pause, et en retournant au repos. */
 export const PAUSE_PHRASE = 'Je me mets en pause.';

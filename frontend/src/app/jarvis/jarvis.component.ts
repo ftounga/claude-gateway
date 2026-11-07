@@ -47,7 +47,7 @@ import {
   JarvisStreamOpener, LISTEN_AUDIO, LiveListening, StreamFallback, streamFailureOf, ticketFailureOf,
 } from './jarvis-stream-listener';
 import { HttpErrorResponse } from '@angular/common/http';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, timeout } from 'rxjs';
 import {
   JARVIS_BUDGET_CONFIRM, JARVIS_BUDGET_HARD, JarvisCostSummary, JarvisHumour, JarvisSttTicket, JarvisUtterance,
 } from '../core/models/jarvis.models';
@@ -93,7 +93,8 @@ import {
   stripInvitationLines, subjectSwitch, withEndAnnouncement,
 } from './jarvis-oral';
 import {
-  Conversation, IDLE_PHRASE, IDLE_WAKE_HINT, PAUSE_PHRASE, RELISTEN_DELAY_MS, isNoise, isPauseCommand,
+  Conversation, IDLE_PHRASE, IDLE_WAKE_HINT, JARVIS_LOOP_WATCHDOG_MS, LISTEN_OPEN_LIMIT_MS, MIC_PAUSE_PHRASE,
+  MIC_RETRY_MS, PAUSE_PHRASE, RELISTEN_DELAY_MS, VAD_RELEASE_WAIT_MS, isNoise, isPauseCommand,
 } from './jarvis-conversation';
 import { ExchangeFiller, FORMULA_CLIPS, FormulaPicker, LINKED_FILLER_DELAY_MS, linkedFiller } from './jarvis-phrases';
 import { MAX_LISTEN_MS, MIN_VOICED_MS, NoiseFloor, SpeechRejection, speechGate } from './jarvis-speech-gate';
@@ -1020,6 +1021,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.trace.start({ companion: this.companionBridge.available, state: () => this.state(),
       mode: () => this.conversation.mode() });
+    // F-233 / SF-233-16 — la voix journalise ses calages (chien de garde de lecture).
+    this.voice.traceHook = (event, detail) => this.trace.mark(event, detail);
+    this.startLoopWatchdog();
     this.useJarvisManifest();
     // SF-236-26 — l'ouverture en présentation ou en vue cockpit est comptée (la scène existe dès la vue créée).
     queueMicrotask(() => {
@@ -1145,6 +1149,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.stopVad();
     this.wakeEngine.stop();
     this.restoreManifest();
+    if (this.loopTimer !== null) {
+      clearInterval(this.loopTimer);
+      this.loopTimer = null;
+    }
+    this.voice.traceHook = null;
     this.trace.stop();
   }
 
@@ -1400,7 +1409,20 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   private listenOpening = false;
 
+  /** F-233 / SF-233-16 — le numéro de l'ouverture en cours : une ouverture abandonnée par le chien de garde se tait. */
+  private openAttempt = 0;
+  /** F-233 / SF-233-16 — la libération en cours du micro de la détection de voix. */
+  private vadStopping: Promise<void> | null = null;
+
   private async openListening(preRoll: WakeEvent | null): Promise<void> {
+    const attempt = ++this.openAttempt;
+    // F-233 / SF-233-16 — la détection de voix (pendant la parole) libère son micro avant qu'on le rouvre : deux
+    // captures qui se chevauchent font échouer ou figer `getUserMedia` sur Android. Attente bornée.
+    if (this.vadStopping) {
+      const stopping = this.vadStopping;
+      this.vadStopping = null;
+      await Promise.race([stopping, new Promise<void>((resolve) => setTimeout(resolve, VAD_RELEASE_WAIT_MS))]);
+    }
     this.notice.set(null);
     // Le micro passe à la dictée : l'écoute du mot d'éveil se tait d'abord — sauf (F-239) quand elle garde la phrase
     // qui contenait « Jarvis » : elle se tait alors à l'ouverture de l'écoute en flux, qui reçoit cette phrase.
@@ -1419,19 +1441,41 @@ export class JarvisComponent implements OnInit, OnDestroy {
       return audio;
     } : null);
     this.wakeEngine.stop();
+    if (attempt !== this.openAttempt) {
+      // F-233 / SF-233-16 — abandonnée entre-temps (chien de garde) : on rend ce qui a été ouvert.
+      this.trace.mark('listen_open_late', streaming ? 'flux' : '');
+      if (streaming) {
+        this.closeStreaming();
+      }
+      return;
+    }
     this.trace.mark(streaming ? 'stream_open' : 'stream_fallback', streaming ? '' : this.streamFallback);
     if (!streaming) {
-      try {
-        await this.dictation.start(LISTEN_AUDIO);
-        this.trace.mark('mic_open', 'batch');
-      } catch (error) {
-        this.trace.mark('mic_fail', `${errorName(error)} ${this.dictation.lastMicError ?? ''}`);
+      let failure = await this.openDictation();
+      // F-233 / SF-233-16 — une capture précédente qui se libère fait échouer le premier essai : un second, plus tard.
+      if (failure !== null && this.conversation.active && attempt === this.openAttempt) {
+        this.trace.mark('mic_retry');
+        await new Promise<void>((resolve) => setTimeout(resolve, MIC_RETRY_MS));
+        failure = attempt === this.openAttempt ? await this.openDictation() : failure;
+      }
+      if (attempt !== this.openAttempt) {
+        this.trace.mark('listen_open_late', 'dictee');
+        this.dictation.cancel();
+        return;
+      }
+      if (failure !== null) {
+        const error = failure.error;
         this.notice.set(this.companionBridge.available && error === 'micro-refuse'
           ? companionMicMessage(this.dictation.lastMicError)
           : dictationMessage(error as DictationError));
         // SF-233-11 — micro refusé : la conversation se met en pause plutôt que de réessayer en boucle.
+        // F-233 / SF-233-16 — et Jarvis le DIT : une pause muette ressemblait à « il n'écoute plus ».
+        const wasActive = this.conversation.active;
         this.trace.mark('conv_pause', 'micro');
         this.conversation.pause();
+        if (wasActive) {
+          void this.say(MIC_PAUSE_PHRASE);
+        }
         return;
       }
     }
@@ -1514,6 +1558,18 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** F-233 / SF-233-16 — ouvre la dictée ; `null` si le micro est ouvert, sinon l'erreur (journalisée). */
+  private async openDictation(): Promise<{ error: unknown } | null> {
+    try {
+      await this.dictation.start(LISTEN_AUDIO);
+      this.trace.mark('mic_open', 'batch');
+      return null;
+    } catch (error) {
+      this.trace.mark('mic_fail', `${errorName(error)} ${this.dictation.lastMicError ?? ''}`);
+      return { error };
+    }
+  }
+
   // ---- F-233 / SF-233-05 : écouter en flux ----
   private readonly streamOpener = inject(JarvisStreamOpener);
   /** Le texte provisoire, affiché sous l'orbe pendant la parole. */
@@ -1550,7 +1606,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
     let ticket: JarvisSttTicket;
     try {
-      ticket = await firstValueFrom(this.jarvis.sttSession());
+      // F-233 / SF-233-16 — borné : un ticket qui ne revient pas ne fige plus l'ouverture de l'écoute.
+      ticket = await firstValueFrom(this.jarvis.sttSession().pipe(timeout(STT_TICKET_TIMEOUT_MS)));
     } catch (error) {
       const status = error instanceof HttpErrorResponse ? error.status : null;
       if (status === 503) {
@@ -1786,8 +1843,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
   }
 
   private stopVad(): void {
-    this.vad?.stop();
+    const stopping = this.vad?.stop();
     this.vad = null;
+    if (stopping) {
+      this.vadStopping = Promise.resolve(stopping).catch(() => undefined);
+    }
   }
 
   /**
@@ -2560,6 +2620,12 @@ export class JarvisComponent implements OnInit, OnDestroy {
         }), ANNOUNCE_PAUSE_MS);
       }
       return;
+    }
+    // F-233 / SF-233-16 — une annonce pendant l'écoute (silencieuse) : l'écoute est close d'abord, sinon le micro reste
+    // ouvert sous la voix de Jarvis et la dictée suivante reprendrait cet enregistrement.
+    if (this.state() === 'ecoute') {
+      this.trace.mark('announce_close_listen');
+      this.cancelListening();
     }
     // F-240 / SF-240-01 — la fin d'une délégation dite : sa longueur et sa durée entrent dans la mesure de l'échange.
     const timed = this.timedHooks();
@@ -4062,8 +4128,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   /** SF-233-12 — rien en cours : ni écoute, ni parole, ni tour, ni délégation, ni apprentissage du mot d'éveil. */
   private isQuiet(): boolean {
+    // F-233 / SF-233-16 — jamais en pleine conversation : le rechargement tombait entre deux tours (audit 2026-11-07).
     return this.state() === 'repos' && !this.turnRunning && this.delegations().length === 0
-      && this.enrolling() === null;
+      && this.enrolling() === null && !this.conversation.active;
   }
 
   /** L'interrupteur : démarre ou reprend la conversation (geste exigé par le navigateur), ou la met en pause. */
@@ -4199,6 +4266,98 @@ export class JarvisComponent implements OnInit, OnDestroy {
   /** F-233 / SF-233-15 — le pic de niveau du micro pendant l'écoute en cours (0 à 1). */
   private listenPeak = 0;
 
+  // ---- F-233 / SF-233-16 : le chien de garde de la boucle ----
+  private readonly loopWatchMs = inject(JARVIS_LOOP_WATCHDOG_MS);
+  private loopTimer: ReturnType<typeof setInterval> | null = null;
+  private stuckPasses = 0;
+  private orphanPasses = 0;
+  private openingSince = 0;
+  private lastRender = '';
+
+  private startLoopWatchdog(): void {
+    if (this.loopWatchMs <= 0) {
+      return;
+    }
+    this.zone.runOutsideAngular(() => {
+      this.loopTimer = setInterval(() => this.zone.run(() => this.watchLoop()), this.loopWatchMs);
+    });
+  }
+
+  /**
+   * F-233 / SF-233-16 — un passage du chien de garde (audit du 2026-11-07 : la boucle s'arrêtait en silence).
+   * - signe de vie au compagnon tant que la conversation ou un tour tourne (l'écran natif se fermait après 3 min) ;
+   * - une ouverture d'écoute figée au-delà de {@link LISTEN_OPEN_LIMIT_MS} est abandonnée ;
+   * - un état « écoute » sans micro (ni flux, ni dictée, ni capture de coupure) est clos ;
+   * - une conversation active au repos sans rien d'armé pendant deux passages réécoute.
+   */
+  watchLoop(): void {
+    const active = this.conversation.active;
+    if (active || this.turnRunning) {
+      this.companionBridge.keepAlive();
+    }
+    this.traceRender();
+    if (this.listenOpening) {
+      const now = performance.now();
+      if (this.openingSince === 0) {
+        this.openingSince = now;
+      } else if (now - this.openingSince >= LISTEN_OPEN_LIMIT_MS) {
+        this.trace.mark('listen_open_timeout', `ms=${Math.round(now - this.openingSince)}`);
+        this.openingSince = 0;
+        this.openAttempt++;
+        this.listenOpening = false;
+      }
+    } else {
+      this.openingSince = 0;
+    }
+    const state = this.state();
+    const capturing = !!this.live || this.dictation.recording || this.bargeIn.capturing || this.listenOpening;
+    if (state === 'ecoute' && !capturing) {
+      if (++this.orphanPasses >= 2) {
+        this.orphanPasses = 0;
+        this.trace.mark('watchdog_orphan_ecoute');
+        this.stopMeter();
+        this.state.set(this.turnRunning ? 'reflexion' : 'repos');
+      }
+    } else {
+      this.orphanPasses = 0;
+    }
+    const stuck = active && this.state() === 'repos' && !this.turnRunning && !this.relistenTimer
+      && !this.listenOpening && !this.waking;
+    if (!stuck) {
+      this.stuckPasses = 0;
+      return;
+    }
+    if (++this.stuckPasses < 2) {
+      return;
+    }
+    this.stuckPasses = 0;
+    this.trace.mark('watchdog_relisten');
+    if (this.conversation.idleExpired()) {
+      void this.endConversation();
+    } else {
+      void this.listen();
+    }
+  }
+
+  /** F-233 / SF-233-16 — le rendu (3D/2D, visage) entre au journal quand il change. */
+  private traceRender(): void {
+    const stage = this.stage3dRef;
+    if (!stage) {
+      return;
+    }
+    try {
+      const decision = stage.decision() as { mode: string; reason?: string; level?: string };
+      const render = `${stage.rendering()} ${decision.mode} ${decision.reason ?? decision.level ?? ''} face=${this.faceOn() ? 1 : 0} srv=${
+        this.faceServer() ? 1 : 0}`;
+      if (render !== this.lastRender) {
+        this.lastRender = render;
+        this.trace.mark('render', render);
+      }
+    } catch {
+      // rendu illisible : rien à journaliser
+    }
+  }
+
   private stopMeter(): void {
     cancelAnimationFrame(this.listenFrame);
     this.meter?.close();
@@ -4215,6 +4374,9 @@ export const BUDGET_HARD_NOTICE = 'Plafond mensuel de la conversation atteint : 
 export function euros(value: number): string {
   return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value);
 }
+
+/** F-233 / SF-233-16 — le ticket d'écoute en flux, borné (au-delà : dictée). */
+export const STT_TICKET_TIMEOUT_MS = 6_000;
 
 /** F-233 / SF-233-15 — la page est-elle servie par le service worker ? (une ancienne version peut l'être) */
 function swControlled(): boolean {

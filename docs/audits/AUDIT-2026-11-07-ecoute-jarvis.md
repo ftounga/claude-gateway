@@ -5,6 +5,11 @@
 > visage F-250 n'apparaît pas sur le téléphone ».
 >
 > Livrables : ce document (A), le journal de l'écoute SF-233-15 (B), les corrections SF-233-16 (C).
+>
+> **Prouvé vs supposé.** Prouvé par les données : la voix bloquée (#1), la version périmée et le rechargement en
+> conversation (#6), le visage (§4), les paroles refusées sans retour (#8). Prouvé par le code (mécanismes
+> déterministes, corrigés car ce sont des défauts quoi qu'il arrive) : #2, #3, #4, #5, #9, #10. **Supposé** — lequel de
+> ces points arrête la boucle chez le PO à chaque essai : c'est ce que le journal tranchera au prochain essai.
 
 ## 1. La boucle, telle que le code la déroule
 
