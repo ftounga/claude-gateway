@@ -1532,6 +1532,14 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
 - **jarvis_mail_deposits** — **le journal des dépôts Outlook** (F-249 / SF-249-01, migration `249-01`) : `id`,
   `user_id`, `host_id`, `content_hash` (SHA-256 du fichier ; unique avec `user_id, host_id`), `item_id`, `outcome`
   (`ACCEPTED|DUPLICATE|IGNORED`), `deposited_at`. Aucun nom de fichier, aucun contenu. Purge à 30 jours.
+- **jarvis_mail_subject_links** — **les mails déposés rattachés aux sujets** (F-249 / SF-249-03, migration `249-03`) :
+  `id`, `user_id`, `item_id`, `workspace_id`, `host_id`, `reason` (`FIL|TICKET|MOTS`, sans IA), `created_at` ; unique
+  (`item_id`, `workspace_id`).
+- **jarvis_notices** — **les annonces d'interface** (F-249 / SF-249-03, migration `249-03`) : `id`, `user_id`,
+  `host_id`, `workspace_id`, `kind` (`MAILS_ON_SUBJECT|MORNING_RECAP|DEPOSIT_REMINDER|MEETING_SOON|IGNORE_OFFER`),
+  `dedup_key` (unique par compte : une annonce par sujet qui cumule), `display_text`, `speech_text`, `link`,
+  `item_count`, `created_at`, `updated_at`, `expires_at`, `seen_at`, `spoken_at`. **Jamais** un message de conversation.
+  Purge 7 jours après échéance.
 - **jarvis_mail_actions** — **les actions de courrier qui engagent** (F-242 / SF-242-06, migration
   `242-jarvis-mail-actions`) : `id`, `user_id`, `account_id`, `workspace_id` (le fil Jarvis), `kind`
   (`SEND|DELETE|ARCHIVE_BULK`), `payload` (scellé), `summary` (la reformulation dite), `status`
