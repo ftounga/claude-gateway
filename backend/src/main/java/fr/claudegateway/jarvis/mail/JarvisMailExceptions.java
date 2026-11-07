@@ -50,6 +50,14 @@ public final class JarvisMailExceptions {
     }
 
     /** 404 — une boîte ou un courrier introuvable sous ce compte (celui d'autrui compris). */
+    /** F-249 — une action (répondre, envoyer, archiver, supprimer) sur un courrier déposé depuis l'Outlook d'un client. */
+    public static class DepositedMailException extends MailException {
+        public DepositedMailException() {
+            super("deposited_mail", "Courriel déposé depuis l'Outlook d'un client : aucune boîte n'est reliée derrière, "
+                    + "on y répond (ou on le range) depuis Outlook, pas d'ici. Dis-le à l'utilisateur.");
+        }
+    }
+
     public static class MailNotFoundException extends MailException {
         public MailNotFoundException() {
             super("not_found", "Introuvable.");

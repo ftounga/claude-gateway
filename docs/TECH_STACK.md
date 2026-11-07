@@ -42,6 +42,10 @@ Ce document explique pourquoi chaque technologie majeure a été retenue pour Cl
   occurrences modifiées, fuseaux). Confinée à `fr.claudegateway.jarvis.calendar.JarvisIcsParser`. `groovy` et `jparsec`
   (filtres d'expressions inutilisés) sont exclus ; aucune mise à jour de fuseau par le réseau (`ical4j.properties`).
   Écrire un analyseur iCal maison aurait réinventé l'existant.
+- **Apache POI `poi-scratchpad` 5.3.0** (licence Apache 2.0, F-249 / SF-249-01) : lecture des mails Outlook `.msg`
+  (OLE2/MAPI, HSMF) déposés par le runner — en-têtes, texte, pièce `.ics`, demandes de réunion. **Variante de pile
+  signalée** : aucune autre bibliothèque ne lit ce format ; la lecture reste côté serveur (runner léger, correctifs sans
+  mise à jour des postes). Les `.eml` passent par `jakarta.mail`, déjà présent.
 
 ## Guiding Principle
 Les choix technologiques sont guidés par : simplicité, fiabilité, maintenabilité, production readiness, évolution long terme. De nouvelles technologies ne sont introduites que si elles améliorent clairement ces objectifs.

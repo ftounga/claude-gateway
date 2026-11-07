@@ -72,14 +72,47 @@ public class JarvisMailItemService implements JarvisMailPurge {
         }
     }
 
+    /** F-249 — les postes (clients) du compte, pour le libellé « Outlook <client> » d'un courrier déposé. */
+    private fr.claudegateway.runner.host.RunnerHostRepository hosts;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setHosts(fr.claudegateway.runner.host.RunnerHostRepository hosts) {
+        this.hosts = hosts;
+    }
+
     /** Les vues de lignes déjà filtrées par compte. */
     public List<ItemView> views(UUID userId, List<JarvisMailItem> rows) {
         Map<UUID, String> labels = new HashMap<>();
         for (JarvisMailAccount a : accounts.findByUserIdOrderByCreatedAtAsc(userId)) {
             labels.put(a.getId(), a.getLabel());
         }
-        return rows.stream().filter(r -> userId.equals(r.getUserId())).map(r -> view(r, labels.get(r.getAccountId())))
+        Map<UUID, String> clients = rows.stream().anyMatch(JarvisMailItem::isDeposited) ? clientLabels(userId)
+                : Map.of();
+        return rows.stream().filter(r -> userId.equals(r.getUserId()))
+                .map(r -> view(r, r.isDeposited() ? clients.getOrDefault(r.getHostId(), DEPOSIT_LABEL)
+                        : labels.get(r.getAccountId())))
                 .toList();
+    }
+
+    /** Le libellé d'un courrier déposé dont le poste est inconnu. */
+    public static final String DEPOSIT_LABEL = "Outlook";
+
+    /** F-249 — « Outlook EDENRED » pour chaque poste du compte. */
+    public Map<UUID, String> clientLabels(UUID userId) {
+        Map<UUID, String> out = new HashMap<>();
+        if (hosts != null && userId != null) {
+            hosts.findByUserIdOrderByCreatedAtDesc(userId)
+                    .forEach(h -> out.put(h.getId(), DEPOSIT_LABEL + " " + h.getName()));
+        }
+        return out;
+    }
+
+    /** F-249 — le corps scellé d'un courrier déposé (aucun IMAP ne permet de le relire), ou {@code ""}. */
+    public String depositedBody(JarvisMailItem item) {
+        if (item == null || !item.isDeposited() || item.getBodySealed() == null) {
+            return "";
+        }
+        return seal.open(item.getBodySealed());
     }
 
     public ItemView view(JarvisMailItem r, String accountLabel) {

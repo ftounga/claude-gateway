@@ -643,6 +643,11 @@ app:
       timeout: ${APP_JARVIS_MAIL_TIMEOUT:PT20S}
       max-accounts: ${APP_JARVIS_MAIL_MAX_ACCOUNTS:2}
       poll-every: ${APP_JARVIS_MAIL_POLL_EVERY:PT5M}
+    # F-249 : LES MAILS OUTLOOK DES CLIENTS, deposes sur le poste et remontes par le runner (POST /runner/mail-deposit).
+    # enabled = COUPE-CIRCUIT de la route de depot et des travaux MAIL_DEPOSIT ; max-bytes = borne d'un fichier (D3).
+    client-mail:
+      enabled: ${APP_JARVIS_CLIENT_MAIL_ENABLED:true}
+      max-bytes: ${APP_JARVIS_CLIENT_MAIL_MAX_BYTES:20971520}
     # F-243 : LES AGENDAS DE JARVIS (adresse iCal secrete de Google, chiffree par ByokKeyCipher ; lecture seule, sans IA).
     # enabled = COUPE-CIRCUIT de la releve (D2) : false => aucune lecture periodique. allowed-hosts = garde anti-SSRF
     # (l'adresse est saisie par l'utilisateur et lue par le serveur) : HTTPS vers calendar.google.com seulement.
