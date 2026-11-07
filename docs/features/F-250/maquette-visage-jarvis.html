@@ -1,0 +1,895 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Visage de Jarvis</title>
+<meta name="description" content="F-250 — maquette du visage holographique de Jarvis : nuage de points, fil de fer, lueurs et synchronisation labiale par visèmes.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600&display=swap">
+<style>
+/*
+ * F-250 — maquette autonome. Écran unique, sombre, assumé (comme /jarvis) : DESIGN_SYSTEM §23.
+ * Jetons : navy #0B1020, orange de la marque #E07B39 / #F0954F, cœur #FFF3E4, attente cyan #5FD4FF,
+ * cerveau principal violet #9B7BFF. Polices de la charte : Space Grotesk (HUD), Inter (sous-titres), JetBrains Mono (mesures).
+ */
+:root {
+  color-scheme: dark;
+  --cg-navy: #0B1020;
+  --cg-cream: #F5EFE6;
+  --cg-holo: #E07B39;
+  --cg-holo-text: #F0954F;
+  --cg-holo-core: #FFF3E4;
+  --cg-holo-wait: #5FD4FF;
+  --cg-holo-deep: #9B7BFF;
+  --acc: var(--cg-holo-text);
+  --acc-rgb: 240, 149, 79;
+  --acc-dim: rgba(var(--acc-rgb), .35);
+  --glass: rgba(11, 16, 32, .72);
+  --f-hud: "Space Grotesk", system-ui, sans-serif;
+  --f-body: "Inter", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, monospace;
+  --ease: cubic-bezier(.16, 1, .3, 1);
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--cg-navy); color: var(--cg-cream); font-family: var(--f-body); overflow: hidden; -webkit-font-smoothing: antialiased; }
+#stage { position: fixed; inset: 0; }
+#stage canvas { display: block; width: 100%; height: 100%; }
+.hud { position: fixed; z-index: 5; }
+
+/* — En-tête — */
+.top { top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
+  padding: max(14px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)); pointer-events: none; }
+.brand { font: 600 15px var(--f-hud); letter-spacing: .34em; color: var(--acc); text-shadow: 0 0 14px var(--acc-dim); }
+.brand small { display: block; margin-top: 5px; font: 400 11px var(--f-mono); letter-spacing: .06em; color: rgba(245, 239, 230, .55); text-shadow: none; }
+.state { display: flex; gap: 10px; align-items: center; }
+.pill { font: 600 11px var(--f-hud); letter-spacing: .2em; text-transform: uppercase; color: var(--acc); border: 1px solid var(--acc-dim);
+  padding: 6px 11px 6px 22px; border-radius: 2px; background: var(--glass); position: relative;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); }
+.pill::before { content: ""; position: absolute; left: 9px; top: 50%; width: 6px; height: 6px; margin-top: -3px; border-radius: 50%; background: currentColor; box-shadow: 0 0 8px currentColor; animation: beat 1.6s ease-in-out infinite; }
+.fps { font: 400 11px var(--f-mono); color: rgba(245, 239, 230, .45); }
+@keyframes beat { 50% { opacity: .35; } }
+
+/* — Télémétrie (PC) — */
+.tele { right: max(16px, env(safe-area-inset-right)); top: 50%; transform: translateY(-50%); width: 220px; padding: 14px 16px 16px;
+  background: var(--glass); border: 1px solid var(--acc-dim); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px); pointer-events: none; }
+.tele h2 { margin: 0 0 10px; font: 600 10px var(--f-hud); letter-spacing: .24em; text-transform: uppercase; color: rgba(245, 239, 230, .6); }
+.vis { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+.vis b { font: 600 28px/1 var(--f-hud); color: var(--acc); text-shadow: 0 0 18px var(--acc-dim); white-space: nowrap; }
+.vis span { flex: 1; text-align: right; }
+.vis span { font: 400 11px var(--f-mono); color: rgba(245, 239, 230, .6); }
+.bar { display: grid; grid-template-columns: 74px 1fr; align-items: center; gap: 8px; margin: 7px 0; font: 400 11px var(--f-mono); color: rgba(245, 239, 230, .7); }
+.bar i { display: block; height: 4px; background: rgba(245, 239, 230, .1); position: relative; overflow: hidden; }
+.bar i::after { content: ""; position: absolute; inset: 0; transform-origin: left; transform: scaleX(var(--v, 0)); background: var(--acc); box-shadow: 0 0 8px var(--acc); }
+.bar.neg i::after { transform-origin: center; transform: scaleX(calc(var(--v, 0) * 1)); }
+.src { margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(245, 239, 230, .08); font: 400 10.5px/1.5 var(--f-mono); color: rgba(245, 239, 230, .5); }
+
+/* — Sous-titres et frise des visèmes — */
+.say { left: 50%; transform: translateX(-50%); bottom: calc(132px + env(safe-area-inset-bottom)); width: min(760px, calc(100% - 32px)); text-align: center; pointer-events: none; }
+#subtitle { min-height: 1.5em; font: 500 clamp(16px, 2.3vw, 21px)/1.45 var(--f-body); color: rgba(245, 239, 230, .38); text-wrap: balance; }
+#subtitle .w { transition: color .18s var(--ease), text-shadow .18s var(--ease); }
+#subtitle .w.said { color: rgba(245, 239, 230, .9); }
+#subtitle .w.now { color: var(--cg-holo-core); text-shadow: 0 0 14px var(--acc); }
+.say:not(.on) .frise { opacity: 0; }
+.frise { transition: opacity .4s var(--ease); position: relative; height: 34px; margin-top: 12px; overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent); mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent); }
+.frise::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--cg-holo-core); box-shadow: 0 0 10px var(--acc), 0 0 2px #fff; }
+#track { position: absolute; left: 50%; top: 4px; bottom: 4px; will-change: transform; }
+#track .v { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; overflow: hidden;
+  font: 500 10px var(--f-mono); color: rgba(245, 239, 230, .75); border-left: 1px solid var(--acc-dim); background: linear-gradient(180deg, rgba(var(--acc-rgb), .16), rgba(var(--acc-rgb), .04)); }
+#track .v.ferme { background: linear-gradient(180deg, rgba(255, 243, 228, .3), rgba(255, 243, 228, .06)); color: #fff; }
+#track .v.sil { background: none; color: rgba(245, 239, 230, .25); }
+
+/* — Commandes — */
+.controls { left: 0; right: 0; bottom: 0; padding: 0 max(16px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 100%; }
+button, .chip { font: 600 12px var(--f-hud); letter-spacing: .14em; text-transform: uppercase; color: var(--cg-cream); background: var(--glass);
+  border: 1px solid rgba(245, 239, 230, .16); padding: 0 14px; min-height: 40px; border-radius: 2px; cursor: pointer;
+  clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
+  transition: border-color .2s var(--ease), background .2s var(--ease), color .2s var(--ease); }
+button:hover { border-color: var(--acc); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+button[aria-pressed="true"] { border-color: var(--acc); color: #fff; background: linear-gradient(180deg, rgba(var(--acc-rgb), .26), rgba(var(--acc-rgb), .07)); box-shadow: inset 0 0 18px rgba(var(--acc-rgb), .22); }
+.styles button { letter-spacing: .08em; text-transform: none; font-weight: 500; font-family: var(--f-body); font-size: 13px; }
+.styles button em { font-style: normal; display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 8px; vertical-align: 0; box-shadow: 0 0 8px currentColor; }
+.opt { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: center; align-items: center; font: 400 12px var(--f-body); color: rgba(245, 239, 230, .7); }
+.opt label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; min-height: 32px; }
+.opt input[type=checkbox] { accent-color: var(--cg-holo); width: 16px; height: 16px; }
+#phrase { font: 400 13px var(--f-body); color: var(--cg-cream); background: rgba(11, 16, 32, .6); border: 1px solid rgba(245, 239, 230, .16); padding: 8px 10px; border-radius: 2px; width: min(460px, 100%); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+#noGl { position: fixed; inset: 0; display: none; place-items: center; text-align: center; padding: 24px; font: 500 15px var(--f-body); color: rgba(245, 239, 230, .7); }
+
+@media (max-width: 900px) { .tele { display: none; } }
+@media (max-width: 560px) {
+  .say { bottom: calc(196px + env(safe-area-inset-bottom)); }
+  button { padding: 0 10px; letter-spacing: .08em; font-size: 11px; }
+  .opt { font-size: 11px; gap: 4px 12px; }
+  .styles .long { display: none; }
+}
+body.shot .controls .opt, body.shot #phrase { display: none; }
+</style>
+</head>
+<body>
+<div id="stage" aria-hidden="true"></div>
+<div id="noGl">Ce navigateur n’affiche pas la 3D (WebGL indisponible) : le produit montrerait l’orbe 2D.</div>
+
+<header class="hud top">
+  <div class="brand">JARVIS<small>F-250 · maquette · le visage</small></div>
+  <div class="state"><span class="fps" id="fps"></span><span class="pill" id="pill" role="status" aria-live="polite">Repos</span></div>
+</header>
+
+<aside class="hud tele" aria-label="Synchronisation labiale">
+  <h2>Visème courant</h2>
+  <div class="vis"><b id="visCode">—</b><span id="visName">bouche au repos</span></div>
+  <div class="bar"><span>ouverture</span><i id="bOpen"></i></div>
+  <div class="bar"><span>étirement</span><i id="bWide"></i></div>
+  <div class="bar"><span>arrondi</span><i id="bRound"></i></div>
+  <div class="bar"><span>fermeture</span><i id="bPress"></i></div>
+  <div class="src" id="src">source : alignement par caractère (simulé comme ElevenLabs « with-timestamps »)</div>
+</aside>
+
+<section class="hud say" aria-live="off">
+  <div id="subtitle"></div>
+  <div class="frise" aria-hidden="true"><div id="track"></div></div>
+</section>
+
+<nav class="hud controls" aria-label="Démonstration">
+  <div class="row" role="group" aria-label="État de Jarvis">
+    <button data-state="parole" aria-pressed="false">Parler</button>
+    <button data-state="ecoute" aria-pressed="false">Écouter</button>
+    <button data-state="reflexion" aria-pressed="false">Réfléchir</button>
+    <button data-state="repos" aria-pressed="true">Repos</button>
+  </div>
+  <div class="row styles" role="group" aria-label="Style du visage (A ambre filaire, B cyan holographique, C braise et glace)">
+    <button data-style="a" aria-pressed="true"><em style="color:#E07B39"></em>A<span class="long"> · Ambre filaire</span></button>
+    <button data-style="b" aria-pressed="false"><em style="color:#5FD4FF"></em>B<span class="long"> · Cyan holographique</span></button>
+    <button data-style="c" aria-pressed="false"><em style="color:#FFF3E4"></em>C<span class="long"> · Braise et glace</span></button>
+  </div>
+  <div class="opt">
+    <label for="phrase" class="sr">Phrase à dire</label>
+    <input id="phrase" value="Bonjour Monsieur, votre réunion avec EDENRED commence dans dix minutes.">
+    <label><input type="checkbox" id="optVoice" checked> Voix du navigateur</label>
+    <label><input type="checkbox" id="optAmp"> Repli amplitude (sans alignement)</label>
+    <label><input type="checkbox" id="optReduce"> Réduire les animations</label>
+  </div>
+</nav>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+/* ───────────────────────── Réglages, banc ───────────────────────── */
+const Q = new URLSearchParams(location.search);
+const SHOT = Q.has('shot');                         // ?shot&state=parole&t=1.9&style=b : image figée et reproductible
+const SHOT_T = parseFloat(Q.get('t') || '2');
+const FORCE_VIS = Q.get('vis');                    // ?shot&vis=A : un visème tenu (planche des bouches)
+const LOW = Q.get('lod') === 'bas' || matchMedia('(max-width: 700px)').matches || (navigator.hardwareConcurrency || 8) <= 4;
+const reduceMQ = matchMedia('(prefers-reduced-motion: reduce)');
+const optReduce = document.getElementById('optReduce');
+optReduce.checked = reduceMQ.matches || Q.get('reduit') === '1';
+if (SHOT) document.body.classList.add('shot');
+
+function mulberry32(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const rnd = mulberry32(250);
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const G = (dx, sx, dy, sy) => Math.exp(-(dx * dx) / (sx * sx) - (dy * dy) / (sy * sy));
+const damp = (cur, target, rate, dt) => cur + (target - cur) * (1 - Math.exp(-rate * dt));
+
+/* ───────────────────────── Styles (goût PO) ───────────────────────── */
+const STYLES = {
+  a: { name: 'Ambre filaire', base: '#E07B39', hot: '#FFF3E4', line: '#E07B39', accent: '#FFC08A', aura: '#E07B39', abyss: '#26170E', text: '#F0954F', lineA: 0.30, pointA: 1.0, scan: 0.7 },
+  b: { name: 'Cyan holographique', base: '#5FD4FF', hot: '#E8FBFF', line: '#5FD4FF', accent: '#BDF3FF', aura: '#5FD4FF', abyss: '#0E2340', text: '#5FD4FF', lineA: 0.24, pointA: 1.05, scan: 1.0 },
+  c: { name: 'Braise et glace', base: '#E07B39', hot: '#FFF3E4', line: '#5FD4FF', accent: '#FFF3E4', aura: '#E07B39', abyss: '#1B1626', text: '#F0954F', lineA: 0.16, pointA: 1.0, scan: 0.8 },
+};
+let styleKey = STYLES[Q.get('style')] ? Q.get('style') : 'a';
+
+/* ───────────────────────── Le visage : une surface générique ─────────────────────────
+ * Aucune personne réelle : un ovale, des proportions moyennes (règle des tiers), des reliefs gaussiens.
+ * Repère : Y vers le haut (front 1,08 → menton −0,74), X latéral, Z vers la caméra. */
+const LIP_Y = -0.34;
+const EYE = { x: 0.28, y: 0.235, hw: 0.105 };
+function halfWidth(Y) {
+  if (Y > 0.1) { const k = (Y - 0.1) / 0.98; return k >= 1 ? 0 : 0.76 * Math.pow(1 - Math.pow(k, 2.6), 1 / 2.2); }
+  const t = Math.min(1, (0.1 - Y) / 0.84), tail = Math.max(0, t - 0.84) / 0.16;
+  return (0.76 - 0.06 * t - 0.42 * Math.pow(t, 2.3)) * Math.sqrt(Math.max(0, 1 - tail * tail));
+}
+function surfaceZ(X, Y) {
+  const W = Math.max(1e-3, halfWidth(Y)), e = Math.min(1, Math.abs(X) / W), ax = Math.abs(X);
+  const vf = Y > 0.35 ? 0.4 + 0.6 * Math.sqrt(Math.max(0, 1 - ((Y - 0.35) / 0.76) ** 2)) : (Y < -0.42 ? 0.86 + 0.14 * (1 - sstep(-0.42, -0.74, Y)) : 1);
+  let z = 0.6 * vf * Math.pow(Math.max(0, 1 - e * e), 0.5) - 0.1;
+  const front = 1 - e ** 4;
+  let f = 0;
+  f += 0.05 * G(ax - 0.27, 0.2, Y - 0.37, 0.06);                 // arcades
+  f -= 0.10 * G(ax - 0.28, 0.15, Y - 0.24, 0.085);               // orbites
+  f += 0.05 * G(ax - 0.28, 0.08, Y - 0.235, 0.045);              // globes
+  if (Y < 0.34 && Y > -0.26) {                                    // nez : arête qui monte vers la pointe
+    const t = clamp((0.30 - Y) / 0.42, 0, 1), h = 0.035 + 0.25 * Math.pow(t, 1.6), s = 0.048 + 0.05 * t;
+    const fall = Y > -0.12 ? 1 : Math.exp(-(((Y + 0.12) / 0.035) ** 2));
+    f += h * Math.exp(-((X / s) ** 2)) * fall * sstep(0.34, 0.27, Y);
+  }
+  f += 0.06 * G(ax - 0.085, 0.05, Y + 0.115, 0.04);             // ailes du nez
+  f -= 0.014 * G(X, 0.12, Y + 0.22, 0.04);                       // sillon sous le nez
+  f += 0.07 * G(X, 0.27, Y - LIP_Y, 0.17);                       // avancée de la bouche
+  f += 0.026 * G(X, 0.15, Y - (LIP_Y + 0.026), 0.022);           // lèvre supérieure
+  f += 0.032 * G(X, 0.13, Y - (LIP_Y - 0.04), 0.028);            // lèvre inférieure
+  f += 0.05 * G(X, 0.14, Y + 0.6, 0.08);                         // menton
+  f += 0.05 * G(ax - 0.42, 0.13, Y - 0.03, 0.1);                 // pommettes
+  f -= 0.03 * G(ax - 0.42, 0.12, Y + 0.24, 0.12);                // joues
+  f -= 0.03 * G(ax - 0.62, 0.1, Y - 0.35, 0.15);                 // tempes
+  return z + f * front;
+}
+
+/* La bouche : quatre paramètres pilotés par les visèmes. */
+const mouth = { open: 0, wide: 0, round: 0, press: 0 };
+/** Déforme un point du bas du visage. `above` : le point est au-dessus de la ligne des lèvres (fente). */
+function deform(X, Y, Z, above, m, out) {
+  const dyL = Y - LIP_Y, mh = 0.165; // demi-largeur au repos : l'étirement est porté par dx
+  const xr = X / mh, slit = Math.pow(Math.max(0, 1 - xr * xr), 0.75);
+  const open = m.open * (1 - 0.92 * m.press);
+  const wm = Math.exp(-(X * X) / 0.1024) * Math.exp(-(dyL * dyL) / 0.0256);
+  let dx = X * (0.24 * m.wide - 0.42 * m.round) * wm;
+  let dz = (0.075 * m.round - 0.012 * m.press) * Math.exp(-(X * X) / 0.04) * Math.exp(-(dyL * dyL) / 0.0081);
+  let dy = 0;
+  if (above) {
+    dy += open * 0.06 * slit * Math.exp(-(dyL * dyL) / 0.0049);
+  } else {
+    const lowJaw = Math.exp(-(X * X) / 0.1764) * sstep(0, -0.14, dyL);
+    dy -= open * (0.13 * slit * Math.exp(-(dyL * dyL) / 0.0081) + 0.12 * lowJaw);
+    dz -= open * 0.04 * lowJaw;
+  }
+  out[0] = X + dx; out[1] = Y + dy; out[2] = Z + dz;
+}
+
+/* ───────────────────────── Rendu ───────────────────────── */
+const stage = document.getElementById('stage');
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: SHOT });
+} catch (e) {
+  document.getElementById('noGl').style.display = 'grid';
+  throw e;
+}
+const DPR = Math.min(devicePixelRatio || 1, LOW ? 1.5 : 2);
+renderer.setPixelRatio(DPR);
+renderer.setClearColor(0x0B1020, 1);
+stage.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 60);
+const head = new THREE.Group();
+scene.add(head);
+
+/* Fond : lueur d'abysse sous le visage + étoiles fixes. */
+const bgMat = new THREE.ShaderMaterial({
+  depthWrite: false,
+  uniforms: { uNavy: { value: new THREE.Color('#0B1020') }, uAbyss: { value: new THREE.Color(STYLES[styleKey].abyss) }, uGlow: { value: 1 } },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.9999, 1.0); }`,
+  fragmentShader: `uniform vec3 uNavy; uniform vec3 uAbyss; uniform float uGlow; varying vec2 vUv;
+    void main(){ vec2 d = vUv - vec2(0.5, 0.52); d.x *= 1.25; float r = length(d);
+      vec3 c = mix(uAbyss * (0.85 + 0.25 * uGlow), uNavy, smoothstep(0.0, 0.62, r)); gl_FragColor = vec4(c, 1.0); }`,
+});
+const bg = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), bgMat);
+bg.frustumCulled = false; bg.renderOrder = -10;
+scene.add(bg);
+{
+  const n = LOW ? 260 : 700, p = new Float32Array(n * 3), a = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const th = rnd() * Math.PI * 2, r = 6 + rnd() * 10; p[i * 3] = Math.cos(th) * r; p[i * 3 + 1] = (rnd() - 0.5) * 14; p[i * 3 + 2] = -8 - rnd() * 14; a[i] = rnd(); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3)); g.setAttribute('aSeed', new THREE.BufferAttribute(a, 1));
+  const m = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    uniforms: { uTime: { value: 0 }, uPix: { value: DPR } },
+    vertexShader: `attribute float aSeed; uniform float uTime; uniform float uPix; varying float vA;
+      void main(){ vec4 mv = modelViewMatrix * vec4(position,1.); gl_Position = projectionMatrix * mv; vA = 0.18 + 0.32 * aSeed * (0.7 + 0.3 * sin(uTime * 0.8 + aSeed * 50.)); gl_PointSize = (1.0 + aSeed * 1.6) * uPix; }`,
+    fragmentShader: `varying float vA; void main(){ float d = length(gl_PointCoord - .5); gl_FragColor = vec4(vec3(1.0, .93, .86), vA * smoothstep(.5, .0, d)); }` });
+  scene.add(new THREE.Points(g, m));
+}
+
+/* Grille du visage : points (denses) + fil de fer (une maille sur deux) partageant les mêmes sommets. */
+const STEP = LOW ? 0.028 : 0.019;
+const NX = Math.round(1.6 / STEP) + 1, NY = Math.round(1.86 / STEP) + 1;
+const idx = new Int32Array(NX * NY).fill(-1);
+const rest = [], seeds = [], edges = [], hots = [], lit = [];
+for (let j = 0; j < NY; j++) {
+  const Y = -0.76 + j * STEP, W = halfWidth(Y);
+  for (let i = 0; i < NX; i++) {
+    const X = -0.8 + i * STEP;
+    const jitter = (rnd() - 0.5) * STEP * 0.18;
+    if (W <= 0.02 || Math.abs(X) > W * 1.02) continue;
+    idx[j * NX + i] = rest.length / 3;
+    const x = X + jitter, z = surfaceZ(x, Y);
+    rest.push(x, Y, z);
+    seeds.push(rnd());
+    edges.push(Math.min(1, Math.abs(x) / W));
+    const ax = Math.abs(x);
+    const hot = 0.75 * G(x, 0.2, Y - LIP_Y, 0.06) + 0.55 * G(ax - EYE.x, 0.12, Y - EYE.y, 0.06)
+      + 0.35 * Math.exp(-((x / 0.035) ** 2)) * sstep(0.3, 0.2, Y) * sstep(-0.16, -0.08, Y);
+    hots.push(Math.min(1, hot));
+    const ex = 0.006, gx = (surfaceZ(x + ex, Y) - surfaceZ(x - ex, Y)) / (2 * ex), gy = (surfaceZ(x, Y + ex) - surfaceZ(x, Y - ex)) / (2 * ex);
+    const nl = Math.hypot(gx, gy, 1), nx = -gx / nl, ny = -gy / nl, nz = 1 / nl;
+    lit.push(clamp(nx * -0.42 + ny * 0.5 + nz * 0.76, 0, 1), clamp(1 - nz, 0, 1));
+  }
+}
+const N = rest.length / 3;
+const restArr = new Float32Array(rest);
+const pos = new Float32Array(restArr);
+const above = new Uint8Array(N);
+for (let k = 0; k < N; k++) above[k] = restArr[k * 3 + 1] >= LIP_Y ? 1 : 0;
+const posAttr = new THREE.BufferAttribute(pos, 3); posAttr.setUsage(THREE.DynamicDrawUsage);
+const seedAttr = new THREE.BufferAttribute(new Float32Array(seeds), 1);
+const edgeAttr = new THREE.BufferAttribute(new Float32Array(edges), 1);
+const hotAttr = new THREE.BufferAttribute(new Float32Array(hots), 1);
+const litAttr = new THREE.BufferAttribute(new Float32Array(lit), 2);
+const faceGeo = new THREE.BufferGeometry();
+faceGeo.setAttribute('position', posAttr); faceGeo.setAttribute('aSeed', seedAttr); faceGeo.setAttribute('aEdge', edgeAttr); faceGeo.setAttribute('aHot', hotAttr); faceGeo.setAttribute('aLit', litAttr);
+faceGeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0.15, 0), 1.6);
+
+const lineIdx = [];
+const L = LOW ? 1 : 2;
+const crossesMouth = (a, b) => above[a] !== above[b] && Math.min(Math.abs(restArr[a * 3]), Math.abs(restArr[b * 3])) < 0.23 && Math.abs(restArr[a * 3 + 1] - LIP_Y) < 0.1;
+const link = (i0, j0, i1, j1) => {
+  if (i1 >= NX || j1 >= NY || i1 < 0) return;
+  const a = idx[j0 * NX + i0], b = idx[j1 * NX + i1];
+  if (a < 0 || b < 0 || crossesMouth(a, b)) return;
+  lineIdx.push(a, b);
+};
+for (let j = 0; j < NY; j += L) for (let i = 0; i < NX; i += L) {
+  link(i, j, i + L, j); link(i, j, i, j + L);
+  if (((i / L) + (j / L)) % 2 === 0) link(i, j, i + L, j + L); else link(i + L, j, i, j + L);
+}
+const wireGeo = new THREE.BufferGeometry();
+wireGeo.setAttribute('position', posAttr); wireGeo.setAttribute('aSeed', seedAttr); wireGeo.setAttribute('aEdge', edgeAttr); wireGeo.setAttribute('aHot', hotAttr); wireGeo.setAttribute('aLit', litAttr);
+wireGeo.setIndex(lineIdx);
+wireGeo.boundingSphere = faceGeo.boundingSphere;
+
+const common = {
+  uTime: { value: 0 }, uPix: { value: DPR }, uScanY: { value: 9 }, uScanA: { value: 1 }, uFlicker: { value: 1 },
+  uMouth: { value: new THREE.Vector3(0, LIP_Y, 0.6) }, uMouthGlow: { value: 0 }, uThink: { value: 0 },
+  uColor: { value: new THREE.Color() }, uHot: { value: new THREE.Color() }, uDeep: { value: new THREE.Color('#9B7BFF') },
+};
+const faceVS = /* glsl */`
+  attribute float aSeed; attribute float aEdge; attribute float aHot; attribute vec2 aLit;
+  uniform float uTime, uPix, uScanY, uScanA, uFlicker, uMouthGlow, uThink, uSize; uniform vec3 uMouth;
+  varying float vA; varying float vHot; varying float vThink;
+  void main(){
+    vec4 wp = modelMatrix * vec4(position, 1.0);
+    vec4 mv = viewMatrix * wp; gl_Position = projectionMatrix * mv;
+    float fl = mix(1.0, 0.55 + 0.45 * sin(uTime * (1.1 + aSeed * 2.9) + aSeed * 61.0), uFlicker);
+    float scan = 0.42 * uScanA * exp(-pow((wp.y - uScanY) / 0.07, 2.0));
+    float edge = 1.0 - smoothstep(0.72, 1.0, aEdge);
+    vec2 dm = position.xy - uMouth.xy; dm.x *= 0.7;
+    float mg = uMouthGlow * exp(-dot(dm, dm) / 0.012);
+    float syn = uThink * pow(max(0.0, sin(uTime * 3.1 + aSeed * 40.0 + position.y * 9.0)), 24.0);
+    float shade = 0.025 + 0.75 * aLit.x * aLit.x * aLit.x + 0.6 * aLit.y * aLit.y;
+    vA = (shade + 0.35 * aHot) * fl * (0.3 + 0.7 * edge) + scan * 0.8 + mg * 0.8 + syn * 0.9;
+    vHot = aHot * 0.8 + scan + mg + syn * 0.5; vThink = syn;
+    gl_PointSize = uSize * (0.8 + aHot * 0.6 + aLit.y * 0.6 + scan * 1.2 + mg) * uPix * (4.2 / -mv.z);
+  }`;
+const faceFS = /* glsl */`
+  uniform vec3 uColor, uHot, uDeep; uniform float uAlpha; varying float vA; varying float vHot; varying float vThink;
+  void main(){ float d = length(gl_PointCoord - 0.5); float a = smoothstep(0.5, 0.0, d); a *= a;
+    vec3 c = mix(uColor, uHot, clamp(vHot * 0.65, 0.0, 1.0)); c = mix(c, uDeep, clamp(vThink, 0.0, 1.0));
+    gl_FragColor = vec4(c, a * vA * uAlpha); }`;
+const pointsMat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  uniforms: { ...common, uSize: { value: LOW ? 2.6 : 2.2 }, uAlpha: { value: 1 } }, vertexShader: faceVS, fragmentShader: faceFS });
+const lineMat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  uniforms: { ...common, uSize: { value: 1 }, uAlpha: { value: 0.3 }, uColor: { value: new THREE.Color() } },
+  vertexShader: faceVS.replace('gl_PointSize', 'float _ps'), fragmentShader: /* glsl */`
+  uniform vec3 uColor, uHot, uDeep; uniform float uAlpha; varying float vA; varying float vHot; varying float vThink;
+  void main(){ vec3 c = mix(uColor, uHot, clamp(vHot * 0.4, 0.0, 1.0)); c = mix(c, uDeep, clamp(vThink, 0.0, 1.0)); gl_FragColor = vec4(c, vA * uAlpha); }` });
+head.add(new THREE.LineSegments(wireGeo, lineMat));
+head.add(new THREE.Points(faceGeo, pointsMat));
+
+/* Traits lumineux (lèvres, paupières, iris, sourcils, nez) : segments recalculés à chaque image. */
+const FMAX = 1400;
+const fPos = new Float32Array(FMAX * 6), fA = new Float32Array(FMAX * 2), fH = new Float32Array(FMAX * 2);
+const fGeo = new THREE.BufferGeometry();
+const fPosAttr = new THREE.BufferAttribute(fPos, 3).setUsage(THREE.DynamicDrawUsage);
+const fAAttr = new THREE.BufferAttribute(fA, 1).setUsage(THREE.DynamicDrawUsage);
+const fHAttr = new THREE.BufferAttribute(fH, 1).setUsage(THREE.DynamicDrawUsage);
+fGeo.setAttribute('position', fPosAttr); fGeo.setAttribute('aA', fAAttr); fGeo.setAttribute('aH', fHAttr);
+fGeo.boundingSphere = faceGeo.boundingSphere;
+const fMat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  uniforms: { uColor: { value: new THREE.Color() }, uHot: { value: new THREE.Color() } },
+  vertexShader: `attribute float aA; attribute float aH; varying float vA; varying float vH; void main(){ vA = aA; vH = aH; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `uniform vec3 uColor, uHot; varying float vA; varying float vH; void main(){ gl_FragColor = vec4(mix(uColor, uHot, vH), vA); }` });
+const fLines = new THREE.LineSegments(fGeo, fMat);
+head.add(fLines);
+const fDots = new THREE.Points(fGeo, new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  uniforms: { uColor: fMat.uniforms.uColor, uHot: fMat.uniforms.uHot, uPix: { value: DPR } },
+  vertexShader: `attribute float aA; attribute float aH; uniform float uPix; varying float vA; varying float vH; void main(){ vA = aA; vH = aH; vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * mv; gl_PointSize = (1.6 + 1.6 * aH) * uPix * (4.2 / -mv.z); }`,
+  fragmentShader: `uniform vec3 uColor, uHot; varying float vA; varying float vH; void main(){ float d = length(gl_PointCoord - .5); float a = smoothstep(.5, 0., d); gl_FragColor = vec4(mix(uColor, uHot, vH), a * a * vA * 0.55); }` }));
+head.add(fDots);
+let fN = 0;
+const tmp = [0, 0, 0], tmp2 = [0, 0, 0];
+function seg(a, b, al, h) {
+  if (fN >= FMAX) return;
+  fPos.set(a, fN * 6); fPos.set(b, fN * 6 + 3);
+  fA[fN * 2] = fA[fN * 2 + 1] = al; fH[fN * 2] = fH[fN * 2 + 1] = h; fN++;
+}
+function curve(fn, n, al, h) {
+  let prev = null;
+  for (let i = 0; i <= n; i++) { const p = fn(i / n); if (prev) seg(prev, p, al, h); prev = p; }
+}
+const onFace = (X, Y, lift = 0.012) => [X, Y, surfaceZ(X, Y) + lift];
+function lipPt(s, kind, m) {
+  const X = s * 0.165, u = 1 - s * s;
+  let Y, ab;
+  if (kind === 0) { Y = LIP_Y + 0.012 + 0.03 * Math.pow(u, 0.6) - 0.013 * Math.exp(-((s / 0.16) ** 2)); ab = true; }
+  else if (kind === 1) { Y = LIP_Y + 0.004 * u; ab = true; }
+  else if (kind === 2) { Y = LIP_Y - 0.004 * u; ab = false; }
+  else { Y = LIP_Y - 0.012 - 0.045 * Math.pow(u, 0.7); ab = false; }
+  const z = surfaceZ(X, Y) + 0.012;
+  deform(X, Y, z, ab, m, tmp);
+  return [tmp[0], tmp[1], tmp[2]];
+}
+/* Points fixes calculés une fois : nez, sourcils (repos), mâchoire. */
+const noseRidge = []; for (let i = 0; i <= 14; i++) { const Y = 0.26 - i * 0.027; noseRidge.push(onFace(0, Y, 0.008)); }
+const nostril = s => { const a = Math.PI * (0.15 + 0.7 * s); return onFace(Math.cos(a) * 0.075 * (s < 0.5 ? 1 : 1), -0.13 - Math.sin(a) * 0.025, 0.006); };
+
+function buildFeatures(t, look, strength) {
+  fN = 0;
+  const m = mouth;
+  const lipH = 0.25 + 0.4 * strength.mouth;
+  curve(s => lipPt(s * 2 - 1, 0, m), 36, 0.7 * look.lipA, lipH);
+  curve(s => lipPt(s * 2 - 1, 1, m), 30, 0.75 * look.lipA, lipH * 0.8);
+  curve(s => lipPt(s * 2 - 1, 2, m), 30, 0.75 * look.lipA, lipH * 0.8);
+  curve(s => lipPt(s * 2 - 1, 3, m), 36, 0.7 * look.lipA, lipH);
+  // Lueur intérieure : la langue de lumière entre les lèvres quand la bouche s'ouvre.
+  const o = m.open * (1 - 0.92 * m.press);
+  if (o > 0.08) {
+    for (let k = 1; k <= 3; k++) {
+      const f = k / 4;
+      curve(s => { const a = lipPt(s * 1.6 - 0.8, 1, m), b = lipPt(s * 1.6 - 0.8, 2, m); return [a[0], a[1] + (b[1] - a[1]) * f, a[2] - 0.02]; }, 18, 0.25 * o * look.lipA, 1);
+    }
+  }
+  for (const side of [-1, 1]) {
+    const cx = side * EYE.x + look.gx, cy = EYE.y + look.gy;
+    const lid = look.lid;
+    const up = s => { const X = side * EYE.x + (s * 2 - 1) * EYE.hw, u = 1 - (s * 2 - 1) ** 2; return onFace(X, EYE.y - 0.004 + (0.044 * Math.pow(u, 0.8) + 0.006 * (s * 2 - 1) * side) * lid - 0.012 * (1 - lid), 0.014); };
+    const lo = s => { const X = side * EYE.x + (s * 2 - 1) * EYE.hw, u = 1 - (s * 2 - 1) ** 2; return onFace(X, EYE.y - 0.004 - 0.03 * Math.pow(u, 0.9), 0.014); };
+    curve(up, 24, 0.85, 0.5); curve(lo, 22, 0.45, 0.3);
+    // Pli de la paupière, discret.
+    curve(s => { const X = side * EYE.x + (s * 2 - 1) * EYE.hw * 0.92, u = 1 - (s * 2 - 1) ** 2; return onFace(X, EYE.y + 0.052 * Math.pow(u, 0.7) + 0.012 + look.brow * 0.5, 0.01); }, 16, 0.22, 0.2);
+    if (lid > 0.25) {
+      const r = 0.031, ry = r * Math.min(1, lid * 1.1);
+      curve(s => { const a = s * Math.PI * 2; return onFace(cx + Math.cos(a) * r, cy - 0.006 + Math.sin(a) * ry, 0.02); }, 28, 0.75 * look.eyeA, 0.55);
+      curve(s => { const a = s * Math.PI * 2; return onFace(cx + Math.cos(a) * r * 0.32, cy - 0.006 + Math.sin(a) * ry * 0.32, 0.022); }, 12, 0.8 * look.eyeA, 1);
+    }
+    // Sourcil.
+    curve(s => { const X = side * (0.13 + s * 0.32), u = Math.sin(s * Math.PI); return onFace(X, 0.335 + 0.035 * u + look.brow + (side > 0 ? look.browR : 0) * u, 0.012); }, 20, 0.6, 0.35);
+  }
+  for (let i = 1; i < noseRidge.length; i++) seg(noseRidge[i - 1], noseRidge[i], 0.35, 0.3);
+  curve(nostril, 14, 0.4, 0.3);
+  fGeo.setDrawRange(0, fN * 2);
+  fPosAttr.needsUpdate = fAAttr.needsUpdate = fHAttr.needsUpdate = true;
+  fPosAttr.clearUpdateRanges?.();
+}
+
+/* Aura neuronale : particules qui orbitent (CPU ≈ 0 : tout est dans le shader). */
+const AURA = LOW ? 520 : 1600;
+let auraMat;
+{
+  const p = new Float32Array(AURA * 3), prm = new Float32Array(AURA * 4);
+  for (let i = 0; i < AURA; i++) { prm[i * 4] = rnd() * Math.PI * 2; prm[i * 4 + 1] = Math.acos(2 * rnd() - 1); prm[i * 4 + 2] = 1.15 + Math.pow(rnd(), 1.6) * 1.3; prm[i * 4 + 3] = rnd(); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3)); g.setAttribute('aP', new THREE.BufferAttribute(prm, 4));
+  g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 5);
+  auraMat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    uniforms: { uPhase: { value: 0 }, uTime: { value: 0 }, uPix: { value: DPR }, uColor: { value: new THREE.Color() }, uDeep: common.uDeep, uThink: common.uThink, uA: { value: 0.6 }, uPull: { value: 0 } },
+    vertexShader: `attribute vec4 aP; uniform float uPhase, uTime, uPix, uPull; varying float vA; varying float vS;
+      void main(){ float th = aP.x + uPhase * (0.25 + aP.w * 0.6) * (aP.w > 0.5 ? 1.0 : -1.0); float ph = aP.y + 0.25 * sin(uTime * 0.2 + aP.w * 20.0);
+        float r = aP.z * mix(1.0, 0.82, uPull);
+        vec3 p = vec3(sin(ph) * cos(th) * r * 0.95, cos(ph) * r * 0.85 + 0.17, sin(ph) * sin(th) * r * 0.75 - 0.15);
+        vec4 mv = modelViewMatrix * vec4(p, 1.0); gl_Position = projectionMatrix * mv;
+        vS = aP.w; vA = (0.15 + 0.5 * aP.w) * smoothstep(2.6, 1.15, r) * (0.6 + 0.4 * sin(uTime * 1.7 + aP.w * 80.0));
+        gl_PointSize = (1.2 + aP.w * 2.2) * uPix * (4.2 / -mv.z); }`,
+    fragmentShader: `uniform vec3 uColor, uDeep; uniform float uThink, uA; varying float vA; varying float vS;
+      void main(){ float d = length(gl_PointCoord - .5); float a = smoothstep(.5, 0., d); vec3 c = mix(uColor, uDeep, uThink * step(0.4, vS)); gl_FragColor = vec4(c, a * a * vA * uA); }` });
+  scene.add(new THREE.Points(g, auraMat));
+}
+
+/* Ondes : convergentes à l'écoute (vers le visage), émises par la bouche à la parole. */
+const RINGS = 4, RP = LOW ? 180 : 360;
+const ringMat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  uniforms: { uPhase: { value: 0 }, uMode: { value: 0 }, uLevel: { value: 0 }, uPix: { value: DPR }, uColor: { value: new THREE.Color() }, uCenter: { value: new THREE.Vector3(0, 0.1, 0.4) } },
+  vertexShader: `attribute vec2 aR; uniform float uPhase, uMode, uLevel, uPix; uniform vec3 uCenter; varying float vA;
+    void main(){ float f = fract(uPhase + aR.x / ${RINGS}.0);
+      float r = uMode < 1.5 ? mix(2.3, 0.95, f) : mix(0.12, 1.9, f);
+      float a = aR.y; float wob = 1.0 + 0.04 * sin(a * 7.0 + uPhase * 20.0) * uLevel;
+      vec3 p = uCenter + vec3(cos(a) * r * wob, sin(a) * r * wob * 0.92, (uMode < 1.5 ? 0.6 * (1.0 - f) : 0.4 * f));
+      vec4 mv = modelViewMatrix * vec4(p, 1.0); gl_Position = projectionMatrix * mv;
+      vA = (uMode > 0.5 ? 1.0 : 0.0) * sin(f * 3.14159) * (0.3 + 0.7 * uLevel) * (uMode < 1.5 ? 0.95 : 0.6);
+      gl_PointSize = 2.6 * uPix * (4.2 / -mv.z); }`,
+  fragmentShader: `uniform vec3 uColor; varying float vA; void main(){ float d = length(gl_PointCoord - .5); gl_FragColor = vec4(uColor, smoothstep(.5, .0, d) * vA); }` });
+{
+  const a = new Float32Array(RINGS * RP * 2), p = new Float32Array(RINGS * RP * 3);
+  for (let r = 0; r < RINGS; r++) for (let i = 0; i < RP; i++) { a[(r * RP + i) * 2] = r; a[(r * RP + i) * 2 + 1] = (i / RP) * Math.PI * 2; }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3)); g.setAttribute('aR', new THREE.BufferAttribute(a, 2));
+  g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 5);
+  scene.add(new THREE.Points(g, ringMat));
+}
+
+/* Socle et anneau : le projecteur d'hologramme sous le visage, un cadran qui tourne derrière. */
+const halo = new THREE.Group(); scene.add(halo);
+const haloMat = new THREE.LineBasicMaterial({ transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false });
+function ringLine(r, n, dash) {
+  const p = [];
+  for (let i = 0; i < n; i++) { if (dash && i % dash === dash - 1) continue; const a0 = i / n * Math.PI * 2, a1 = (i + 1) / n * Math.PI * 2; p.push(Math.cos(a0) * r, Math.sin(a0) * r, 0, Math.cos(a1) * r, Math.sin(a1) * r, 0); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3)); return g;
+}
+const dial = new THREE.Group(); dial.position.set(0, 0.17, -0.55); halo.add(dial);
+dial.add(new THREE.LineSegments(ringLine(1.42, 180, 0), haloMat));
+dial.add(new THREE.LineSegments(ringLine(1.5, 120, 4), haloMat));
+{
+  const p = []; for (let i = 0; i < 72; i++) { const a = i / 72 * Math.PI * 2, l = i % 6 === 0 ? 0.09 : 0.035; p.push(Math.cos(a) * 1.55, Math.sin(a) * 1.55, 0, Math.cos(a) * (1.55 + l), Math.sin(a) * (1.55 + l), 0); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3)); dial.add(new THREE.LineSegments(g, haloMat));
+}
+const dial2 = new THREE.Group(); dial2.position.copy(dial.position); halo.add(dial2);
+{
+  const p = []; for (const [a0, a1] of [[0.2, 0.9], [1.4, 1.75], [2.5, 3.3], [3.9, 4.15], [4.6, 5.6]]) for (let i = 0; i < 20; i++) { const u = a0 + (a1 - a0) * i / 20, v = a0 + (a1 - a0) * (i + 1) / 20; p.push(Math.cos(u) * 1.34, Math.sin(u) * 1.34, 0, Math.cos(v) * 1.34, Math.sin(v) * 1.34, 0); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3)); dial2.add(new THREE.LineSegments(g, haloMat));
+}
+const base = new THREE.Group(); base.position.set(0, -1.02, 0); base.rotation.x = -Math.PI / 2; halo.add(base);
+for (const [r, d] of [[0.55, 0], [0.75, 3], [0.95, 0], [1.25, 6]]) base.add(new THREE.LineSegments(ringLine(r, 140, d), haloMat));
+
+/* Post-traitement : bloom + finition (vignette, grain, trame, aberration discrète). */
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), LOW ? 0.8 : 1.05, 0.5, 0.035);
+composer.addPass(bloom);
+const finish = new ShaderPass({
+  uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uRes: { value: new THREE.Vector2(1, 1) }, uScan: { value: 1 }, uCA: { value: LOW ? 0 : 1 } },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float uTime, uScan, uCA; uniform vec2 uRes; varying vec2 vUv;
+    void main(){ vec2 d = vUv - 0.5; float r = dot(d, d); vec2 o = d * 0.004 * r * 4.0 * uCA;
+      vec3 c = vec3(texture2D(tDiffuse, vUv + o).r, texture2D(tDiffuse, vUv).g, texture2D(tDiffuse, vUv - o).b);
+      c *= 1.0 - 0.045 * uScan * (0.5 + 0.5 * sin(vUv.y * uRes.y * 1.35 + uTime * 3.0));
+      c *= 1.0 - r * 0.85;
+      float g = fract(sin(dot(vUv * uRes + fract(uTime) * 91.0, vec2(12.9898, 78.233))) * 43758.5453);
+      c += (g - 0.5) * 0.018;
+      gl_FragColor = vec4(c, 1.0); }`,
+});
+composer.addPass(new OutputPass());
+composer.addPass(finish);
+
+function resize() {
+  const w = innerWidth, h = innerHeight, asp = w / h;
+  renderer.setSize(w, h, false); composer.setSize(w, h);
+  bloom.resolution.set(w * (LOW ? 0.5 : 1), h * (LOW ? 0.5 : 1));
+  finish.uniforms.uRes.value.set(w, h);
+  camera.aspect = asp;
+  const dist = 4.7 * Math.max(1, 0.82 / asp);
+  camera.position.set(0, 0.14 + (asp < 0.8 ? -0.25 : 0), dist);
+  camera.lookAt(0, asp < 0.8 ? -0.42 : -0.12, 0);
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize); resize();
+/* Les sous-titres se posent toujours juste au-dessus des commandes, quelle que soit leur hauteur. */
+const sayEl = document.querySelector('.say'), ctrlEl = document.querySelector('.controls');
+const placeSay = () => { sayEl.style.bottom = (ctrlEl.offsetHeight + 14) + 'px'; };
+new ResizeObserver(placeSay).observe(ctrlEl); placeSay();
+
+/* ───────────────────────── Visèmes : du texte aligné à la bouche ─────────────────────────
+ * 13 visèmes + silence. Paramètres : ouverture, étirement (−1 resserré … +1 étiré), arrondi, fermeture.
+ * La dominance règle la co-articulation : une fermeture (M B P) l'emporte sur ses voisines. */
+const VIS = {
+  SIL: { o: 0.02, w: 0, r: 0, p: 0.15, d: 0.5, n: 'bouche au repos', c: '·' },
+  PBM: { o: 0, w: 0, r: 0.05, p: 1, d: 4, n: 'lèvres closes', c: 'M B P' },
+  FV: { o: 0.12, w: 0.15, r: 0, p: 0.35, d: 2.2, n: 'lèvre sous les dents', c: 'F V' },
+  A: { o: 0.9, w: 0.15, r: 0, p: 0, d: 1, n: 'grande ouverture', c: 'A' },
+  E: { o: 0.5, w: 0.45, r: 0, p: 0, d: 1, n: 'ouverte, étirée', c: 'É È' },
+  I: { o: 0.22, w: 0.9, r: 0, p: 0, d: 1.1, n: 'étirée, serrée', c: 'I' },
+  O: { o: 0.55, w: -0.1, r: 0.7, p: 0, d: 1.1, n: 'arrondie', c: 'O' },
+  OU: { o: 0.18, w: -0.25, r: 1, p: 0, d: 1.6, n: 'arrondie, avancée', c: 'OU' },
+  U: { o: 0.15, w: -0.2, r: 0.95, p: 0, d: 1.5, n: 'arrondie, serrée', c: 'U' },
+  EU: { o: 0.32, w: 0, r: 0.6, p: 0, d: 1.1, n: 'mi-ouverte, arrondie', c: 'EU' },
+  DTN: { o: 0.24, w: 0.25, r: 0, p: 0, d: 0.6, n: 'langue aux dents', c: 'T D N L' },
+  SZ: { o: 0.09, w: 0.55, r: 0, p: 0, d: 0.9, n: 'dents serrées', c: 'S Z' },
+  CHJ: { o: 0.22, w: -0.05, r: 0.65, p: 0, d: 1.2, n: 'arrondie, sifflante', c: 'CH J' },
+  KGR: { o: 0.38, w: 0.1, r: 0, p: 0, d: 0.5, n: 'gorge, langue en arrière', c: 'K G R' },
+};
+const VOW = 'aeiouyàâäéèêëîïôöûùüœ';
+const isV = ch => !!ch && VOW.includes(ch);
+const MULTI = ['eaux', 'eau', 'ain', 'aim', 'ein', 'oin', 'œu', 'oeu', 'ou', 'où', 'oû', 'oi', 'au', 'ai', 'aî', 'ei', 'eu', 'an', 'am', 'en', 'em', 'on', 'om', 'in', 'im', 'un', 'um', 'ch', 'gn', 'ph', 'qu', 'gu', 'ss', 'll', 'mm', 'nn', 'tt', 'rr', 'pp', 'cc', 'ff'];
+const NASAL = new Set(['ain', 'aim', 'ein', 'oin', 'an', 'am', 'en', 'em', 'on', 'om', 'in', 'im', 'un', 'um']);
+const G2V = {
+  eaux: ['O'], eau: ['O'], au: ['O'], ou: ['OU'], 'où': ['OU'], 'oû': ['OU'], oi: ['OU', 'A'], ai: ['E'], 'aî': ['E'], ei: ['E'], eu: ['EU'], 'œu': ['EU'], oeu: ['EU'],
+  an: ['A'], am: ['A'], en: ['A'], em: ['A'], on: ['O'], om: ['O'], in: ['E'], im: ['E'], ain: ['E'], aim: ['E'], ein: ['E'], un: ['E'], um: ['E'], oin: ['OU', 'E'],
+  ch: ['CHJ'], gn: ['DTN'], ph: ['FV'], qu: ['KGR'], gu: ['KGR'], ss: ['SZ'], ll: ['DTN'], mm: ['PBM'], nn: ['DTN'], tt: ['DTN'], rr: ['KGR'], pp: ['PBM'], cc: ['KGR'], ff: ['FV'],
+  a: ['A'], 'à': ['A'], 'â': ['A'], 'ä': ['A'], e: ['E'], 'é': ['E'], 'è': ['E'], 'ê': ['E'], 'ë': ['E'], i: ['I'], 'î': ['I'], 'ï': ['I'], y: ['I'], o: ['O'], 'ô': ['O'], 'ö': ['O'],
+  u: ['U'], 'û': ['U'], 'ù': ['U'], 'ü': ['U'], 'œ': ['EU'], p: ['PBM'], b: ['PBM'], m: ['PBM'], f: ['FV'], v: ['FV'], w: ['OU'], t: ['DTN'], d: ['DTN'], n: ['DTN'], l: ['DTN'],
+  s: ['SZ'], z: ['SZ'], 'ç': ['SZ'], j: ['CHJ'], k: ['KGR'], q: ['KGR'], r: ['KGR'], x: ['KGR', 'SZ'], h: [],
+};
+
+/** Ce que renverrait ElevenLabs `stream/with-timestamps` : un temps de début et de fin par caractère (ici simulé). */
+function simulateAlignment(text) {
+  const characters = Array.from(text), starts = [], ends = [];
+  let t = 0.08;
+  for (const ch of characters) {
+    const c = ch.toLowerCase();
+    const d = isV(c) ? 0.078 : /[a-zç]/.test(c) ? 0.056 : c === ' ' ? 0.03 : c === ',' ? 0.2 : /[.!?;:]/.test(c) ? 0.32 : 0.02;
+    starts.push(t); t += d; ends.push(t);
+  }
+  return { characters, character_start_times_seconds: starts, character_end_times_seconds: ends };
+}
+
+/** Le cœur de la SF « visèmes » : caractères alignés → frise d'événements {v, t0, t1}. Pur, déterministe. */
+function visemesFromAlignment(al) {
+  const ch = al.characters.map(c => c.toLowerCase()), S = al.character_start_times_seconds, E = al.character_end_times_seconds;
+  const ev = [];
+  let i = 0;
+  while (i < ch.length) {
+    const c = ch[i];
+    if (!/[a-zà-ÿœç]/.test(c)) { if (/[,.!?;:]/.test(c)) ev.push({ v: 'SIL', t0: S[i], t1: E[i] }); i++; continue; }
+    let j = i; while (j < ch.length && /[a-zà-ÿœç'-]/.test(ch[j]) && ch[j] !== "'" && ch[j] !== '-') j++;
+    const w = ch.slice(i, j).join('');
+    let p = 0;
+    while (p < w.length) {
+      let g = null;
+      for (const m of MULTI) if (w.startsWith(m, p)) {
+        if (NASAL.has(m)) { const nx = w[p + m.length]; if (nx && (isV(nx) || nx === 'n' || nx === 'm')) continue; }
+        g = m; break;
+      }
+      if (!g) g = w[p];
+      const k0 = i + p, k1 = i + p + g.length, rest = w.slice(p + g.length);
+      let vis = G2V[g] || [];
+      const last = rest.length === 0;
+      if (g === 'c' || g === 'g') vis = /[eiyéèê]/.test(w[p + 1] || '') ? [g === 'c' ? 'SZ' : 'CHJ'] : ['KGR'];
+      if (last && w.length > 1 && 'stdxzp'.includes(g)) vis = [];
+      if (g === 'e' && (last || rest === 's' || rest === 'nt') && w.length > 2) vis = [];
+      if (g === 's' && p > 0 && isV(w[p - 1]) && isV(w[p + 1])) vis = ['SZ'];
+      const t0 = S[k0], t1 = E[k1 - 1];
+      vis.forEach((v, n) => ev.push({ v, t0: t0 + (t1 - t0) * n / vis.length, t1: t0 + (t1 - t0) * (n + 1) / vis.length }));
+      p += g.length;
+    }
+    i = j;
+  }
+  return ev;
+}
+
+/** Co-articulation : somme pondérée de noyaux (dominance × gaussienne), en avance de 30 ms sur le son. */
+const LEAD = 0.03;
+function evalVisemes(events, t) {
+  t += LEAD;
+  const r = VIS.SIL; let sw = 0.05, o = r.o * sw, w = r.w * sw, ro = r.r * sw, p = r.p * sw, best = null, bw = 0;
+  for (const e of events) {
+    if (e.t1 < t - 0.35 || e.t0 > t + 0.35) continue;
+    const V = VIS[e.v], c = (e.t0 + e.t1) / 2, h = Math.max(0.028, (e.t1 - e.t0) / 2) + 0.04, d = (t - c) / h;
+    const k = V.d * Math.exp(-d * d);
+    sw += k; o += V.o * k; w += V.w * k; ro += V.r * k; p += V.p * k;
+    if (k > bw) { bw = k; best = e.v; }
+  }
+  return { open: o / sw, wide: w / sw, round: ro / sw, press: p / sw, id: bw > 0.25 ? best : 'SIL' };
+}
+/** Repli « amplitude » : ce qu'on obtient avec le seul niveau sonore (AnalyserNode) — la mâchoire bat, aucune forme. */
+function evalAmplitude(events, t) {
+  let a = 0;
+  for (const e of events) { if (e.t1 < t - 0.2 || e.t0 > t + 0.2) continue; const c = (e.t0 + e.t1) / 2, d = (t - c) / 0.06; if ('A E I O OU U EU'.split(' ').includes(e.v)) a = Math.max(a, Math.exp(-d * d)); }
+  return { open: a * (0.55 + 0.25 * Math.sin(t * 37)), wide: 0.05, round: 0, press: 0, id: 'AMP' };
+}
+
+/* ───────────────────────── États, parole, horloge ───────────────────────── */
+const LABEL = { repos: 'Repos', ecoute: 'Écoute', reflexion: 'Réflexion', parole: 'Parole' };
+let state = 'repos';
+let speech = null;
+const look = { lid: 0.92, gx: 0, gy: 0, brow: 0, browR: 0, eyeA: 0.8, lipA: 0.75 };
+const lv = { swirl: 0.15, auraA: 0.55, think: 0, ringMode: 0, ringLevel: 0, pull: 0, glow: 0, scanSpeed: 0.18, tilt: 0, roll: 0 };
+let phase = 0, ringPhase = 0, scanY = 1.2, blinkAt = 2.2, blinkT = -1, saccT = 0, gazeT = { x: 0, y: 0 };
+
+const pill = document.getElementById('pill');
+const subtitle = document.getElementById('subtitle');
+const track = document.getElementById('track');
+const PXS = 150;
+
+function setState(s) {
+  state = s;
+  document.querySelector('.say').classList.toggle('on', s === 'parole');
+  pill.textContent = LABEL[s];
+  pill.style.color = s === 'reflexion' ? '#9B7BFF' : s === 'ecoute' ? 'var(--cg-holo-core)' : '';
+  document.querySelectorAll('[data-state]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.state === s)));
+  if (s !== 'parole' && speech) { try { speechSynthesis.cancel(); } catch {} speech = null; }
+}
+function buildSpeech(text) {
+  const al = simulateAlignment(text);
+  const events = visemesFromAlignment(al);
+  const words = [];
+  const re = /\S+/g; let m;
+  const joined = al.characters.join('');
+  while ((m = re.exec(joined))) words.push({ w: m[0], t0: al.character_start_times_seconds[m.index], t1: al.character_end_times_seconds[m.index + m[0].length - 1] });
+  subtitle.innerHTML = '';
+  words.forEach((x, i) => { const s = document.createElement('span'); s.className = 'w'; s.textContent = x.w; x.el = s; subtitle.append(s); if (i < words.length - 1) subtitle.append(' '); });
+  track.innerHTML = '';
+  for (const e of events) {
+    const d = document.createElement('div');
+    d.className = 'v' + (e.v === 'PBM' ? ' ferme' : e.v === 'SIL' ? ' sil' : '');
+    d.style.left = (e.t0 * PXS) + 'px'; d.style.width = Math.max(2, (e.t1 - e.t0) * PXS) + 'px';
+    if ((e.t1 - e.t0) * PXS > 16) d.textContent = e.v === 'SIL' ? '·' : e.v === 'DTN' ? 'T' : e.v === 'KGR' ? 'K' : e.v === 'CHJ' ? 'CH' : e.v === 'PBM' ? 'M' : e.v;
+    track.append(d);
+  }
+  const dur = al.character_end_times_seconds.at(-1) + 0.25;
+  return { al, events, words, dur, simT: 0, rate: 1, waiting: false, utter: null, startReal: 0 };
+}
+function speak() {
+  setState('parole');
+  speech = buildSpeech(document.getElementById('phrase').value.trim() || 'Bonjour Monsieur.');
+  const useVoice = document.getElementById('optVoice').checked && 'speechSynthesis' in window && !SHOT;
+  if (!useVoice) return;
+  try {
+    const sp = speech;
+    const u = new SpeechSynthesisUtterance(sp.al.characters.join(''));
+    u.lang = 'fr-FR'; u.rate = 1;
+    const v = speechSynthesis.getVoices().find(x => /^fr/i.test(x.lang));
+    if (v) u.voice = v;
+    sp.waiting = true; sp.utter = u;
+    u.onstart = () => { sp.waiting = false; sp.startReal = performance.now(); };
+    u.onboundary = ev => {
+      if (speech !== sp || ev.charIndex == null) return;
+      const target = sp.al.character_start_times_seconds[ev.charIndex] ?? sp.simT;
+      const el = (performance.now() - sp.startReal) / 1000;
+      if (el > 0.25 && target > 0.2) sp.rate = clamp(sp.rate * 0.5 + (target / el) * 0.5, 0.6, 1.7);
+      sp.simT += (target - sp.simT) * 0.6;
+    };
+    u.onend = () => { if (speech === sp) sp.ended = true; };
+    setTimeout(() => { if (sp.waiting) sp.waiting = false; }, 1200);
+    speechSynthesis.cancel(); speechSynthesis.speak(u);
+  } catch { /* La démonstration continue en temps simulé. */ }
+}
+
+document.querySelectorAll('[data-state]').forEach(b => b.addEventListener('click', () => b.dataset.state === 'parole' ? speak() : setState(b.dataset.state)));
+document.querySelectorAll('[data-style]').forEach(b => b.addEventListener('click', () => applyStyle(b.dataset.style)));
+document.getElementById('phrase').addEventListener('keydown', e => { if (e.key === 'Enter') speak(); });
+
+function applyStyle(k) {
+  styleKey = k; const S = STYLES[k];
+  document.querySelectorAll('[data-style]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.style === k)));
+  common.uColor.value.set(S.base); common.uHot.value.set(S.hot);
+  pointsMat.uniforms.uColor.value.set(S.base); pointsMat.uniforms.uHot.value.set(S.hot); pointsMat.uniforms.uAlpha.value = S.pointA;
+  lineMat.uniforms.uColor.value.set(S.line); lineMat.uniforms.uHot.value.set(S.hot); lineMat.uniforms.uAlpha.value = S.lineA;
+  fMat.uniforms.uColor.value.set(S.accent); fMat.uniforms.uHot.value.set(S.hot);
+  auraMat.uniforms.uColor.value.set(S.aura); ringMat.uniforms.uColor.value.set(S.accent);
+  haloMat.color.set(S.line);
+  bgMat.uniforms.uAbyss.value.set(S.abyss);
+  const r = document.documentElement.style;
+  r.setProperty('--acc', S.text);
+  const hex = S.text.replace('#', ''); r.setProperty('--acc-rgb', [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16)).join(', '));
+}
+applyStyle(styleKey);
+
+/* ───────────────────────── Boucle ───────────────────────── */
+const elCode = document.getElementById('visCode'), elName = document.getElementById('visName'), elSrc = document.getElementById('src');
+const bars = { open: document.getElementById('bOpen'), wide: document.getElementById('bWide'), round: document.getElementById('bRound'), press: document.getElementById('bPress') };
+const elFps = document.getElementById('fps');
+let time = 0, lastId = '';
+const STR = { mouth: 0 };
+
+function update(dt) {
+  const reduced = optReduce.checked;
+  time += dt;
+  const T = {
+    repos: { swirl: 0.12, auraA: 0.5, think: 0, ringMode: 0, ringLevel: 0, pull: 0, glow: 0, scanSpeed: 0.16, tilt: 0, roll: 0 },
+    ecoute: { swirl: 0.08, auraA: 0.45, think: 0, ringMode: 1, ringLevel: 0.55 + 0.35 * Math.abs(Math.sin(time * 5.3) * Math.sin(time * 2.1)), pull: 0.5, glow: 0, scanSpeed: 0.1, tilt: -0.05, roll: 0.05 },
+    reflexion: { swirl: 0.85, auraA: 0.8, think: 1, ringMode: 0, ringLevel: 0, pull: 0.15, glow: 0, scanSpeed: 0.45, tilt: 0.04, roll: 0 },
+    parole: { swirl: 0.22, auraA: 0.6, think: 0, ringMode: 2, ringLevel: 0, pull: 0, glow: 0, scanSpeed: 0.2, tilt: 0, roll: 0 },
+  }[state];
+
+  // Parole : avancer l'horloge du texte aligné, calculer les visèmes.
+  let target = { open: 0.02, wide: 0, round: 0, press: 0.12, id: 'SIL' };
+  if (state === 'ecoute') target = { open: 0.07, wide: 0.05, round: 0, press: 0, id: 'SIL' };
+  if (state === 'reflexion') target = { open: 0, wide: -0.1, round: 0.1, press: 0.45, id: 'SIL' };
+  if (state === 'parole' && speech) {
+    if (!speech.waiting) speech.simT += dt * speech.rate;
+    const amp = document.getElementById('optAmp').checked;
+    target = amp ? evalAmplitude(speech.events, speech.simT) : evalVisemes(speech.events, speech.simT);
+    T.ringLevel = clamp(target.open * 1.4, 0, 1); T.glow = target.open;
+    if (FORCE_VIS && VIS[FORCE_VIS]) { const V = VIS[FORCE_VIS]; target = { open: V.o, wide: V.w, round: V.r, press: V.p, id: FORCE_VIS }; T.glow = V.o; }
+    if (speech.simT > speech.dur && (!speech.utter || speech.ended || speech.simT > speech.dur + 3)) setState('repos');
+  }
+  const k = reduced ? 0.6 : 1;
+  mouth.open = damp(mouth.open, target.open * k, 30, dt); mouth.wide = damp(mouth.wide, target.wide * k, 26, dt);
+  mouth.round = damp(mouth.round, target.round * k, 26, dt); mouth.press = damp(mouth.press, target.press, 34, dt);
+  STR.mouth = damp(STR.mouth, state === 'parole' ? 1 : 0, 6, dt);
+  for (const key in T) lv[key] = damp(lv[key], T[key], key === 'ringLevel' || key === 'glow' ? 14 : 3, dt);
+
+  // Yeux : clignements, regard.
+  const lidBase = state === 'reflexion' ? 0.72 : state === 'ecoute' ? 1 : 0.93;
+  if (time > blinkAt && blinkT < 0) { blinkT = 0; }
+  let blink = 0;
+  if (blinkT >= 0) { blinkT += dt; blink = Math.sin(clamp(blinkT / 0.17, 0, 1) * Math.PI); if (blinkT > 0.17) { blinkT = -1; blinkAt = time + 2.4 + rnd() * 3.6; } }
+  look.lid = damp(look.lid, lidBase, 8, dt) * (1 - 0.95 * blink);
+  if (time > saccT) { saccT = time + 0.8 + rnd() * 2.2; gazeT = state === 'reflexion' ? { x: -0.018, y: 0.012 } : { x: (rnd() - 0.5) * (state === 'parole' ? 0.012 : 0.022), y: (rnd() - 0.5) * 0.01 }; }
+  look.gx = damp(look.gx, reduced ? 0 : gazeT.x, 18, dt); look.gy = damp(look.gy, reduced ? 0 : gazeT.y, 18, dt);
+  look.brow = damp(look.brow, state === 'ecoute' ? 0.014 : state === 'parole' ? 0.006 * mouth.open : 0, 6, dt);
+  look.browR = damp(look.browR, state === 'reflexion' ? 0.016 : 0, 4, dt);
+  look.eyeA = damp(look.eyeA, state === 'ecoute' ? 1 : 0.82, 4, dt);
+  look.lipA = damp(look.lipA, state === 'parole' ? 1 : 0.7, 5, dt);
+
+  // Tête : respiration, balancement lent, hochements discrets pendant la parole.
+  const mv = reduced ? 0 : 1;
+  const breath = Math.sin(time * Math.PI * 2 / 4.2);
+  head.rotation.y = mv * (Math.sin(time * 0.21) * 0.17 + Math.sin(time * 0.53) * 0.035) + (reduced ? 0.14 : 0);
+  head.rotation.x = mv * (Math.sin(time * 0.17) * 0.035 + 0.02 * mouth.open) + lv.tilt;
+  head.rotation.z = mv * lv.roll;
+  head.position.y = mv * breath * 0.012;
+  head.scale.setScalar(1 + mv * breath * 0.006);
+  dial.rotation.z += dt * 0.05 * mv; dial2.rotation.z -= dt * (0.09 + lv.swirl * 0.2) * mv;
+
+  // Sommets du visage : déformation de la bouche + dissolution des bords.
+  for (let i = 0; i < N; i++) {
+    const X = restArr[i * 3], Y = restArr[i * 3 + 1], Z = restArr[i * 3 + 2];
+    if (Y < 0.02 && Math.abs(X) < 0.62) deform(X, Y, Z, above[i] === 1, mouth, tmp);
+    else { tmp[0] = X; tmp[1] = Y; tmp[2] = Z; }
+    const e = edges[i];
+    if (e > 0.8 && mv) {
+      const s = seeds[i], amt = (e - 0.8) / 0.2 * (0.03 + 0.03 * Math.sin(time * 0.6 + s * 40));
+      tmp[0] += Math.sign(X) * amt; tmp[1] += amt * 0.6 * Math.sin(time * 0.4 + s * 17); tmp[2] -= amt * 1.4;
+    }
+    pos[i * 3] = tmp[0]; pos[i * 3 + 1] = tmp[1]; pos[i * 3 + 2] = tmp[2];
+  }
+  posAttr.needsUpdate = true;
+  buildFeatures(time, look, STR);
+
+  // Uniformes.
+  phase += dt * lv.swirl * mv; ringPhase += dt * (state === 'parole' ? 0.9 : 0.55) * mv;
+  scanY -= dt * lv.scanSpeed * 2.4 * mv; if (scanY < -1.1) scanY = 1.25;
+  const S = STYLES[styleKey];
+  for (const mat of [pointsMat, lineMat]) {
+    const u = mat.uniforms;
+    u.uTime.value = time; u.uScanY.value = scanY; u.uScanA.value = reduced ? 0 : S.scan; u.uFlicker.value = reduced ? 0 : 1;
+    u.uMouthGlow.value = lv.glow * 0.9; u.uThink.value = reduced ? 0 : lv.think;
+  }
+  auraMat.uniforms.uPhase.value = phase; auraMat.uniforms.uTime.value = time * mv; auraMat.uniforms.uA.value = lv.auraA * (reduced ? 0.5 : 1); auraMat.uniforms.uPull.value = lv.pull;
+  ringMat.uniforms.uPhase.value = ringPhase; ringMat.uniforms.uMode.value = reduced ? 0 : lv.ringMode > 1.5 || state === 'parole' ? 2 : state === 'ecoute' ? 1 : 0; ringMat.uniforms.uLevel.value = lv.ringLevel;
+  ringMat.uniforms.uCenter.value.set(0, state === 'parole' ? LIP_Y : 0.12, state === 'parole' ? 0.55 : 0.5);
+  bgMat.uniforms.uGlow.value = 1 + lv.glow * 0.6 + lv.think * 0.3;
+  finish.uniforms.uTime.value = time; finish.uniforms.uScan.value = reduced ? 0 : 1;
+  bloom.strength = (LOW ? 0.8 : 1.05) + lv.glow * 0.35 + lv.think * 0.15;
+
+  // Sous-titres, frise, télémétrie.
+  if (speech) {
+    for (const w of speech.words) w.el.className = 'w' + (speech.simT >= w.t1 ? ' said' : speech.simT >= w.t0 ? ' now' : '');
+    track.style.transform = `translateX(${-speech.simT * PXS}px)`;
+  }
+  if (target.id !== lastId) {
+    lastId = target.id;
+    const V = target.id === 'AMP' ? { c: '≈', n: 'niveau sonore seul' } : VIS[target.id] || VIS.SIL;
+    elCode.textContent = V.c; elName.textContent = V.n;
+  }
+  bars.open.style.setProperty('--v', mouth.open.toFixed(3)); bars.wide.style.setProperty('--v', Math.max(0, mouth.wide).toFixed(3));
+  bars.round.style.setProperty('--v', mouth.round.toFixed(3)); bars.press.style.setProperty('--v', mouth.press.toFixed(3));
+  elSrc.textContent = document.getElementById('optAmp').checked
+    ? 'source : niveau sonore seul (repli — voix sans alignement)'
+    : 'source : alignement par caractère (simulé comme ElevenLabs « with-timestamps »)';
+}
+
+let last = performance.now(), acc = 0, frames = 0;
+if (SHOT) {
+  const st = Q.get('state') || 'repos';
+  if (st === 'parole') speak(); else setState(st);
+  for (let t = 0; t < SHOT_T; t += 1 / 60) update(1 / 60);
+  composer.render();
+  window.__ready = true;
+} else {
+  requestAnimationFrame(function loop(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    if (!document.hidden) { update(dt); composer.render(); }
+    acc += dt; frames++;
+    if (acc > 0.5) { elFps.textContent = Math.round(frames / acc) + ' i/s · ' + (LOW ? 'allégé' : 'PC'); acc = 0; frames = 0; }
+    requestAnimationFrame(loop);
+  });
+}
+reduceMQ.addEventListener?.('change', e => { optReduce.checked = e.matches; });
+</script>
+</body>
+</html>
