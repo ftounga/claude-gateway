@@ -62,6 +62,8 @@ class ClientMailDepositIntegrationTest {
 
     @MockitoBean private RunnerTokenAuthenticator authenticator;
     @MockitoBean private AiAgentProvider agentProvider;
+    /** La file durable est traitée par le test lui-même : le travailleur planifié ne doit pas la lui prendre. */
+    @MockitoBean private fr.claudegateway.shared.jobs.AsyncJobWorker jobWorker;
 
     @Autowired private MockMvc mvc;
     @Autowired private UserRepository users;
@@ -173,7 +175,8 @@ class ClientMailDepositIntegrationTest {
         deposit("tok-alice", "b.eml", eml("<dup@edenred.com>", "Sujet (copie)", OffsetDateTime.now().minusMinutes(1)))
                 .andExpect(jsonPath("$.outcome").value("DUPLICATE"));
         assertThat(depositedOf(alice)).hasSize(1);
-        assertThat(queue.claim(ClientMailDepositService.JOB_KIND, 50, "dup")).hasSize(1);
+        assertThat(queue.claim(ClientMailDepositService.JOB_KIND, 50, "dup").stream()
+                .filter(j -> j.userId().equals(alice.getId()))).hasSize(1);
     }
 
     @Test

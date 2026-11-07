@@ -59,6 +59,8 @@ class ClientMailIgnoreIntegrationTest {
 
     @MockitoBean private RunnerTokenAuthenticator authenticator;
     @MockitoBean private AiAgentProvider agentProvider;
+    /** La file durable est traitée par le test lui-même : le travailleur planifié ne doit pas la lui prendre. */
+    @MockitoBean private fr.claudegateway.shared.jobs.AsyncJobWorker jobWorker;
 
     @Autowired private MockMvc mvc;
     @Autowired private UserRepository users;
