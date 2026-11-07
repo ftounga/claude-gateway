@@ -155,14 +155,19 @@ public final class InboxReader {
 
     /** D6 — indice « courrier de masse » : {@code List-Unsubscribe}, {@code Precedence: bulk}, expéditeur automatique. */
     static boolean isBulk(Message m, String fromAddr) throws MessagingException {
-        if (header(m, "List-Unsubscribe") != null) {
+        return isBulk(header(m, "List-Unsubscribe"), header(m, "Precedence"), fromAddr);
+    }
+
+    /** D6 — la même règle sur des en-têtes déjà lus (F-249 : un {@code .msg} déposé). */
+    public static boolean isBulk(String listUnsubscribe, String precedence, String fromAddr) {
+        if (listUnsubscribe != null) {
             return true;
         }
-        String precedence = header(m, "Precedence");
         if (precedence != null && precedence.toLowerCase(Locale.ROOT).matches(".*\\b(bulk|list|junk)\\b.*")) {
             return true;
         }
-        String local = fromAddr.contains("@") ? fromAddr.substring(0, fromAddr.indexOf('@')) : fromAddr;
+        String from = fromAddr == null ? "" : fromAddr;
+        String local = from.contains("@") ? from.substring(0, from.indexOf('@')) : from;
         return local.matches("(?i).*(no-?reply|do-?not-?reply|ne-?pas-?repondre|mailer-daemon).*");
     }
 

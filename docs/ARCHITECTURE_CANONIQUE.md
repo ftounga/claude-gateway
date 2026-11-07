@@ -1525,6 +1525,13 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   relève **serveur** (aucune IA sans neuf) sous le `user_id` de la boîte ; trié par le cerveau rapide (lot sans outil,
   balisage non fiable) ; purge à 30 jours. `jarvis_usage_days` gagne `mail_polls`, `mail_polls_empty`, `mail_fetched`,
   `mail_triage_corrected` (migration `242-jarvis-usage-mail`, compteurs seuls).
+- **jarvis_mail_items (F-249 / SF-249-01, migration `249-01`)** — seconde source : `source` (`IMAP` | `DEPOT`),
+  `host_id` (le poste = le client d'un mail déposé), `body_sealed` (corps texte ≤ 8 000 caractères **scellé**, seul
+  moyen de relire un mail déposé) ; `account_id` devient **nullable** (nul pour un dépôt). Index
+  `(user_id, host_id, message_id)` pour le dédoublonnage.
+- **jarvis_mail_deposits** — **le journal des dépôts Outlook** (F-249 / SF-249-01, migration `249-01`) : `id`,
+  `user_id`, `host_id`, `content_hash` (SHA-256 du fichier ; unique avec `user_id, host_id`), `item_id`, `outcome`
+  (`ACCEPTED|DUPLICATE|IGNORED`), `deposited_at`. Aucun nom de fichier, aucun contenu. Purge à 30 jours.
 - **jarvis_mail_actions** — **les actions de courrier qui engagent** (F-242 / SF-242-06, migration
   `242-jarvis-mail-actions`) : `id`, `user_id`, `account_id`, `workspace_id` (le fil Jarvis), `kind`
   (`SEND|DELETE|ARCHIVE_BULK`), `payload` (scellé), `summary` (la reformulation dite), `status`

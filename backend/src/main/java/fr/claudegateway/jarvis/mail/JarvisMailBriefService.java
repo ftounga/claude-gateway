@@ -138,7 +138,8 @@ public class JarvisMailBriefService {
     /** Le bloc volatil du message du cerveau rapide ; vide sans boîte reliée. */
     @Transactional(readOnly = true)
     public String contextBlock(UUID userId, boolean presentation) {
-        if (userId == null || accounts.countByUserId(userId) == 0) {
+        if (userId == null || (accounts.countByUserId(userId) == 0
+                && !items.existsByUserIdAndSource(userId, JarvisMailItem.SOURCE_DEPOT))) {
             return "";
         }
         if (presentation) {

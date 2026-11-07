@@ -157,6 +157,14 @@
 			<version>${openpdf.version}</version>
 		</dependency>
 
+		<!-- Apache POI HSMF (F-249 / SF-249-01, D6) : lecture des mails Outlook .msg (OLE2/MAPI) deposes par le
+		     runner. Licence Apache 2.0. VARIANTE DE PILE signalee (TECH_STACK, PR) : aucune autre bibliotheque ne lit
+		     ce format ; la lecture reste cote serveur pour ne pas alourdir le runner. -->
+		<dependency>
+			<groupId>org.apache.poi</groupId>
+			<artifactId>poi-scratchpad</artifactId>
+			<version>5.3.0</version>
+		</dependency>
 		<!-- ical4j (F-243 / SF-243-01, D2) : analyse des agendas iCal (RRULE, EXDATE, fuseaux), licence BSD.
 		     Variante de pile signalée (TECH_STACK). Confinée à fr.claudegateway.jarvis.calendar.JarvisIcsParser.
 		     groovy et jparsec (filtres d'expressions, inutilisés) sont exclus. -->
