@@ -54,6 +54,8 @@ public final class JarvisCompanionScope {
             new Route("GET", "/jarvis/thread/today"),
             new Route("POST", "/jarvis/usage"),
             new Route("POST", "/jarvis/timings"),
+            // F-233 / SF-233-15 — le journal de l'écoute (transitions et erreurs, sans contenu).
+            new Route("POST", "/jarvis/listen-trace"),
             new Route("POST", "/jarvis/captures"),
             new Route("PUT", "/jarvis/captures/latest/correction"),
             // Préférences d'écran (mode de conversation, mot d'éveil) ; coût et « je la lance ? » du budget.

@@ -1588,6 +1588,12 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   `created_at`, `expires_at` (début du rendez-vous). `.ics` analysé **sans IA** (invités jamais lus), date écrite
   repérée au tri et résolue par la passerelle ; une proposition à la fois au bref ; **rien n'est posé** depuis cette
   table. Purge avec la boîte et le compte.
+- **jarvis_listen_traces** — **le journal de l'écoute** (F-233 / SF-233-15, migration `250-01`) : `id`, `user_id`,
+  `page_id` (une ouverture de `/jarvis`), `page_version` (empreinte du `main-*.js`), `companion`, `seq`, `at_ms`
+  (depuis l'ouverture), `event` (`[a-z0-9_]`), `state`, `mode`, `detail` (≤ 120, liste blanche technique),
+  `repeat_count`, `created_at`. **Aucun contenu** (ni texte dit ou entendu, ni audio). Écrit par
+  `POST /api/jarvis/listen-trace` (portée compagnon), ≤ 100 événements/lot, ≤ 20 000 lignes/24 h/compte ; lu en SQL
+  filtré `user_id` ; purge quotidienne > 7 j.
 - **interlocuteurs** — **les interlocuteurs d'un poste** (F-180 / SF-180-03, migration `160`) : une
   personne dont on attend quelque chose, normalisée. `id`, `user_id`, `host_id` (NOT NULL — un terminal
   hébergé garde le texte libre), `display_name (120)`, `normalized_name (120)` (unique par `user_id` +

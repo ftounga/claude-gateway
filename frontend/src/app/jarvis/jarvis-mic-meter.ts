@@ -91,6 +91,11 @@ export class MicMeter {
     }
   }
 
+  /** F-233 / SF-233-15 — l'état de l'`AudioContext` du niveau (`suspended` : l'écoute est sourde), ou `none`. */
+  get contextState(): string {
+    return this.context?.state ?? 'none';
+  }
+
   /** F-239 — vrai si le niveau est réellement mesuré (sinon `level()` rend 0 sans rien dire de la voix). */
   get available(): boolean {
     return this.analyser !== null;
