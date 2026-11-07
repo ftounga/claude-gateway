@@ -1,0 +1,10 @@
+{"audio_base64": "SUQzBAAAAAAAIlRT", "alignment": {"characters": ["B", "o", "n", "j", "o", "u", "r", " ", "M", "o", "n", "s", "i", "e", "u", "r", ",", " ", "j", "e", " ", "v", "o", "u", "s", " ", "é", "c", "o", "u", "t", "e", "."], "character_start_times_seconds": [0.0, 0.116, 0.174, 0.232, 0.313, 0.383, 0.418, 0.453, 0.511, 0.546, 0.58, 0.627, 0.697, 0.755, 0.789, 0.813, 0.906, 0.975, 1.219, 1.277, 1.324, 1.37, 1.393, 1.428, 1.463, 1.509, 1.567, 1.614, 1.695, 1.753, 1.8, 1.869, 1.985], "character_end_times_seconds": [0.116, 0.174, 0.232, 0.313, 0.383, 0.418, 0.453, 0.511, 0.546, 0.58, 0.627, 0.697, 0.755, 0.789, 0.813, 0.906, 0.975, 1.219, 1.277, 1.324, 1.37, 1.393, 1.428, 1.463, 1.509, 1.567, 1.614, 1.695, 1.753, 1.8, 1.869, 1.985, 2.276]}, "normalized_alignment": {"characters": [" ", "B", "o", "n", "j", "o", "u", "r", " ", "M", "o", "n", "s", "i", "e", "u", "r", ",", " ", "j", "e", " ", "v", "o", "u", "s", " ", "é", "c", "o", "u", "t", "e", ".", " "], "character_start_times_seconds": [0.0, 0.058, 0.116, 0.174, 0.232, 0.313, 0.383, 0.418, 0.453, 0.511, 0.546, 0.58, 0.627, 0.697, 0.755, 0.789, 0.813, 0.906, 0.975, 1.219, 1.277, 1.324, 1.37, 1.393, 1.428, 1.463, 1.509, 1.567, 1.614, 1.695, 1.753, 1.8, 1.869, 1.985, 2.02], "character_end_times_seconds": [0.058, 0.116, 0.174, 0.232, 0.313, 0.383, 0.418, 0.453, 0.511, 0.546, 0.58, 0.627, 0.697, 0.755, 0.789, 0.813, 0.906, 0.975, 1.219, 1.277, 1.324, 1.37, 1.393, 1.428, 1.463, 1.509, 1.567, 1.614, 1.695, 1.753, 1.8, 1.869, 1.985, 2.02, 2.276]}, "quality_check": null}
+
+{"audio_base64": "//uSxPOCWPWfOw28", "alignment": null, "normalized_alignment": null, "quality_check": null}
+
+{"audio_base64": "//uSxNiA2KmbIi9t", "alignment": null, "normalized_alignment": null, "quality_check": null}
+
+{"audio_base64": "//uSxFOBU52BQo4x", "alignment": null, "normalized_alignment": null, "quality_check": null}
+
+{"audio_base64": "//uSxHMA1bGLT8wx", "alignment": null, "normalized_alignment": null, "quality_check": null}
+
