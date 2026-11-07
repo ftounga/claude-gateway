@@ -150,8 +150,9 @@ export function faceLookAt(look: FaceLook, mood: HeartMood, sinceS: number, t: n
   const step = Math.max(0, Math.min(dt, 0.1));
   const target = mouthTarget(mood, mouth, scratch);
   const k = reduced ? 0.6 : 1;
-  // Coupure : la bouche se ferme en ≈ 120 ms (ressort rapide).
-  const rate = mood === 'coupure' ? 40 : 30;
+  // Ressort de la bouche ≈ 40 s⁻¹ (SF-250-06, porte P2 : 30 s⁻¹ laissait les ouvertures à 45 ms de retard p90,
+  // 40 s⁻¹ les ramène à 38 ms) ; coupure : fermée en ≈ 120 ms.
+  const rate = mood === 'coupure' ? 46 : 40;
   look.mouth.open = damp(look.mouth.open, target.open * k, rate, step);
   look.mouth.wide = damp(look.mouth.wide, target.wide * k, rate - 4, step);
   look.mouth.round = damp(look.mouth.round, target.round * k, rate - 4, step);

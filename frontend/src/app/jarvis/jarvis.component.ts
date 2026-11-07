@@ -1,6 +1,8 @@
 import { JarvisPieceGalleryComponent } from './pieces/jarvis-piece-gallery.component';
 import { JarvisPieceStore, refusalPhrase } from './pieces/jarvis-piece-store';
 import { cardsAllowedOnDevice, setCardsAllowedOnDevice } from './cards/jarvis-card-deck';
+import { LipSync } from './face/jarvis-lip-sync';
+import type { MouthShape } from './face/jarvis-visemes';
 import { CardShowing } from './cards/jarvis-card-cite';
 import { CardsEvent } from './cards/jarvis-card.models';
 import { pieceVoiceCommand } from './pieces/jarvis-piece-voice';
@@ -812,6 +814,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
   /** Bascule « Humour : aucun / léger » ; revient en arrière si l'enregistrement échoue. */
   /** F-250 — le coupe-circuit du serveur (`APP_JARVIS_FACE_ENABLED`), lu à l'ouverture (éteint en attendant). */
   readonly faceServer = signal(false);
+  /** F-250 / SF-250-06 — les lèvres : visèmes sur l'horloge audio, sinon niveau sonore. */
+  private readonly lips = new LipSync(this.voice);
+  /** F-250 / SF-250-06 — la bouche lue par la scène 3D à chaque image (hors zone, sans allocation). */
+  readonly faceMouth = (out: MouthShape): void => this.lips.read(out);
   /** F-248 / SF-248-04 (D12) — le réglage « Pancartes » de cet appareil (défaut oui). */
   readonly cardsOn = signal(cardsAllowedOnDevice());
   /** F-248 / SF-248-05 — les pancartes citées par la phrase jouée à l'instant. */
