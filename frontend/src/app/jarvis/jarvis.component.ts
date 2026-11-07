@@ -943,6 +943,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
     void this.voice.preloadClips(FORMULA_CLIPS);
     // SF-233-06 — le fournisseur de la voix, pour la mesure (SF-233-01).
     this.voice.status().subscribe({ next: (status) => this.ttsProvider = status.provider ?? null, error: () => undefined });
+    // F-250 / SF-250-02 — la voix alignée (lèvres du visage) : demandée si le serveur l'allume pour ce compte.
+    this.voice.faceStatus().subscribe({
+      next: (face) => this.voice.setAligned(face.enabled && face.aligned),
+      error: () => undefined,
+    });
     // F-243 / SF-243-03 — retour du parcours OAuth Google : le volet « Mes agendas » s'ouvre (jamais en présentation).
     const agendaReturn = this.route.snapshot.queryParamMap.get('agenda');
     if ((agendaReturn === 'relie' || agendaReturn === 'refuse') && !this.presentation()) {

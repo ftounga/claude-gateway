@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { AuthService } from './auth.service';
+import type { Alignment } from '../../jarvis/face/jarvis-alignment';
 
 /** Ce qui peut empêcher Jarvis de parler (F-231 / SF-231-01) — l'écran retombe alors sur le texte. */
 export type JarvisVoiceError = 'budget' | 'non-configure' | 'echec' | 'interrompu';
@@ -26,13 +27,25 @@ export interface SpeakHooks {
   onPlaying?: () => void;
 }
 
+/** F-250 — ce que l'écran sait du visage : allumé, et lèvres alignées pour ce compte. */
+export interface JarvisFaceStatus {
+  enabled: boolean;
+  aligned: boolean;
+}
+
+/** F-250 / SF-250-02 — une phrase reçue : de quoi la jouer, et son alignement (rempli au fil de l'arrivée). */
+interface Fetched {
+  url: string;
+  alignment: Alignment | null;
+}
+
 /** SF-233-03 — une phrase en file : son audio est demandé à l'avance (`url`). */
 interface QueuedSentence {
   text: string;
   workspaceId: string | null;
   hooks?: SpeakHooks;
   abort: AbortController;
-  url: Promise<string> | null;
+  url: Promise<Fetched> | null;
 }
 
 /** Ce que l'écran garde d'une lecture : de quoi l'arrêter. */
@@ -42,6 +55,8 @@ interface Playback {
   url: string;
   /** SF-233-08 — la phrase jouée (pour savoir ce qui a été entendu) ; absente pour un clip. */
   text?: string;
+  /** F-250 — l'alignement de la phrase (voix alignée), ou `null` (repli amplitude). */
+  alignment: Alignment | null;
   done: (error?: JarvisVoiceError) => void;
 }
 
@@ -103,6 +118,34 @@ export class JarvisVoiceService {
   private readonly clips = new Map<string, string>();
   /** SF-233-11 — la fin du clip en cours, que la file attend avant de dire sa première phrase. */
   private clipPlaying: Promise<void> | null = null;
+  /** F-250 / SF-250-02 — demander l'alignement (visage allumé, voix alignable). */
+  private alignedVoice = false;
+  /** F-250 / SF-250-06 — les alignements des clips (fichier compagnon), par nom. */
+  private readonly clipAlignments = new Map<string, Alignment>();
+
+  /** F-250 — le visage est-il allumé, et les lèvres seront-elles alignées ? */
+  faceStatus(): Observable<JarvisFaceStatus> {
+    return this.http.get<JarvisFaceStatus>('/api/jarvis/face');
+  }
+
+  /** F-250 / SF-250-02 — demande (ou non) l'alignement à la passerelle ; sans effet sur la phrase en cours. */
+  setAligned(on: boolean): void {
+    this.alignedVoice = on;
+  }
+
+  /**
+   * F-250 / SF-250-02 — **l'horloge des lèvres** : la position de lecture de la phrase en cours (secondes,
+   * `audio.currentTime` — jamais l'heure murale, les lèvres restent calées si le réseau hoquette), ou −1 en silence.
+   */
+  playhead(): number {
+    const playback = this.current;
+    return playback && !playback.audio.paused ? playback.audio.currentTime : -1;
+  }
+
+  /** F-250 / SF-250-02 — l'alignement de la phrase en cours (rempli au fil de l'arrivée), ou `null`. */
+  alignment(): Alignment | null {
+    return this.current?.alignment ?? null;
+  }
 
   /** La voix est-elle là, et combien a-t-elle coûté ce mois ? */
   status(): Observable<JarvisVoiceStatus> {
@@ -162,11 +205,11 @@ export class JarvisVoiceService {
       this.stopCurrent();
     }
     const abort = new AbortController();
-    const url = await this.fetchAudio(text, workspaceId, abort, hooks);
+    const fetched = await this.fetchAudio(text, workspaceId, abort, hooks);
     if (this.clipPlaying) {
       await this.clipPlaying;
     }
-    return this.play(url, abort, hooks, true, text);
+    return this.play(fetched, abort, hooks, true, text);
   }
 
   /**
@@ -217,7 +260,7 @@ export class JarvisVoiceService {
       const item = this.queue[0];
       this.prefetch();
       try {
-        const url = await item.url!;
+        const fetched = await item.url!;
         if (this.queue[0] !== item) {
           continue;
         }
@@ -227,7 +270,7 @@ export class JarvisVoiceService {
         if (this.queue[0] !== item) {
           continue;
         }
-        await this.play(url, item.abort, item.hooks, true, item.text);
+        await this.play(fetched, item.abort, item.hooks, true, item.text);
       } catch (error) {
         if (this.queue[0] === item) {
           // Voix absente ou plafond : inutile d'essayer les suivantes, elles restent écrites.
@@ -252,9 +295,13 @@ export class JarvisVoiceService {
     pending.forEach((item) => item.abort.abort());
   }
 
-  /** Demande l'audio d'une phrase ; rend une URL jouable (flux MediaSource si possible). */
+  /**
+   * Demande l'audio d'une phrase ; rend une URL jouable (flux MediaSource si possible). F-250 / SF-250-02 : si
+   * l'alignement est demandé et que la passerelle répond en NDJSON, l'audio (base64) va au même `SourceBuffer` et
+   * l'alignement est gardé à côté ; sinon le mp3 de toujours (repli amplitude).
+   */
   private async fetchAudio(text: string, workspaceId: string | null, abort: AbortController,
-                           hooks?: SpeakHooks): Promise<string> {
+                           hooks?: SpeakHooks): Promise<Fetched> {
     const token = this.auth.token();
     let response: Response;
     try {
@@ -262,7 +309,7 @@ export class JarvisVoiceService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Accept: 'audio/mpeg',
+          Accept: this.alignedVoice ? `${NDJSON}, audio/mpeg` : 'audio/mpeg',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({ text, ...(workspaceId ? { workspaceId } : {}) }),
@@ -275,7 +322,16 @@ export class JarvisVoiceService {
       throw voiceErrorOf(response.status);
     }
     hooks?.onFirstByte?.();
-    return canStream(response) ? this.streamInto(response) : URL.createObjectURL(await response.blob());
+    if ((response.headers.get('Content-Type') ?? '').includes(NDJSON)) {
+      const alignment: Alignment = { chars: [], starts: [], ends: [] };
+      const url = canStream(response) ? this.streamAligned(response, alignment)
+        : URL.createObjectURL(await readAligned(response, alignment));
+      return { url, alignment };
+    }
+    return {
+      url: canStream(response) ? this.streamInto(response) : URL.createObjectURL(await response.blob()),
+      alignment: null,
+    };
   }
 
   /**
@@ -313,7 +369,8 @@ export class JarvisVoiceService {
       return false;
     }
     this.stopCurrent();
-    const playing = this.play(url, new AbortController(), hooks, false);
+    const playing = this.play({ url, alignment: this.clipAlignments.get(name) ?? null }, new AbortController(), hooks,
+      false);
     const settled = playing.then(() => undefined, () => undefined);
     this.clipPlaying = settled;
     void settled.then(() => {
@@ -330,15 +387,16 @@ export class JarvisVoiceService {
   }
 
   /** Joue `url` ; une seule lecture à la fois. `revoke` : l'URL est rendue à la fin (une phrase, pas un clip). */
-  private play(url: string, abort: AbortController, hooks: SpeakHooks | undefined, revoke: boolean,
+  private play(fetched: Fetched, abort: AbortController, hooks: SpeakHooks | undefined, revoke: boolean,
                text?: string): Promise<void> {
+    const { url, alignment } = fetched;
     const audio = new Audio();
     audio.src = url;
     this.connect(audio);
     this.duck(false);
     return new Promise<void>((resolve, reject) => {
       const playback: Playback = {
-        audio, abort, url, text,
+        audio, abort, url, text, alignment,
         done: (error) => {
           if (!error && text) {
             this.heard.push(text);
@@ -469,6 +527,44 @@ export class JarvisVoiceService {
     }
   }
 
+  /**
+   * F-250 / SF-250-02 — lit le flux NDJSON au fil de son arrivée : l'audio de chaque ligne va au `SourceBuffer`
+   * (comme l'mp3), son alignement s'ajoute à `alignment`. Une ligne illisible est ignorée (repli amplitude).
+   */
+  private streamAligned(response: Response, alignment: Alignment): string {
+    const source = new MediaSource();
+    const url = URL.createObjectURL(source);
+    source.addEventListener('sourceopen', () => {
+      void (async () => {
+        try {
+          const buffer = source.addSourceBuffer('audio/mpeg');
+          const reader = response.body!.getReader();
+          const lines = new NdjsonLines();
+          for (;;) {
+            const { value, done } = await reader.read();
+            for (const line of done ? lines.end() : lines.push(value)) {
+              const audio = takeAlignedLine(line, alignment);
+              if (audio && audio.length > 0) {
+                await appendChunk(buffer, audio);
+              }
+            }
+            if (done) {
+              break;
+            }
+          }
+          if (source.readyState === 'open') {
+            source.endOfStream();
+          }
+        } catch {
+          if (source.readyState === 'open') {
+            source.endOfStream('network');
+          }
+        }
+      })();
+    }, { once: true });
+    return url;
+  }
+
   /** Lit l'mp3 au fil de son arrivée : chaque morceau reçu est ajouté à la source pendant que l'audio joue. */
   private streamInto(response: Response): string {
     const source = new MediaSource();
@@ -497,6 +593,82 @@ export class JarvisVoiceService {
     }, { once: true });
     return url;
   }
+}
+
+/** F-250 — le type du flux aligné. */
+export const NDJSON = 'application/x-ndjson';
+
+/** F-250 / SF-250-02 — découpe un flux d'octets en lignes NDJSON (les lignes peuvent arriver en morceaux). */
+export class NdjsonLines {
+  private readonly decoder = new TextDecoder();
+  private pending = '';
+
+  /** Ajoute des octets ; rend les lignes complètes (non vides). */
+  push(bytes: Uint8Array | undefined): string[] {
+    if (bytes) {
+      this.pending += this.decoder.decode(bytes, { stream: true });
+    }
+    const parts = this.pending.split('\n');
+    this.pending = parts.pop() ?? '';
+    return parts.filter((line) => line.trim().length > 0);
+  }
+
+  /** Fin du flux : la dernière ligne, si elle n'avait pas de saut. */
+  end(): string[] {
+    const rest = (this.pending + this.decoder.decode()).trim();
+    this.pending = '';
+    return rest.length > 0 ? [rest] : [];
+  }
+}
+
+/**
+ * F-250 / SF-250-02 — une ligne `{a, c, s, e}` : ajoute son alignement (s'il est cohérent) à `alignment` et rend son
+ * audio décodé ; `null` si la ligne est illisible.
+ */
+export function takeAlignedLine(line: string, alignment: Alignment): Uint8Array | null {
+  let parsed: { a?: unknown; c?: unknown; s?: unknown; e?: unknown };
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return null;
+  }
+  const { c, s, e } = parsed;
+  if (Array.isArray(c) && Array.isArray(s) && Array.isArray(e) && c.length === s.length && s.length === e.length
+      && c.every((x) => typeof x === 'string') && s.every(Number.isFinite) && e.every(Number.isFinite)) {
+    for (let k = 0; k < c.length; k++) {
+      alignment.chars.push(c[k] as string);
+      alignment.starts.push(s[k] as number);
+      alignment.ends.push(e[k] as number);
+    }
+  }
+  return typeof parsed.a === 'string' ? base64Bytes(parsed.a) : null;
+}
+
+/** Décode du base64 (l'audio d'une ligne) ; vide si illisible. */
+export function base64Bytes(text: string): Uint8Array {
+  try {
+    const binary = atob(text);
+    const out = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      out[i] = binary.charCodeAt(i);
+    }
+    return out;
+  } catch {
+    return new Uint8Array(0);
+  }
+}
+
+/** Sans lecture en flux : lit tout le NDJSON, rend l'audio entier et remplit l'alignement. */
+async function readAligned(response: Response, alignment: Alignment): Promise<Blob> {
+  const lines = new NdjsonLines();
+  const parts: Uint8Array[] = [];
+  for (const line of [...lines.push(new Uint8Array(await response.arrayBuffer())), ...lines.end()]) {
+    const audio = takeAlignedLine(line, alignment);
+    if (audio) {
+      parts.push(audio);
+    }
+  }
+  return new Blob(parts as BlobPart[], { type: 'audio/mpeg' });
 }
 
 /** Le refus de la passerelle, en mots de l'écran. */
