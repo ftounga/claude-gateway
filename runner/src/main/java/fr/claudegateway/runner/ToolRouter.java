@@ -160,6 +160,9 @@ public final class ToolRouter implements ToolExecutor {
         if (render != null && bash.enabled()) {
             capabilities.add(fr.claudegateway.runner.video.render.RenderTools.CAPABILITY);
         }
+        // F-249 / SF-249-02 : ce poste surveille <racine>/jarvis/mails/ et dépose les mails Outlook. Sans cette
+        // annonce (runner ancien), l'écran dit « mettez le poste à jour ».
+        capabilities.add(fr.claudegateway.runner.mail.MailDepositWatcher.CAPABILITY);
         return List.copyOf(capabilities);
     }
 }

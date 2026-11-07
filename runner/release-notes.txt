@@ -1,6 +1,7 @@
 # F-111 / SF-111-03 — Ce qu'apporte la version construite, en quelques lignes (10 au plus, 200 caractères).
 # Lu par runner/build-tools/SignRunnerUpdate.java, écrit dans le manifeste, affiché par la Forge à côté
 # de « Mise à jour disponible ». À réécrire à chaque version qui change quelque chose de visible.
+Mails Outlook : glissez vos mails (.msg, .eml) dans <racine>/jarvis/mails/ ; le runner les envoie à Jarvis en arrière-plan, une seule fois, puis les range.
 Relevé d'état : les lectures automatiques passent en priorité basse, cèdent la place à vos commandes (interrompues en moins d'une demi-seconde) et ne partent jamais pendant un tour.
 Départ propre : à l'arrêt, le runner laisse 8 s au plus à Jarvis pour relever l'état du poste, puis s'arrête quoi qu'il arrive.
 Vidéo derrière un proxy : Node 22, hyperframes, GSAP et ffmpeg viennent du portail (paquet signé), rendu avec le Chrome ou l'Edge du poste ; rien n'est pris sur internet.
@@ -10,4 +11,3 @@ Publier une vidéo : une vidéo ou un son produit sur ce poste (300 Mo au plus) 
 Captures de preuve : l'agent peut rejouer des commandes de vérification à la suite, dans un même shell, pour en tirer des captures du terminal.
 Téléchargements (ffmpeg, whisper) et remontées derrière un proxy d'entreprise / Zscaler : même confiance que la connexion à la gateway.
 Regarder une vidéo : l'agent extrait sur ce poste les images d'une vidéo pour les voir (ffmpeg rapatrié au premier usage).
-La vidéo ne quitte jamais le poste ; seules les images que l'agent ouvre partent chez le fournisseur.
