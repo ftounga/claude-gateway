@@ -221,6 +221,23 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     jarvis.ngOnDestroy();
   }));
 
+  it('F-249 / SF-249-07 — « Mails clients » ouvre le volet ; ni bouton ni volet en présentation', fakeAsync(() => {
+    configure({});
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    const el = fixture.nativeElement as HTMLElement;
+    jarvis.settingsOpen.set(true);
+    fixture.detectChanges();
+    expect(el.querySelector('.jv__client-mail-open')).not.toBeNull();
+    jarvis.presentation.set(true);
+    jarvis.clientMailOpen.set(true);
+    fixture.detectChanges();
+    expect(el.querySelector('.jv__client-mail-open')).toBeNull();
+    expect(el.querySelector('app-jarvis-client-mail')).toBeNull();
+    jarvis.ngOnDestroy();
+  }));
+
   it('F-236 / SF-236-01 — sans WebGL2 : l’écran 2D d’aujourd’hui, aucun canevas, aucun bouton « Vue », morceau 3D jamais demandé', fakeAsync(() => {
     configure({});
     const fixture = TestBed.createComponent(JarvisComponent);

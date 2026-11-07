@@ -118,6 +118,11 @@
                 (click)="calendarOpen.set(!calendarOpen()); mailOpen.set(false); portraitOpen.set(false); settingsOpen.set(false)">
           <mat-icon aria-hidden="true">event</mat-icon> Mes agendas
         </button>
+        <!-- F-249 / SF-249-07 — les mails Outlook des clients : dossier, rappel, alertes, mails répétitifs. -->
+        <button mat-button type="button" class="jv__client-mail-open" [attr.aria-expanded]="clientMailOpen()"
+                (click)="clientMailOpen.set(!clientMailOpen()); mailOpen.set(false); calendarOpen.set(false); portraitOpen.set(false); settingsOpen.set(false)">
+          <mat-icon aria-hidden="true">forward_to_inbox</mat-icon> Mails clients
+        </button>
         <!-- F-245 / SF-245-04 — le fil du jour : échanges et lignes-liens (jamais en présentation). -->
         <button mat-button type="button" class="jv__thread-open" [attr.aria-expanded]="threadOpen()"
                 (click)="threadOpen.set(!threadOpen()); mailOpen.set(false); portraitOpen.set(false); settingsOpen.set(false)">
@@ -282,6 +287,11 @@
                 (click)="calendarOpen.set(!calendarOpen()); mailOpen.set(false); portraitOpen.set(false)">
           <mat-icon aria-hidden="true">event</mat-icon> Mes agendas
         </button>
+        <!-- F-249 / SF-249-07 — les mails Outlook des clients (jamais en présentation). -->
+        <button mat-button type="button" class="jv__wake-button jv__client-mail-open" [attr.aria-expanded]="clientMailOpen()"
+                (click)="clientMailOpen.set(!clientMailOpen()); mailOpen.set(false); calendarOpen.set(false); portraitOpen.set(false)">
+          <mat-icon aria-hidden="true">forward_to_inbox</mat-icon> Mails clients
+        </button>
         <!-- F-245 / SF-245-04 — le fil du jour (jamais en présentation). -->
         <button mat-button type="button" class="jv__wake-button jv__thread-open" [attr.aria-expanded]="threadOpen()"
                 (click)="threadOpen.set(!threadOpen()); mailOpen.set(false); portraitOpen.set(false)">
@@ -369,6 +379,10 @@
 <!-- F-243 / SF-243-01 — le volet « Mes agendas » : jamais en présentation (aucun agenda montré). -->
 @if (calendarOpen() && !presentation()) {
   <app-jarvis-calendars (closed)="calendarOpen.set(false)" />
+}
+<!-- F-249 / SF-249-07 — le volet « Mails de vos clients » : jamais en présentation. -->
+@if (clientMailOpen() && !presentation()) {
+  <app-jarvis-client-mail (closed)="clientMailOpen.set(false)" />
 }
 <!-- F-247 / SF-247-15 — le volet « Ce que je sais » : jamais en présentation. -->
 @if (stateOpen() && !presentation()) {

@@ -7,7 +7,7 @@
 `F-249` — Les mails et l'agenda Outlook de vos clients (cadrage D1, D2, D3, D4, D20)
 
 ## Statut
-`in-progress`
+`done` (2026-11-07)
 
 ## Date de création
 2026-11-07

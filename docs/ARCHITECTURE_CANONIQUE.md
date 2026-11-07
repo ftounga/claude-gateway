@@ -1550,6 +1550,10 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   déposés (`user_id`, `host_id`, `ical_uid`, `recurrence_id`, `starts_at`, `ends_at`, `all_day`, `sealed`, `status`,
   `source_received_at`, `mail_item_id`), fusionnées dans la vue d'agenda F-243 (« Outlook <client> ») ; alertes déjà
   données (`user_id`, `alert_key` = UID|début, unique). Purges : 7 j après la fin, 2 j pour les alertes.
+- **jarvis_mail_ignore_offers / jarvis_mail_ignore_rules** — **les mails répétitifs** (F-249 / SF-249-06, migration
+  `249-06`) : propositions repérées sans IA (`user_id`, `host_id`, `kind` `SENDER|SUBJECT`, `rule_value`, `sample`,
+  `occurrences`, `status` `PENDING|ACCEPTED|DECLINED`, unique par valeur : jamais reproposée) ; règles acceptées
+  appliquées **avant toute IA** aux mails déposés du client (`user_id`, `host_id`, `kind`, `rule_value`, `sample`).
 - **jarvis_mail_actions** — **les actions de courrier qui engagent** (F-242 / SF-242-06, migration
   `242-jarvis-mail-actions`) : `id`, `user_id`, `account_id`, `workspace_id` (le fil Jarvis), `kind`
   (`SEND|DELETE|ARCHIVE_BULK`), `payload` (scellé), `summary` (la reformulation dite), `status`
