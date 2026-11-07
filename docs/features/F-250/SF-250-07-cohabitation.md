@@ -16,7 +16,8 @@ respecte le téléphone et le compagnon Android, et se règle par appareil (« J
 ## Comportement attendu
 
 ### Cas nominal
-1. **Panneaux / pancartes 3D** (F-236 / F-248) : un panneau affiché (PC ≥ 768 px) ⇒ le visage glisse sur le côté
+1. **Panneaux 3D (F-236) et pancartes / galeries (F-248, F-237)** : un panneau affiché, ou des pancartes / une galerie
+   ouvertes (`pieces.open()` ⇒ `setFaceAside`), sur PC ≥ 768 px ⇒ le visage glisse sur le côté
    (échelle × 0,6, ≈ 240 ms) et tourne la tête vers eux ; les panneaux se posent autour du **rayon du visage**
    (`coreScreen`), aucun n'est masqué. Au téléphone, panneaux ancrés inchangés, le visage reste au centre.
 2. **Grand cerveau (F-235)** : dissolution / retour (SF-250-05), inchangé ici, vérifié au banc `visage-cerveau`.
@@ -42,10 +43,10 @@ respecte le téléphone et le compagnon Android, et se règle par appareil (« J
 
 ## Plan de test
 Unitaires : `jarvis-face-stage.spec.ts` (réglage de l'appareil), `jarvis.component.spec.ts` (réglage, statut).
-Visuel : banc `visage-pancarte`, `visage-cerveau`, téléphone. Intégration / isolation : sans objet.
+Visuel : `captures/produit/sf07-visage-{pancarte,cerveau,veille}-pc.png`. Intégration / isolation : sans objet.
 
 ## Impact
-Frontend : `engine/jarvis-engine.ts` (écart, `coreScreen`), `jarvis.component.ts/html` (réglage), `face/jarvis-face-stage.ts`.
+Frontend : `engine/jarvis-engine.ts` (écart, `setFaceAside`, `coreScreen`), `jarvis-stage-3d.component.ts` (`faceAside`), `jarvis.component.ts/html` (réglage), `face/jarvis-face-stage.ts`.
 Préoccupations transversales : aucune (pas de route, d'auth ni de tenant ; un réglage local de plus).
 
 ## Hors périmètre
