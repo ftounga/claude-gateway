@@ -64,6 +64,14 @@ public class JarvisCalendarReader {
             int feeds, List<Item> proposals) {
     }
 
+    /** F-249 / SF-249-04 — les réunions des clients lues dans les mails déposés. Facultatif. */
+    private ClientMeetingSource clientMeetings;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setClientMeetings(ClientMeetingSource clientMeetings) {
+        this.clientMeetings = clientMeetings;
+    }
+
     /** SF-243-04 — les rendez-vous repérés dans les mails. Facultatif. */
     private JarvisCalendarProposalService proposalService;
 
@@ -103,6 +111,19 @@ public class JarvisCalendarReader {
             }
         }
         List<Item> items = merge(events.overlapping(userId, from, to), labels);
+        // F-249 / SF-249-04 — les réunions des clients (mails Outlook déposés), dédoublonnées par UID + début.
+        if (clientMeetings != null) {
+            Set<String> seen = new HashSet<>();
+            items.forEach(i -> seen.add(i.uid() + "|" + i.start().toInstant()));
+            List<Item> merged = new ArrayList<>(items);
+            for (Item m : clientMeetings.between(userId, from, to)) {
+                if (seen.add(m.uid() + "|" + m.start().toInstant())) {
+                    merged.add(m);
+                }
+            }
+            merged.sort(java.util.Comparator.comparing(Item::start).thenComparing(Item::end));
+            items = merged;
+        }
         List<Item> proposed = proposalService == null ? List.of() : proposalService.pending(userId, from, to);
         return new Window(from, to, items, updated, mine.size(), proposed);
     }
@@ -145,7 +166,7 @@ public class JarvisCalendarReader {
     }
 
     private String toolText(UUID userId, String periode, String weekday, String date) {
-        if (feeds.countByUserId(userId) == 0) {
+        if (feeds.countByUserId(userId) == 0 && (clientMeetings == null || !clientMeetings.any(userId))) {
             return NO_FEED;
         }
         ZoneId zone = properties.zoneId();

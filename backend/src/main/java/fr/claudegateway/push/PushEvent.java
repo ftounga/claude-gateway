@@ -141,7 +141,13 @@ public enum PushEvent {
      * neutre (aucun nom de client) ; émis même terminal regardé.
      */
     CLIENT_MAIL_DEPOSIT_REMINDER("Pensez à déposer vos mails",
-            "Glissez les mails Outlook du jour dans le dossier du poste.", true);
+            "Glissez les mails Outlook du jour dans le dossier du poste.", true),
+
+    /**
+     * F-249 / SF-249-04 — une réunion (agenda lu ou invitation d'un client) commence dans le délai réglé. Corps neutre :
+     * ni titre, ni client ; émis même terminal regardé.
+     */
+    MEETING_SOON("Une réunion commence bientôt", "Ouvrez Jarvis pour la voir.", true);
 
     private final String title;
     private final String body;
