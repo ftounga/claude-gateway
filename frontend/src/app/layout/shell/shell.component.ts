@@ -12,6 +12,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { HelpChatWidgetComponent } from '../../help/help-chat-widget/help-chat-widget.component';
 import { QuotaAlertBannerComponent } from '../quota-alert-banner/quota-alert-banner.component';
 import { NotificationBellComponent } from '../notification-bell/notification-bell.component';
+import { NoticeAnnouncerComponent } from '../notice-announcer/notice-announcer.component';
 import { spaceLinks } from '../../shared/space-links';
 import { PushActivationService } from '../../core/services/push-activation.service';
 import { CurrentClientService } from '../../core/services/current-client.service';
@@ -80,6 +81,7 @@ function writePinned(pinned: boolean): void {
     QuotaAlertBannerComponent,
     HelpChatWidgetComponent,
     NotificationBellComponent,
+    NoticeAnnouncerComponent,
   ],
   templateUrl: './shell.component.html',
   styleUrl: './shell.component.scss',

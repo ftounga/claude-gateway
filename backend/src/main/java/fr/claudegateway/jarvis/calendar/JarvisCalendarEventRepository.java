@@ -24,6 +24,10 @@ public interface JarvisCalendarEventRepository extends JpaRepository<JarvisCalen
 
     long countByUserIdAndFeedId(UUID userId, UUID feedId);
 
+    /** F-249 / SF-249-04 — les occurrences (tous comptes) qui commencent dans ]from, to] : alertes avant réunion. */
+    @Query("select e from JarvisCalendarEvent e where e.startsAt > :from and e.startsAt <= :to")
+    List<JarvisCalendarEvent> startingBetween(@Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to);
+
     /** F-243 / SF-243-04 (D6) — une invitation déjà présente dans un agenda lu (même UID). */
     boolean existsByUserIdAndIcalUid(UUID userId, String icalUid);
 

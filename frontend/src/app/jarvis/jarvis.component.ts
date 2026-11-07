@@ -115,6 +115,7 @@ import { cardVoiceCommand } from './cards/jarvis-card-voice';
 import { OpusCards } from './cards/jarvis-card-opus';
 import { JarvisCard } from './cards/jarvis-card.models';
 import { JarvisMailClient, MailCard, bodyCard, briefCard, mailPieceId } from './jarvis-mail';
+import { JARVIS_NOTICE_POLL_MS, JarvisNotice, JarvisNoticesClient, toSpeak } from './jarvis-notices';
 import { JarvisCostPanelComponent } from './jarvis-cost-panel.component';
 import {
   INTERVIEW_END, INTERVIEW_END_MS, INTERVIEW_INTRO, INTERVIEW_NOTHING, INTERVIEW_OFFER, INTERVIEW_QUESTIONS,
@@ -559,6 +560,49 @@ export class JarvisComponent implements OnInit, OnDestroy {
     });
   }
 
+  /** F-249 / SF-249-08 (D17) — les annonces d'interface, dites par Jarvis au repos (jamais en présentation). */
+  private readonly noticesClient = inject(JarvisNoticesClient);
+  private readonly noticePollMs = inject(JARVIS_NOTICE_POLL_MS);
+  private noticeTimer: ReturnType<typeof setInterval> | null = null;
+
+  /** Le sondage des annonces : au chargement, puis toutes les 60 s ; arrêté à la sortie de l'écran. */
+  private startNotices(): void {
+    this.pollNotices();
+    if (this.noticePollMs <= 0) {
+      return;
+    }
+    this.noticeTimer = setInterval(() => this.pollNotices(), this.noticePollMs);
+    this.destroyRef.onDestroy(() => {
+      if (this.noticeTimer !== null) {
+        clearInterval(this.noticeTimer);
+        this.noticeTimer = null;
+      }
+    });
+  }
+
+  private pollNotices(): void {
+    if (this.presentation()) {
+      return;
+    }
+    this.noticesClient.open().subscribe({ next: (list) => void this.speakNotice(list), error: () => undefined });
+  }
+
+  /**
+   * Au repos seulement (aucun tour, aucune parole, hors présentation) : la plus ancienne annonce pas encore dite, une
+   * par passage. Marquée « dite » d'abord, pour qu'un second écran ouvert ne la répète pas. Jamais un message de fil.
+   */
+  async speakNotice(list: JarvisNotice[]): Promise<void> {
+    if (this.presentation() || this.turnRunning || this.state() !== 'repos') {
+      return;
+    }
+    const next = toSpeak(list)[0];
+    if (!next || !next.speech) {
+      return;
+    }
+    this.noticesClient.spoken(next.id).subscribe({ error: () => undefined });
+    await this.say(next.speech);
+  }
+
   /** F-242 / SF-242-04 (D16) — « montre-moi le mail » : le corps relu par la passerelle, en texte seul. */
   private showMail(id: string): void {
     if (this.presentation()) {
@@ -965,6 +1009,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.loadPreferences();
     this.loadInterviewOffer();
     this.loadMailBrief();
+    this.startNotices();
     this.refreshCosts();
     this.atelier.listWorkspaces().subscribe({
       next: (all) => {

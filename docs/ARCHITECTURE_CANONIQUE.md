@@ -1540,6 +1540,16 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   `dedup_key` (unique par compte : une annonce par sujet qui cumule), `display_text`, `speech_text`, `link`,
   `item_count`, `created_at`, `updated_at`, `expires_at`, `seen_at`, `spoken_at`. **Jamais** un message de conversation.
   Purge 7 jours après échéance.
+- **jarvis_client_mail_settings / jarvis_client_mail_hosts / jarvis_client_mail_reminders** — **le rappel du soir**
+  (F-249 / SF-249-05, migration `249-05`) : réglages par compte (`reminder_time` 18:30, `reminder_max` 3,
+  `reminder_every_minutes` 45, `weekdays_only`, `meeting_alert_minutes` 10) ; clients actifs (`user_id`, `host_id`
+  unique, `reminder_enabled`, créé au premier dépôt) ; rappels du jour (`user_id`, `host_id`, `reminder_day` unique,
+  `sent_count` avancé par `UPDATE` conditionnel, `deposited_at` qui fait taire).
+- **jarvis_client_meetings / jarvis_meeting_alerts** — **l'agenda des clients et les alertes avant réunion** (F-249 /
+  SF-249-04, migration `249-04`) : occurrences (J-1 → J+60) des invitations Outlook/Teams lues sans IA dans les mails
+  déposés (`user_id`, `host_id`, `ical_uid`, `recurrence_id`, `starts_at`, `ends_at`, `all_day`, `sealed`, `status`,
+  `source_received_at`, `mail_item_id`), fusionnées dans la vue d'agenda F-243 (« Outlook <client> ») ; alertes déjà
+  données (`user_id`, `alert_key` = UID|début, unique). Purges : 7 j après la fin, 2 j pour les alertes.
 - **jarvis_mail_actions** — **les actions de courrier qui engagent** (F-242 / SF-242-06, migration
   `242-jarvis-mail-actions`) : `id`, `user_id`, `account_id`, `workspace_id` (le fil Jarvis), `kind`
   (`SEND|DELETE|ARCHIVE_BULK`), `payload` (scellé), `summary` (la reformulation dite), `status`

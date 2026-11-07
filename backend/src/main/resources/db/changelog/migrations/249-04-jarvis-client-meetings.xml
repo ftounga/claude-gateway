@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-249 / SF-249-04 - LES REUNIONS DES CLIENTS ET LES ALERTES AVANT REUNION.
+
+      jarvis_client_meetings : les occurrences (J-1 -> J+60) des invitations Outlook/Teams lues SANS IA dans les mails
+      deposes ; heures en clair (index), titre/lieu/description SCELLES (patron jarvis_calendar_events). Fusionnees dans
+      la vue d'agenda F-243. Purge 7 jours apres la fin.
+      jarvis_meeting_alerts : les alertes deja donnees (cle UID|debut unique par compte). Purge a 2 jours.
+
+      Rollback : les deux tables sont supprimees.
+    -->
+
+    <changeSet id="249-04-jarvis-client-meetings" author="claude-gateway">
+        <createTable tableName="jarvis_client_meetings">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="ical_uid" type="varchar(500)"><constraints nullable="false"/></column>
+            <column name="recurrence_id" type="varchar(64)"/>
+            <column name="starts_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="ends_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="all_day" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="sealed" type="varchar(4000)"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(16)"/>
+            <column name="source_received_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="mail_item_id" type="uuid"/>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="jarvis_client_meetings" indexName="idx_jarvis_client_meetings_user_start">
+            <column name="user_id"/>
+            <column name="starts_at"/>
+        </createIndex>
+        <createIndex tableName="jarvis_client_meetings" indexName="idx_jarvis_client_meetings_start">
+            <column name="starts_at"/>
+        </createIndex>
+        <createTable tableName="jarvis_meeting_alerts">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="alert_key" type="varchar(600)"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="jarvis_meeting_alerts" columnNames="user_id, alert_key"
+                             constraintName="uq_jarvis_meeting_alerts"/>
+        <rollback>
+            <dropTable tableName="jarvis_meeting_alerts"/>
+            <dropTable tableName="jarvis_client_meetings"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

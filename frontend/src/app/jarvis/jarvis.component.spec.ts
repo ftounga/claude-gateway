@@ -33,6 +33,7 @@ import { JARVIS_3D_LOADER, JarvisEngineFactory } from './stage3d/jarvis-engine.c
 import { INTERVIEW_END_MS, INTERVIEW_QUESTIONS, JarvisInterviewClient } from './jarvis-interview';
 import { JarvisPortraitClient } from './jarvis-portrait';
 import { JarvisMailClient, MailBrief } from './jarvis-mail';
+import { JARVIS_NOTICE_POLL_MS, JarvisNotice, JarvisNoticesClient } from './jarvis-notices';
 import { JarvisCalendarClient } from './jarvis-calendar';
 import { JARVIS_RENDER_PROBE, RenderProbe } from './stage3d/jarvis-render-capability';
 import { FakeEngine, NO_WEBGL_PROBE, PC_PROBE, fakeEngineFactory } from './stage3d/jarvis-stage3d.testing';
@@ -70,6 +71,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
   let interviewClient: jasmine.SpyObj<JarvisInterviewClient>;
   let portraitClient: jasmine.SpyObj<JarvisPortraitClient>;
   let mailClient: jasmine.SpyObj<JarvisMailClient>;
+  let noticesClient: jasmine.SpyObj<JarvisNoticesClient>;
   let fast: FastBrainHandlers | null;
   let renderProbe: RenderProbe;
   let loader3d: jasmine.Spy<() => Promise<JarvisEngineFactory>>;
@@ -100,6 +102,10 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     // F-242 / SF-242-04 — le courrier : par défaut, rien de neuf.
     mailClient = jasmine.createSpyObj<JarvisMailClient>('JarvisMailClient', ['list', 'link', 'test', 'revoke', 'brief', 'body']);
     mailClient.brief.and.returnValue(of({ text: '', items: [] } as MailBrief));
+    // F-249 / SF-249-08 — les annonces : par défaut, aucune.
+    noticesClient = jasmine.createSpyObj<JarvisNoticesClient>('JarvisNoticesClient', ['open', 'seen', 'spoken']);
+    noticesClient.open.and.returnValue(of([]));
+    noticesClient.spoken.and.returnValue(of({} as JarvisNotice));
     fastBrain.warm.and.resolveTo(false);
     fastBrain.converse.and.callFake((_body, h) => {
       fast = h;
@@ -180,6 +186,8 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
         { provide: JarvisInterviewClient, useValue: interviewClient },
         { provide: JarvisPortraitClient, useValue: portraitClient },
         { provide: JarvisMailClient, useValue: mailClient },
+        { provide: JarvisNoticesClient, useValue: noticesClient },
+        { provide: JARVIS_NOTICE_POLL_MS, useValue: 0 },
         { provide: JARVIS_USER_AGENT, useFactory: () => userAgent },
         { provide: NotificationCenterService, useValue: notificationCenter },
         { provide: LiveTerminalService, useValue: liveTerminals },
@@ -190,6 +198,28 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       ],
     });
   }
+
+  it('F-249 / SF-249-08 — au repos, Jarvis dit l’annonce la plus ancienne et la marque dite ; jamais en présentation', fakeAsync(() => {
+    configure({});
+    const notice = (id: string, updatedAt: string): JarvisNotice => ({
+      id, kind: 'MAILS_ON_SUBJECT', text: id, speech: `Deux nouveaux mails ${id}.`, link: '/atelier/w', count: 2,
+      hostId: null, workspaceId: null, updatedAt, expiresAt: '2099-01-01T00:00:00Z', spoken: false,
+    });
+    noticesClient.open.and.returnValue(of([notice('b', '2026-11-07T10:05:00Z'), notice('a', '2026-11-07T10:00:00Z')]));
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    expect(noticesClient.spoken).toHaveBeenCalledWith('a');
+    expect(voice.speak.calls.allArgs().some((args) => args[0] === 'Deux nouveaux mails a.')).toBeTrue();
+
+    noticesClient.spoken.calls.reset();
+    const jarvis = fixture.componentInstance;
+    jarvis.presentation.set(true);
+    void jarvis.speakNotice([notice('c', '2026-11-07T11:00:00Z')]);
+    flushMicrotasks();
+    expect(noticesClient.spoken).not.toHaveBeenCalled();
+    jarvis.ngOnDestroy();
+  }));
 
   it('F-236 / SF-236-01 — sans WebGL2 : l’écran 2D d’aujourd’hui, aucun canevas, aucun bouton « Vue », morceau 3D jamais demandé', fakeAsync(() => {
     configure({});

@@ -51,6 +51,14 @@ public class ClientMailDepositJobHandler implements AsyncJobHandler {
         this.triage = triage;
     }
 
+    /** SF-249-04 — l'invitation d'un mail déposé, dans l'agenda du client (sans IA, sans « oui »). */
+    private ClientMeetingService meetings;
+
+    @Autowired(required = false)
+    public void setMeetings(ClientMeetingService meetings) {
+        this.meetings = meetings;
+    }
+
     /** SF-249-03 — rattacher aux sujets et annoncer, après le tri. */
     private ClientMailAnnouncer announcer;
 
@@ -84,6 +92,9 @@ public class ClientMailDepositJobHandler implements AsyncJobHandler {
         JarvisMailItem item = items.findByIdAndUserId(itemId, userId).orElse(null);
         if (item == null || !item.isDeposited() || !hostId.equals(item.getHostId())) {
             return Outcome.drop("gone");
+        }
+        if (meetings != null && job.payloadBytes() != null) {
+            meetings.apply(userId, hostId, item.getId(), invitation(job), item.getReceivedAt());
         }
         if (item.getTriage() == JarvisMailItem.Triage.EN_ATTENTE && triage != null) {
             int done = triage.triageNow(userId);
