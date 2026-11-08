@@ -1,5 +1,6 @@
 import {
-  StreamOpenError, StreamingListener, downsample, parseSttMessage, sessionUrl, streamFailureOf, ticketFailureOf,
+  CaptureGraph, ConversationMic, ECHO_HOLD_MS, JarvisStreamOpener, PRE_ROLL_MS, PreRollRing, StreamOpenError,
+  StreamingListener, downsample, parseSttMessage, sessionUrl, streamFailureOf, ticketFailureOf,
   toBase64, toPcm16,
 } from './jarvis-stream-listener';
 
@@ -101,5 +102,200 @@ describe('Écoute en flux (F-233 / SF-233-05)', () => {
     } finally {
       (window as unknown as { WebSocket: unknown }).WebSocket = original;
     }
+  });
+});
+
+describe('Le micro reste ouvert (F-251 / SF-251-02)', () => {
+  const ticket = { sessionId: 's', provider: 'elevenlabs', url: 'wss://x/realtime', token: 't',
+    expiresAt: '2030-01-01T00:00:00Z', sampleRate: 16_000, maxSeconds: 120 };
+  const handlers = { onPartial: () => undefined, onCommitted: () => undefined, onError: () => undefined };
+
+  function fakeGraph(): CaptureGraph & { closed: boolean } {
+    return { rate: 16_000, closed: false, alive() { return !this.closed; }, resume: () => undefined,
+      close() { this.closed = true; } };
+  }
+
+  function tracks(state = 'live'): MediaStream & { stopped: () => number } {
+    let stopped = 0;
+    const track = { readyState: state, stop: () => { stopped++; } };
+    return { getTracks: () => [track], stopped: () => stopped } as unknown as MediaStream & { stopped: () => number };
+  }
+
+  class FakeSocket {
+    static OPEN = 1;
+    static sent: { audio: string }[] = [];
+    readyState = 1;
+    onmessage: ((e: { data: string }) => void) | null = null;
+    onerror: (() => void) | null = null;
+    onclose: (() => void) | null = null;
+    constructor() {
+      setTimeout(() => this.onmessage?.({ data: JSON.stringify({ message_type: 'session_started' }) }));
+    }
+    send(raw: string): void {
+      FakeSocket.sent.push({ audio: (JSON.parse(raw) as { audio_base_64: string }).audio_base_64 });
+    }
+    close(): void {
+      this.readyState = 3;
+    }
+  }
+
+  let originalSocket: typeof WebSocket;
+  beforeEach(() => {
+    FakeSocket.sent = [];
+    originalSocket = window.WebSocket;
+    (window as unknown as { WebSocket: unknown }).WebSocket = FakeSocket;
+  });
+  afterEach(() => {
+    (window as unknown as { WebSocket: unknown }).WebSocket = originalSocket;
+  });
+
+  it('l’anneau oublie les plus anciens au-delà de sa capacité, rend dans l’ordre, repart vide', () => {
+    const ring = new PreRollRing(4);
+    ring.push(new Float32Array([1, 2]));
+    ring.push(new Float32Array([3, 4]));
+    ring.push(new Float32Array([5, 6, 7]));
+    expect(ring.length).toBe(4);
+    expect(Array.from(ring.take())).toEqual([4, 5, 6, 7]);
+    expect(ring.length).toBe(0);
+    expect(ring.take().length).toBe(0);
+  });
+
+  it('le son gardé part à l’attachement ; ensuite le son vivant va à la session, pas au tampon', () => {
+    const mic = new ConversationMic(tracks(), fakeGraph(), () => false);
+    mic.feed(new Float32Array([0.1, 0.2]));
+    const live: number[] = [];
+    const preRoll = mic.attach((samples) => live.push(...samples));
+    expect(preRoll.length).toBe(2);
+    expect(preRoll[1]).toBeCloseTo(0.2, 5);
+    mic.feed(new Float32Array([0.3]));
+    expect(live.length).toBe(1);
+    expect(mic.attach(() => undefined).length).toBe(0);
+  });
+
+  it('le tampon garde au plus 1,5 s', () => {
+    const mic = new ConversationMic(tracks(), fakeGraph(), () => false);
+    for (let i = 0; i < 40; i++) {
+      mic.feed(new Float32Array(1_600));
+    }
+    expect(mic.attach(() => undefined).length).toBe(16_000 * PRE_ROLL_MS / 1000);
+  });
+
+  it('anti-écho : tampon vidé pendant la parole de Jarvis et ECHO_HOLD_MS après', () => {
+    jasmine.clock().install();
+    jasmine.clock().mockDate(new Date(0));
+    spyOn(performance, 'now').and.callFake(() => Date.now());
+    try {
+      let speaking = false;
+      const mic = new ConversationMic(tracks(), fakeGraph(), () => speaking);
+      mic.feed(new Float32Array(100));
+      speaking = true;
+      mic.feed(new Float32Array(100));
+      speaking = false;
+      mic.feed(new Float32Array(100));
+      expect(mic.attach(() => undefined).length).toBe(0);
+      mic.detach();
+      jasmine.clock().tick(ECHO_HOLD_MS);
+      mic.feed(new Float32Array(100));
+      expect(mic.attach(() => undefined).length).toBe(100);
+    } finally {
+      jasmine.clock().uninstall();
+    }
+  });
+
+  it('détaché, le tampon repart vide ; usé, le micro le dit ; fermé, les pistes s’arrêtent', () => {
+    const stream = tracks();
+    const graph = fakeGraph();
+    const mic = new ConversationMic(stream, graph, () => false);
+    mic.feed(new Float32Array(10));
+    mic.attach(() => undefined);
+    mic.detach();
+    expect(mic.attach(() => undefined).length).toBe(0);
+    expect(mic.alive).toBeTrue();
+    mic.close();
+    expect(stream.stopped()).toBe(1);
+    expect(graph.closed).toBeTrue();
+    expect(mic.alive).toBeFalse();
+    expect(new ConversationMic(tracks('ended'), fakeGraph(), () => false).alive).toBeFalse();
+  });
+
+  it('session sur micro gardé : le tampon d’abord, l’audio gardé commence par lui, les pistes survivent', async () => {
+    const stream = tracks();
+    const mic = new ConversationMic(stream, fakeGraph(), () => false);
+    mic.feed(new Float32Array(3_200).fill(0.1));
+    const listener = new StreamingListener(ticket, stream, handlers, mic);
+    await listener.start(null);
+    expect(listener.preRollMs).toBe(200);
+    expect(FakeSocket.sent.length).toBe(2);
+    expect(listener.audioSeconds()).toBeCloseTo(0.2, 3);
+    mic.feed(new Float32Array(1_600).fill(0.2));
+    expect(FakeSocket.sent.length).toBe(3);
+    expect(listener.audioSeconds()).toBeCloseTo(0.3, 3);
+    listener.close();
+    expect(stream.stopped()).toBe(0);
+    mic.feed(new Float32Array(10));
+    expect(FakeSocket.sent.length).toBe(3);
+  });
+
+  it('la phrase du mot d’éveil prime sur le tampon', async () => {
+    const mic = new ConversationMic(tracks(), fakeGraph(), () => false);
+    mic.feed(new Float32Array(1_600));
+    const listener = new StreamingListener(ticket, tracks(), handlers, mic);
+    await listener.start(() => new Float32Array(800));
+    expect(listener.preRollMs).toBe(0);
+    expect(listener.audioSeconds()).toBeCloseTo(0.05, 3);
+    listener.close();
+  });
+
+  describe('JarvisStreamOpener', () => {
+    function liveStream(): MediaStream {
+      return new AudioContext().createMediaStreamDestination().stream;
+    }
+
+    const keep = (events: string[]) => ({ silenced: () => false, report: (d: string) => events.push(d) });
+
+    it('réutilise le micro gardé d’une écoute à l’autre, le rouvre usé, le rend à la libération', async () => {
+      const first = liveStream();
+      const second = liveStream();
+      const gum = spyOn(navigator.mediaDevices, 'getUserMedia').and.returnValues(Promise.resolve(first),
+        Promise.resolve(second));
+      const events: string[] = [];
+      const opener = new JarvisStreamOpener();
+
+      const a = await opener.open(ticket, handlers, null, keep(events));
+      a.close();
+      const b = await opener.open(ticket, handlers, null, keep(events));
+      b.close();
+      expect(gum).toHaveBeenCalledTimes(1);
+      expect(first.getTracks()[0].readyState).toBe('live');
+      expect(events[0]).toMatch(/^open ms=\d+$/);
+      expect(events[1]).toBe('reuse');
+
+      first.getTracks()[0].stop();
+      const c = await opener.open(ticket, handlers, null, keep(events));
+      c.close();
+      expect(gum).toHaveBeenCalledTimes(2);
+
+      expect(opener.releaseMic()).toBeTrue();
+      expect(second.getTracks()[0].readyState).toBe('ended');
+      expect(opener.releaseMic()).toBeFalse();
+    });
+
+    it('micro refusé : `fail` au journal, échec classé « micro »', async () => {
+      spyOn(navigator.mediaDevices, 'getUserMedia').and.rejectWith(new DOMException('non', 'NotAllowedError'));
+      const events: string[] = [];
+      await expectAsync(new JarvisStreamOpener().open(ticket, handlers, null, keep(events)))
+        .toBeRejectedWith(jasmine.objectContaining({ kind: 'micro' }));
+      expect(events).toEqual(['fail']);
+    });
+
+    it('sans micro gardé : un micro par écoute, rendu à la fin (comportement d’avant)', async () => {
+      const stream = liveStream();
+      spyOn(navigator.mediaDevices, 'getUserMedia').and.resolveTo(stream);
+      const opener = new JarvisStreamOpener();
+      const listening = await opener.open(ticket, handlers, null, null);
+      listening.close();
+      expect(stream.getTracks()[0].readyState).toBe('ended');
+      expect(opener.releaseMic()).toBeFalse();
+    });
   });
 });

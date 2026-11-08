@@ -23,7 +23,7 @@ import { JarvisVoiceService } from '../core/services/jarvis-voice.service';
 import { JarvisService } from '../core/services/jarvis.service';
 import { ASK_SUBJECT, FastBrainHandlers, FastBrainOutcome, JarvisFastBrainClient, PortraitPin } from './jarvis-fast-brain';
 import { VeilleService } from '../core/services/veille.service';
-import { JarvisStreamOpener, StreamHandlers } from './jarvis-stream-listener';
+import { JarvisStreamOpener, LiveListening, StreamHandlers } from './jarvis-stream-listener';
 import { WakeEvent } from './jarvis-wake';
 import { AuthService } from '../core/services/auth.service';
 import { CompanionBridgeService } from '../core/services/companion-bridge.service';
@@ -158,7 +158,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     jarvisApi.costs.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
     jarvisApi.preferences.and.returnValue(of({ humour: 'LIGHT' as const }));
     jarvisApi.setHumour.and.callFake((humour) => of({ humour }));
-    opener = jasmine.createSpyObj<JarvisStreamOpener>('JarvisStreamOpener', ['open']);
+    opener = jasmine.createSpyObj<JarvisStreamOpener>('JarvisStreamOpener', ['open', 'releaseMic']);
     vad = null;
     vadStop = jasmine.createSpy('vadStop');
     vadService = jasmine.createSpyObj<JarvisVadService>('JarvisVadService', ['start']);
@@ -2575,6 +2575,105 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(jarvis.agendaSentence()).toBe('');
     jarvis.ngOnDestroy();
     discardPeriodicTasks();
+  }));
+
+  const TICKET = { sessionId: 's-a', provider: 'elevenlabs', url: 'wss://x/realtime', token: 't',
+    expiresAt: '2030-01-01T00:00:00Z', sampleRate: 16000, maxSeconds: 120 };
+
+  function keptListening(preRollMs = 900): jasmine.SpyObj<LiveListening> {
+    const listening = jasmine.createSpyObj('LiveListening', ['commit', 'close', 'audio', 'audioSeconds', 'preRollMs'],
+      { stream: undefined });
+    listening.close.and.returnValue(1);
+    listening.preRollMs.and.returnValue(preRollMs);
+    return listening;
+  }
+
+  it('F-251 / SF-251-02 — en conversation le micro est gardé, tampon tracé ; hors conversation, un micro par écoute',
+    fakeAsync(() => {
+      jarvisApi.sttSession.and.returnValue(of(TICKET));
+      opener.open.and.resolveTo(keptListening());
+      const jarvis = conversing(false);
+      void jarvis.talk();
+      flushMicrotasks();
+      expect(opener.open.calls.mostRecent().args[3]).toBeNull();
+      jarvis['cancelListening']();
+      jarvis.startConversation();
+      tick(300);
+      expect(opener.open.calls.mostRecent().args[3]).toBeTruthy();
+      expect(traceEvents().some((e) => e.ev === 'preroll' && e.d === 'ms=900')).toBeTrue();
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-251 / SF-251-02 — pause : micro et ticket d’avance rendus', fakeAsync(() => {
+    jarvisApi.sttSession.and.returnValue(of(TICKET));
+    opener.open.and.resolveTo(keptListening());
+    const jarvis = conversing(false);
+    jarvis.startConversation();
+    tick(0);
+    const phrase = pending();
+    voice.speak.and.returnValue(phrase.promise);
+    void jarvis.say('Un instant.');
+    tick(0);
+    opener.releaseMic.calls.reset();
+    void jarvis.pauseConversation(false);
+    tick(0);
+    flushMicrotasks();
+    expect(opener.releaseMic).toHaveBeenCalled();
+    expect(jarvisApi.closeSttSession).toHaveBeenCalledWith('s-a', 0);
+    phrase.resolve();
+    flushMicrotasks();
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-251 / SF-251-02 — le ticket est demandé pendant que Jarvis parle et sert à l’écoute suivante', fakeAsync(() => {
+    jarvisApi.sttSession.and.returnValue(of(TICKET));
+    opener.open.and.resolveTo(keptListening());
+    const jarvis = conversing(false);
+    jarvis.startConversation();
+    tick(0);
+    const phrase = pending();
+    voice.speak.and.returnValue(phrase.promise);
+    void jarvis.say('Un instant.');
+    tick(0);
+    expect(jarvisApi.sttSession).toHaveBeenCalledTimes(1);
+    phrase.resolve();
+    flushMicrotasks();
+    tick(300);
+    expect(jarvisApi.sttSession).toHaveBeenCalledTimes(1);
+    expect(opener.open).toHaveBeenCalledTimes(1);
+    expect(opener.open.calls.mostRecent().args[0].sessionId).toBe('s-a');
+    expect(traceEvents().some((e) => e.ev === 'ticket_ready')).toBeTrue();
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-251 / SF-251-02 — un ticket d’avance expiré est rendu, un neuf est demandé', fakeAsync(() => {
+    jarvisApi.sttSession.and.returnValues(of({ ...TICKET, sessionId: 'old', expiresAt: '1970-01-01T00:00:01Z' }),
+      of(TICKET));
+    opener.open.and.resolveTo(keptListening());
+    const jarvis = conversing(false);
+    jarvis.startConversation();
+    tick(0);
+    const phrase = pending();
+    voice.speak.and.returnValue(phrase.promise);
+    void jarvis.say('Un instant.');
+    tick(0);
+    phrase.resolve();
+    flushMicrotasks();
+    tick(300);
+    expect(jarvisApi.closeSttSession).toHaveBeenCalledWith('old', 0);
+    expect(jarvisApi.sttSession).toHaveBeenCalledTimes(2);
+    expect(opener.open.calls.mostRecent().args[0].sessionId).toBe('s-a');
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-251 / SF-251-02 — la dictée de repli rend d’abord le micro gardé', fakeAsync(() => {
+    const jarvis = conversing(false);
+    jarvis.startConversation();
+    opener.releaseMic.calls.reset();
+    tick(300);
+    expect(opener.releaseMic).toHaveBeenCalled();
+    expect(dictation.start).toHaveBeenCalledTimes(1);
+    jarvis.ngOnDestroy();
   }));
 
   it('F-241 / SF-241-04 — une ligne-marque ✦ n’est jamais dite ; présentation transmise ; allusion mesurée', fakeAsync(() => {

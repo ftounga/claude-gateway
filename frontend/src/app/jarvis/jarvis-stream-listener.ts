@@ -190,6 +190,127 @@ export const START_TIMEOUT_MS = 3_000;
 /** F-233 / SF-233-16 — le chargement du module de capture (AudioWorklet), borné. */
 export const WORKLET_TIMEOUT_MS = 4_000;
 
+/** F-251 / SF-251-02 — le son gardé avant chaque écoute (le temps que la session s'ouvre, le début n'est plus perdu). */
+export const PRE_ROLL_MS = 1_500;
+/** F-251 / SF-251-02 — après la voix de Jarvis, le son reste jeté autant de temps (queue d'écho). */
+export const ECHO_HOLD_MS = 150;
+
+/** F-251 / SF-251-02 — un tampon circulaire d'échantillons : les plus anciens sont oubliés au-delà de `capacity`. */
+export class PreRollRing {
+  private blocks: Float32Array[] = [];
+  private size = 0;
+
+  constructor(private readonly capacity: number) {}
+
+  push(block: Float32Array): void {
+    this.blocks.push(block);
+    this.size += block.length;
+    while (this.blocks.length > 1 && this.size - this.blocks[0].length >= this.capacity) {
+      this.size -= this.blocks.shift()!.length;
+    }
+  }
+
+  /** Vide le tampon et rend son contenu, dans l'ordre (au plus `capacity` échantillons). */
+  take(): Float32Array {
+    const out = new Float32Array(Math.min(this.size, this.capacity));
+    let skip = this.size - out.length;
+    let at = 0;
+    for (const block of this.blocks) {
+      const part = skip > 0 ? block.subarray(Math.min(skip, block.length)) : block;
+      skip = Math.max(0, skip - block.length);
+      out.set(part, at);
+      at += part.length;
+    }
+    this.clear();
+    return out;
+  }
+
+  clear(): void {
+    this.blocks = [];
+    this.size = 0;
+  }
+
+  get length(): number {
+    return Math.min(this.size, this.capacity);
+  }
+}
+
+/** F-251 / SF-251-02 — ce que le micro gardé branche sur le module audio. */
+export interface CaptureGraph {
+  readonly rate: number;
+  /** Vrai tant que le contexte audio et une piste au moins sont vivants. */
+  alive(): boolean;
+  /** Relance le contexte si le navigateur l'a suspendu. */
+  resume(): void;
+  close(): void;
+}
+
+/**
+ * F-251 / SF-251-02 — **le micro de la conversation** : ouvert une fois, il alimente un tampon circulaire entre deux
+ * écoutes et la session en cours pendant une écoute. Vidé tant que `silenced()` est vrai (Jarvis parle) et
+ * {@link ECHO_HOLD_MS} après : la voix de Jarvis ne part jamais dans une session.
+ */
+export class ConversationMic {
+  private readonly ring: PreRollRing;
+  private sink: ((samples: Float32Array, rate: number) => void) | null = null;
+  private holdUntil = 0;
+
+  constructor(readonly stream: MediaStream, private readonly graph: CaptureGraph,
+              private readonly silenced: () => boolean) {
+    this.ring = new PreRollRing(Math.round(graph.rate * PRE_ROLL_MS / 1000));
+  }
+
+  /** Un bloc du module audio. */
+  feed(samples: Float32Array): void {
+    if (this.sink) {
+      this.sink(samples, this.graph.rate);
+      return;
+    }
+    const now = performance.now();
+    if (this.silenced()) {
+      this.ring.clear();
+      this.holdUntil = now + ECHO_HOLD_MS;
+      return;
+    }
+    if (now >= this.holdUntil) {
+      this.ring.push(samples);
+    }
+  }
+
+  /** Branche la session et rend le tampon (16 kHz) à envoyer d'abord : rien n'est perdu entre les deux. */
+  attach(sink: (samples: Float32Array, rate: number) => void): Float32Array {
+    const buffered = this.ring.take();
+    this.sink = sink;
+    this.graph.resume();
+    return downsample(buffered, this.graph.rate, PRE_ROLL_RATE);
+  }
+
+  /** La session est finie : le tampon repart vide (la fin de la phrase précédente n'est jamais renvoyée). */
+  detach(): void {
+    this.sink = null;
+    this.ring.clear();
+  }
+
+  get alive(): boolean {
+    return this.graph.alive() && this.stream.getTracks().some((track) => track.readyState === 'live');
+  }
+
+  close(): void {
+    this.sink = null;
+    this.ring.clear();
+    this.graph.close();
+    this.stream.getTracks().forEach((track) => track.stop());
+  }
+}
+
+/** F-251 / SF-251-02 — le micro à garder pour la conversation (`null`/absent à `open` : un micro par écoute). */
+export interface MicKeep {
+  /** Jarvis parle-t-il ? */
+  silenced(): boolean;
+  /** Journal : `open ms=…`, `reuse`, `fail`, `close`. */
+  report(detail: string): void;
+}
+
 /**
  * Une session d'écoute en flux, sur un flux micro déjà ouvert. `start()` se résout quand le fournisseur a accepté la
  * session ; il est rejeté sinon (l'écran retombe alors sur la dictée).
@@ -205,9 +326,11 @@ export class StreamingListener {
   /** F-239 / SF-239-04 — l'audio envoyé (pré-écoute comprise), gardé pour la retranscription de l'énoncé complet. */
   private readonly kept: Uint8Array[] = [];
   private keptBytes = 0;
+  /** F-251 / SF-251-02 — la durée du tampon du micro gardé envoyée en tête de cette session (ms). */
+  preRollMs = 0;
 
   constructor(private readonly ticket: JarvisSttTicket, private readonly stream: MediaStream,
-              private readonly handlers: StreamHandlers) {}
+              private readonly handlers: StreamHandlers, private readonly mic: ConversationMic | null = null) {}
 
   /**
    * @param preRoll F-239 / SF-239-01 (D2) — l'audio de la phrase qui contenait « Jarvis » (16 kHz mono), lu une fois la
@@ -254,9 +377,19 @@ export class StreamingListener {
         }
       };
     });
-    if (preRoll) {
-      this.sendPreRoll(preRoll);
+    if (this.mic) {
+      // F-251 / SF-251-02 — micro gardé : le tampon d'abord, puis le son vivant (même tour de boucle, rien n'est perdu).
+      const buffered = this.mic.attach((samples, rate) => this.push(samples, rate));
+      const wake = this.readPreRoll(preRoll);
+      if (wake && wake.length > 0) {
+        this.sendPreRoll(wake);
+      } else {
+        this.preRollMs = Math.round(buffered.length / PRE_ROLL_RATE * 1000);
+        this.sendPreRoll(buffered);
+      }
+      return;
     }
+    this.sendPreRoll(this.readPreRoll(preRoll));
     try {
       await this.capture();
     } catch {
@@ -264,14 +397,16 @@ export class StreamingListener {
     }
   }
 
-  /** Envoie la pré-écoute par morceaux de 100 ms, au débit de la session. */
-  private sendPreRoll(preRoll: () => Float32Array | null): void {
-    let audio: Float32Array | null = null;
+  private readPreRoll(preRoll?: (() => Float32Array | null) | null): Float32Array | null {
     try {
-      audio = preRoll();
+      return preRoll ? preRoll() : null;
     } catch {
-      audio = null;
+      return null;
     }
+  }
+
+  /** Envoie la pré-écoute par morceaux de 100 ms, au débit de la session. */
+  private sendPreRoll(audio: Float32Array | null): void {
     if (!audio || audio.length === 0) {
       return;
     }
@@ -330,6 +465,11 @@ export class StreamingListener {
       } catch {
         // déjà fermée
       }
+      if (this.mic) {
+        // F-251 / SF-251-02 — le micro de la conversation survit à la session.
+        this.mic.detach();
+        return this.openedAt ? Math.max(0, Math.round((performance.now() - this.openedAt) / 1000)) : 0;
+      }
       this.source?.disconnect();
       this.node?.disconnect();
       void this.context?.close().catch(() => undefined);
@@ -357,29 +497,64 @@ export class StreamingListener {
   }
 
   private async capture(): Promise<void> {
-    const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext })
-      .webkitAudioContext;
-    const context = new Ctor();
-    this.context = context;
-    this.source = context.createMediaStreamSource(this.stream);
-    const rate = context.sampleRate;
-    if (context.audioWorklet) {
-      this.tapUrl = URL.createObjectURL(new Blob([TAP_SOURCE], { type: 'application/javascript' }));
-      // F-233 / SF-233-16 — borné : un module audio qui ne se charge pas ne fige plus l'ouverture.
-      await timed(context.audioWorklet.addModule(this.tapUrl), WORKLET_TIMEOUT_MS);
-      const node = new AudioWorkletNode(context, 'jarvis-pcm-tap');
-      node.port.onmessage = (event: MessageEvent<Float32Array>) => this.push(event.data, rate);
-      this.source.connect(node);
-      this.node = node;
-    } else {
-      // Navigateur sans AudioWorklet : l'ancien ScriptProcessor fait le même travail.
-      const node = context.createScriptProcessor(4096, 1, 1);
-      node.onaudioprocess = (event) => this.push(event.inputBuffer.getChannelData(0).slice(0), rate);
-      this.source.connect(node);
-      node.connect(context.destination);
-      this.node = node;
-    }
+    const opened = await openCaptureGraph(this.stream, (samples, rate) => this.push(samples, rate));
+    this.context = opened.context;
+    this.source = opened.source;
+    this.node = opened.node;
+    this.tapUrl = opened.tapUrl;
   }
+}
+
+/** Branche le module de capture sur `stream` : chaque bloc du micro part vers `onBlock`. */
+async function openCaptureGraph(stream: MediaStream, onBlock: (samples: Float32Array, rate: number) => void): Promise<{
+  context: AudioContext; source: MediaStreamAudioSourceNode; node: AudioNode; tapUrl: string | null;
+}> {
+  const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext })
+    .webkitAudioContext;
+  const context = new Ctor();
+  const source = context.createMediaStreamSource(stream);
+  const rate = context.sampleRate;
+  if (context.audioWorklet) {
+    const tapUrl = URL.createObjectURL(new Blob([TAP_SOURCE], { type: 'application/javascript' }));
+    // F-233 / SF-233-16 — borné : un module audio qui ne se charge pas ne fige plus l'ouverture.
+    await timed(context.audioWorklet.addModule(tapUrl), WORKLET_TIMEOUT_MS);
+    const node = new AudioWorkletNode(context, 'jarvis-pcm-tap');
+    node.port.onmessage = (event: MessageEvent<Float32Array>) => onBlock(event.data, rate);
+    source.connect(node);
+    return { context, source, node, tapUrl };
+  }
+  // Navigateur sans AudioWorklet : l'ancien ScriptProcessor fait le même travail.
+  const node = context.createScriptProcessor(4096, 1, 1);
+  node.onaudioprocess = (event) => onBlock(event.inputBuffer.getChannelData(0).slice(0), rate);
+  source.connect(node);
+  node.connect(context.destination);
+  return { context, source, node, tapUrl: null };
+}
+
+/** F-251 / SF-251-02 — ouvre le module de capture du micro gardé (sa fermeture rend tout). */
+async function openConversationMic(stream: MediaStream, silenced: () => boolean): Promise<ConversationMic> {
+  const onBlock = { fn: (_samples: Float32Array) => undefined as void };
+  const opened = await openCaptureGraph(stream, (samples) => onBlock.fn(samples));
+  const graph: CaptureGraph = {
+    rate: opened.context.sampleRate,
+    alive: () => opened.context.state !== 'closed',
+    resume: () => {
+      if (opened.context.state === 'suspended') {
+        void opened.context.resume().catch(() => undefined);
+      }
+    },
+    close: () => {
+      opened.source.disconnect();
+      opened.node.disconnect();
+      void opened.context.close().catch(() => undefined);
+      if (opened.tapUrl) {
+        URL.revokeObjectURL(opened.tapUrl);
+      }
+    },
+  };
+  const mic = new ConversationMic(stream, graph, silenced);
+  onBlock.fn = (samples) => mic.feed(samples);
+  return mic;
 }
 
 /** Ce que l'écran garde d'une écoute en flux. */
@@ -390,6 +565,8 @@ export interface LiveListening {
   /** F-239 / SF-239-04 — l'énoncé entendu (WAV), et sa durée en secondes. */
   audio(): Blob | null;
   audioSeconds(): number;
+  /** F-251 / SF-251-02 — la durée du tampon du micro gardé envoyée en tête de la session (ms). */
+  preRollMs?(): number;
 }
 
 /**
@@ -398,8 +575,17 @@ export interface LiveListening {
  */
 @Injectable({ providedIn: 'root' })
 export class JarvisStreamOpener {
-  async open(ticket: JarvisSttTicket, handlers: StreamHandlers,
-             preRoll?: (() => Float32Array | null) | null): Promise<LiveListening> {
+  /** F-251 / SF-251-02 — le micro gardé pendant la conversation. */
+  private mic: ConversationMic | null = null;
+  private micOpening: Promise<ConversationMic> | null = null;
+  /** Incrémenté à chaque libération : un micro ouvert entre-temps est rendu aussitôt. */
+  private micGeneration = 0;
+
+  async open(ticket: JarvisSttTicket, handlers: StreamHandlers, preRoll?: (() => Float32Array | null) | null,
+             keep?: MicKeep | null): Promise<LiveListening> {
+    if (keep) {
+      return this.openOnKeptMic(ticket, handlers, preRoll, keep);
+    }
     let stream: MediaStream;
     try {
       // F-233 / SF-233-16 — borné : un micro qui ne répond pas ne fige plus l'ouverture de l'écoute.
@@ -417,5 +603,80 @@ export class JarvisStreamOpener {
     }
     return { stream, commit: () => listener.commit(), close: () => listener.close(), audio: () => listener.audio(),
       audioSeconds: () => listener.audioSeconds() };
+  }
+
+  private async openOnKeptMic(ticket: JarvisSttTicket, handlers: StreamHandlers,
+                              preRoll: (() => Float32Array | null) | null | undefined,
+                              keep: MicKeep): Promise<LiveListening> {
+    const mic = await this.keptMic(keep);
+    const listener = new StreamingListener(ticket, mic.stream, handlers, mic);
+    try {
+      await listener.start(preRoll);
+    } catch (error) {
+      listener.close();
+      throw error;
+    }
+    return { stream: mic.stream, commit: () => listener.commit(), close: () => listener.close(),
+      audio: () => listener.audio(), audioSeconds: () => listener.audioSeconds(),
+      preRollMs: () => listener.preRollMs };
+  }
+
+  private async keptMic(keep: MicKeep): Promise<ConversationMic> {
+    if (this.mic?.alive) {
+      keep.report('reuse');
+      return this.mic;
+    }
+    if (this.mic) {
+      this.mic.close();
+      this.mic = null;
+    }
+    if (!this.micOpening) {
+      const generation = this.micGeneration;
+      const startedAt = performance.now();
+      this.micOpening = this.openMic(keep.silenced, generation)
+        .then((mic) => {
+          keep.report(`open ms=${Math.round(performance.now() - startedAt)}`);
+          return mic;
+        })
+        .finally(() => {
+          this.micOpening = null;
+        });
+    }
+    try {
+      return await this.micOpening;
+    } catch (error) {
+      keep.report('fail');
+      throw error instanceof StreamOpenError ? error : new StreamOpenError('micro');
+    }
+  }
+
+  private async openMic(silenced: () => boolean, generation: number): Promise<ConversationMic> {
+    const stream = await timed(navigator.mediaDevices.getUserMedia({ audio: LISTEN_AUDIO }), MIC_OPEN_TIMEOUT_MS,
+      stopTracks);
+    let mic: ConversationMic;
+    try {
+      mic = await openConversationMic(stream, silenced);
+    } catch {
+      stopTracks(stream);
+      throw new StreamOpenError('capture');
+    }
+    if (generation !== this.micGeneration) {
+      // Rendu pendant l'ouverture (pause, sortie) : rien ne doit rester ouvert.
+      mic.close();
+      throw new StreamOpenError('micro');
+    }
+    this.mic = mic;
+    return mic;
+  }
+
+  /** F-251 / SF-251-02 — rend le micro gardé (pause, veille, sortie, dictée de repli). Vrai s'il y en avait un. */
+  releaseMic(): boolean {
+    this.micGeneration++;
+    if (!this.mic) {
+      return false;
+    }
+    this.mic.close();
+    this.mic = null;
+    return true;
   }
 }
