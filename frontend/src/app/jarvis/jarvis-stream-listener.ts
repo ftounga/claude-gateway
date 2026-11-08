@@ -669,6 +669,11 @@ export class JarvisStreamOpener {
     return mic;
   }
 
+  /** F-251 / SF-251-05 — le flux du micro gardé (la détection de voix en prend un clone), s'il est vivant. */
+  keptStream(): MediaStream | null {
+    return this.mic?.alive ? this.mic.stream : null;
+  }
+
   /** F-251 / SF-251-02 — rend le micro gardé (pause, veille, sortie, dictée de repli). Vrai s'il y en avait un. */
   releaseMic(): boolean {
     this.micGeneration++;

@@ -275,7 +275,9 @@ describe('Le micro reste ouvert (F-251 / SF-251-02)', () => {
       c.close();
       expect(gum).toHaveBeenCalledTimes(2);
 
+      expect(opener.keptStream()).toBe(second);
       expect(opener.releaseMic()).toBeTrue();
+      expect(opener.keptStream()).toBeNull();
       expect(second.getTracks()[0].readyState).toBe('ended');
       expect(opener.releaseMic()).toBeFalse();
     });

@@ -28,7 +28,7 @@ import { JarvisStreamOpener, LiveListening, StreamHandlers } from './jarvis-stre
 import { WakeEvent } from './jarvis-wake';
 import { AuthService } from '../core/services/auth.service';
 import { CompanionBridgeService } from '../core/services/companion-bridge.service';
-import { JarvisVadService, VadHandlers } from './jarvis-barge-in';
+import { JarvisVadService, VadHandlers, VadStartError } from './jarvis-barge-in';
 import { FORMULAS, FORMULA_CLIPS, tutoie } from './jarvis-phrases';
 import { JARVIS_3D_LOADER, JarvisEngineFactory } from './stage3d/jarvis-engine.contract';
 import { INTERVIEW_END_MS, INTERVIEW_QUESTIONS, JarvisInterviewClient } from './jarvis-interview';
@@ -163,7 +163,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     jarvisApi.costs.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
     jarvisApi.preferences.and.returnValue(of({ humour: 'LIGHT' as const }));
     jarvisApi.setHumour.and.callFake((humour) => of({ humour }));
-    opener = jasmine.createSpyObj<JarvisStreamOpener>('JarvisStreamOpener', ['open', 'releaseMic']);
+    opener = jasmine.createSpyObj<JarvisStreamOpener>('JarvisStreamOpener', ['open', 'releaseMic', 'keptStream']);
     vad = null;
     vadStop = jasmine.createSpy('vadStop');
     vadService = jasmine.createSpyObj<JarvisVadService>('JarvisVadService', ['start']);
@@ -2827,6 +2827,56 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     flushMicrotasks();
     expect(handle).toHaveBeenCalled();
     expect(traceEvents().some((e) => e.ev === 'grace_start')).toBeFalse();
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-251 / SF-251-05 — la détection de voix écoute le micro gardé', fakeAsync(() => {
+    const stream = {} as MediaStream;
+    opener.keptStream.and.returnValue(stream);
+    const jarvis = conversing(false);
+    jarvis.state.set('parole');
+    tick(0);
+    flushMicrotasks();
+    expect(vadService.start.calls.mostRecent().args[1]).toBe(stream);
+    expect(traceEvents().some((e) => e.ev === 'vad_ok' && e.d === 'shared=1')).toBeTrue();
+    jarvis.state.set('repos');
+    tick(0);
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-251 / SF-251-05 — un échec est tracé avec son étape et n’est plus définitif : 3 essais au plus, remis à zéro',
+    fakeAsync(() => {
+      const failure = new TypeError('boom');
+      vadService.start.and.rejectWith(new VadStartError('modele', failure));
+      const jarvis = conversing(false);
+      const parole = () => {
+        jarvis.state.set('parole');
+        tick(0);
+        flushMicrotasks();
+        jarvis.state.set('repos');
+        tick(0);
+      };
+      parole();
+      parole();
+      expect(vadService.start).toHaveBeenCalledTimes(2);
+      expect(traceEvents().some((e) => e.ev === 'vad_fail' && (e.d ?? '').startsWith('modele TypeError boom'))).toBeTrue();
+      vadService.start.and.resolveTo({ stop: () => undefined });
+      parole();
+      expect(vadService.start).toHaveBeenCalledTimes(3);
+      vadService.start.and.rejectWith(new VadStartError('modele', failure));
+      parole();
+      parole();
+      parole();
+      parole();
+      expect(vadService.start).withContext('compteur remis à zéro par le succès, puis 3 échecs').toHaveBeenCalledTimes(6);
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-251 / SF-251-05 — pendant la capture d’une coupure, le tampon reste vide', fakeAsync(() => {
+    const jarvis = conversing(false);
+    expect(jarvis['micKeep'].silenced()).toBeFalse();
+    spyOnProperty(jarvis.bargeIn, 'capturing').and.returnValue(true);
+    expect(jarvis['micKeep'].silenced()).toBeTrue();
     jarvis.ngOnDestroy();
   }));
 
