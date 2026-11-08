@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
 
+import { errorName } from './jarvis-listen-trace';
 import { LISTEN_AUDIO } from './jarvis-stream-listener';
 import { TurnCounter } from './jarvis-turn-clock';
 
@@ -152,30 +153,90 @@ export interface RunningVad {
   stop(): void | Promise<void>;
 }
 
+/** F-251 / SF-251-05 — l'étape du démarrage de la détection qui a échoué. */
+export type VadStep = 'chargement' | 'modele' | 'micro' | 'demarrage';
+
+/** F-251 / SF-251-05 — un échec de démarrage, avec son étape et l'erreur d'origine. */
+export class VadStartError extends Error {
+  constructor(readonly step: VadStep, readonly original: unknown) {
+    super(step);
+  }
+}
+
+/** F-251 / SF-251-05 — au-delà, la détection n'est plus retentée sur cette page. */
+export const VAD_MAX_FAILURES = 3;
+
+/**
+ * F-251 / SF-251-05 — le paquet est en CommonJS : le bundle de production (esbuild) le présente sous `default`, là où
+ * webpack donne l'espace de noms complet. `TypeError … reading 'new'` en production, invisible sous Karma.
+ */
+export function resolveMicVad<T>(module: { MicVAD?: T; default?: { MicVAD?: T } }): T {
+  const micVad = module.MicVAD ?? module.default?.MicVAD;
+  if (!micVad) {
+    throw new TypeError('MicVAD introuvable');
+  }
+  return micVad;
+}
+
+/** F-251 / SF-251-05 — le détail du journal d'un échec : étape, nom, message court, première ligne de la pile. */
+export function vadFailureDetail(error: unknown): string {
+  const step = error instanceof VadStartError ? error.step : 'inconnue';
+  const original = error instanceof VadStartError ? error.original : error;
+  const { message, stack } = (original ?? {}) as { message?: unknown; stack?: unknown };
+  const frame = typeof stack === 'string' ? stack.split('\n').find((line) => /:\d+:\d+/.test(line)) : undefined;
+  const place = frame?.slice(frame.lastIndexOf('/') + 1).replace(/\)$/, '').slice(0, 30);
+  return [step, errorName(original), typeof message === 'string' ? message.slice(0, 50) : '', place ? `at ${place}` : '']
+    .filter(Boolean).join(' ');
+}
+
 /**
  * SF-233-08 — la détection de voix **sur l'appareil** (Silero VAD v5, ONNX en WASM). Chargée à la demande (rien au
  * démarrage de l'application), ressources servies sous `/vad/`. Injectable : l'écran est testé sans micro ni modèle.
  */
 @Injectable({ providedIn: 'root' })
 export class JarvisVadService {
-  async start(handlers: VadHandlers): Promise<RunningVad> {
-    const { MicVAD } = await import('@ricky0123/vad-web');
-    const vad = await MicVAD.new({
-      model: 'v5',
-      baseAssetPath: '/vad/',
-      onnxWASMBasePath: '/vad/',
-      getStream: () => navigator.mediaDevices.getUserMedia({ audio: LISTEN_AUDIO }),
-      positiveSpeechThreshold: 0.6,
-      negativeSpeechThreshold: 0.45,
-      redemptionMs: 600,
-      minSpeechMs: MIN_SPEECH_MS,
-      preSpeechPadMs: 300,
-      onSpeechStart: () => handlers.onSpeechStart(),
-      onSpeechRealStart: () => handlers.onSpeechConfirmed(),
-      onVADMisfire: () => handlers.onMisfire(),
-      onSpeechEnd: (audio: Float32Array) => handlers.onSpeechEnd(audio),
-    });
-    await vad.start();
+  /** @param shared F-251 / SF-251-05 — le micro de la conversation : la détection en prend un clone. */
+  async start(handlers: VadHandlers, shared: MediaStream | null = null): Promise<RunningVad> {
+    let MicVAD: typeof import('@ricky0123/vad-web').MicVAD;
+    try {
+      MicVAD = resolveMicVad(await import('@ricky0123/vad-web') as never);
+    } catch (error) {
+      throw new VadStartError('chargement', error);
+    }
+    let micError: unknown = null;
+    const getStream = async (): Promise<MediaStream> => {
+      try {
+        return shared ? shared.clone() : await navigator.mediaDevices.getUserMedia({ audio: LISTEN_AUDIO });
+      } catch (error) {
+        micError = error;
+        throw error;
+      }
+    };
+    let vad: Awaited<ReturnType<typeof MicVAD.new>>;
+    try {
+      vad = await MicVAD.new({
+        model: 'v5',
+        baseAssetPath: '/vad/',
+        onnxWASMBasePath: '/vad/',
+        getStream,
+        positiveSpeechThreshold: 0.6,
+        negativeSpeechThreshold: 0.45,
+        redemptionMs: 600,
+        minSpeechMs: MIN_SPEECH_MS,
+        preSpeechPadMs: 300,
+        onSpeechStart: () => handlers.onSpeechStart(),
+        onSpeechRealStart: () => handlers.onSpeechConfirmed(),
+        onVADMisfire: () => handlers.onMisfire(),
+        onSpeechEnd: (audio: Float32Array) => handlers.onSpeechEnd(audio),
+      });
+    } catch (error) {
+      throw new VadStartError('modele', error);
+    }
+    try {
+      await vad.start();
+    } catch (error) {
+      throw new VadStartError(micError ? 'micro' : 'demarrage', micError ?? error);
+    }
     return { stop: () => vad.destroy().catch(() => undefined) };
   }
 }

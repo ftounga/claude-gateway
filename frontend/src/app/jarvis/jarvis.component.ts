@@ -41,7 +41,7 @@ import { jarvisTiers } from './jarvis-tiers';
 import {
   INVITATION_WINDOW_MS, MoreReader, NOTHING_MORE_PHRASE, isMoreAssent, isMoreCommand, isMoreMark,
 } from './jarvis-more';
-import { BargeInController, JarvisVadService, RunningVad, bargeInEnabled, encodeWav } from './jarvis-barge-in';
+import { BargeInController, JarvisVadService, RunningVad, bargeInEnabled, encodeWav, VAD_MAX_FAILURES, vadFailureDetail } from './jarvis-barge-in';
 import { CutSnapshot } from '../core/services/jarvis-voice.service';
 import {
   JarvisStreamOpener, LISTEN_AUDIO, LiveListening, MicKeep, StreamFallback, streamFailureOf, ticketFailureOf,
@@ -1717,7 +1717,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
   private listenRingMs = 0;
   private ticketAhead: Promise<JarvisSttTicket | null> | null = null;
   private readonly micKeep: MicKeep = {
-    silenced: () => this.state() === 'parole' || this.saying > 0 || !!this.voice.busy,
+    silenced: () => this.state() === 'parole' || this.saying > 0 || !!this.voice.busy || this.bargeIn.capturing,
     report: (detail) => this.trace.mark('mic_keep', detail),
   };
 
@@ -1924,8 +1924,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
   private readonly vadService = inject(JarvisVadService);
   private vad: RunningVad | null = null;
   private vadStarting = false;
-  /** La détection de voix n'a pas pu se charger : on n'essaie plus pendant cette ouverture. */
-  private vadFailed = false;
+  /** F-251 / SF-251-05 — les échecs de démarrage de la détection de voix sur cette page (au plus {@link VAD_MAX_FAILURES}). */
+  private vadFailures = 0;
   /** Ce que Jarvis avait dit quand il a été coupé (SF-233-09 s'en sert). */
   protected lastCut: CutSnapshot | null = null;
   /** Les compteurs d'interruption survenus hors d'un tour chronométré : portés par le tour suivant. */
@@ -1957,11 +1957,12 @@ export class JarvisComponent implements OnInit, OnDestroy {
   }
 
   private async startVad(): Promise<void> {
-    if (this.vad || this.vadStarting || this.vadFailed || !bargeInEnabled()) {
+    if (this.vad || this.vadStarting || this.vadFailures >= VAD_MAX_FAILURES || !bargeInEnabled()) {
       return;
     }
     this.vadStarting = true;
     try {
+      const shared = this.streamOpener.keptStream();
       const vad = await this.vadService.start({
         onSpeechStart: () => this.zone.run(() => this.bargeIn.voiceStart()),
         onSpeechConfirmed: () => this.zone.run(() => this.bargeIn.voiceConfirmed()),
@@ -1971,15 +1972,18 @@ export class JarvisComponent implements OnInit, OnDestroy {
             void this.onBargeInSpeech(audio);
           }
         }),
-      });
+      }, shared);
       this.vad = vad;
+      this.vadFailures = 0;
+      this.trace.mark('vad_ok', `shared=${shared ? 1 : 0}`);
       if (this.state() !== 'parole' && !this.bargeIn.capturing) {
         this.stopVad();
       }
     } catch (error) {
-      // Modèle ou micro indisponible : Jarvis reste interruptible par l'appui et le mot d'éveil.
-      this.trace.mark('vad_fail', errorName(error));
-      this.vadFailed = true;
+      // Modèle ou micro indisponible : Jarvis reste interruptible par l'appui et le mot d'éveil ; nouvel essai à la
+      // parole suivante (F-251 / SF-251-05 : un échec n'est plus définitif).
+      this.trace.mark('vad_fail', vadFailureDetail(error));
+      this.vadFailures++;
     } finally {
       this.vadStarting = false;
     }

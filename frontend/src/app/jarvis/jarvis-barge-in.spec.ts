@@ -1,7 +1,7 @@
 import { fakeAsync, tick } from '@angular/core/testing';
 
 import { heardPart } from '../core/services/jarvis-voice.service';
-import { BargeInActions, BargeInController, RESTORE_AFTER_MS, encodeWav } from './jarvis-barge-in';
+import { BargeInActions, BargeInController, RESTORE_AFTER_MS, encodeWav, VadStartError, resolveMicVad, vadFailureDetail } from './jarvis-barge-in';
 
 /** Se laisser couper (F-233 / SF-233-08) : baisser, rétablir, couper ; ce qui a été entendu. */
 describe('Coupure par la voix (F-233 / SF-233-08)', () => {
@@ -64,5 +64,23 @@ describe('Coupure par la voix (F-233 / SF-233-08)', () => {
     expect(String.fromCharCode(...bytes.slice(0, 4))).toBe('RIFF');
     expect(new DataView(bytes.buffer).getUint32(24, true)).toBe(16000);
     expect(new DataView(bytes.buffer).getInt16(46, true)).toBe(0x7fff);
+  });
+});
+
+describe('Se laisser couper — le démarrage (F-251 / SF-251-05)', () => {
+  it('lit MicVAD à la racine (webpack) ou sous default (esbuild, production) ; rien : TypeError', () => {
+    const micVad = { new: () => undefined };
+    expect(resolveMicVad({ MicVAD: micVad })).toBe(micVad);
+    expect(resolveMicVad({ default: { MicVAD: micVad } })).toBe(micVad);
+    expect(() => resolveMicVad({})).toThrowError(TypeError);
+  });
+
+  it('le détail du journal donne l’étape, le nom, le message et la première ligne', () => {
+    const cause = new TypeError('Cannot read properties of undefined');
+    cause.stack = 'TypeError: x\n    at http://h/js/main-AB12.js:2:97\n    at z';
+    expect(vadFailureDetail(new VadStartError('chargement', cause)))
+      .toBe('chargement TypeError Cannot read properties of undefined at main-AB12.js:2:97');
+    expect(vadFailureDetail(new Error('boom'))).toContain('inconnue Error boom');
+    expect(vadFailureDetail(null)).toBe('inconnue inconnue');
   });
 });
