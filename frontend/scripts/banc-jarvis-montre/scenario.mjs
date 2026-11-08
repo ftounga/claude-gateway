@@ -114,6 +114,41 @@ async function verifierScene(page, tag, subject, width) {
   }
 }
 
+/** SF-253-08 — « Ce que je sais » en 2D, rendez-vous dit surligné, mesure du rendu partie à la fermeture (une fois). */
+async function verifierPied(page, server, tag) {
+  const opened = await page.evaluate(() => {
+    const b = document.querySelector('.jv__wake .jv__state-open');
+    b?.click();
+    return !!b;
+  });
+  await sleep(500);
+  const panel = await page.evaluate(() => !!document.querySelector('app-jarvis-state-panel'));
+  note(opened && panel, `${tag} « Ce que je sais » en 2D : bouton=${opened}, volet ouvert=${panel}`);
+  await page.evaluate(() => {
+    const c = window.ng.getComponent(document.querySelector('app-jarvis'));
+    c.stateOpen.set(false);
+    c.agendaView.set({ mode: 'jour', date: new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date()) });
+    c.state.set('parole');
+    c.playingSentence.set('Ensuite, vous voyez Zahi.');
+    window.ng.applyChanges(document.querySelector('app-jarvis'));
+  });
+  await sleep(800);
+  const cited = await page.evaluate(() => ({ items: [...document.querySelectorAll('.jag__item--cited')].map((e) => e.textContent.trim().slice(0, 40)),
+    blocks: document.querySelectorAll('.jag__block--cited').length }));
+  await page.screenshot({ path: join(out, `${tag}-frise-surlignee.png`) });
+  note(cited.items.length === 1 && cited.items[0].includes('Revue Zahi') && cited.blocks === 1,
+    `${tag} frise : rendez-vous dit surligné ${JSON.stringify(cited)}`);
+  await page.evaluate(() => {
+    const c = window.ng.getComponent(document.querySelector('app-jarvis'));
+    c.agendaView.set(null);
+    window.dispatchEvent(new Event('pagehide'));
+    window.dispatchEvent(new Event('pagehide'));
+  });
+  await sleep(800);
+  const sent = server.state.usage.filter((u) => u.event === 'RENDER');
+  note(sent.length === 1, `${tag} mesure du rendu envoyée à pagehide, une fois (${sent.length} envoi, mode=${sent[0]?.mode})`);
+}
+
 async function run({ width, height, tag, subject, view2d = false, overrides = {} }) {
   const server = createServer();
   SCRIPTS.length = 0;
@@ -170,6 +205,9 @@ async function run({ width, height, tag, subject, view2d = false, overrides = {}
     });
   }
   await verifierScene(page, tag, subject, width);
+  if (view2d) {
+    await verifierPied(page, server, tag);
+  }
   note(errors.length === 0, `${tag} erreurs de page : ${JSON.stringify(errors.slice(0, 3))}`);
   await writeFile(join(out, `${tag}-requetes.txt`), server.state.log.join('\n'));
   await browser.close();

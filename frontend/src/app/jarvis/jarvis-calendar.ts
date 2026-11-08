@@ -2,6 +2,8 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
+import { normalizeName } from './scenes/jarvis-name-matcher';
+
 /**
  * **Les agendas de Jarvis, côté écran** (F-243 / SF-243-01).
  *
@@ -176,6 +178,41 @@ export function parisHour(iso: string): string {
 export function parisMinutes(iso: string): number {
   const [h, m] = parisHour(iso).split(':').map((x) => Number(x));
   return h * 60 + m;
+}
+
+/** Les mots trop courants d'un intitulé : à eux seuls, ils n'allument rien (F-253 / SF-253-08). */
+const GENERIC_TITLE_WORDS: ReadonlySet<string> = new Set(['reunion', 'point', 'daily', 'weekly', 'call', 'comite', 'visio',
+  'suivi', 'avec', 'pour', 'dans', 'chez', 'projet', 'atelier', 'revue', 'equipe', 'rendez', 'vous']);
+
+/**
+ * F-253 / SF-253-08 (F-248 §4.7) — les rendez-vous que nomme une phrase, sur l'appareil, sans appel : titre complet, mot
+ * distinctif du titre (≥ 4 lettres, propre à un seul rendez-vous), ou heure de début dite (« 14 h 30 », « 9h »). Un
+ * faux positif coûte un surlignage ; un mot partagé par deux rendez-vous n'allume rien.
+ */
+export function citedAgendaItems(sentence: string, items: readonly CalendarItem[]): string[] {
+  const said = normalizeName(sentence);
+  if (!said) {
+    return [];
+  }
+  const timed = items.filter((i) => !i.allDay);
+  const text = ` ${said} `;
+  const owners = new Map<string, Set<string>>();
+  for (const i of timed) {
+    const title = normalizeName(i.title);
+    for (const word of title.split(' ').filter((w) => w.length >= 4 && !/^\d+$/.test(w) && !GENERIC_TITLE_WORDS.has(w))) {
+      owners.set(word, (owners.get(word) ?? new Set<string>()).add(i.id));
+    }
+  }
+  const hours = new Set<string>();
+  for (const m of sentence.toLowerCase().matchAll(/\b(\d{1,2})\s*(?:h|heures?)(?:\s*(\d{2}))?\b/g)) {
+    hours.add(`${m[1].padStart(2, '0')}:${m[2] ?? '00'}`);
+  }
+  return timed.filter((i) => {
+    const title = normalizeName(i.title);
+    return (title.length >= 4 && text.includes(` ${title} `))
+      || hours.has(parisHour(i.start))
+      || title.split(' ').some((w) => owners.get(w)?.size === 1 && text.includes(` ${w} `));
+  }).map((i) => i.id);
 }
 
 /** Le rendez-vous en cours, sinon le prochain (les journées entières n'en sont jamais). */

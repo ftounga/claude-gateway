@@ -1,10 +1,10 @@
-import { Component, OnChanges, computed, inject, input, output, signal } from '@angular/core';
+import { Component, OnChanges, SimpleChanges, computed, inject, input, output, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 
 import {
-  AgendaView, CalendarItem, CalendarWindow, JarvisCalendarClient, agendaDays, friseSlot, nextItem, parisDay, parisHour,
-  parisMinutes,
+  AgendaView, CalendarItem, CalendarWindow, JarvisCalendarClient, agendaDays, citedAgendaItems, friseSlot, nextItem, parisDay,
+  parisHour, parisMinutes,
 } from './jarvis-calendar';
 
 /** Une journée de la vue : ses rendez-vous en heures, ses journées entières, et la frise. */
@@ -54,6 +54,7 @@ const DAY_LABEL = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'nume
               @if (nowLeft(d.day); as left) { <span class="jag__now" [style.left.%]="left"></span> }
               @for (i of d.timed; track i.id) {
                 <span class="jag__block" [class.jag__block--next]="i.id === next()?.id"
+                      [class.jag__block--cited]="cited().has(i.id)"
                       [class.jag__block--proposed]="i.status === 'PROPOSED'"
                       [style.left.%]="slot(i, d.day).left" [style.width.%]="slot(i, d.day).width"></span>
               }
@@ -64,6 +65,7 @@ const DAY_LABEL = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'nume
             <ul class="jag__list">
               @for (i of d.timed; track i.id) {
                 <li class="jag__item" [class.jag__item--next]="i.id === next()?.id"
+                    [class.jag__item--cited]="cited().has(i.id)" [attr.aria-current]="cited().has(i.id) ? 'true' : null"
                     [class.jag__item--proposed]="i.status === 'PROPOSED'">
                   <span class="jag__hour">{{ hour(i.start) }}–{{ hour(i.end) }}</span>
                   <span class="jag__what">{{ i.title || '(sans titre)' }}@if (i.location) { <span class="jag__where"> · {{ i.location }}</span> }</span>
@@ -111,11 +113,13 @@ const DAY_LABEL = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'nume
       border: 1px solid color-mix(in srgb, var(--cg-orange) 75%, transparent); box-sizing: border-box; }
     .jag__block--next { background: var(--cg-orange); box-shadow: 0 0 10px color-mix(in srgb, var(--cg-orange) 75%, transparent); }
     .jag__block--proposed { background: transparent; border-style: dashed; }
+    .jag__block--cited { outline: 2px solid var(--cg-cream); outline-offset: 1px; }
     .jag__item--proposed { border-left-style: dashed; border-left-color: var(--cg-orange-2); opacity: .85; }
     .jag__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--cg-space-1); }
     .jag__item { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--cg-space-2); font-size: 14px;
       padding: 2px var(--cg-space-1); border-left: 2px solid transparent; min-width: 0; }
     .jag__item--next { border-left-color: var(--cg-orange); background: color-mix(in srgb, var(--cg-orange) 18%, transparent); }
+    .jag__item--cited { border-left-color: var(--cg-cream); background: color-mix(in srgb, var(--cg-cream) 16%, transparent); }
     .jag__what { flex: 1 1 160px; min-width: 0; }
     .jag__where { opacity: .75; }
     .jag__state { font-size: 12px; color: var(--cg-orange-2); text-transform: uppercase; letter-spacing: .08em; }
@@ -131,11 +135,15 @@ export class JarvisAgendaComponent implements OnChanges {
   readonly view = input.required<AgendaView>();
   /** L'horloge (injectable par les tests). */
   readonly now = input<() => Date>(() => new Date());
+  /** F-253 / SF-253-08 — la phrase en train d'être dite : les rendez-vous qu'elle nomme sont surlignés. */
+  readonly sentence = input('');
   readonly closed = output<void>();
 
   readonly window = signal<CalendarWindow | null>(null);
   readonly loading = signal(true);
   readonly error = signal('');
+
+  readonly cited = computed(() => new Set(citedAgendaItems(this.sentence(), this.window()?.items ?? [])));
 
   readonly next = computed(() => nextItem((this.window()?.items ?? []).filter((i) => i.status !== 'PROPOSED'),
     this.now()()));
@@ -174,8 +182,11 @@ export class JarvisAgendaComponent implements OnChanges {
     });
   });
 
-  ngOnChanges(): void {
-    this.load();
+  ngOnChanges(changes: SimpleChanges): void {
+    // F-253 / SF-253-08 — la phrase dite change sans cesse : elle ne relit jamais l'agenda.
+    if (changes['view'] || changes['now']) {
+      this.load();
+    }
   }
 
   load(): void {
