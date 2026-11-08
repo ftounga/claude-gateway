@@ -47,7 +47,7 @@ export const PIECES = { [DATA_PLATFORM]: Array.from({ length: 6 }, (_, i) => vid
 export const SCRIPTS = [];
 
 export function createServer() {
-  const state = { log: [], converse: [] };
+  const state = { log: [], converse: [], usage: [] };
   const json = (req, status, body) => req.respond({ status, contentType: 'application/json',
     body: JSON.stringify(body) });
   function sse(req, events) {
@@ -59,6 +59,16 @@ export function createServer() {
     const p = url.pathname;
     const m = req.method();
     state.log.push(`${m} ${p}${url.search}`);
+    if (p === '/api/jarvis/usage') {
+      state.usage.push(JSON.parse(req.postData() ?? '{}'));
+      return req.respond({ status: 204 });
+    }
+    if (p === '/api/jarvis/calendar/events') {
+      const at = (h) => { const d = new Date(now); d.setHours(h, 0, 0, 0); return d.toISOString(); };
+      return json(req, 200, { from: url.searchParams.get('from'), to: url.searchParams.get('to'), updatedAt: iso(now), feeds: 1,
+        items: [{ id: 'e1', feedLabel: 'Pro', uid: 'u1', start: at(11), end: at(12), allDay: false, title: 'Revue Zahi', location: '', status: 'CONFIRMED' },
+          { id: 'e2', feedLabel: 'Pro', uid: 'u2', start: at(15), end: at(16), allDay: false, title: 'Point Loki', location: '', status: 'CONFIRMED' }] });
+    }
     if (p === '/api/me') {
       return json(req, 200, { id: 'u1', email: 'po@x.fr', emailVerified: true, provider: 'LOCAL', role: 'ADMIN' });
     }

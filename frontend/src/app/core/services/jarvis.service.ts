@@ -2,6 +2,8 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
+import { AuthService } from './auth.service';
+
 import {
   JarvisAbsence, JarvisCompanionDevice, JarvisCompanionPairingCode, JarvisCompanionVersion, JarvisHumour,
   JarvisBudgetStatus, JarvisCaptureMeta, JarvisCostSummary, JarvisPreferences, JarvisToSendList, JarvisSttTicket, JarvisUtterance, TurnTimingReport,
@@ -19,6 +21,7 @@ export const JARVIS_COMPANION_DOWNLOAD_PATH = '/api/runner/download/android';
 @Injectable({ providedIn: 'root' })
 export class JarvisService {
   private readonly http = inject(HttpClient);
+  private readonly auth = inject(AuthService);
 
   /**
    * F-236 / SF-236-26 — la carte d'activité : tours par sujet et par jour sur `days` jours (≤ 7), dans le fuseau
@@ -63,9 +66,31 @@ export class JarvisService {
    * F-236 / SF-236-06 — la mesure du rendu d'une ouverture de l'écran : 3D ou 2D, et des compteurs au vocabulaire
    * fermé (raisons du repli, secondes par niveau, classe d'i/s, gestes, touchers…). Aucun contenu ; best-effort.
    */
-  render(report: { mode: '3d' | '2d'; render: Record<string, number> }): void {
-    this.http.post<void>('/api/jarvis/usage', { event: 'RENDER', mode: report.mode, render: report.render })
-      .subscribe({ error: () => undefined });
+  render(report: { mode: '3d' | '2d'; render: Record<string, number> }, leaving = false): void {
+    const body = { event: 'RENDER', mode: report.mode, render: report.render };
+    if (leaving) {
+      this.sendLeaving('/api/jarvis/usage', body);
+      return;
+    }
+    this.http.post<void>('/api/jarvis/usage', body).subscribe({ error: () => undefined });
+  }
+
+  /**
+   * F-253 / SF-253-08 (audit #25) — un envoi qui survit à la fermeture de la page (`keepalive`, hors `HttpClient` qui
+   * serait annulé) ; même jeton que les autres appels. Best-effort.
+   */
+  private sendLeaving(url: string, body: unknown): void {
+    try {
+      const token = this.auth.token();
+      void fetch(url, {
+        method: 'POST',
+        keepalive: true,
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(body),
+      }).catch(() => undefined);
+    } catch {
+      // Best-effort : la mesure ne gêne jamais la fermeture.
+    }
   }
 
   /**

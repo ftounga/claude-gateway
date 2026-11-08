@@ -305,6 +305,11 @@
                 (click)="threadOpen.set(!threadOpen()); mailOpen.set(false); portraitOpen.set(false)">
           <mat-icon aria-hidden="true">forum</mat-icon> Fil du jour
         </button>
+        <!-- F-253 / SF-253-08 (audit #40) — « Ce que je sais » aussi en 2D (jamais en présentation). -->
+        <button mat-button type="button" class="jv__wake-button jv__state-open" [attr.aria-expanded]="stateOpen()"
+                (click)="stateOpen.set(!stateOpen()); mailOpen.set(false); calendarOpen.set(false); portraitOpen.set(false)">
+          <mat-icon aria-hidden="true">fact_check</mat-icon> Ce que je sais
+        </button>
       }
       @if (!presentation() && costLine(); as line) {
         <!-- F-239 / SF-239-12 — le compteur visible ; F-244 / SF-244-04 — il ouvre la ventilation (jamais en présentation). -->
@@ -398,7 +403,7 @@
 }
 <!-- F-243 / SF-243-02 (D10, D11) — la vue d'agenda : frise du jour ou de la semaine, jamais en présentation. -->
 @if (!presentation() && agendaView(); as view) {
-  <app-jarvis-agenda [view]="view" (closed)="agendaView.set(null)" />
+  <app-jarvis-agenda [view]="view" [sentence]="agendaSentence()" (closed)="agendaView.set(null)" />
 }
 <!-- F-245 / SF-245-04 (D8) — le volet « Fil du jour » : jamais en présentation (aucun nom de client montré). -->
 @if (threadOpen() && !presentation()) {

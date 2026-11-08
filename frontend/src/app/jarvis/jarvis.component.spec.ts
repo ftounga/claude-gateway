@@ -872,7 +872,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     fixture.detectChanges();
     flushMicrotasks();
     fixture.componentInstance.ngOnDestroy();
-    expect(jarvisApi.render).toHaveBeenCalledOnceWith({ mode: '2d', render: { r_no_webgl: 1 } });
+    expect(jarvisApi.render).toHaveBeenCalledOnceWith({ mode: '2d', render: { r_no_webgl: 1 } }, false);
     fixture.destroy();
     expect(jarvisApi.render).toHaveBeenCalledTimes(1);
   }));
@@ -900,7 +900,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     expect(panel.textContent).toContain('Humour');
     expect(panel.textContent).toContain('« Jarvis »');
     fixture.componentInstance.ngOnDestroy();
-    expect(jarvisApi.render).toHaveBeenCalledWith(jasmine.objectContaining({ mode: '3d' }));
+    expect(jarvisApi.render).toHaveBeenCalledWith(jasmine.objectContaining({ mode: '3d' }), false);
     fixture.destroy();
   }));
 
@@ -2497,6 +2497,82 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     jarvis.chooseSubject('w-1');
     expect(bus.subjectId()).toBe('w-1');
     expect(jarvis.stageSignals().subjectId).toBe('w-1');
+    jarvis.ngOnDestroy();
+    discardPeriodicTasks();
+  }));
+
+  // ---------------------------------------------------------------- F-253 / SF-253-08 : mesures, délégation, accès, frise
+
+  it('F-253 / SF-253-08 — mesure du rendu : envoyée une seule fois, à la fermeture de la page (keepalive)', fakeAsync(() => {
+    const jarvis = fastOn();
+    const report = { mode: '3d' as const, render: { sec_high: 1 } };
+    (jarvis as unknown as { stage3dRef: { report: () => unknown } }).stage3dRef = { report: () => report };
+    jarvis.onPageHide();
+    expect(jarvisApi.render).toHaveBeenCalledOnceWith(report, true);
+    jarvis.onPageHide();
+    jarvis.ngOnDestroy();
+    expect(jarvisApi.render).toHaveBeenCalledTimes(1);
+    discardPeriodicTasks();
+  }));
+
+  it('F-253 / SF-253-08 — pas de scène montée : rien n’est envoyé, et la sortie d’écran reste possible', fakeAsync(() => {
+    const jarvis = fastOn();
+    const ref = jarvis as unknown as { stage3dRef: { report: () => unknown } | undefined };
+    ref.stage3dRef = undefined;
+    jarvis.onPageHide();
+    expect(jarvisApi.render).not.toHaveBeenCalled();
+    ref.stage3dRef = { report: () => ({ mode: '2d', render: {} }) };
+    jarvis.ngOnDestroy();
+    expect(jarvisApi.render).toHaveBeenCalledOnceWith({ mode: '2d', render: {} }, false);
+    discardPeriodicTasks();
+  }));
+
+  it('F-253 / SF-253-08 — une délégation s’affiche et se compte comme un tour direct', fakeAsync(() => {
+    const jarvis = fastOn();
+    const bus = TestBed.inject(JarvisSceneBus);
+    bus.setUniverse(testUniverse());
+    const created = spyOn(bus, 'created').and.callThrough();
+    void jarvis.handle('Regarde les tickets bloqués de CAGIP');
+    flushMicrotasks();
+    fast!.onDelegated({ delegationId: 'd-1', subjectId: 'w-2', chantier: null, label: 'tickets',
+      announce: 'Je regarde.', demande: 'x', automatic: false, reason: null });
+    fastDone!('ok');
+    flushMicrotasks();
+    jarvisApi.scenes.calls.reset();
+    handlers!.onText('Migration Forge est bloquée.');
+    handlers!.onVideo!({ video: { title: 'Démo' } } as never);
+    expect(created).toHaveBeenCalledWith('video', 'Démo');
+    handlers!.onDone({ reply: 'Fini.', actions: [], messageId: 'm-1' });
+    expect(jarvisApi.scenes).toHaveBeenCalledTimes(1);
+    jarvis.ngOnDestroy();
+    discardPeriodicTasks();
+  }));
+
+  it('F-253 / SF-253-08 — « Ce que je sais » au pied de page 2D, jamais en présentation', fakeAsync(() => {
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    fixture.detectChanges();
+    const open = () => (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.jv__wake .jv__state-open');
+    expect(open()).not.toBeNull();
+    open()!.click();
+    expect(fixture.componentInstance.stateOpen()).toBeTrue();
+    fixture.componentInstance.presentation.set(true);
+    fixture.detectChanges();
+    expect(open()).toBeNull();
+    fixture.componentInstance.ngOnDestroy();
+    discardPeriodicTasks();
+  }));
+
+  it('F-253 / SF-253-08 — la phrase jouée rejoint la frise, et s’efface hors parole', fakeAsync(() => {
+    const jarvis = fastOn();
+    void jarvis.handle('Quoi aujourd’hui ?');
+    flushMicrotasks();
+    fast!.onText('Vous avez le point Loki à 14 h.');
+    voice.enqueue.calls.mostRecent().args[2]!.onPlaying!();
+    expect(jarvis.agendaSentence()).toBe('Vous avez le point Loki à 14 h.');
+    jarvis.state.set('repos');
+    expect(jarvis.agendaSentence()).toBe('');
     jarvis.ngOnDestroy();
     discardPeriodicTasks();
   }));

@@ -30,7 +30,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { ActivatedRoute, Router } from '@angular/router';
 
-import { AtelierConfirmRequest, AtelierProofEvent, AtelierStreamDone, WorkspaceSummary } from '../core/models/atelier.models';
+import { AtelierConfirmRequest, AtelierProofEvent, AtelierStreamDone, AtelierStreamHandlers, WorkspaceSummary } from '../core/models/atelier.models';
 import { AtelierService } from '../core/services/atelier.service';
 import { LiveTerminalService } from '../core/services/live-terminal.service';
 import { NotificationCenterService } from '../core/services/notification-center.service';
@@ -523,8 +523,33 @@ export class JarvisComponent implements OnInit, OnDestroy {
   /** E4 — l'écran masqué (application en arrière-plan, autre onglet) suspend l'entretien. */
   @HostListener('document:visibilitychange')
   onVisibilityChange(): void {
-    if (typeof document !== 'undefined' && document.visibilityState === 'hidden' && this.interviewListening()) {
+    if (typeof document === 'undefined' || document.visibilityState !== 'hidden') {
+      return;
+    }
+    if (this.interviewListening()) {
       void this.pauseConversation(false);
+    }
+    this.reportRender(true); // F-253 / SF-253-08 (audit #25) — sur téléphone, la fermeture passe souvent par ici
+  }
+
+  /** F-253 / SF-253-08 (audit #25) — l'onglet se ferme ou la page se recharge : la mesure du rendu part quand même. */
+  @HostListener('window:pagehide')
+  onPageHide(): void {
+    this.reportRender(true);
+  }
+
+  /** F-253 / SF-253-08 — la mesure du rendu a-t-elle été envoyée pour cette ouverture ? */
+  private renderReported = false;
+
+  /** F-236 / SF-236-06 — la mesure du rendu de cette ouverture, une seule fois ; `leaving` : la page se ferme. */
+  private reportRender(leaving: boolean): void {
+    if (this.renderReported) {
+      return;
+    }
+    const render = this.stage3dRef?.report();
+    if (render) {
+      this.renderReported = true;
+      this.jarvis.render(render, leaving);
     }
   }
 
@@ -1036,7 +1061,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
     });
     this.jarvis.usage('SESSION');
     // SF-233-12 — mise à jour automatique : vérifiée à l'ouverture et toutes les 10 min, appliquée au repos.
-    this.appUpdate.start(() => this.isQuiet(), () => this.trace.mark('appupdate_reload'));
+    this.appUpdate.start(() => this.isQuiet(), () => {
+      this.trace.mark('appupdate_reload');
+      this.reportRender(true); // F-253 / SF-253-08 — le rechargement de mise à jour ne passe pas par ngOnDestroy
+    });
     // F-233 / SF-233-02 — les clips de réaction, chargés une fois, joués localement au moment de réagir.
     void this.voice.preloadClips(FORMULA_CLIPS);
     // SF-233-06 — le fournisseur de la voix, pour la mesure (SF-233-01).
@@ -1133,10 +1161,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       clearTimeout(this.toSendTimer);
     }
     // F-236 / SF-236-06 — la mesure du rendu de cette ouverture (3D ou 2D, compteurs sans contenu).
-    const render = this.stage3dRef?.report();
-    if (render) {
-      this.jarvis.render(render);
-    }
+    this.reportRender(false);
     if (this.announceTimer) {
       clearInterval(this.announceTimer);
       this.announceTimer = null;
@@ -2606,11 +2631,13 @@ export class JarvisComponent implements OnInit, OnDestroy {
       onProof: (event) => this.zone.run(() => this.liveProof(event, subjectId, delegation.chantier ?? null)),
       // Lignes 🎙 intermédiaires muettes en délégation (D13) : seulement la scène.
       onText: (delta) => this.scenes.text(delta),
+      ...this.sceneRelay(() => true), // F-253 / SF-253-08 (audit #7) — les mêmes scènes qu'un tour direct
       onDone: (done) => {
         if (done.followUp === true) {
           return;
         }
         this.scenes.done(done.costEur ?? null);
+        this.jarvis.scenes(this.scenes.takeStats()); // F-253 / SF-253-08 (audit #12) : la délégation compte aussi
         finish(done.reply ?? null, false);
       },
       onError: (code, reason) => {
@@ -2800,48 +2827,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       }),
       // F-234 / SF-234-06 — le chantier, les attentes, la question, les points de route : à l'écran (S9, S11, S2, S14).
       onQuestionResolved: () => this.scenes.questionResolved(),
-      onPlan: (steps) => {
-        if (latest()) {
-          this.scenes.plan(steps);
-        }
-      },
-      onAttente: (event) => {
-        if (latest()) {
-          this.scenes.attente(event.attente);
-        }
-      },
-      onQuestions: (turn) => {
-        if (latest()) {
-          this.scenes.questions(turn.questions);
-        }
-      },
-      // F-234 / SF-234-08 — mémoire, résumé du fil, passation : à l'écran (S12, S10).
-      onRecalled: (event) => {
-        if (latest()) {
-          this.scenes.recalled(event.repere);
-        }
-      },
-      onCompaction: (event) => {
-        if (latest() && event.running) {
-          this.scenes.compaction(event.summarizedTurns);
-        }
-      },
-      // F-234 / SF-234-09 — une page ou une vidéo publiée : son titre s'écrit (S7).
-      onPage: (event) => {
-        if (latest()) {
-          this.scenes.created(event.page.pdf ? 'pdf' : 'page', event.page.title);
-        }
-      },
-      onVideo: (event) => {
-        if (latest()) {
-          this.scenes.created('video', event.video.title);
-        }
-      },
-      onHandoff: (event) => {
-        if (latest()) {
-          this.scenes.handoff(event.handoff.name, event.handoff.workspaceId);
-        }
-      },
+      ...this.sceneRelay(latest),
       onClosed: () => this.zone.run(() => {
         if (latest()) {
           this.scenes.aborted();
@@ -2852,6 +2838,34 @@ export class JarvisComponent implements OnInit, OnDestroy {
         }
       }),
     }, 'ACT', false, [], null, false, 'JARVIS', heardBeforeCut, this.presentation());
+  }
+
+  /**
+   * F-234 / SF-234-06, 08, 09 — les événements d'un tour relayés tels quels à la scène : chantier, attentes, questions,
+   * points de route (S9, S11, S2, S14), mémoire, résumé du fil, passation (S12, S10), page ou vidéo publiée (S7).
+   * F-253 / SF-253-08 — partagés par le tour direct et la délégation ; `active` : ce tour a-t-il encore la parole ?
+   */
+  private sceneRelay(active: () => boolean): Pick<AtelierStreamHandlers,
+    'onPlan' | 'onAttente' | 'onQuestions' | 'onRecalled' | 'onCompaction' | 'onPage' | 'onVideo' | 'onHandoff'> {
+    const when = <T>(apply: (event: T) => void) => (event: T) => {
+      if (active()) {
+        apply(event);
+      }
+    };
+    return {
+      onPlan: when((steps) => this.scenes.plan(steps)),
+      onAttente: when((event) => this.scenes.attente(event.attente)),
+      onQuestions: when((turn) => this.scenes.questions(turn.questions)),
+      onRecalled: when((event) => this.scenes.recalled(event.repere)),
+      onCompaction: when((event) => {
+        if (event.running) {
+          this.scenes.compaction(event.summarizedTurns);
+        }
+      }),
+      onPage: when((event) => this.scenes.created(event.page.pdf ? 'pdf' : 'page', event.page.title)),
+      onVideo: when((event) => this.scenes.created('video', event.video.title)),
+      onHandoff: when((event) => this.scenes.handoff(event.handoff.name, event.handoff.workspaceId)),
+    };
   }
 
   private sendSeq = 0;
@@ -3318,9 +3332,14 @@ export class JarvisComponent implements OnInit, OnDestroy {
       onPlaying: () => {
         hooks?.onPlaying?.();
         this.scenes.saying(sentence);
+        this.playingSentence.set(sentence); // F-253 / SF-253-08 — la frise surligne le rendez-vous au moment dit
       },
     };
   }
+
+  /** F-253 / SF-253-08 (F-248 §4.7) — la phrase en train d'être jouée ; vide hors parole. */
+  private readonly playingSentence = signal('');
+  readonly agendaSentence = computed(() => this.state() === 'parole' ? this.playingSentence() : '');
 
   /** F-234 / SF-234-11 (D12, D16) — toucher un sujet de la constellation : le choisir, et le compter. */
   touchSubject(id: string): void {

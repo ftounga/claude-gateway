@@ -3,7 +3,7 @@ import { of } from 'rxjs';
 
 import { JarvisAgendaComponent } from './jarvis-agenda.component';
 import {
-  CalendarItem, CalendarWindow, JarvisCalendarClient, agendaDays, agendaPieceView, friseSlot, nextItem, parisDay,
+  CalendarItem, CalendarWindow, JarvisCalendarClient, agendaDays, agendaPieceView, citedAgendaItems, friseSlot, nextItem, parisDay,
   parisHour,
 } from './jarvis-calendar';
 
@@ -19,6 +19,23 @@ function win(items: CalendarItem[]): CalendarWindow {
 }
 
 describe('jarvis-calendar (agenda, fonctions)', () => {
+  it('F-253 / SF-253-08 — les rendez-vous nommés par une phrase : titre, mot distinctif, heure ; un mot partagé n’allume rien', () => {
+    const items = [
+      item({ id: 'a', title: 'Point devis Helios', start: '2026-11-04T13:00:00Z' }), // 14:00 Paris
+      item({ id: 'b', title: 'Point Helios Zahi', start: '2026-11-04T15:30:00Z' }), // 16:30 Paris
+      item({ id: 'c', title: 'Daily', start: '2026-11-04T08:00:00Z' }),
+      item({ id: 'd', allDay: true, title: 'Salon Devoxx' }),
+    ];
+    expect(citedAgendaItems('Vous avez le point devis Helios.', items)).toEqual(['a']);
+    expect(citedAgendaItems('Puis on voit Zahi.', items)).toEqual(['b']);
+    expect(citedAgendaItems('Helios revient ensuite.', items)).toEqual([]);
+    expect(citedAgendaItems('Rendez-vous à 16 h 30 pour finir.', items)).toEqual(['b']);
+    expect(citedAgendaItems('À 14h, tout est prêt.', items)).toEqual(['a']);
+    expect(citedAgendaItems('Le point est reporté.', items)).toEqual([]);
+    expect(citedAgendaItems('Salon Devoxx toute la journée.', items)).toEqual([]);
+    expect(citedAgendaItems('', items)).toEqual([]);
+  });
+
   it('lit la vue d’un ordre d’écran, et rien d’autre', () => {
     expect(agendaPieceView(['agenda:jour:2026-11-04'])).toEqual({ mode: 'jour', date: '2026-11-04' });
     expect(agendaPieceView(['dep:1', 'agenda:semaine:2026-11-02'])).toEqual({ mode: 'semaine', date: '2026-11-02' });
@@ -123,6 +140,22 @@ describe('JarvisAgendaComponent (F-243 / SF-243-02)', () => {
     expect(proposed?.textContent).toContain('proposé');
     expect(el.querySelectorAll('.jag__block--proposed').length).toBe(1);
     expect(el.querySelector('.jag__item--next')?.textContent).toContain('Point devis Helios');
+  });
+
+  it('F-253 / SF-253-08 — le rendez-vous dit est surligné, sur la frise et dans la liste, puis l’effacement suit', () => {
+    const el = create('jour', [item({ id: 'a', title: 'Point devis Helios' }),
+      item({ id: 'b', title: 'Revue Zahi', start: '2026-11-04T15:00:00Z', end: '2026-11-04T16:00:00Z' })]);
+    expect(el.querySelector('.jag__item--cited')).toBeNull();
+    const reads = client.events.calls.count();
+    fixture.componentRef.setInput('sentence', 'Ensuite, vous voyez Zahi.');
+    fixture.detectChanges();
+    expect(client.events.calls.count()).toBe(reads); // la phrase dite ne relit pas l'agenda
+    expect(el.querySelectorAll('.jag__block--cited').length).toBe(1);
+    expect(el.querySelector('.jag__item--cited')?.textContent).toContain('Revue Zahi');
+    expect(el.querySelector('.jag__item--cited')?.getAttribute('aria-current')).toBe('true');
+    fixture.componentRef.setInput('sentence', '');
+    fixture.detectChanges();
+    expect(el.querySelector('.jag__item--cited')).toBeNull();
   });
 
   it('une journée vide le dit', () => {
