@@ -43,6 +43,8 @@ export class TurnClock {
   /** F-233 / SF-233-13 — pourquoi le flux n'a pas servi (`null` : il a servi, ou rien à dire) ; la page du compagnon. */
   streamFallback: TurnTimingReport['streamFallback'] = null;
   companion: boolean | null = null;
+  /** F-252 — la vitesse : préparation serveur, réponse provisoire, silence de fin, anticipations abandonnées. */
+  speed: Partial<Pick<TurnTimingReport, 'prepMs' | 'speculation' | 'endSilenceMs' | 'anticipationsDropped'>> = {};
   private reported = false;
 
   /**
@@ -134,6 +136,7 @@ export class TurnClock {
       ...(this.depth ?? {}),
       ...(this.streamFallback ? { streamFallback: this.streamFallback } : {}),
       ...(this.companion !== null ? { companion: this.companion } : {}),
+      ...this.speed,
     };
   }
 }

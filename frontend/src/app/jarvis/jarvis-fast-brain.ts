@@ -46,6 +46,8 @@ export interface FastDone {
   portrait?: boolean;
   /** F-247 / SF-247-01 — poste éteint, question d'état et issue de la réponse (mesure, jamais le texte). */
   state?: FastStateMeasure | null;
+  /** F-252 / SF-252-01 — la préparation serveur (ms) ; `null` ou absent sans appel au modèle. */
+  prepMs?: number | null;
 }
 
 /** F-247 / SF-247-01 — la mesure d'état d'une réplique, calculée par la passerelle. */

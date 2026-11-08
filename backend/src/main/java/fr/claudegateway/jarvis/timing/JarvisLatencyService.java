@@ -147,6 +147,12 @@ public class JarvisLatencyService {
                 // F-233 / SF-233-13 — pourquoi le flux n'a pas servi (liste fermée), et la page du compagnon.
                 .streamFallback(closed(report.streamFallback(), STREAM_FALLBACKS))
                 .companion(report.companion())
+                // F-252 / SF-252-01 — la vitesse : préparation, réponse provisoire, silence de fin, anticipations.
+                .prepMs(mark(report.prepMs()))
+                .speculation(closed(report.speculation(), SPECULATIONS))
+                .endSilenceMs(mark(report.endSilenceMs()))
+                .anticipationsDropped(report.anticipationsDropped() == null ? null
+                        : counter(report.anticipationsDropped()))
                 .build());
     }
 
@@ -349,8 +355,13 @@ public class JarvisLatencyService {
             // F-248 / SF-248-01 — facultatifs : délai première phrase jouée → première pancarte, nombre de pancartes.
             Integer cardsLagMs, Integer cardsCount,
             // F-233 / SF-233-13 — facultatifs : raison du repli hors flux (liste fermée), page ouverte dans le compagnon.
-            String streamFallback, Boolean companion) {
+            String streamFallback, Boolean companion,
+            // F-252 / SF-252-01 — facultatifs : préparation serveur, réponse provisoire, silence de fin, anticipations.
+            Integer prepMs, String speculation, Integer endSilenceMs, Integer anticipationsDropped) {
     }
+
+    /** F-252 / SF-252-01 — les issues d'une réponse provisoire (SF-252-02/04, liste fermée). */
+    static final List<String> SPECULATIONS = List.of("adoptee", "relancee", "perdue", "anticipee");
 
     /** F-247 / SF-247-01 — les valeurs admises de {@code stateAnswer}. */
     public static final List<String> STATE_ANSWERS = List.of("UNKNOWN", "KNOWN_STALE", "KNOWN_FRESH", "NA");

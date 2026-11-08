@@ -164,6 +164,14 @@ export interface TurnTimingReport {
     | 'ouverture_refusee' | 'ouverture_reseau' | 'ouverture_fermee' | 'capture' | 'coupe' | 'autre' | null;
   companion?: boolean | null;
   /**
+   * F-252 / SF-252-01 — la vitesse : préparation serveur du cerveau rapide (ms), issue de la réponse provisoire
+   * (SF-252-02/04), silence réel à la fin de tour (ms) et anticipations abandonnées (parole reprise). Jamais de contenu.
+   */
+  prepMs?: number | null;
+  speculation?: 'adoptee' | 'relancee' | 'perdue' | 'anticipee' | null;
+  endSilenceMs?: number | null;
+  anticipationsDropped?: number | null;
+  /**
    * F-239 / SF-239-01 (D3b) — une parole refusée par la porte de parole réelle (aucun tour) : la raison et la longueur
    * du texte transcrit, **jamais le texte**.
    */

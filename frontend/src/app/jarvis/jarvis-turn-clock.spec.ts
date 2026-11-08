@@ -46,6 +46,19 @@ describe('TurnClock (F-233 / SF-233-01)', () => {
     expect(report.cardsCount).toBe(3);
   });
 
+  it('F-252 / SF-252-01 — porte la vitesse (préparation, réponse provisoire, silence, anticipations) ; rien sinon', () => {
+    const clock = new TurnClock(0, null, () => 0);
+    clock.speed = { prepMs: 412, speculation: 'adoptee', endSilenceMs: 1230, anticipationsDropped: 1 };
+    const report = clock.takeReport()!;
+    expect(report.prepMs).toBe(412);
+    expect(report.speculation).toBe('adoptee');
+    expect(report.endSilenceMs).toBe(1230);
+    expect(report.anticipationsDropped).toBe(1);
+    const bare = new TurnClock(0, null, () => 0).takeReport()!;
+    expect('prepMs' in bare).toBeFalse();
+    expect('speculation' in bare).toBeFalse();
+  });
+
   it('F-233 / SF-233-13 — porte la raison du repli hors flux et le compagnon ; rien quand ils sont absents', () => {
     const clock = new TurnClock(0, null, () => 0);
     clock.streamFallback = 'ouverture_refusee';
