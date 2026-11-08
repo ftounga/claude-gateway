@@ -94,6 +94,7 @@ import {
 } from './jarvis-oral';
 import {
   Conversation, IDLE_PHRASE, IDLE_WAKE_HINT, JARVIS_LOOP_WATCHDOG_MS, LISTEN_OPEN_LIMIT_MS, MIC_PAUSE_PHRASE,
+  PARDON_MIN_INTERVAL_MS, PARDON_MIN_VOICED_MS, PARDON_PHRASE,
   MIC_RETRY_MS, PAUSE_PHRASE, RELISTEN_DELAY_MS, VAD_RELEASE_WAIT_MS, isNoise, isPauseCommand,
 } from './jarvis-conversation';
 import { ExchangeFiller, FORMULA_CLIPS, FormulaPicker, LINKED_FILLER_DELAY_MS, linkedFiller } from './jarvis-phrases';
@@ -2074,6 +2075,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
     // SF-231-05 — la mesure d'adoption : les secondes parlées (D9).
     this.jarvis.usage('SPOKEN', Math.max(0, (performance.now() - this.listenStartedAt) / 1000));
     let text = '';
+    // F-251 / SF-251-03 — le texte vient-il de la retranscription complète de l'énoncé ?
+    let transcribed = false;
     const conversing = this.conversation.active;
     clock.listenMode = conversing ? 'CONV_BATCH' : 'BATCH';
     if (this.live) {
@@ -2090,12 +2093,14 @@ export class JarvisComponent implements OnInit, OnDestroy {
       text = final?.text.trim() || streamed;
       if (final?.text.trim()) {
         clock.sttProvider = final.provider;
+        transcribed = true;
       }
       this.keepForBench(audio, seconds, clock.listenMode, final?.provider ?? null, streamed, text);
     } else {
       // F-239 / SF-239-04 — la dictée (repli sans flux) passe aussi par la retranscription de Jarvis.
       try {
         text = (await this.transcribeClip(await this.dictation.stopRecording(), null, 'dictee.webm', clock)).trim();
+        transcribed = text !== '';
       } catch (error) {
         this.trace.mark('transcribe_fail', errorName(error));
         this.state.set('repos');
@@ -2111,6 +2116,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     // F-241 / SF-241-06 — le débit « implausible » se juge sur la durée de l'écoute (speech_ms), pas sur le temps de voix.
     const rejection = speechGate(text, {
       voicedMs: this.voicedMs, listenedMs: clock.speechMs === null ? null : clock.speechMs + this.listenRingMs, preRoll: this.listenPreRoll,
+      transcribed,
     });
     if (!text || (rejection && !confirming)) {
       this.state.set(this.turnRunning ? 'reflexion' : 'repos');
@@ -2123,10 +2129,28 @@ export class JarvisComponent implements OnInit, OnDestroy {
       this.rejectSpeech(clock, rejection ?? 'empty', text.length);
       return;
     }
+    this.pardonedLast = false;
     clock.mark('transcript');
     this.pendingClock = clock;
     this.said.set(text);
     await this.handle(text);
+  }
+
+  /** F-251 / SF-251-03 — le dernier rejet a déjà valu un « Pardon » (réarmé par une parole acceptée). */
+  private pardonedLast = false;
+  private lastPardonAt = -Infinity;
+
+  /** F-251 / SF-251-03 — rejetée alors qu'une voix a été entendue : Jarvis le dit (rarement, jamais deux fois de suite). */
+  private sayPardon(): void {
+    const now = performance.now();
+    if (this.voicedMs === null || this.voicedMs < PARDON_MIN_VOICED_MS || this.turnRunning || this.pardonedLast
+        || now - this.lastPardonAt < PARDON_MIN_INTERVAL_MS) {
+      return;
+    }
+    this.pardonedLast = true;
+    this.lastPardonAt = now;
+    this.trace.mark('pardon');
+    void this.say(PARDON_PHRASE);
   }
 
   /**
@@ -2134,7 +2158,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
    * mesure ; elle ne compte pas comme activité (la conversation s'éteint après le silence habituel).
    */
   private rejectSpeech(clock: TurnClock, kind: SpeechRejection, chars: number): void {
-    this.trace.mark('speech_rejected', `${kind} chars=${chars}`);
+    this.trace.mark('speech_rejected', `${kind} chars=${chars} voiced=${Math.round(this.voicedMs ?? -1)}`);
     clock.count('falseTriggers');
     clock.rejected = { rejectedKind: kind, rejectedChars: Math.min(10_000, Math.max(0, chars)) };
     const report = clock.takeReport();
@@ -2143,7 +2167,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
     if (this.conversation.active && this.conversation.idleExpired()) {
       void this.endConversation();
+      return;
     }
+    this.sayPardon();
   }
 
   // ---- F-239 / SF-239-06 : corriger d'un toucher ou de la voix ----

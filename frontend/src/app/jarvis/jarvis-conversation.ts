@@ -43,6 +43,12 @@ export const MIC_PAUSE_PHRASE = 'Je n’arrive pas à ouvrir le micro : je me me
 /** Ce que Jarvis dit en se mettant en pause, et en retournant au repos. */
 export const PAUSE_PHRASE = 'Je me mets en pause.';
 export const IDLE_PHRASE = 'Je me mets en veille.';
+/** F-251 / SF-251-03 — une écoute rejetée alors que Jarvis a entendu quelqu'un : il le dit. */
+export const PARDON_PHRASE = 'Pardon, Monsieur ?';
+/** Au moins autant de voix entendue au micro pour dire « Pardon » (ms). */
+export const PARDON_MIN_VOICED_MS = 400;
+/** Au plus un « Pardon » par intervalle (ms). */
+export const PARDON_MIN_INTERVAL_MS = 30_000;
 export const IDLE_WAKE_HINT = ' Dites « Jarvis » pour reprendre.';
 
 /** La durée de silence qui clôt la conversation sur cet appareil : réglée (bornée), sinon 60 s. */

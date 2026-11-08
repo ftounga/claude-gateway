@@ -35,7 +35,8 @@ import { JarvisPortraitClient } from './jarvis-portrait';
 import { JarvisMailClient, MailBrief } from './jarvis-mail';
 import { JARVIS_NOTICE_POLL_MS, JarvisNotice, JarvisNoticesClient } from './jarvis-notices';
 import { JarvisListenTrace, JarvisTraceSink, TraceBatch } from './jarvis-listen-trace';
-import { JARVIS_LOOP_WATCHDOG_MS, MIC_PAUSE_PHRASE, MIC_RETRY_MS } from './jarvis-conversation';
+import { JARVIS_LOOP_WATCHDOG_MS, MIC_PAUSE_PHRASE, MIC_RETRY_MS, PARDON_PHRASE } from './jarvis-conversation';
+import { TurnClock } from './jarvis-turn-clock';
 import { JarvisCalendarClient } from './jarvis-calendar';
 import { JARVIS_RENDER_PROBE, RenderProbe } from './stage3d/jarvis-render-capability';
 import { FakeEngine, NO_WEBGL_PROBE, PC_PROBE, fakeEngineFactory } from './stage3d/jarvis-stage3d.testing';
@@ -2673,6 +2674,82 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     tick(300);
     expect(opener.releaseMic).toHaveBeenCalled();
     expect(dictation.start).toHaveBeenCalledTimes(1);
+    jarvis.ngOnDestroy();
+  }));
+
+  function rejected(jarvis: JarvisComponent, voicedMs: number | null): void {
+    jarvis['voicedMs'] = voicedMs;
+    jarvis['rejectSpeech'](new TurnClock(0, 0), 'hallucination', 5);
+  }
+
+  function pardons(): number {
+    return voice.speak.calls.all().filter((c) => c.args[0] === PARDON_PHRASE).length;
+  }
+
+  it('F-251 / SF-251-03 — rejet avec 400 ms de voix : « Pardon, Monsieur ? » ; en dessous, ou non mesuré : rien',
+    fakeAsync(() => {
+      const jarvis = conversing(false);
+      rejected(jarvis, 399);
+      rejected(jarvis, null);
+      flushMicrotasks();
+      expect(pardons()).toBe(0);
+      rejected(jarvis, 400);
+      flushMicrotasks();
+      expect(pardons()).toBe(1);
+      const events = traceEvents();
+      expect(events.some((e) => e.ev === 'pardon')).toBeTrue();
+      expect(events.some((e) => e.ev === 'speech_rejected' && e.d === 'hallucination chars=5 voiced=400')).toBeTrue();
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-251 / SF-251-03 — jamais deux fois de suite, au plus une fois par 30 s ; une parole acceptée réarme',
+    fakeAsync(() => {
+      let t = 100_000;
+      spyOn(performance, 'now').and.callFake(() => t);
+      const jarvis = conversing(false);
+      rejected(jarvis, 900);
+      flushMicrotasks();
+      t += 60_000;
+      rejected(jarvis, 900);
+      flushMicrotasks();
+      expect(pardons()).withContext('deux rejets de suite').toBe(1);
+      jarvis['pardonedLast'] = false;
+      t += 1_000;
+      rejected(jarvis, 900);
+      flushMicrotasks();
+      expect(pardons()).toBe(2);
+      jarvis['pardonedLast'] = false;
+      t += 29_000;
+      rejected(jarvis, 900);
+      flushMicrotasks();
+      expect(pardons()).withContext('moins de 30 s').toBe(2);
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-251 / SF-251-03 — pas de « Pardon » pendant un tour', fakeAsync(() => {
+    const jarvis = conversing(false);
+    jarvis['turnRunning'] = true;
+    rejected(jarvis, 900);
+    flushMicrotasks();
+    expect(pardons()).toBe(0);
+    jarvis['turnRunning'] = false;
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-251 / SF-251-03 — retranscription de 2 mots avec très peu de voix : la demande part', fakeAsync(() => {
+    streamWithAudio();
+    jarvisApi.utterance.and.returnValue(of({ text: 'Bonjour Jarvis', provider: 'elevenlabs-batch', ms: 300 }));
+    const handle = spyOn(JarvisComponent.prototype, 'handle').and.resolveTo();
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    void jarvis.talk();
+    flushMicrotasks();
+    jarvis['voicedMs'] = 50;
+    void jarvis.finishListening();
+    tick(2_000);
+    flushMicrotasks();
+    expect(handle).toHaveBeenCalledWith('Bonjour Jarvis');
     jarvis.ngOnDestroy();
   }));
 

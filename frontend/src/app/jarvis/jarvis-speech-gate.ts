@@ -28,6 +28,11 @@ export type SpeechRejection = 'empty' | 'noise' | 'hallucination' | 'no_voice' |
 export const MIN_VOICED_MS = 100;
 /** Une parole « sans voix » au micro n'est refusée que si elle est très courte (au plus autant de mots). */
 export const NO_VOICE_MAX_WORDS = 4;
+/**
+ * F-251 / SF-251-03 — à partir d'autant de mots, un texte de la retranscription complète n'est plus refusé « sans voix »
+ * (essai du 07/11 : une vraie phrase jetée à 96 ms de voix mesurée).
+ */
+export const TRANSCRIBED_MIN_WORDS = 2;
 /** Débit physiquement impossible : plus de mots par seconde d'écoute que cela, plus une marge fixe. */
 export const MAX_WORDS_PER_SECOND = 6;
 export const IMPLAUSIBLE_MARGIN_WORDS = 4;
@@ -48,6 +53,8 @@ export interface ListenFacts {
   listenedMs?: number | null;
   /** Vrai si l'écoute a commencé par l'audio de la phrase qui contenait « Jarvis » (le micro n'en a rien mesuré). */
   preRoll?: boolean;
+  /** F-251 / SF-251-03 — le texte vient de la retranscription complète de l'énoncé (pas du seul flux). */
+  transcribed?: boolean;
 }
 
 /** Le seuil de voix ne descend jamais sous ce niveau (un souffle n'est pas une voix), ni au-dessus du seuil fixe. */
@@ -130,7 +137,8 @@ export function speechGate(said: string | null | undefined, facts: ListenFacts):
     return null;
   }
   const voiced = Math.max(0, facts.voicedMs);
-  if (voiced < MIN_VOICED_MS && words.length <= NO_VOICE_MAX_WORDS) {
+  const trusted = !!facts.transcribed && words.length >= TRANSCRIBED_MIN_WORDS;
+  if (voiced < MIN_VOICED_MS && words.length <= NO_VOICE_MAX_WORDS && !trusted) {
     return 'no_voice';
   }
   const basis = Math.max(0, facts.listenedMs ?? voiced);
