@@ -3,7 +3,7 @@ import { Injectable, NgZone, OnDestroy, computed, inject, signal } from '@angula
 
 import { NameIndex } from './jarvis-name-matcher';
 import { JarvisSceneReader, ReaderAction, ReaderState, SceneStats } from './jarvis-scene-reader';
-import { ShowFocus, resolveShow } from './jarvis-show';
+import { ShowFocus, ShowRequest, resolveShow } from './jarvis-show';
 import { JarvisUniverse, clientKey } from './jarvis-universe.models';
 
 /** SF-234-10 — un autre sujet appelle : il clignote une fois, pendant ce délai. */
@@ -292,6 +292,19 @@ export class JarvisSceneBus implements OnDestroy {
     this.costState.set(costEur ?? null);
     this.publish();
     this.load();
+  }
+
+  /**
+   * F-253 / SF-253-02 — le cerveau rapide demande une vue de l'univers : posée si elle se résout sur l'univers lu ;
+   * rend vrai si l'écran va la montrer. Une vue qui ne se résout pas ne change rien à ce qui est montré.
+   */
+  showRequest(request: ShowRequest): boolean {
+    if (resolveShow(this.universe(), request) === null) {
+      return false;
+    }
+    this.reader.requestShow(request);
+    this.publish();
+    return true;
   }
 
   /** SF-234-13 — « c'est bon » : l'écran revient à l'état normal. Rend vrai si quelque chose était montré. */

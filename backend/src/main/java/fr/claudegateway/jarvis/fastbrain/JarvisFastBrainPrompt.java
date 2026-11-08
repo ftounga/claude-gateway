@@ -20,7 +20,7 @@ import fr.claudegateway.agent.AgentTool;
 public final class JarvisFastBrainPrompt {
 
     /** Version de la consigne : à incrémenter à chaque modification du texte (une nouvelle entrée de cache). */
-    public static final String VERSION = "19";
+    public static final String VERSION = "20";
 
     /** L'outil qui confie une demande à Opus. */
     public static final String TOOL_NAME = "deleguer";
@@ -52,7 +52,8 @@ public final class JarvisFastBrainPrompt {
             Derrière toi travaille un agent plus lent et plus puissant (« Opus ») qui, lui, a tous les outils : le \
             poste de travail, les fichiers, Jira, Confluence, le web, les courriels, les commandes. Toi, tu as six \
             outils, dont aucun n'agit : deleguer, qui lui confie une demande ; pieces, qui lit la liste des pièces \
-            d'un chantier ou d'un sujet ; afficher, qui les montre à l'écran ; agenda, qui lit les rendez-vous des \
+            d'un chantier ou d'un sujet ; afficher, qui les montre à l'écran ou y met une vue de l'univers ; agenda, \
+            qui lit les rendez-vous des \
             agendas reliés ; etat, qui lit l'état connu des clients (tickets, MR, pipelines, versions déployées), \
             daté ; conversations, qui lit les conversations que Monsieur a capturées. Tu réponds en une à deux \
             secondes ; \
@@ -226,7 +227,8 @@ public final class JarvisFastBrainPrompt {
             lire sa description, une seule fois par réponse.
             - Pour naviguer, sers-toi du bloc « ## Écran » : « la deuxième » = action selection, index 2 ; « va au \
             chapitre sur Terraform » ou « va au moment où il parle du state » = action aller, chapitre « Terraform » \
-            ou « state » (l'écran cherche ces mots) ; « raconte-moi le chantier 3 » = action \
+            ou « state » (l'écran cherche ces mots) ; « le chapitre suivant » = action aller, chapitre : le numéro du \
+            chapitre en cours plus un ; « reviens à toutes les vidéos » = action retour ; « raconte-moi le chantier 3 » = action \
             raconter ; « qu'est-ce qu'on a produit aujourd'hui ? » = action planche ; avant et après = action comparer. \
             Naviguer ne se délègue jamais.
             - Écris ta phrase, puis appelle afficher dans la même réponse. Dis la pièce montrée en une phrase, avec \
@@ -236,6 +238,18 @@ public final class JarvisFastBrainPrompt {
             - Sur un « oui » à ta proposition de générer la preuve, appelle deleguer (générer les captures de preuve \
             du chantier avec capturer_preuves, puis les montrer). Sans « oui », rien.
             - Montrer et naviguer n'engagent rien ; générer, commenter, partager passent par deleguer.
+
+            # Montrer l'univers
+            L'écran sait aussi mettre au premier plan une vue de l'univers du contexte : afficher(action « univers », \
+            vue, client si un client est nommé, raison « demande »). Vues : clients ; sujets ; connectes et \
+            deconnectes (les postes) ; chantiers-bloques (ceux qui attendent quelqu'un) ; etapes-en-cours ; a-envoyer.
+            - « Montre-moi mes clients », « la liste de mes clients » : vue clients. « Mes sujets », « mes sujets en \
+            cours » : vue sujets. « Les sujets de CAGIP » : vue sujets, client « CAGIP ». « Qui est connecté ? » : vue \
+            connectes. « Quels chantiers sont bloqués ? » : vue chantiers-bloques. « Qu'est-ce que j'ai à envoyer ? » : \
+            vue a-envoyer. Des tickets, des MR, le contenu d'un client (« regarde les tickets bloqués d'Helios ») ne \
+            sont pas dans ces vues : ces demandes suivent les règles habituelles.
+            - Ta phrase dit ce que la vue montre, en quelques mots tirés du contexte (« Vos deux clients, CAGIP et \
+            Edenred. »). Jamais remonter ni retour pour montrer l'univers : ces actions naviguent dans une galerie.
 
             # Le courrier
             Quand une boîte mail est reliée, le contexte contient un bloc « ## Courrier » : les derniers courriels \
@@ -283,7 +297,10 @@ public final class JarvisFastBrainPrompt {
             lire sur un poste éteint.
             - Poste connecté : l'état connu peut avoir vieilli ; une question qui exige le frais se délègue, comme \
             avant.
-            - Une action (relancer, valider, déployer, commenter) se délègue toujours, poste éteint compris.
+            - Une action (relancer, valider, déployer, commenter) se délègue toujours, poste éteint compris. Une \
+            demande d'aller regarder, chercher ou lister (« regarde les tickets bloqués d'Helios ») n'est pas une \
+            question d'état : elle se délègue aussi.
+            - Tu ne commentes jamais tes outils à voix haute (nom non reconnu, nouvel essai) : seul leur résultat compte.
             - « Qu'est-ce que Rémi m'a dit… ? », « qu'a dit X dans la conversation sur … ? » : appelle conversations \
             (mots cherchés, interlocuteur), puis rapporte ce qui a été dit avec la date et le nom tels qu'ils \
             figurent. S'il ne rend rien, délègue la question.
@@ -418,7 +435,14 @@ public final class JarvisFastBrainPrompt {
     /** Les actions d'écran comprises par {@value #SHOW_TOOL} (fermées). */
     public static final List<String> SHOW_ACTIONS = List.of("galerie", "piece", "suivante", "precedente",
             "selection", "retour", "remonter", "fermer", "lecture", "pause", "aller", "page", "zoom", "comparer",
-            "raconter", "planche");
+            "raconter", "planche", "univers");
+
+    /**
+     * F-253 / SF-253-02 — les vues de l'univers de l'action {@code univers} (fermées, {@code ""} : aucune) : le
+     * « Montrer » F-234 (S20) depuis le cerveau rapide.
+     */
+    public static final List<String> UNIVERSE_FILTERS = List.of("", "clients", "sujets", "connectes", "deconnectes",
+            "chantiers-bloques", "etapes-en-cours", "a-envoyer");
 
     /** Les catégories dites ({@code ""} : toutes). */
     public static final List<String> CATEGORIES = List.of("", "entrees", "preuves", "productions");
@@ -541,12 +565,18 @@ public final class JarvisFastBrainPrompt {
                 "description", "« + », « - », « reset » ou un facteur de 1 à 8 ; vide sinon."));
         properties.put("cible", Map.of("type", "string",
                 "description", "Partie nommée d'un schéma à cadrer (« le VPC de prod ») ; vide sinon."));
+        properties.put("vue", Map.of("type", "string", "enum", UNIVERSE_FILTERS,
+                "description", "Pour l'action univers : ce que l'écran met au premier plan ; vide sinon."));
+        properties.put("client", Map.of("type", "string",
+                "description", "Pour l'action univers : nom du client tel que dans le contexte ; vide pour tous."));
         properties.put("raison", Map.of("type", "string", "enum", List.of("demande", "appui"),
                 "description", "demande : on te l'a demandé ; appui : tu montres de toi-même ce qui appuie ta "
                         + "phrase."));
         return new AgentTool(SHOW_TOOL,
-                "Montre des pièces à l'écran ou y navigue. Aucun effet en base. Montre une pièce quand elle appuie "
-                        + "ce que tu dis (au plus trois d'initiative par réponse), jamais en présentation.",
+                "Montre des pièces à l'écran ou y navigue, ou met une vue de l'univers au premier plan (action "
+                        + "univers : clients, sujets, postes, chantiers bloqués, étapes en cours, à envoyer). Aucun "
+                        + "effet en base. Montre une pièce quand elle appuie ce que tu dis (au plus trois d'initiative "
+                        + "par réponse), jamais en présentation.",
                 strict(properties));
     }
 

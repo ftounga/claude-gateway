@@ -306,6 +306,12 @@ export class JarvisSceneReader {
     this.said = [];
   }
 
+  /** F-253 / SF-253-02 — un « Montrer » demandé hors de la ligne `🖥` (ordre du cerveau rapide). */
+  requestShow(request: ShowRequest): void {
+    this.showRequest = request;
+    this.stats.shows++;
+  }
+
   /** SF-234-13 — « c'est bon » : l'écran revient à l'état normal. Rend vrai si quelque chose était montré. */
   clearShow(): boolean {
     const had = this.showRequest !== null;

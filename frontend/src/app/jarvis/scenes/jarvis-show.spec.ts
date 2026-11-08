@@ -8,7 +8,7 @@ import { JarvisSceneBus } from './jarvis-scene-bus.service';
 import { JarvisSceneComponent } from './jarvis-scene.component';
 import { JarvisSceneReader } from './jarvis-scene-reader';
 import { NameIndex } from './jarvis-name-matcher';
-import { isShowDismiss, parseShowLine, resolveShow, stripShowLines } from './jarvis-show';
+import { isShowDismiss, parseShowLine, resolveShow, stripShowLines, universeShowRequest } from './jarvis-show';
 import { testUniverse } from './jarvis-universe.fixture';
 
 describe('F-234 / SF-234-13 — « Montrer » : la ligne et sa résolution', () => {
@@ -58,6 +58,34 @@ describe('F-234 / SF-234-13 — « Montrer » : la ligne et sa résolution', () 
     expect(isShowDismiss('C\'est bon.')).toBeTrue();
     expect(isShowDismiss('merci')).toBeTrue();
     expect(isShowDismiss('montre-moi les chantiers')).toBeFalse();
+  });
+});
+
+describe('F-253 / SF-253-02 — l\'ordre « univers » du cerveau rapide', () => {
+  it('traduit les vues de la passerelle ; une vue inconnue ne donne rien', () => {
+    expect(universeShowRequest('clients', null)).toEqual({ filter: 'clients', client: null });
+    expect(universeShowRequest('chantiers-bloques', 'CAGIP')).toEqual({ filter: 'chantiers-bloques', client: 'cagip' });
+    expect(universeShowRequest('a-envoyer', '')).toEqual({ filter: 'a-envoyer', client: null });
+    expect(universeShowRequest('meteo', null)).toBeNull();
+    expect(universeShowRequest(null, null)).toBeNull();
+  });
+
+  it('« sujets » : tous les sujets, sans le terminal du poste, restreints au client nommé tel qu\'écrit', () => {
+    const all = resolveShow(testUniverse(), { filter: 'sujets', client: null })!;
+    expect(all.items.map((i) => i.node.kind)).toContain('subject');
+    expect(all.items.map((i) => i.node.key)).not.toContain('s-term');
+    expect(all.items.find((i) => i.node.key === 's-forge')?.note).toBe('CAGIP');
+    const one = resolveShow(testUniverse(), { filter: 'sujets', client: 'CAGIP' })!;
+    expect(one.title).toContain('CAGIP');
+    expect(one.items.every((i) => i.node.clientKey === 'h-cagip')).toBeTrue();
+  });
+
+  it('un client hébergé n\'est ni connecté ni déconnecté', () => {
+    const universe = testUniverse();
+    universe.clients.push({ ...universe.clients[1], id: null, name: 'Hébergé', virtual: true, connected: false });
+    const off = resolveShow(universe, { filter: 'deconnectes', client: null })!;
+    expect(off.items.map((i) => i.node.label)).toEqual(['Edenred']);
+    expect(off.title).toBe('1 poste déconnecté sur 2');
   });
 });
 

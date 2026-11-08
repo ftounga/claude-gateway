@@ -151,7 +151,7 @@ import { holoCssVars } from './stage3d/jarvis-motion';
 import { BrainEnd } from './stage3d/jarvis-brains';
 import { UniverseTouch } from './stage3d/jarvis-layout-3d';
 import { ScreenSignals, sameScreen } from './stage3d/jarvis-stage-director';
-import { ShowFilter, ShowFocus, isShowDismiss, resolveShow, stripShowLines } from './scenes/jarvis-show';
+import { ShowFilter, ShowFocus, isShowDismiss, resolveShow, stripShowLines, universeShowRequest } from './scenes/jarvis-show';
 import { ticketKeys } from './scenes/jarvis-scene-reader';
 import { arrivalDelay } from './stage3d/jarvis-panels';
 import { AuthService } from '../core/services/auth.service';
@@ -3818,6 +3818,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
   private showRefusal: string | null = null;
 
   private async runShow(command: ShowCommand): Promise<boolean> {
+    // F-253 / SF-253-02 — une vue de l'univers : le « Montrer » F-234 (2D et 3D), jamais en présentation.
+    if (command.action === 'univers') {
+      const request = universeShowRequest(command.view, command.client);
+      return !this.presentation() && request !== null && this.scenes.showRequest(request);
+    }
     // F-242 / SF-242-04 — un courriel n'est pas une pièce de chantier : il s'ouvre dans sa visionneuse.
     const mailId = mailPieceId(command.pieces);
     if (mailId) {

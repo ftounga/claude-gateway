@@ -1084,7 +1084,7 @@ class JarvisFastBrainServiceTest {
         assertThat(JSON.writeValueAsString(calls.get(1).tools())).isEqualTo(first);
         assertThat(JSON.writeValueAsString(calls.get(2).tools())).isEqualTo(first);
         assertThat(calls.get(0).system()).isEqualTo(calls.get(2).system());
-        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("19");
+        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("20");
         assertThat(first).doesNotContain("Kestrel").doesNotContain(subject.toString());
     }
 

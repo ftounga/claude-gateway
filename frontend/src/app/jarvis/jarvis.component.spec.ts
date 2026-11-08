@@ -435,6 +435,14 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     fixture.detectChanges();
     flushMicrotasks();
     let ok = false;
+    // F-253 / SF-253-02 — une vue de l'univers passe par le « Montrer » F-234, pas par la galerie.
+    TestBed.inject(JarvisSceneBus).setUniverse(testUniverse());
+    let viewShown = false;
+    void fixture.componentInstance.applyShow({ action: 'univers', view: 'clients', reason: 'demande' })
+      .then((r) => viewShown = r);
+    flushMicrotasks();
+    expect(viewShown).toBeTrue();
+    expect(TestBed.inject(JarvisSceneBus).focus()?.filter).toBe('clients');
     void fixture.componentInstance.applyShow({ action: 'piece', pieces: ['agenda:jour:2026-11-04'], reason: 'demande' })
       .then((r) => ok = r);
     flushMicrotasks();

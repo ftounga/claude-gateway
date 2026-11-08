@@ -27,7 +27,8 @@ public final class JarvisPiecesBench {
 
     /** Ce qui est attendu d'un cas ({@code null} : non vérifié). */
     public record Expect(Boolean show, Boolean delegate, boolean asks, List<String> actions, String reason,
-            Integer chantier, String categorie, String type, Integer index, List<String> pieces) {
+            Integer chantier, String categorie, String type, Integer index, List<String> pieces, String vue,
+            String client) {
     }
 
     /** Un cas : la parole, l'écran éventuel, les échanges précédents, l'attendu. */
@@ -64,7 +65,8 @@ public final class JarvisPiecesBench {
                         c.hasNonNull("screen") ? screens.get(c.get("screen").asText()) : null, previous,
                         new Expect(bool(e, "show"), bool(e, "delegate"), e.path("asks").asBoolean(false),
                                 strings(e.get("action")), text(e, "reason"), integer(e, "chantier"),
-                                text(e, "categorie"), text(e, "type"), integer(e, "index"), strings(e.get("pieces")))));
+                                text(e, "categorie"), text(e, "type"), integer(e, "index"), strings(e.get("pieces")),
+                                text(e, "vue"), text(e, "client"))));
             }
             return new Set(root.get("context").asText(), root.get("pieces").asText(), screens, cases);
         } catch (Exception e) {
@@ -154,13 +156,21 @@ public final class JarvisPiecesBench {
         if (e.index() != null && !e.index().equals(s.index())) {
             return false;
         }
+        // F-253 / SF-253-02 — une vue de l'univers : la vue, et le client nommé (rapproché, tolérant).
+        if (e.vue() != null && !e.vue().equals(s.view())) {
+            return false;
+        }
+        if (e.client() != null && (s.client() == null || !JarvisFastGuards.normalize(s.client())
+                .contains(JarvisFastGuards.normalize(e.client())))) {
+            return false;
+        }
         return e.pieces() == null || e.pieces().isEmpty() || s.pieces().containsAll(e.pieces());
     }
 
     /** Les manques de la porte (vide = porte franchie). */
     public static List<String> gate(List<JarvisFastBrainBenchService.Verdict> verdicts) {
         List<String> failures = new ArrayList<>();
-        for (String category : List.of("SHOW", "NAVIGATE", "PROOF")) {
+        for (String category : List.of("SHOW", "NAVIGATE", "PROOF", "UNIVERS")) {
             List<JarvisFastBrainBenchService.Verdict> of = verdicts.stream()
                     .filter(v -> category.equals(v.category())).toList();
             if (of.isEmpty()) {

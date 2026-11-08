@@ -110,7 +110,7 @@ class JarvisFastBrainStateTest {
         String sent = JSON.writeValueAsString(calls.get(0).messages());
         assertThat(sent).contains("État connu — client CAGIP").contains("PROJ-123");
         assertThat(calls.get(0).system()).doesNotContain("Migration SSO").doesNotContain("vu hier 17:42");
-        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("19");
+        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("20");
     }
 
     @Test

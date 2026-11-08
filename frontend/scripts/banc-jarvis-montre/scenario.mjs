@@ -201,7 +201,7 @@ async function run({ width, height, tag, subject, view2d = false, overrides = {}
       const c = window.ng.getComponent(document.querySelector('app-jarvis'));
       c.pieces?.reset?.();
       c.clearLocalShow?.();
-      c.scenes?.clearShow?.();
+      c.scenes?.dismissShow?.();
     });
   }
   await verifierScene(page, tag, subject, width);
@@ -213,7 +213,14 @@ async function run({ width, height, tag, subject, view2d = false, overrides = {}
   await browser.close();
 }
 
+// BANC_MODE=essai : le comportement prouvé en prod le 07/11. BANC_MODE=apres : les ordres que la passerelle émet
+// désormais (F-253) — ce que l'écran en fait est vérifié de la même façon.
 const mode = process.env.BANC_MODE ?? 'essai';
+const univers = (view) => [['show', { action: 'univers', pieces: [], reason: 'demande', view }]];
+const overrides = mode === 'apres' ? {
+  clients: [...univers('clients'), ['text', { delta: 'Vos deux clients, CAGIP et Edenred. ' }]],
+  sujets: [...univers('sujets'), ['text', { delta: 'Vos trois sujets, Monsieur. ' }]],
+} : {};
 const RUNS = [
   { width: 1920, height: 1080, tag: 'pc' },
   { width: 1920, height: 1080, tag: 'pc-sujet', subject: DATA_PLATFORM },
@@ -223,10 +230,7 @@ const RUNS = [
 // `BANC_ONLY=telephone-2d,pc` : seulement ces passages (poste chargé).
 const only = process.env.BANC_ONLY?.split(',');
 for (const r of RUNS.filter((x) => !only || only.includes(x.tag))) {
-  await run(r);
-}
-if (mode === 'essai') {
-  // Rien de plus : le comportement prouvé en prod.
+  await run({ ...r, overrides });
 }
 console.log(findings.join('\n'));
 files.close();
