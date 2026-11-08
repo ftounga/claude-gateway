@@ -23,6 +23,7 @@ import { JarvisVoiceService } from '../core/services/jarvis-voice.service';
 import { JarvisService } from '../core/services/jarvis.service';
 import { ASK_SUBJECT, FastBrainHandlers, FastBrainOutcome, JarvisFastBrainClient, PortraitPin } from './jarvis-fast-brain';
 import { VeilleService } from '../core/services/veille.service';
+import { JARVIS_GRACE_MS } from './jarvis-turn-end';
 import { JarvisStreamOpener, LiveListening, StreamHandlers } from './jarvis-stream-listener';
 import { WakeEvent } from './jarvis-wake';
 import { AuthService } from '../core/services/auth.service';
@@ -80,9 +81,12 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
   let loader3d: jasmine.Spy<() => Promise<JarvisEngineFactory>>;
   /** F-233 / SF-233-15 — les lots du journal de l'écoute (aucun réseau). */
   let traceBatches: TraceBatch[];
+  /** F-251 / SF-251-04 — éteinte hors du bloc qui la teste. */
+  let graceMs = 0;
 
   beforeEach(() => {
     traceBatches = [];
+    graceMs = 0;
     renderProbe = NO_WEBGL_PROBE;
     loader3d = jasmine.createSpy('loader3d').and.callFake(() => Promise.resolve(fakeEngineFactory([])));
     try {
@@ -195,6 +199,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
         { provide: JarvisNoticesClient, useValue: noticesClient },
         { provide: JARVIS_NOTICE_POLL_MS, useValue: 0 },
         { provide: JARVIS_LOOP_WATCHDOG_MS, useValue: 0 },
+        { provide: JARVIS_GRACE_MS, useFactory: () => graceMs },
         { provide: JarvisTraceSink, useValue: { send: (batch: TraceBatch) => traceBatches.push(batch) } },
         { provide: JARVIS_USER_AGENT, useFactory: () => userAgent },
         { provide: NotificationCenterService, useValue: notificationCenter },
@@ -2750,6 +2755,78 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     tick(2_000);
     flushMicrotasks();
     expect(handle).toHaveBeenCalledWith('Bonjour Jarvis');
+    jarvis.ngOnDestroy();
+  }));
+
+  function graceListening(): { jarvis: JarvisComponent; stt: () => StreamHandlers; handle: jasmine.Spy } {
+    graceMs = 700;
+    const ready = streamWithAudio();
+    const handle = spyOn(JarvisComponent.prototype, 'handle').and.resolveTo();
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    void jarvis.talk();
+    flushMicrotasks();
+    expect(jarvis.state()).toBe('ecoute');
+    return { jarvis, stt: ready.stt, handle };
+  }
+
+  it('F-251 / SF-251-04 — fin de tour du fournisseur : clôture après 700 ms de grâce, pas avant', fakeAsync(() => {
+    const { jarvis, stt, handle } = graceListening();
+    stt().onCommitted('Ouvre le chantier trois.');
+    tick(699);
+    expect(jarvis.state()).toBe('ecoute');
+    expect(handle).not.toHaveBeenCalled();
+    tick(1);
+    tick(3_000);
+    flushMicrotasks();
+    expect(handle).toHaveBeenCalledOnceWith('Ouvre le chantier trois.');
+    const events = traceEvents();
+    expect(events.some((e) => e.ev === 'grace_start' && e.d === 'ms=700')).toBeTrue();
+    expect(events.some((e) => e.ev === 'grace_end')).toBeTrue();
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-251 / SF-251-04 — la parole reprend pendant la grâce : même demande, deux segments', fakeAsync(() => {
+    const { jarvis, stt, handle } = graceListening();
+    stt().onCommitted('Ouvre le chantier trois.');
+    tick(300);
+    stt().onPartial('et lance');
+    tick(700);
+    expect(jarvis.state()).toBe('ecoute');
+    expect(handle).not.toHaveBeenCalled();
+    stt().onCommitted('et lance les tests.');
+    tick(700);
+    tick(3_000);
+    flushMicrotasks();
+    expect(handle).toHaveBeenCalledOnceWith('Ouvre le chantier trois. et lance les tests.');
+    expect(traceEvents().some((e) => e.ev === 'grace_resume')).toBeTrue();
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-251 / SF-251-04 — un texte provisoire vide ne relance rien ; écoute coupée pendant la grâce : aucune clôture',
+    fakeAsync(() => {
+      const { jarvis, stt, handle } = graceListening();
+      stt().onCommitted('Ouvre le chantier trois.');
+      stt().onPartial('   ');
+      expect(traceEvents().some((e) => e.ev === 'grace_resume')).toBeFalse();
+      jarvis['cancelListening']();
+      tick(3_000);
+      flushMicrotasks();
+      expect(handle).not.toHaveBeenCalled();
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-251 / SF-251-04 — phrase en suspens : l’attente de 1,5 s, sans grâce en plus', fakeAsync(() => {
+    const { jarvis, stt, handle } = graceListening();
+    stt().onCommitted('Ouvre le chantier et');
+    tick(1_499);
+    expect(handle).not.toHaveBeenCalled();
+    tick(1);
+    tick(3_000);
+    flushMicrotasks();
+    expect(handle).toHaveBeenCalled();
+    expect(traceEvents().some((e) => e.ev === 'grace_start')).toBeFalse();
     jarvis.ngOnDestroy();
   }));
 

@@ -1,3 +1,14 @@
+import { InjectionToken } from '@angular/core';
+
+/**
+ * F-251 / SF-251-04 — le délai de grâce après la fin de tour du fournisseur (ms) : si la parole reprend pendant ce
+ * temps, c'est la même demande. 0 : pas de grâce (tests).
+ */
+export const JARVIS_GRACE_MS = new InjectionToken<number>('JARVIS_GRACE_MS', {
+  providedIn: 'root',
+  factory: () => 700,
+});
+
 /**
  * **Laisser finir la phrase** (F-239 / SF-239-10, D6) — pur. Le PO marque des pauses en réfléchissant (« Allons chez le
  * client et donnez- … ») : un silence seul coupe ces phrases (banc `--vad` : 0,7 s ⇒ 50/52 phrases à pause coupées,
