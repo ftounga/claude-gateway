@@ -99,7 +99,7 @@ import {
 } from './jarvis-conversation';
 import { ExchangeFiller, FORMULA_CLIPS, FormulaPicker, LINKED_FILLER_DELAY_MS, linkedFiller } from './jarvis-phrases';
 import { MAX_LISTEN_MS, MIN_VOICED_MS, NoiseFloor, SpeechRejection, speechGate } from './jarvis-speech-gate';
-import { STREAM_FALLBACK_MS, SUSPENDED_EXTRA_MS, isSuspended } from './jarvis-turn-end';
+import { JARVIS_GRACE_MS, STREAM_FALLBACK_MS, SUSPENDED_EXTRA_MS, isSuspended } from './jarvis-turn-end';
 import { CORRECTION_WINDOW_MS as VOICE_CORRECTION_WINDOW_MS, applyCorrection, parseVoiceCorrection } from './jarvis-correction';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -1671,6 +1671,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
           // F-239 / SF-239-10 — la parole reprend : l'attente d'une phrase en suspens est relancée par le commit suivant.
           if (text.trim()) {
             this.clearSuspendTimer();
+            this.resumeFromGrace();
           }
           live.lastPartial = text;
           this.partial.set([...live.committed, text].join(' ').trim() || null);
@@ -1685,7 +1686,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
           // D6 — la fin de tour du fournisseur clôt la phrase ; F-239 / SF-239-10 — sauf si elle est restée en suspens.
           if (this.live === live && this.state() === 'ecoute' && live.committed.length > 0
               && !this.holdIfSuspended()) {
-            void this.finishListening();
+            this.holdForGrace(live);
           }
         }),
         onError: () => this.zone.run(() => {
@@ -1846,6 +1847,44 @@ export class JarvisComponent implements OnInit, OnDestroy {
     return true;
   }
 
+  // ---- F-251 / SF-251-04 : laisser finir ----
+  private readonly graceMs = inject(JARVIS_GRACE_MS);
+  private graceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * La fin de tour du fournisseur ne clôt la demande qu'après le délai de grâce : si la parole reprend entre-temps,
+   * elle continue. La fin de tour confirmée, c'est ici (F-252 ne libère rien avant).
+   */
+  private holdForGrace(live: NonNullable<JarvisComponent['live']>): void {
+    this.clearGraceTimer();
+    if (this.graceMs <= 0) {
+      void this.finishListening();
+      return;
+    }
+    this.trace.mark('grace_start', `ms=${this.graceMs}`);
+    this.graceTimer = setTimeout(() => {
+      this.graceTimer = null;
+      if (this.live === live && this.state() === 'ecoute') {
+        this.trace.mark('grace_end');
+        void this.finishListening();
+      }
+    }, this.graceMs);
+  }
+
+  private resumeFromGrace(): void {
+    if (this.graceTimer) {
+      this.clearGraceTimer();
+      this.trace.mark('grace_resume');
+    }
+  }
+
+  private clearGraceTimer(): void {
+    if (this.graceTimer) {
+      clearTimeout(this.graceTimer);
+      this.graceTimer = null;
+    }
+  }
+
   private clearSuspendTimer(): void {
     if (this.suspendTimer) {
       clearTimeout(this.suspendTimer);
@@ -1872,6 +1911,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   private closeStreaming(): void {
     this.clearSuspendTimer();
+    this.clearGraceTimer();
     const live = this.live;
     this.live = null;
     this.partial.set(null);
