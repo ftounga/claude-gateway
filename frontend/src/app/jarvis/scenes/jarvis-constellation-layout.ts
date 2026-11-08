@@ -123,3 +123,32 @@ function place(s: UniverseSubject, ck: string, angle: number, at: { x: number; y
 function round(v: number): number {
   return Math.round(v * 100) / 100;
 }
+
+/** F-253 / SF-253-07 — la demi-largeur où une étiquette reste lisible au téléphone (la carte y prend 94 % de l'écran). */
+export const LABEL_LIMIT = 98;
+/** Largeur moyenne d'un caractère, en fraction de la taille de police (police de texte du design system). */
+const CHAR_WIDTH = 0.6;
+
+export interface LabelPlace {
+  x: number;
+  y: number;
+  anchor: 'start' | 'middle' | 'end';
+}
+
+/**
+ * F-253 / SF-253-07 (audit §4) — garde une étiquette dans l'écran : au téléphone, un nom qui déborderait du repère
+ * (« data-platform » à droite) passe sous son point, centré, et se décale vers l'intérieur s'il le faut. Le placement
+ * habituel est rendu tel quel quand il tient.
+ */
+export function fitLabel(point: { x: number; y: number }, place: LabelPlace, label: string, fontSize: number,
+    limit = LABEL_LIMIT): LabelPlace {
+  const width = label.length * fontSize * CHAR_WIDTH;
+  const left = place.anchor === 'start' ? place.x : place.anchor === 'end' ? place.x - width : place.x - width / 2;
+  if (left >= -limit && left + width <= limit) {
+    return place;
+  }
+  const half = Math.min(width / 2, limit);
+  const x = Math.max(-limit + half, Math.min(limit - half, point.x));
+  const y = place.anchor === 'middle' ? place.y : point.y + (point.y < 0 ? -fontSize : fontSize + 1.5);
+  return { x: round(x), y: round(y), anchor: 'middle' };
+}

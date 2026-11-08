@@ -10,7 +10,7 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import puppeteer from 'puppeteer-core';
-import { createServer, SCRIPTS, DATA_PLATFORM } from './mock.mjs';
+import { createServer, SCRIPTS, DATA_PLATFORM, AGENOR } from './mock.mjs';
 
 const [dist, out = './out'] = process.argv.slice(2);
 const TYPES = { '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html', '.svg': 'image/svg+xml',
@@ -83,12 +83,44 @@ async function measure(page) {
   });
 }
 
-async function run({ width, height, tag, subject, overrides = {} }) {
+/** SF-253-07 — le sujet ouvert atteint la scène et le cockpit ; une réponse rapide allume ce qu'elle cite ; étiquettes dans l'écran. */
+async function verifierScene(page, tag, subject, width) {
+  const app = () => window.ng.getComponent(document.querySelector('app-jarvis'));
+  if (subject) {
+    const seen = await page.evaluate((a) => {
+      const c = (0, eval)(a)();
+      const el = document.querySelector('app-jarvis-cockpit');
+      return { bus: c.scenes.subjectId(), stage: c.stageSignals().subjectId,
+        cockpit: el ? window.ng.getComponent(el).signals().subjectId : null };
+    }, app.toString());
+    note(seen.bus === subject && seen.stage === subject && seen.cockpit === subject,
+      `${tag} sujet ouvert connu de la scène, de la 3D et du cockpit (Journée du sujet) : ${JSON.stringify(seen)}`);
+  }
+  await page.evaluate((a) => void (0, eval)(a)().converse('Où en est agenor ?'), app.toString());
+  const lit = await page.waitForFunction((a) => {
+    const keys = (0, eval)(a)().scenes.state().lit.map((l) => l.node.key);
+    return keys.length ? keys : null;
+  }, { timeout: 4000 }, app.toString()).then((h) => h.jsonValue()).catch(() => []);
+  note(lit.includes(AGENOR), `${tag} réponse rapide citant « agenor » : nœud allumé = ${JSON.stringify(lit)}`);
+  await sleep(600);
+  await page.screenshot({ path: join(out, `${tag}-cite-agenor.png`) });
+  if (width < 768) {
+    const labels = await page.evaluate((w) => [...document.querySelectorAll('app-jarvis-constellation svg text')]
+      .map((t) => ({ r: t.getBoundingClientRect(), name: t.textContent.trim() })).filter(({ r }) => r.width > 0)
+      .map(({ r, name }) => ({ name, out: r.left < 0 || r.right > w })), width);
+    const outside = labels.filter((l) => l.out).map((l) => l.name);
+    note(labels.length > 0 && outside.length === 0,
+      `${tag} étiquettes de la constellation dans l'écran (${labels.length} vues, hors écran : ${JSON.stringify(outside)})`);
+  }
+}
+
+async function run({ width, height, tag, subject, view2d = false, overrides = {} }) {
   const server = createServer();
   SCRIPTS.length = 0;
   for (const e of ESSAI) {
     SCRIPTS.push({ when: e.when, events: e.events(overrides) });
   }
+  SCRIPTS.push({ when: 'où en est agenor', events: [['text', { delta: 'Le chantier agenor avance bien, Monsieur. ' }]] });
   const browser = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: true,
     ignoreDefaultArgs: ['--hide-scrollbars'],
     args: ['--no-sandbox', `--window-size=${width},${height}`, '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
@@ -97,11 +129,12 @@ async function run({ width, height, tag, subject, overrides = {} }) {
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message.slice(0, 200)));
   await page.setViewport({ width, height });
-  await page.evaluateOnNewDocument(() => {
+  await page.evaluateOnNewDocument((flat) => {
     localStorage.setItem('cg_token', 'banc');
+    if (flat) localStorage.setItem('cg.jarvis.view', '2d'); // le choix « vue 2D » de l'appareil
     // La voix : rien n'est joué (aucune clé), la page continue.
     window.speechSynthesis && (window.speechSynthesis.speak = () => undefined);
-  });
+  }, view2d);
   await page.setRequestInterception(true);
   page.on('request', (req) => {
     if (new URL(req.url()).pathname.startsWith('/api/')) {
@@ -136,15 +169,24 @@ async function run({ width, height, tag, subject, overrides = {} }) {
       c.scenes?.clearShow?.();
     });
   }
+  await verifierScene(page, tag, subject, width);
   note(errors.length === 0, `${tag} erreurs de page : ${JSON.stringify(errors.slice(0, 3))}`);
   await writeFile(join(out, `${tag}-requetes.txt`), server.state.log.join('\n'));
   await browser.close();
 }
 
 const mode = process.env.BANC_MODE ?? 'essai';
-await run({ width: 1920, height: 1080, tag: 'pc' });
-await run({ width: 1920, height: 1080, tag: 'pc-sujet', subject: DATA_PLATFORM });
-await run({ width: 390, height: 844, tag: 'telephone' });
+const RUNS = [
+  { width: 1920, height: 1080, tag: 'pc' },
+  { width: 1920, height: 1080, tag: 'pc-sujet', subject: DATA_PLATFORM },
+  { width: 390, height: 844, tag: 'telephone' },
+  { width: 390, height: 844, tag: 'telephone-2d', view2d: true },
+];
+// `BANC_ONLY=telephone-2d,pc` : seulement ces passages (poste chargé).
+const only = process.env.BANC_ONLY?.split(',');
+for (const r of RUNS.filter((x) => !only || only.includes(x.tag))) {
+  await run(r);
+}
 if (mode === 'essai') {
   // Rien de plus : le comportement prouvé en prod.
 }

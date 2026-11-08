@@ -1082,6 +1082,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
         // le dernier sujet engagé (demandé, mémorisé, ou ouvert par une alerte).
         const pick = [wanted, stored].find((id) => id && list.some((s) => s.id === id)) ?? null;
         this.subjectId.set(pick);
+        this.scenes.setSubject(pick); // F-253 / SF-253-07 (audit #17, #21) — 3D, constellation et cockpit le savent
         if (list.length === 0) {
           this.notice.set('Aucun sujet : ouvre d’abord un terminal.');
         }
@@ -1347,6 +1348,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       this.pieces.closeCards(); // F-248 / SF-248-04 (D11) — un changement de sujet efface le jeu de pancartes
     }
     this.subjectId.set(id);
+    this.scenes.setSubject(id); // F-253 / SF-253-07 — le sujet choisi atteint la scène, la 3D et le cockpit
     try {
       localStorage.setItem(JARVIS_SUBJECT_KEY, id);
     } catch {
@@ -2344,6 +2346,15 @@ export class JarvisComponent implements OnInit, OnDestroy {
     // F-248 / SF-248-05 — le jeu de pancartes de cette réponse : catalogue reçu, phrases jouées, ce qui est montré.
     const showing = new CardShowing(seq);
     this.cardShowing = showing;
+    // F-253 / SF-253-07 (audit #3, #4) — la réponse rapide anime la scène comme un tour d'Opus : le tour de scène
+    // s'ouvre AVANT toute phrase ou tout ordre d'écran (un « Montrer » reçu dans l'échange n'est donc pas effacé).
+    // Une délégation ou un tour d'Opus en cours garde sa scène : seule la surbrillance au moment dit s'applique.
+    const ownsScene = !this.scenes.turnActive() || this.fastSceneSeq !== null;
+    if (ownsScene) {
+      this.fastSceneSeq = seq;
+      this.clearLocalShow();
+      this.scenes.turnStarted();
+    }
     const sayNow = (sentence: string) => {
       if (!latest()) {
         return;
@@ -2372,8 +2383,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
         this.clock?.mark('firstOralSentence');
         this.voice.resetHeard();
       }
-      this.voice.enqueue(sentence, subjectId ?? '', this.cardHooks(sentence, showing,
-        first ? this.clockHooks() : undefined));
+      if (this.fastSceneSeq === seq) {
+        this.scenes.text(`🎙 ${sentence}\n`); // F-253 / SF-253-07 — une phrase dite : ses noms s'allument
+      }
+      this.voice.enqueue(sentence, subjectId ?? '', this.sayingHooks(sentence, this.cardHooks(sentence, showing,
+        first ? this.clockHooks() : undefined)));
     };
     // F-239 / SF-239-05 — ce que le cerveau rapide a compris (relu, garde passée) : affiché, et c'est lui qu'Opus reçoit.
     let understood: string | null = null;
@@ -2432,6 +2446,17 @@ export class JarvisComponent implements OnInit, OnDestroy {
       },
     });
     this.trace.mark('brain_done', `${outcome}${fellBack ? ' repli' : ''} said=${said.length}`);
+    // F-253 / SF-253-07 — l'échange rapide clôt sa scène et compte ce qu'elle a montré (SF-234-11), sauf si une
+    // délégation, un repli vers Opus ou un échange plus récent l'a reprise.
+    if (this.fastSceneSeq === seq) {
+      this.fastSceneSeq = null;
+      if (!delegatedId && outcome === 'ok' && !fellBack) {
+        this.scenes.done();
+        this.jarvis.scenes(this.scenes.takeStats());
+      } else if (!delegatedId) {
+        this.scenes.aborted(); // le repli vers Opus rouvre aussitôt son propre tour de scène
+      }
+    }
     await this.zone.run(async () => {
       if (outcome === 'unavailable') {
         this.fastBrainOn.set(false);
@@ -2553,6 +2578,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
     this.brainEnd.set('normal');
     this.clearLocalShow();
+    this.fastSceneSeq = null; // F-253 / SF-253-07 — la délégation reprend la scène de l'échange rapide
     this.scenes.turnStarted();
     let finished = false;
     const finish = (reply: string | null, failed: boolean) => this.zone.run(() => {
@@ -2707,6 +2733,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.scenes.setSubject(subjectId);
     this.brainEnd.set('normal');
     this.clearLocalShow();
+    this.fastSceneSeq = null; // F-253 / SF-253-07 — le tour d'Opus reprend la scène
     this.scenes.turnStarted();
     void this.atelier.streamChat(subjectId, text, {
       onAction: (action) => {
@@ -3384,6 +3411,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
   }
 
   private localShowId: string | null = null;
+  /** F-253 / SF-253-07 — l'échange rapide qui tient le tour de scène (`null` : aucun, ou un tour Opus / délégation). */
+  private fastSceneSeq: number | null = null;
 
   private clearLocalShow(): void {
     this.localShow.set(null);
