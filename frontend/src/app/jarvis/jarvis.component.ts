@@ -44,7 +44,7 @@ import {
 import { BargeInController, JarvisVadService, RunningVad, bargeInEnabled, encodeWav } from './jarvis-barge-in';
 import { CutSnapshot } from '../core/services/jarvis-voice.service';
 import {
-  JarvisStreamOpener, LISTEN_AUDIO, LiveListening, StreamFallback, streamFailureOf, ticketFailureOf,
+  JarvisStreamOpener, LISTEN_AUDIO, LiveListening, MicKeep, StreamFallback, streamFailureOf, ticketFailureOf,
 } from './jarvis-stream-listener';
 import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom, timeout } from 'rxjs';
@@ -980,6 +980,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
             this.bargeIn.reset();
           }
           void this.startVad();
+          // F-251 / SF-251-02 — le ticket de la prochaine écoute, pendant que Jarvis parle.
+          this.fetchTicketAhead();
         } else if (!this.bargeIn.capturing) {
           this.stopVad();
         }
@@ -1005,6 +1007,12 @@ export class JarvisComponent implements OnInit, OnDestroy {
       const state = this.state();
       const mode = this.conversation.mode();
       untracked(() => this.onConversationState(state, mode));
+    });
+    // F-251 / SF-251-02 — hors conversation active, le micro gardé et le ticket d'avance sont rendus.
+    effect(() => {
+      if (this.conversation.mode() !== 'active') {
+        untracked(() => this.releaseKeptMic());
+      }
     });
     // F-232 / SF-232-07 — dans le compagnon, chaque changement d'état est un signe de vie : l'écran natif ne se ferme
     // pas d'office pendant l'échange.
@@ -1172,6 +1180,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.stopMeter();
     this.dictation.cancel();
     this.closeStreaming();
+    this.releaseKeptMic();
     this.stopVad();
     this.wakeEngine.stop();
     this.restoreManifest();
@@ -1459,6 +1468,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.listenStartedAt = performance.now();
     this.voicedMs = null;
     this.listenPreRoll = false;
+    this.listenRingMs = 0;
     this.listenCapped = false;
     // F-233 / SF-233-05 — l'écoute en flux d'abord ; sinon (non configurée, refus, réseau) la dictée batch.
     const streaming = await this.startStreaming(preRoll ? () => {
@@ -1486,6 +1496,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
     this.trace.mark(streaming ? 'stream_open' : 'stream_fallback', streaming ? '' : this.streamFallback);
     if (!streaming) {
+      // F-251 / SF-251-02 — jamais deux captures en même temps : la dictée de repli prend le micro seule.
+      this.releaseKeptMic();
       let failure = await this.openDictation();
       // F-233 / SF-233-16 — une capture précédente qui se libère fait échouer le premier essai : un second, plus tard.
       if (failure !== null && this.conversation.active && attempt === this.openAttempt) {
@@ -1641,8 +1653,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
     let ticket: JarvisSttTicket;
     try {
-      // F-233 / SF-233-16 — borné : un ticket qui ne revient pas ne fige plus l'ouverture de l'écoute.
-      ticket = await firstValueFrom(this.jarvis.sttSession().pipe(timeout(STT_TICKET_TIMEOUT_MS)));
+      ticket = await this.ticketForListening();
     } catch (error) {
       const status = error instanceof HttpErrorResponse ? error.status : null;
       if (status === 503) {
@@ -1684,7 +1695,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
             void this.finishListening();
           }
         }),
-      }, preRoll);
+      }, preRoll, this.conversation.active ? this.micKeep : null);
     } catch (error) {
       this.jarvis.closeSttSession(ticket.sessionId, 0);
       this.streamFallback = streamFailureOf(error);
@@ -1692,7 +1703,63 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
     this.live = live;
     this.partial.set(null);
+    this.listenRingMs = live.listening.preRollMs?.() ?? 0;
+    if (this.conversation.active) {
+      this.trace.mark('preroll', `ms=${this.listenRingMs}`);
+    }
     return true;
+  }
+
+  // ---- F-251 / SF-251-02 : le micro reste ouvert ----
+  /** La durée du tampon envoyée en tête de l'écoute en cours (ms). */
+  private listenRingMs = 0;
+  private ticketAhead: Promise<JarvisSttTicket | null> | null = null;
+  private readonly micKeep: MicKeep = {
+    silenced: () => this.state() === 'parole' || this.saying > 0 || !!this.voice.busy,
+    report: (detail) => this.trace.mark('mic_keep', detail),
+  };
+
+  /** Le ticket demandé pendant que Jarvis parle (en conversation seulement, une fois à la fois). */
+  private fetchTicketAhead(): void {
+    if (this.ticketAhead || this.streamOff || !this.conversation.active) {
+      return;
+    }
+    const startedAt = performance.now();
+    this.ticketAhead = firstValueFrom(this.jarvis.sttSession().pipe(timeout(STT_TICKET_TIMEOUT_MS)))
+      .then((ticket) => {
+        this.trace.mark('ticket_ready', `ms=${Math.round(performance.now() - startedAt)}`);
+        return ticket;
+      })
+      .catch(() => null);
+  }
+
+  /** Le ticket de cette écoute : celui d'avance s'il est valide (attendu s'il est en vol), sinon un neuf. */
+  private async ticketForListening(): Promise<JarvisSttTicket> {
+    const ahead = this.ticketAhead;
+    this.ticketAhead = null;
+    const ticket = ahead ? await ahead : null;
+    if (ticket) {
+      if (Date.parse(ticket.expiresAt) - Date.now() > TICKET_MARGIN_MS) {
+        return ticket;
+      }
+      this.jarvis.closeSttSession(ticket.sessionId, 0);
+    }
+    // F-233 / SF-233-16 — borné : un ticket qui ne revient pas ne fige plus l'ouverture de l'écoute.
+    return firstValueFrom(this.jarvis.sttSession().pipe(timeout(STT_TICKET_TIMEOUT_MS)));
+  }
+
+  /** Rend le micro de la conversation et le ticket d'avance. */
+  private releaseKeptMic(): void {
+    if (this.streamOpener.releaseMic()) {
+      this.trace.mark('mic_keep', 'close');
+    }
+    const ahead = this.ticketAhead;
+    this.ticketAhead = null;
+    void ahead?.then((ticket) => {
+      if (ticket) {
+        this.jarvis.closeSttSession(ticket.sessionId, 0);
+      }
+    });
   }
 
   // ---- F-239 / SF-239-04 : retranscrire l'énoncé complet ----
@@ -2043,7 +2110,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const confirming = !!this.pendingConfirm || this.awaitingVerbal;
     // F-241 / SF-241-06 — le débit « implausible » se juge sur la durée de l'écoute (speech_ms), pas sur le temps de voix.
     const rejection = speechGate(text, {
-      voicedMs: this.voicedMs, listenedMs: clock.speechMs, preRoll: this.listenPreRoll,
+      voicedMs: this.voicedMs, listenedMs: clock.speechMs === null ? null : clock.speechMs + this.listenRingMs, preRoll: this.listenPreRoll,
     });
     if (!text || (rejection && !confirming)) {
       this.state.set(this.turnRunning ? 'reflexion' : 'repos');
@@ -4520,6 +4587,8 @@ export function euros(value: number): string {
 
 /** F-233 / SF-233-16 — le ticket d'écoute en flux, borné (au-delà : dictée). */
 export const STT_TICKET_TIMEOUT_MS = 6_000;
+/** F-251 / SF-251-02 — un ticket d'avance à moins de ce temps de son expiration n'est pas utilisé. */
+export const TICKET_MARGIN_MS = 5_000;
 
 /** F-233 / SF-233-15 — la page est-elle servie par le service worker ? (une ancienne version peut l'être) */
 function swControlled(): boolean {
