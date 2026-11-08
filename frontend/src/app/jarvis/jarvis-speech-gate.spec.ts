@@ -25,6 +25,15 @@ describe('La porte de parole réelle (F-239 / SF-239-01)', () => {
     expect(speechGate('Merci, et regarde maintenant les tickets d’Edenred.', voiced)).toBeNull();
   });
 
+  it('F-251 / SF-251-03 — retranscription complète de 2 mots ou plus : plus de refus « sans voix »', () => {
+    expect(speechGate('Vente chez le client.', { voicedMs: 96, transcribed: true })).toBeNull();
+    expect(speechGate('Bonjour Jarvis', { voicedMs: 0, transcribed: true })).toBeNull();
+    expect(speechGate('Bonjour', { voicedMs: 0, transcribed: true })).toBe('no_voice');
+    expect(speechGate('Vente chez le client.', { voicedMs: 96 })).toBe('no_voice');
+    expect(speechGate('Merci beaucoup', { voicedMs: 0, transcribed: true })).toBe('hallucination');
+    expect(speechGate('euh', { voicedMs: 0, transcribed: true })).toBe('noise');
+  });
+
   it('sans voix au micro : une parole très courte est refusée, une longue invraisemblable aussi', () => {
     expect(speechGate('Vente chez le client.', { voicedMs: 0 })).toBe('no_voice');
     expect(speechGate('Vente chez le client.', { voicedMs: 99 })).toBe('no_voice');
