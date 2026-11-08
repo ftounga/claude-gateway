@@ -154,3 +154,23 @@ describe('JarvisVoiceService — chien de garde de lecture (F-233 / SF-233-16)',
     expect(traced).toEqual([]);
   });
 });
+
+describe('JarvisVoiceService.busy (F-251 / SF-251-01)', () => {
+  it('faux au repos ; vrai tant qu’une file de phrases n’est pas vide, même entre deux phrases', () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [JarvisVoiceService, { provide: HttpClient, useValue: {} }, { provide: AuthService, useValue: {} }],
+    });
+    const voice = TestBed.inject(JarvisVoiceService);
+    expect(voice.busy).toBeFalse();
+    const internals = voice as unknown as { queue: unknown[]; queueRunning: boolean };
+    internals.queue.push({ text: 'Bonjour.' });
+    expect(voice.busy).toBeTrue();
+    internals.queue.length = 0;
+    internals.queueRunning = true;
+    expect(voice.speaking).toBeFalse();
+    expect(voice.busy).toBeTrue();
+    internals.queueRunning = false;
+    expect(voice.busy).toBeFalse();
+  });
+});

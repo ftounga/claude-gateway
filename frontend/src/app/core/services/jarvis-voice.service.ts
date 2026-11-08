@@ -169,6 +169,14 @@ export class JarvisVoiceService {
   }
 
   /**
+   * F-251 / SF-251-01 — vrai tant que Jarvis a quelque chose à dire : une phrase jouée, ou une file de phrases pas
+   * encore vide. Le micro ne se rouvre jamais tant que c'est vrai.
+   */
+  get busy(): boolean {
+    return this.current !== null || this.queueRunning || this.queue.length > 0;
+  }
+
+  /**
    * Débloque la lecture audio. À appeler dans un geste de l'utilisateur (un appui) : les navigateurs refusent le son
    * avant le premier geste.
    */
