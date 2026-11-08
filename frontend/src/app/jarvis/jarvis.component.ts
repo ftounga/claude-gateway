@@ -1449,6 +1449,14 @@ export class JarvisComponent implements OnInit, OnDestroy {
       }
       return;
     }
+    // F-251 / SF-251-01 (course B) — Jarvis s'est mis à parler pendant l'ouverture : on n'écoute pas sous sa voix.
+    if (this.saying > 0 || (this.state() === 'parole' && this.voice.busy)) {
+      this.trace.mark('listen_open_drop', streaming ? 'flux' : '');
+      if (streaming) {
+        this.closeStreaming();
+      }
+      return;
+    }
     this.trace.mark(streaming ? 'stream_open' : 'stream_fallback', streaming ? '' : this.streamFallback);
     if (!streaming) {
       let failure = await this.openDictation();
@@ -2295,6 +2303,17 @@ export class JarvisComponent implements OnInit, OnDestroy {
    * repli (plafond, quota) ou le coupe-circuit (503) rendent exactement le mode actuel. Jamais muet.
    */
   private async converse(text: string): Promise<void> {
+    // F-251 / SF-251-01 — tant que le cerveau rapide calcule, la réécoute attend (sa voix peut encore venir).
+    this.conversing++;
+    try {
+      await this.converseOnce(text);
+    } finally {
+      this.conversing--;
+      this.rearmRelisten();
+    }
+  }
+
+  private async converseOnce(text: string): Promise<void> {
     this.state.set('reflexion');
     // F-240 / SF-240-04 — la réponse d'Opus reste à l'écran tant que le cerveau rapide n'a rien répondu d'autre :
     // « développe le point Helios » (ligne-marque ⤵) la lit.
@@ -2495,7 +2514,14 @@ export class JarvisComponent implements OnInit, OnDestroy {
         }
       }
       if (latest() && (this.state() === 'parole' || this.state() === 'reflexion')) {
-        this.state.set('repos');
+        // F-251 / SF-251-01 (course A) — une phrase dite hors du tour, commencée avant sa fin, garde « parole » : le
+        // repos (et la réécoute) viendra à sa fin, jamais sous sa voix.
+        if (this.jarvisSpeaking()) {
+          this.state.set('parole');
+          this.settleAfterSpeech();
+        } else {
+          this.state.set('repos');
+        }
       }
       // F-240 / SF-240-04 — « ⤵ » : la suite de la réponse déjà calculée, lue sur l'appareil (jamais Opus).
       if (latest() && moreAsked && !(await this.descend())) {
@@ -4050,6 +4076,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
   /** Dit `phrase` à voix haute ; si la voix manque, elle reste écrite. */
   async say(phrase: string, hooks?: SpeakHooks): Promise<void> {
     this.spoken.set(phrase);
+    // F-251 / SF-251-01 — Jarvis ne parle jamais micro ouvert : réécoute, ouverture ou écoute en cours sont coupées.
+    this.closeMicForSpeech();
+    this.saying++;
     this.state.set('parole');
     const startedAt = performance.now();
     this.trace.mark('say_start', `chars=${phrase.length}`);
@@ -4059,9 +4088,56 @@ export class JarvisComponent implements OnInit, OnDestroy {
     } catch (error) {
       this.trace.mark('say_fail', `${errorName(error)} ms=${Math.round(performance.now() - startedAt)}`);
       this.notice.set(voiceMessage(error as JarvisVoiceError));
+    } finally {
+      this.saying--;
     }
-    if (this.state() === 'parole') {
-      this.state.set('repos');
+    this.settleAfterSpeech();
+  }
+
+  /** F-251 / SF-251-01 — le nombre de phrases dites par {@link say} en ce moment. */
+  private saying = 0;
+  /** F-251 / SF-251-01 — le nombre de réponses du cerveau rapide en cours de calcul. */
+  private conversing = 0;
+
+  /** F-251 / SF-251-01 — Jarvis parle-t-il (phrase dite, ou file de voix pas encore vide) ? */
+  private jarvisSpeaking(): boolean {
+    return this.saying > 0 || !!this.voice.busy;
+  }
+
+  /**
+   * F-251 / SF-251-01 (course A) — une parole finie ne rend le repos que si plus rien n'est dit : ni une autre phrase,
+   * ni la file de voix d'un tour. Sinon « parole » reste, et le repos vient quand la file se vide.
+   */
+  private settleAfterSpeech(): void {
+    if (this.state() !== 'parole' || this.saying > 0) {
+      return;
+    }
+    if (this.voice.busy) {
+      // La file finie mais pas encore libérée : on revoit 100 ms plus tard (jamais de boucle serrée).
+      void this.voice.idle().then(() => this.voice.busy ? new Promise<void>((resolve) => setTimeout(resolve, 100)) : undefined)
+        .then(() => this.zone.run(() => this.settleAfterSpeech()));
+      return;
+    }
+    this.state.set('repos');
+  }
+
+  /**
+   * F-251 / SF-251-01 (course B) — avant que Jarvis parle : la réécoute armée est annulée, l'ouverture en cours
+   * abandonnée (elle rendra ce qu'elle ouvre), l'écoute ouverte close sans rien envoyer. La capture d'une coupure par
+   * la voix n'est jamais touchée.
+   */
+  private closeMicForSpeech(): void {
+    if (this.relistenTimer) {
+      this.trace.mark('say_during_listen', 'arm');
+      this.clearRelisten();
+    }
+    if (this.listenOpening) {
+      this.trace.mark('say_during_listen', 'opening');
+      this.openAttempt++;
+      this.listenOpening = false;
+    } else if (this.state() === 'ecoute' && !this.bargeIn.capturing) {
+      this.trace.mark('say_during_listen', 'ecoute');
+      this.cancelListening();
     }
   }
 
@@ -4247,6 +4323,15 @@ export class JarvisComponent implements OnInit, OnDestroy {
         this.trace.mark('relisten_skip', `${this.state()} tour=${this.turnRunning ? 1 : 0}`);
         return;
       }
+      // F-251 / SF-251-01 — jamais sous la voix de Jarvis, ni pendant que le cerveau rapide peut encore parler : la
+      // fin de la voix (repos) ou celle du cerveau rapide réarme la réécoute.
+      if (this.jarvisSpeaking() || this.conversing > 0) {
+        this.trace.mark('relisten_skip', this.conversing > 0 ? 'cerveau' : 'voix');
+        if (this.conversing === 0 && this.saying === 0) {
+          void this.voice.idle().then(() => this.zone.run(() => this.rearmRelisten()));
+        }
+        return;
+      }
       if (this.conversation.idleExpired()) {
         void this.endConversation();
         return;
@@ -4260,6 +4345,16 @@ export class JarvisComponent implements OnInit, OnDestroy {
     if (this.relistenTimer) {
       clearTimeout(this.relistenTimer);
       this.relistenTimer = null;
+    }
+  }
+
+  /**
+   * F-251 / SF-251-01 — après le cerveau rapide : l'écran déjà au repos (aucune transition d'état ne viendra) réarme la
+   * réécoute lui-même.
+   */
+  private rearmRelisten(): void {
+    if (this.conversing === 0 && this.state() === 'repos') {
+      this.onConversationState('repos', this.conversation.mode());
     }
   }
 
@@ -4322,7 +4417,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       this.orphanPasses = 0;
     }
     const stuck = active && this.state() === 'repos' && !this.turnRunning && !this.relistenTimer
-      && !this.listenOpening && !this.waking;
+      && !this.listenOpening && !this.waking && !this.jarvisSpeaking() && this.conversing === 0;
     if (!stuck) {
       this.stuckPasses = 0;
       return;

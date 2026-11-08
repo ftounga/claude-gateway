@@ -2301,6 +2301,146 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     jarvis.ngOnDestroy();
   }));
 
+  // ---------------------------------------------------------------- F-251 : Jarvis entend tout
+
+  /** F-251 — un écran en conversation, effets vivants (réécoute), cerveau rapide allumé ou non. */
+  function conversing(fastBrainOn: boolean): JarvisComponent {
+    fastBrain.warm.and.resolveTo(fastBrainOn);
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    fixture.autoDetectChanges();
+    return fixture.componentInstance;
+  }
+
+  function traceEvents(): { ev: string; d?: string }[] {
+    TestBed.inject(JarvisListenTrace).flush();
+    return traceBatches.flatMap((b) => b.events);
+  }
+
+  function pending(): { promise: Promise<void>; resolve: () => void } {
+    let resolve: () => void = () => undefined;
+    const promise = new Promise<void>((r) => resolve = r);
+    return { promise, resolve };
+  }
+
+  it('F-251 / SF-251-01 — course A : une phrase dite avant la fin du tour garde « parole » ; micro fermé jusqu’à sa fin',
+    fakeAsync(() => {
+      const jarvis = conversing(true);
+      jarvis.startConversation();
+      void jarvis.handle('Où en est le chantier 3 ?');
+      flushMicrotasks();
+      const phrase = pending();
+      voice.speak.and.returnValue(phrase.promise);
+      void jarvis.say('Je regarde le chantier.');
+      fast!.onDone({ brain: 'FAST', spokenText: '', firstTokenMs: 300, model: 'm' });
+      fastDone!('ok');
+      flushMicrotasks();
+      tick(1_000);
+      expect(jarvis.state()).toBe('parole');
+      expect(dictation.start).not.toHaveBeenCalled();
+      phrase.resolve();
+      flushMicrotasks();
+      expect(jarvis.state()).toBe('repos');
+      tick(300);
+      expect(dictation.start).toHaveBeenCalledTimes(1);
+      expect(jarvis.state()).toBe('ecoute');
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-251 / SF-251-01 — course A (file) : phrase finie mais file de voix active ⇒ « parole » jusqu’à ce qu’elle se vide',
+    fakeAsync(() => {
+      const jarvis = conversing(false);
+      let busy = true;
+      Object.defineProperty(voice, 'busy', { get: () => busy, configurable: true });
+      const queue = pending();
+      voice.idle.and.returnValue(queue.promise);
+      jarvis.startConversation();
+      tick(0);
+      void jarvis.say('Voici.');
+      flushMicrotasks();
+      tick(1_000);
+      expect(jarvis.state()).toBe('parole');
+      expect(dictation.start).not.toHaveBeenCalled();
+      // La réécoute armée par le démarrage de la conversation a été annulée par la phrase.
+      expect(traceEvents().some((e) => e.ev === 'say_during_listen' && e.d === 'arm')).toBeTrue();
+      busy = false;
+      queue.resolve();
+      flushMicrotasks();
+      expect(jarvis.state()).toBe('repos');
+      tick(300);
+      expect(dictation.start).toHaveBeenCalledTimes(1);
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-251 / SF-251-01 — course B : une phrase commencée pendant l’ouverture ⇒ l’écoute n’aboutit pas, session rendue',
+    fakeAsync(() => {
+      const ticket$ = new Subject<{ sessionId: string; provider: string; url: string; token: string; expiresAt: string;
+        sampleRate: number; maxSeconds: number }>();
+      jarvisApi.sttSession.and.returnValue(ticket$);
+      const listening = jasmine.createSpyObj('LiveListening', ['commit', 'close', 'audio', 'audioSeconds'],
+        { stream: undefined });
+      listening.close.and.returnValue(0);
+      opener.open.and.resolveTo(listening);
+      const jarvis = conversing(false);
+      jarvis.startConversation();
+      tick(300);
+      expect(jarvisApi.sttSession).toHaveBeenCalledTimes(1);
+      const phrase = pending();
+      voice.speak.and.returnValue(phrase.promise);
+      void jarvis.say('Un instant, Monsieur.');
+      ticket$.next({ sessionId: 's-b', provider: 'elevenlabs', url: 'wss://x/realtime', token: 't',
+        expiresAt: '2030-01-01T00:00:00Z', sampleRate: 16000, maxSeconds: 120 });
+      ticket$.complete();
+      flushMicrotasks();
+      expect(opener.open).toHaveBeenCalledTimes(1);
+      expect(listening.close).toHaveBeenCalled();
+      expect(jarvisApi.closeSttSession).toHaveBeenCalledWith('s-b', 0);
+      expect(jarvis.state()).toBe('parole');
+      const events = traceEvents();
+      expect(events.some((e) => e.ev === 'say_during_listen' && e.d === 'opening')).toBeTrue();
+      expect(events.some((e) => e.ev === 'stream_open')).toBeFalse();
+      phrase.resolve();
+      flushMicrotasks();
+      expect(jarvis.state()).toBe('repos');
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-251 / SF-251-01 — une phrase pendant une écoute ouverte la close sans rien envoyer', fakeAsync(() => {
+    const jarvis = conversing(false);
+    jarvis.startConversation();
+    tick(300);
+    expect(jarvis.state()).toBe('ecoute');
+    void jarvis.say('Pardon de vous interrompre.');
+    expect(dictation.cancel).toHaveBeenCalled();
+    expect(jarvis.state()).toBe('parole');
+    flushMicrotasks();
+    expect(atelier.streamChat).not.toHaveBeenCalled();
+    expect(traceEvents().some((e) => e.ev === 'say_during_listen' && e.d === 'ecoute')).toBeTrue();
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-251 / SF-251-01 — repos pendant que le cerveau rapide calcule : la réécoute attend sa fin, puis repart',
+    fakeAsync(() => {
+      const jarvis = conversing(true);
+      jarvis.startConversation();
+      jarvis['clearRelisten']();
+      void jarvis.handle('Bonjour Jarvis');
+      flushMicrotasks();
+      void jarvis.say('Un instant.');
+      flushMicrotasks();
+      expect(jarvis.state()).toBe('repos');
+      tick(300);
+      expect(dictation.start).not.toHaveBeenCalled();
+      expect(traceEvents().some((e) => e.ev === 'relisten_skip' && e.d === 'cerveau')).toBeTrue();
+      fast!.onDone({ brain: 'FAST', spokenText: '', firstTokenMs: 300, model: 'm' });
+      fastDone!('ok');
+      flushMicrotasks();
+      tick(300);
+      expect(dictation.start).toHaveBeenCalledTimes(1);
+      jarvis.ngOnDestroy();
+    }));
+
   it('F-241 / SF-241-04 — une ligne-marque ✦ n’est jamais dite ; présentation transmise ; allusion mesurée', fakeAsync(() => {
     const jarvis = fastOn();
     void jarvis.handle('Bonjour Jarvis');
