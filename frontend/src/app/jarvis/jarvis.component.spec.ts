@@ -2440,6 +2440,66 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       expect(dictation.start).toHaveBeenCalledTimes(1);
       jarvis.ngOnDestroy();
     }));
+  // ---------------------------------------------------------------- F-253 / SF-253-07 : la réponse rapide anime l'écran
+
+  it('F-253 / SF-253-07 — réponse rapide : le nœud cité s’allume, le nom brille quand il est dit, la mesure part', fakeAsync(() => {
+    const jarvis = fastOn();
+    const bus = TestBed.inject(JarvisSceneBus);
+    bus.setUniverse(testUniverse());
+    void jarvis.handle('Où en est Migration Forge ?');
+    flushMicrotasks();
+    expect(bus.turnActive()).toBeTrue();
+    fast!.onText('Migration Forge avance, Monsieur.');
+    expect(bus.state().lit.map((l) => l.node.key)).toContain('s-forge');
+    const hooks = voice.enqueue.calls.mostRecent().args[2]!;
+    hooks.onPlaying!();
+    expect(bus.state().said).toContain('s-forge');
+    fast!.onDone({ brain: 'FAST', spokenText: 'Migration Forge avance, Monsieur.', firstTokenMs: 300, model: 'm' });
+    fastDone!('ok');
+    flushMicrotasks();
+    expect(bus.turnActive()).toBeFalse();
+    expect(jarvisApi.scenes).toHaveBeenCalledTimes(1);
+    expect(jarvisApi.scenes.calls.mostRecent().args[0].lit).toBeGreaterThanOrEqual(1);
+    jarvis.ngOnDestroy();
+    discardPeriodicTasks();
+  }));
+
+  it('F-253 / SF-253-07 — un « Montrer » arrivé pendant l’échange reste ; une délégation garde sa scène ouverte', fakeAsync(() => {
+    const jarvis = fastOn();
+    const bus = TestBed.inject(JarvisSceneBus);
+    bus.setUniverse(testUniverse());
+    void jarvis.handle('Montre-moi les postes connectés');
+    flushMicrotasks();
+    jarvis.showLocal('connectes'); // l'ordre d'écran de l'échange, appliqué après l'ouverture du tour de scène
+    fast!.onText('Voici les postes connectés.');
+    fast!.onDone({ brain: 'FAST', spokenText: 'Voici les postes connectés.', firstTokenMs: 300, model: 'm' });
+    fastDone!('ok');
+    flushMicrotasks();
+    expect(jarvis.localShow()).not.toBeNull();
+
+    jarvisApi.scenes.calls.reset();
+    void jarvis.handle('Regarde les tickets bloqués de CAGIP');
+    flushMicrotasks();
+    fast!.onDelegated({ delegationId: 'd-1', subjectId: 'w-2', chantier: null, label: 'tickets',
+      announce: 'Je regarde.', demande: 'x', automatic: false, reason: null });
+    fastDone!('ok');
+    flushMicrotasks();
+    expect(bus.turnActive()).toBeTrue(); // la délégation tient la scène jusqu'à sa fin
+    expect(jarvisApi.scenes).not.toHaveBeenCalled();
+    jarvis.ngOnDestroy();
+    discardPeriodicTasks();
+  }));
+
+  it('F-253 / SF-253-07 — le sujet ouvert et le sujet choisi atteignent la scène (3D, cockpit)', fakeAsync(() => {
+    const jarvis = fastOn();
+    const bus = TestBed.inject(JarvisSceneBus);
+    expect(bus.subjectId()).toBe('w-2');
+    jarvis.chooseSubject('w-1');
+    expect(bus.subjectId()).toBe('w-1');
+    expect(jarvis.stageSignals().subjectId).toBe('w-1');
+    jarvis.ngOnDestroy();
+    discardPeriodicTasks();
+  }));
 
   it('F-241 / SF-241-04 — une ligne-marque ✦ n’est jamais dite ; présentation transmise ; allusion mesurée', fakeAsync(() => {
     const jarvis = fastOn();

@@ -2,7 +2,7 @@ import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
 import { JarvisConstellationComponent, breadcrumb } from './jarvis-constellation.component';
-import { anchorFor, layoutUniverse } from './jarvis-constellation-layout';
+import { LABEL_LIMIT, anchorFor, fitLabel, layoutUniverse } from './jarvis-constellation-layout';
 import { JarvisSceneBus } from './jarvis-scene-bus.service';
 import { testUniverse } from './jarvis-universe.fixture';
 
@@ -50,6 +50,20 @@ describe('F-234 / SF-234-03 — disposition de la constellation', () => {
   it('le client courant suit le sujet courant', () => {
     expect(layoutUniverse(testUniverse(), 's-runner', true).currentClientKey).toBe('h-eden');
     expect(layoutUniverse(null, 's-runner', true).clients).toEqual([]);
+  });
+
+  it('F-253 / SF-253-07 — une étiquette qui sortirait de l\'écran passe sous son point, recentrée ; sinon inchangée', () => {
+    const short = { x: 66.5, y: 1.8, anchor: 'start' as const };
+    expect(fitLabel({ x: 62, y: 0 }, short, 'web', 6)).toEqual(short);
+    const fitted = fitLabel({ x: 62, y: 0 }, short, 'data-platform', 6);
+    expect(fitted.anchor).toBe('middle');
+    expect(fitted.y).toBeGreaterThan(0);
+    const half = ('data-platform'.length * 6 * 0.6) / 2;
+    expect(fitted.x + half).toBeLessThanOrEqual(LABEL_LIMIT);
+    expect(fitted.x - half).toBeGreaterThanOrEqual(-LABEL_LIMIT);
+    const left = fitLabel({ x: -62, y: -10 }, { x: -66.5, y: -8.2, anchor: 'end' }, 'data-platform-très-long', 6);
+    expect(left.x - ('data-platform-très-long'.length * 3.6) / 2).toBeGreaterThanOrEqual(-LABEL_LIMIT);
+    expect(left.y).toBeLessThan(-10);
   });
 
   it('les noms partent vers l\'extérieur', () => {

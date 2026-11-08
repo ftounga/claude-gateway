@@ -3,7 +3,8 @@ import {
 } from '@angular/core';
 
 import {
-  CHANTIER_RING, CLIENT_RING, ConstellationLayout, PlacedSubject, SUBJECT_RING, anchorFor, layoutUniverse, polar,
+  CHANTIER_RING, CLIENT_RING, ConstellationLayout, LabelPlace, PlacedSubject, SUBJECT_RING, anchorFor, fitLabel,
+  layoutUniverse, polar,
 } from './jarvis-constellation-layout';
 import { JarvisSceneBus } from './jarvis-scene-bus.service';
 import { ShowFocus } from './jarvis-show';
@@ -73,7 +74,8 @@ interface LitMark {
                 <circle class="cst__halo" [class.cst__halo--off]="h === 'off'" [attr.cx]="c.x" [attr.cy]="c.y" r="8" />
               }
               <circle [attr.cx]="c.x" [attr.cy]="c.y" [attr.r]="isShown(c.key) ? 5.4 : 4.2" />
-              <text [attr.x]="c.x" [attr.y]="c.y + (c.y < 0 ? -7 : 10)" text-anchor="middle">{{ c.name }}</text>
+              @let cl = clientLabel(c.x, c.y, c.name);
+              <text [attr.x]="cl.x" [attr.y]="cl.y" [attr.text-anchor]="cl.anchor">{{ c.name }}</text>
             </g>
           }
         </g>
@@ -88,8 +90,8 @@ interface LitMark {
             <circle class="cst__hit" [attr.cx]="s.x" [attr.cy]="s.y" [attr.r]="hitRadius()" />
             <circle class="cst__dot" [attr.cx]="s.x" [attr.cy]="s.y" [attr.r]="s.ring === 'cluster' ? 1.4 : 2.6" />
             @if (s.named || isLit(s.id) || s.id === subjectId()) {
-              <text aria-hidden="true" [attr.x]="labelX(s)" [attr.y]="s.y + 1.8"
-                    [attr.text-anchor]="anchor(s.x)">{{ s.name }}</text>
+              @let sl = subjectLabel(s);
+              <text aria-hidden="true" [attr.x]="sl.x" [attr.y]="sl.y" [attr.text-anchor]="sl.anchor">{{ s.name }}</text>
             }
           </g>
         }
@@ -104,9 +106,8 @@ interface LitMark {
               } @else {
                 <rect [attr.x]="m.x - 2.4" [attr.y]="m.y - 2.4" width="4.8" height="4.8" rx="1.2" />
               }
-              <text [attr.x]="m.x + (m.anchor === 'start' ? 5 : m.anchor === 'end' ? -5 : 0)"
-                    [attr.y]="m.y + (m.anchor === 'middle' ? (m.y < 0 ? -5 : 8) : 1.8)"
-                    [attr.text-anchor]="m.anchor">{{ m.label }}</text>
+              @let ml = markLabel(m, true);
+              <text [attr.x]="ml.x" [attr.y]="ml.y" [attr.text-anchor]="ml.anchor">{{ m.label }}</text>
             </g>
           }
           @for (m of lit(); track m.key) {
@@ -124,8 +125,8 @@ interface LitMark {
                     <circle [attr.cx]="m.x" [attr.cy]="m.y" r="2.4" />
                   }
                 }
-                <text [attr.x]="m.x + (m.anchor === 'start' ? 5 : m.anchor === 'end' ? -5 : 0)"
-                      [attr.y]="m.y + (m.anchor === 'middle' ? -5 : 1.8)" [attr.text-anchor]="m.anchor">{{ m.label }}</text>
+                @let ll = markLabel(m, false);
+                <text [attr.x]="ll.x" [attr.y]="ll.y" [attr.text-anchor]="ll.anchor">{{ m.label }}</text>
               </g>
             }
           }
@@ -388,6 +389,27 @@ export class JarvisConstellationComponent implements OnInit {
   labelX(s: PlacedSubject): number {
     const anchor = anchorFor(s.x);
     return s.x + (anchor === 'start' ? 4.5 : anchor === 'end' ? -4.5 : 0);
+  }
+
+  /** F-253 / SF-253-07 — l'étiquette d'un sujet, gardée dans l'écran au téléphone. */
+  subjectLabel(s: PlacedSubject): LabelPlace {
+    return this.fit(s, { x: this.labelX(s), y: s.y + 1.8, anchor: anchorFor(s.x) }, s.name, 6);
+  }
+
+  /** F-253 / SF-253-07 — l'étiquette d'un client (centrée au-dessus ou au-dessous de son point). */
+  clientLabel(x: number, y: number, name: string): LabelPlace {
+    return this.fit({ x, y }, { x, y: y + (y < 0 ? -7 : 10), anchor: 'middle' }, name, 6.5);
+  }
+
+  /** F-253 / SF-253-07 — l'étiquette d'un nœud cité ou montré. */
+  markLabel(m: LitMark, shown: boolean): LabelPlace {
+    const x = m.x + (m.anchor === 'start' ? 5 : m.anchor === 'end' ? -5 : 0);
+    const y = m.y + (m.anchor === 'middle' ? (shown && m.y >= 0 ? 8 : -5) : 1.8);
+    return this.fit(m, { x, y, anchor: m.anchor }, m.label, 6.5);
+  }
+
+  private fit(point: { x: number; y: number }, place: LabelPlace, label: string, fontSize: number): LabelPlace {
+    return this.narrow() ? fitLabel(point, place, label, fontSize) : place;
   }
 
   pick(s: PlacedSubject): void {
