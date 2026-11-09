@@ -683,3 +683,20 @@ mesurer — un effondrement de la part relue qui coïncide avec une compaction s
 
 **À trancher seulement si la mesure le montre** : rien ne justifie de toucher au seuil de compaction
 avant d'avoir vu qu'il pose problème.
+
+---
+
+## OQ-23 — Quelle profondeur et quelle durée pour l'historique des mails (F-254) ?
+
+**Statut : ouverte, bloque le développement de F-254.**
+
+Aujourd'hui, tout mail est purgé à 30 jours. Reprendre une boîte entière impose de conserver des mails de clients,
+scellés, sur la passerelle, beaucoup plus longtemps.
+
+| Option | Portée | Conséquence |
+|---|---|---|
+| A (recommandée) | 12 derniers mois, conservés 12 mois glissants | Couvre les sujets vivants, limite le volume et l'exposition |
+| B | Toute la boîte, sans limite de durée | Couverture maximale, exposition et volume maximaux |
+| C | 12 derniers mois, seuls les mails rattachés à un sujet sont gardés | Le plus sobre, mais un mail mal rattaché est perdu |
+
+À trancher par le PO, après vérification de ce que chaque contrat client autorise.
