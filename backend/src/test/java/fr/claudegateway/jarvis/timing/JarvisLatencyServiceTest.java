@@ -12,6 +12,15 @@ import org.junit.jupiter.api.Test;
 class JarvisLatencyServiceTest {
 
     @Test
+    void emptyDiagnosticKeepsOnlyItsClosedVocabulary() {
+        org.assertj.core.api.Assertions.assertThat(JarvisLatencyService.diagnostic("stop=max_tokens outils=aucun rejets=ancrage:1"))
+                .isEqualTo("stop=max_tokens outils=aucun rejets=ancrage:1");
+        org.assertj.core.api.Assertions.assertThat(JarvisLatencyService.diagnostic("stop=« du contenu »")).isNull();
+        org.assertj.core.api.Assertions.assertThat(JarvisLatencyService.diagnostic("a".repeat(201))).isNull();
+        org.assertj.core.api.Assertions.assertThat(JarvisLatencyService.diagnostic(null)).isNull();
+    }
+
+    @Test
     @DisplayName("percentile au rang le plus proche ; null sans valeur")
     void percentile() {
         assertThat(JarvisLatencyService.percentile(List.of(), 50)).isNull();

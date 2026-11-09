@@ -472,12 +472,15 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     const fixture = TestBed.createComponent(JarvisComponent);
     fixture.detectChanges();
     flushMicrotasks();
+    // F-253 / SF-253-06 — chaque ordre d'écran est tracé au journal d'écoute.
+    const mark = spyOn(TestBed.inject(JarvisListenTrace), 'mark');
     let ok = false;
     void fixture.componentInstance.applyShow({ action: 'piece', pieces: ['courriel:22222222-2222-2222-2222-222222222222'],
       reason: 'demande' }).then((r) => ok = r);
     flushMicrotasks();
     fixture.detectChanges();
     expect(ok).toBeTrue();
+    expect(mark).toHaveBeenCalledWith('show', 'piece');
     expect(mailClient.body).toHaveBeenCalledWith('22222222-2222-2222-2222-222222222222');
     expect(fixture.componentInstance.mailCard()?.mode).toBe('capture');
     expect((fixture.nativeElement as HTMLElement).querySelector('.jmc__body')?.textContent).toContain('voici le devis');

@@ -31,7 +31,7 @@ export class TurnClock {
   workspaceId: string | null = null;
   /** F-235 / SF-235-07 (D14) — posé par l'échange avec le cerveau rapide ; absent pour un tour Opus d'avant. */
   fast: Partial<Pick<TurnTimingReport, 'brain' | 'fastModel' | 'fastFirstTokenMs' | 'groundingTrips'
-    | 'fillersRemoved' | 'repeatsRemoved' | 'imitationsRemoved' | 'forcedDelegation' | 'delegationReason'
+    | 'fillersRemoved' | 'repeatsRemoved' | 'imitationsRemoved' | 'forcedDelegation' | 'delegationReason' | 'emptyDiagnostic'
     | 'correction' | 'portraitOn' | 'portraitBlocked' | 'personalAllusion'
     | 'hostOffline' | 'stateQuestion' | 'stateAnswer' | 'stateBlockMs' | 'cardsLagMs' | 'cardsCount'>> = {};
   /** F-239 / SF-239-01 — la parole a été refusée (aucun tour) : raison et longueur, jamais le texte. */

@@ -247,6 +247,10 @@ public class JarvisTurnTiming {
     private Integer prepMs;
 
     /** Réponse provisoire (SF-252-02/04) : {@code adoptee}, {@code relancee}, {@code perdue}, {@code anticipee}. */
+    /** F-253 / SF-253-06 — un tour vide : arrêt du modèle, outils, motifs de rejet. Aucun contenu. */
+    @Column(name = "empty_diagnostic", length = 200)
+    private String emptyDiagnostic;
+
     @Column(name = "speculation", length = 12)
     private String speculation;
 
