@@ -66,7 +66,7 @@ public class JarvisStateTurnMeter {
      * Le poste visé est-il déconnecté ? Le poste du sujet s'il y en a un ; sans sujet, vrai si le compte a des postes et
      * qu'aucun n'est connecté ; {@code null} sans poste (hébergé seul).
      */
-    Boolean hostOffline(UUID userId, Workspace workspace) {
+    public Boolean hostOffline(UUID userId, Workspace workspace) {
         if (workspace != null && workspace.getHostId() != null) {
             return !status.hostStatus(userId, workspace.getHostId()).connected();
         }
