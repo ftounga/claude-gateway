@@ -95,7 +95,12 @@ public class JarvisFastBrainService {
 
     /** Une délégation : ce qu'Opus doit faire, et ce que Jarvis dit en la lançant. */
     public record Delegation(UUID delegationId, String demande, String label, String annonce, UUID subjectId,
-            Integer chantier, boolean automatic, String reason) {
+            Integer chantier, boolean automatic, String reason, String diagnostic) {
+
+        public Delegation(UUID delegationId, String demande, String label, String annonce, UUID subjectId,
+                Integer chantier, boolean automatic, String reason) {
+            this(delegationId, demande, label, annonce, subjectId, chantier, automatic, reason, null);
+        }
     }
 
     /** Le résultat d'un échange. */
@@ -1318,7 +1323,7 @@ public class JarvisFastBrainService {
             text = SHOWN_REPLY;
         }
         if (text.isEmpty() || (turn.truncated() && shown.isEmpty())) {
-            return auto(request, REASON_EMPTY, firstMs, gate.guards()).withShows(shown);
+            return autoEmpty(request, firstMs, gate.guards(), turn).withShows(shown);
         }
         return new Outcome(Kind.ANSWER, text, null, null, properties.model(), firstMs, null, gate.guards())
                 .withShows(shown);
@@ -2446,6 +2451,45 @@ public class JarvisFastBrainService {
     /** Délégation d'office de la parole d'origine (D9b) : jamais de silence, jamais d'invention. */
     Outcome auto(Request request, String reason, long firstMs) {
         return auto(request, reason, firstMs, Guards.NONE);
+    }
+
+    /** F-253 / SF-253-06 — un tour vide : la délégation d'office porte sa cause, lisible au journal et en mesure. */
+    private Outcome autoEmpty(Request request, long firstMs, Guards guards, AgentTurn turn) {
+        String diagnostic = emptyDiagnostic(turn, guards);
+        log.info("Cerveau rapide : tour vide ({})", diagnostic);
+        Outcome o = auto(request, REASON_EMPTY, firstMs, guards);
+        Delegation d = o.delegation();
+        return new Outcome(o.kind(), o.spokenText(), new Delegation(d.delegationId(), d.demande(), d.label(),
+                d.annonce(), d.subjectId(), d.chantier(), d.automatic(), d.reason(), diagnostic), o.reason(), o.model(),
+                o.firstTokenMs(), o.costUsd(), o.guards());
+    }
+
+    /**
+     * F-253 / SF-253-06 — pourquoi un tour n'a rien dit : l'arrêt du modèle, ses outils, chaque motif de rejet de la
+     * porte des phrases. Aucun contenu (noms d'outils de la liste fermée, compteurs).
+     */
+    static String emptyDiagnostic(AgentTurn turn, Guards g) {
+        String stop = turn == null ? "aucun" : turn.truncated() ? "max_tokens"
+                : turn.toolCalls().isEmpty() ? "end_turn" : "tool_use";
+        String tools = turn == null || turn.toolCalls().isEmpty() ? "aucun"
+                : String.join(",", turn.toolCalls().stream().map(AgentToolCall::name).toList());
+        List<String> rejects = new ArrayList<>();
+        addReject(rejects, "ancrage", g.groundingTrips());
+        addReject(rejects, "remplissage", g.fillersRemoved());
+        addReject(rejects, "repetition", g.repeatsRemoved());
+        addReject(rejects, "imitation", g.imitationsRemoved());
+        addReject(rejects, "portrait", g.portraitBlocked());
+        addReject(rejects, "allusion", g.allusionsBlocked());
+        if (g.toolText()) {
+            rejects.add("texte_outil:1");
+        }
+        return "stop=" + stop + " outils=" + tools + " rejets=" + (rejects.isEmpty() ? "aucun" : String.join(",", rejects));
+    }
+
+    private static void addReject(List<String> rejects, String motive, int count) {
+        if (count > 0) {
+            rejects.add(motive + ":" + count);
+        }
     }
 
     Outcome auto(Request request, String reason, long firstMs, Guards guards) {

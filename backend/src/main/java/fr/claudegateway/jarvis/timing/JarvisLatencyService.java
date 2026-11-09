@@ -149,6 +149,7 @@ public class JarvisLatencyService {
                 .companion(report.companion())
                 // F-252 / SF-252-01 — la vitesse : préparation, réponse provisoire, silence de fin, anticipations.
                 .prepMs(mark(report.prepMs()))
+                .emptyDiagnostic(diagnostic(report.emptyDiagnostic()))
                 .speculation(closed(report.speculation(), SPECULATIONS))
                 .endSilenceMs(mark(report.endSilenceMs()))
                 .anticipationsDropped(report.anticipationsDropped() == null ? null
@@ -357,7 +358,16 @@ public class JarvisLatencyService {
             // F-233 / SF-233-13 — facultatifs : raison du repli hors flux (liste fermée), page ouverte dans le compagnon.
             String streamFallback, Boolean companion,
             // F-252 / SF-252-01 — facultatifs : préparation serveur, réponse provisoire, silence de fin, anticipations.
-            Integer prepMs, String speculation, Integer endSilenceMs, Integer anticipationsDropped) {
+            Integer prepMs, String speculation, Integer endSilenceMs, Integer anticipationsDropped,
+            // F-253 / SF-253-06 — facultatif : la cause d'un tour vide (arrêt, outils, motifs de rejet).
+            String emptyDiagnostic) {
+    }
+
+    /** F-253 / SF-253-06 — vocabulaire du diagnostic, borné : tout autre caractère retire la valeur. */
+    private static final Pattern DIAGNOSTIC = Pattern.compile("[a-z0-9_=:, ]{1,200}");
+
+    static String diagnostic(String raw) {
+        return raw != null && DIAGNOSTIC.matcher(raw).matches() ? raw : null;
     }
 
     /** F-252 / SF-252-01 — les issues d'une réponse provisoire (SF-252-02/04, liste fermée). */

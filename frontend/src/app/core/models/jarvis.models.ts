@@ -142,6 +142,8 @@ export interface TurnTimingReport {
   imitationsRemoved?: number;
   forcedDelegation?: boolean;
   delegationReason?: string | null;
+  /** F-253 / SF-253-06 — la cause d'un tour vide (arrêt, outils, motifs de rejet). */
+  emptyDiagnostic?: string | null;
   correction?: boolean;
   /** F-241 / SF-241-03 — le portrait servait à l'échange, et phrases écartées par ses interdits (jamais le texte). */
   portraitOn?: boolean | null;

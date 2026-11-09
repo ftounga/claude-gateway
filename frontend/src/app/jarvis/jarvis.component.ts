@@ -2618,6 +2618,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     let fellBack = false;
     let finished: FastDone | null = null;
     let delegationReason: string | null = null;
+    let emptyDiagnostic: string | null = null;
     // F-240 / SF-240-01 — l'échange a délégué : sa mesure attend que la fin de la délégation soit dite.
     let delegatedId: string | null = null;
     // F-240 / SF-240-04 — le cerveau rapide a répondu « ⤵ » : l'écran descend d'un étage, sans le dire.
@@ -2704,6 +2705,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       }),
       onDelegated: (delegation) => this.zone.run(() => {
         delegationReason = delegation.automatic ? delegation.reason : null;
+        emptyDiagnostic = delegation.automatic ? delegation.diagnostic ?? null : null;
         if (isProofDemand(delegation.demande, delegation.label)) {
           this.pieces.count('pf_ok'); // F-237 / SF-237-14 — « oui » à la proposition de preuve (chaîne §6.4)
         }
@@ -2785,6 +2787,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
           personalAllusion: guards?.personalAllusion ?? null,
           forcedDelegation: guards?.forcedDelegation ?? false,
           delegationReason,
+          emptyDiagnostic,
           // F-247 / SF-247-01 — la mesure d'état de la réplique (sans contenu), recopiée telle quelle.
           hostOffline: done.state?.hostOffline ?? null,
           stateQuestion: done.state?.stateQuestion ?? null,
@@ -3803,6 +3806,18 @@ export class JarvisComponent implements OnInit, OnDestroy {
    * (pièce introuvable, index hors bornes) est dit, court ; un refus silencieux (déjà montrée) ne dit rien.
    */
   async applyShow(command: ShowCommand): Promise<boolean> {
+    // F-253 / SF-253-06 — chaque ordre d'écran au journal d'écoute : montré, ou refusé et pourquoi.
+    this.showRefusal = null;
+    const shown = await this.runShow(command);
+    this.trace.mark(shown ? 'show' : 'show_refused',
+      shown ? command.action : `${command.action} ${this.showRefusal ?? 'ecran'}`);
+    return shown;
+  }
+
+  /** F-253 / SF-253-06 — la raison du dernier refus du réducteur des pièces. */
+  private showRefusal: string | null = null;
+
+  private async runShow(command: ShowCommand): Promise<boolean> {
     // F-242 / SF-242-04 — un courriel n'est pas une pièce de chantier : il s'ouvre dans sa visionneuse.
     const mailId = mailPieceId(command.pieces);
     if (mailId) {
@@ -3823,6 +3838,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       subjectId: this.subjectId(), subjectName: this.subject()?.name ?? null, sober: this.sober(),
     });
     if (!done.ok) {
+      this.showRefusal = done.reason ?? null;
       const phrase = refusalPhrase(done.reason);
       if (phrase) {
         await this.say(phrase);

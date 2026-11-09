@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-253 / SF-253-06 - TOURS VIDES TRACES.
+
+      jarvis_turn_timings + empty_diagnostic : pourquoi le cerveau rapide n'a rien dit (arret du modele, noms d'outils,
+      motifs de rejet de la porte des phrases). Aucun contenu. Colonne additive, NULL pour les lignes existantes.
+      Purge 90 j existante inchangee.
+
+      Rollback : la colonne se retire.
+    -->
+
+    <changeSet id="253-06-jarvis-empty-diagnostic" author="claude-gateway">
+        <addColumn tableName="jarvis_turn_timings">
+            <column name="empty_diagnostic" type="varchar(200)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="jarvis_turn_timings" columnName="empty_diagnostic"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
