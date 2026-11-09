@@ -116,6 +116,60 @@ class JarvisFastBrainApiIntegrationTest {
         assertThat(threads.find(bobId)).isEmpty();
     }
 
+    private org.springframework.test.web.servlet.ResultActions verdict(String token, String json) throws Exception {
+        return mockMvc.perform(post("/api/jarvis/converse/verdict").contextPath("/api")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(json));
+    }
+
+    private String provisional(UUID speculation) throws Exception {
+        MvcResult started = mockMvc.perform(post("/api/jarvis/converse").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"subjectId\":\"" + workspaceId + "\",\"text\":\"bonjour jarvis\","
+                                + "\"speculationId\":\"" + speculation + "\"}"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+        return mockMvc.perform(asyncDispatch(started)).andExpect(status().isOk()).andReturn().getResponse()
+                .getContentAsString();
+    }
+
+    @Test
+    @DisplayName("F-252 / SF-252-02 — adoptée : la réponse finit normalement, tracée avec le texte de référence")
+    void aProvisionalAnswerAdoptedIsWrittenWithTheReference() throws Exception {
+        UUID speculation = UUID.randomUUID();
+        verdict(aliceToken, "{\"speculationId\":\"" + speculation + "\",\"adopted\":true,"
+                + "\"text\":\"Bonjour Jarvis.\"}").andExpect(status().isNoContent());
+        String body = provisional(speculation);
+        assertThat(body).contains("event:text").contains("event:done").doesNotContain("event:dropped");
+        UUID thread = threads.find(aliceId).orElseThrow().getId();
+        assertThat(messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(thread, aliceId))
+                .extracting(fr.claudegateway.atelier.AtelierMessage::getContent).first().isEqualTo("Bonjour Jarvis.");
+    }
+
+    @Test
+    @DisplayName("F-252 / SF-252-02 — jetée : événement dropped, aucune trace ; le verdict d'un autre compte ne compte pas")
+    void aProvisionalAnswerRejectedLeavesNoTrace() throws Exception {
+        UUID speculation = UUID.randomUUID();
+        verdict(bobToken, "{\"speculationId\":\"" + speculation + "\",\"adopted\":true,\"text\":\"Autre\"}")
+                .andExpect(status().isNoContent());
+        verdict(aliceToken, "{\"speculationId\":\"" + speculation + "\",\"adopted\":false}")
+                .andExpect(status().isNoContent());
+        String body = provisional(speculation);
+        assertThat(body).contains("event:dropped").doesNotContain("event:done");
+        assertThat(threads.find(aliceId)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("F-252 / SF-252-02 — verdict invalide : 400")
+    void anInvalidVerdictIsRefused() throws Exception {
+        UUID speculation = UUID.randomUUID();
+        verdict(aliceToken, "{\"adopted\":true,\"text\":\"x\"}").andExpect(status().isBadRequest());
+        verdict(aliceToken, "{\"speculationId\":\"" + speculation + "\",\"adopted\":true}")
+                .andExpect(status().isBadRequest());
+        verdict(aliceToken, "{\"speculationId\":\"" + speculation + "\"}").andExpect(status().isBadRequest());
+    }
+
     @Test
     @DisplayName("isolation : le sujet d'Alice est introuvable pour Bob (404), rien ne part au fournisseur")
     void anotherAccountsSubjectIsNotFound() throws Exception {

@@ -707,6 +707,8 @@ app:
       # F-252 / SF-252-01 : preparation serveur en parallele (coupe-circuit) et univers garde 30 s par compte.
       parallel-prep: ${APP_JARVIS_FAST_BRAIN_PARALLEL_PREP:true}
       universe-ttl: ${APP_JARVIS_FAST_BRAIN_UNIVERSE_TTL:30s}
+      # F-252 / SF-252-02 : reponse provisoire pendant la retranscription (coupe-circuit).
+      speculation: ${APP_JARVIS_FAST_BRAIN_SPECULATION:true}
     # F-235 / SF-235-08 (D16) : LE BANC du cerveau rapide (POST /api/admin/jarvis/fast-brain/bench, ADMIN) — le juge
     # qui note chaque cas. La mise en service (enabled=true ci-dessus) suit un passage dont la porte est franchie.
     fast-brain-bench:

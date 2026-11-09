@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-252 / SF-252-02 - REPONDRE SANS ATTENDRE LA RETRANSCRIPTION (D3).
+
+      jarvis_fast_verdicts : le verdict de l'ecran sur une reponse provisoire (adoptee ou jetee), depose par un pod et lu
+      par celui qui tient le flux (deux pods, sans affinite). Ligne courte : consommee puis supprimee, purge a 1 h des
+      orphelines. Le texte de reference n'y reste que le temps de la reponse. Toujours lue sous user_id.
+
+      Rollback : la table est supprimee.
+    -->
+
+    <changeSet id="252-02-jarvis-fast-verdicts" author="claude-gateway">
+        <createTable tableName="jarvis_fast_verdicts">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="speculation_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="adopted" type="boolean"><constraints nullable="false"/></column>
+            <column name="text" type="varchar(4000)"/>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="jarvis_fast_verdicts" columnNames="user_id, speculation_id"
+                             constraintName="uq_jarvis_fast_verdicts_user_speculation"/>
+        <createIndex tableName="jarvis_fast_verdicts" indexName="idx_jarvis_fast_verdicts_created">
+            <column name="created_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="jarvis_fast_verdicts"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

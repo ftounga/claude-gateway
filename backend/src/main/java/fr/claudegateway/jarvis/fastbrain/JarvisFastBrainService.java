@@ -465,7 +465,52 @@ public class JarvisFastBrainService {
      * d'office ou un repli.
      */
     public Outcome converse(Request request, Sink sink) {
-        Outcome decided = decide(request, sink);
+        return settle(request, decide(request, sink), sink);
+    }
+
+    /** F-252 / SF-252-02 (D2) — les effets d'une réponse provisoire, retenus jusqu'à son adoption. */
+    private static final ThreadLocal<List<Runnable>> HELD_EFFECTS = new ThreadLocal<>();
+
+    /** Un effet de la réplique : tout de suite, ou à l'adoption si la réponse est provisoire. */
+    private static void effect(Runnable action) {
+        List<Runnable> held = HELD_EFFECTS.get();
+        if (held != null) {
+            held.add(action);
+        } else {
+            action.run();
+        }
+    }
+
+    /**
+     * F-252 / SF-252-02 (correctif A, D1, D2) — <b>une réponse provisoire</b> : même décision, mêmes fragments relayés
+     * (l'écran les garde en silence), <b>aucun effet</b> (routage, trace, mémoire, relance du portrait, allusions) tant
+     * que {@code verdict} n'a pas rendu « adoptée », avec le texte de référence. Vide : la réponse est jetée.
+     */
+    public java.util.Optional<Outcome> converseProvisional(Request request, Sink sink,
+            java.util.function.Supplier<java.util.Optional<JarvisFastVerdictService.Verdict>> verdict) {
+        List<Runnable> held = new ArrayList<>();
+        HELD_EFFECTS.set(held);
+        Outcome decided;
+        try {
+            decided = decide(request, sink);
+        } finally {
+            HELD_EFFECTS.remove();
+        }
+        java.util.Optional<JarvisFastVerdictService.Verdict> adopted = verdict.get()
+                .filter(JarvisFastVerdictService.Verdict::adopted);
+        if (adopted.isEmpty()) {
+            return java.util.Optional.empty();
+        }
+        held.forEach(Runnable::run);
+        String reference = adopted.get().text();
+        Request referenced = reference == null || reference.isBlank() ? request : new Request(request.userId(),
+                request.workspace(), request.chantier(), reference, request.heardBeforeCut(), request.screen(),
+                request.presentation());
+        return java.util.Optional.of(settle(referenced, decided, sink));
+    }
+
+    /** Ce qui suit la décision : routage, question du sujet, trace au fil, mémoire, registre (effets d'un échange). */
+    private Outcome settle(Request request, Outcome decided, Sink sink) {
         Outcome outcome = route(request, decided);
         if (sink != null && decided.kind() == Kind.DELEGATE && outcome.kind() == Kind.ANSWER) {
             // F-239 / SF-239-02 — la question du sujet est dite (elle n'était jamais poussée au fil de l'eau).
@@ -1233,16 +1278,18 @@ public class JarvisFastBrainService {
         // F-241 / SF-241-05 (D15) — la relance a été posée : la suivante attend 90 jours.
         if (!bench && portrait != null && portraits != null && gate.abortReason() == null
                 && fr.claudegateway.jarvis.portrait.JarvisPortraitNote.isCheckin(gate.spoken())) {
-            try {
-                portraits.markCheckin(userId);
-            } catch (RuntimeException e) {
-                log.debug("Relance du portrait non datée ({})", e.getClass().getSimpleName());
-            }
+            effect(() -> {
+                try {
+                    portraits.markCheckin(userId);
+                } catch (RuntimeException e) {
+                    log.debug("Relance du portrait non datée ({})", e.getClass().getSimpleName());
+                }
+            });
         }
         // F-241 / SF-241-04 (D11) — chaque allusion dite est journalisée, déclarée (✦) ou rattrapée ; pas au banc.
         if (!bench && portrait != null && allusions != null && gate.abortReason() == null) {
-            gate.journal((kind, topic, phrase, spontaneous) -> allusions.record(userId, kind, topic, phrase,
-                    spontaneous));
+            effect(() -> gate.journal((kind, topic, phrase, spontaneous) -> allusions.record(userId, kind, topic, phrase,
+                    spontaneous)));
         }
         if (gate.abortReason() != null) {
             if (REASON_GROUNDING.equals(gate.abortReason()) && !shown.isEmpty() && turn.toolCalls().stream()

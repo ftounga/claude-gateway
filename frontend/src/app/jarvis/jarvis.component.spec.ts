@@ -3,6 +3,7 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Subject, of, throwError } from 'rxjs';
+import { JarvisUtterance } from '../core/models/jarvis.models';
 
 import { BUDGET_SOFT_NOTICE, JARVIS_USER_AGENT, JarvisComponent, UNLOCK_ASK_PHRASE, UNLOCK_REFUSED_PHRASE, companionMicMessage, companionOffer, dictationMessage, euros } from './jarvis.component';
 import { JarvisSceneBus } from './scenes/jarvis-scene-bus.service';
@@ -98,7 +99,8 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     handlers = null;
     fast = null;
     // F-235 / SF-235-05 — par défaut, le cerveau rapide est éteint (503) : l'écran garde le mode actuel.
-    fastBrain = jasmine.createSpyObj<JarvisFastBrainClient>('JarvisFastBrainClient', ['warm', 'converse']);
+    fastBrain = jasmine.createSpyObj<JarvisFastBrainClient>('JarvisFastBrainClient', ['warm', 'converse', 'verdict']);
+    fastBrain.verdict.and.resolveTo();
     // F-241 / SF-241-02 — l'entretien : par défaut, aucune proposition (la cadence est tenue par la passerelle).
     interviewClient = jasmine.createSpyObj<JarvisInterviewClient>('JarvisInterviewClient', ['offer', 'offered', 'draft']);
     interviewClient.offer.and.returnValue(of({ offer: false, offers: 0 }));
@@ -2034,6 +2036,84 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       expect(jarvisApi.timings.calls.mostRecent().args[0].sttProvider).toBe('elevenlabs-batch');
     }));
 
+  describe('F-252 / SF-252-02 — répondre sans attendre la retranscription', () => {
+    function started(ready: { stt: () => StreamHandlers }): JarvisComponent {
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      const jarvis = fixture.componentInstance;
+      flushMicrotasks();
+      void jarvis.talk();
+      flushMicrotasks();
+      ready.stt().onCommitted('Où en est CAGIP ?');
+      flushMicrotasks();
+      return jarvis;
+    }
+
+    it('CA6/CA7 — même texte : le flux part en silence, un seul appel, adoption à la retranscription',
+      fakeAsync(() => {
+        fastBrain.warm.and.resolveTo(true);
+        const ready = streamWithAudio();
+        const final = new Subject<JarvisUtterance>();
+        jarvisApi.utterance.and.returnValue(final.asObservable());
+        const jarvis = started(ready);
+        expect(fastBrain.converse).toHaveBeenCalledTimes(1);
+        const body = fastBrain.converse.calls.mostRecent().args[0];
+        expect(body.text).toBe('Où en est CAGIP ?');
+        expect(body.speculationId).toBeTruthy();
+        fast!.onText('Le chantier est prêt.');
+        flushMicrotasks();
+        expect(voice.enqueue).not.toHaveBeenCalled(); // rien n'est dit avant la retranscription
+
+        final.next({ text: 'où en est cagip ?', provider: 'elevenlabs-batch', ms: 600 });
+        final.complete();
+        flushMicrotasks();
+        expect(fastBrain.converse).toHaveBeenCalledTimes(1);
+        expect(fastBrain.verdict).toHaveBeenCalledOnceWith(body.speculationId!, true, 'où en est cagip ?');
+        expect(voice.enqueue).toHaveBeenCalledTimes(1);
+        fast!.onDone({ brain: 'FAST', spokenText: 'Le chantier est prêt.', firstTokenMs: 900, model: 'm' });
+        fastDone!('ok');
+        flushMicrotasks();
+        jarvis['flushParked']();
+        expect(jarvisApi.timings.calls.mostRecent().args[0].speculation).toBe('adoptee');
+      }));
+
+    it('CA7 — texte différent : appel provisoire interrompu, appel normal avec la retranscription, rien de provisoire dit',
+      fakeAsync(() => {
+        fastBrain.warm.and.resolveTo(true);
+        const ready = streamWithAudio();
+        const final = new Subject<JarvisUtterance>();
+        jarvisApi.utterance.and.returnValue(final.asObservable());
+        started(ready);
+        const provisional = fastBrain.converse.calls.mostRecent();
+        fast!.onText('Réponse sur le mauvais texte.');
+
+        final.next({ text: 'Où en est Agenor ?', provider: 'elevenlabs-batch', ms: 600 });
+        final.complete();
+        flushMicrotasks();
+        expect((provisional.args[2] as AbortSignal).aborted).toBeTrue();
+        expect(fastBrain.verdict).toHaveBeenCalledOnceWith(provisional.args[0].speculationId!, false, null);
+        expect(fastBrain.converse).toHaveBeenCalledTimes(2);
+        const normal = fastBrain.converse.calls.mostRecent().args[0];
+        expect(normal.text).toBe('Où en est Agenor ?');
+        expect(normal.speculationId).toBeUndefined();
+        expect(voice.enqueue).not.toHaveBeenCalled();
+      }));
+
+    it('parole non destinée au cerveau rapide (changement de sujet) : aucun appel provisoire', fakeAsync(() => {
+      fastBrain.warm.and.resolveTo(true);
+      const ready = streamWithAudio();
+      jarvisApi.utterance.and.returnValue(of({ text: 'Passe sur CAGIP.', provider: 'elevenlabs-batch', ms: 600 }));
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      flushMicrotasks();
+      void fixture.componentInstance.talk();
+      flushMicrotasks();
+      ready.stt().onCommitted('Passe sur CAGIP.');
+      flushMicrotasks();
+      expect(fastBrain.converse).not.toHaveBeenCalled();
+    }));
+  });
+
   it('F-239 / SF-239-03 — non-ADMIN : aucun interrupteur de capture, aucune capture', fakeAsync(() => {
     const ready = streamWithAudio();
     jarvisApi.preferences.and.returnValue(of({ humour: 'LIGHT' as const, captureAudio: true }));
@@ -3060,7 +3140,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     ready.stt().onCommitted('Bonjour Jarvis.');
     flushMicrotasks();
     expect(fastBrain.converse).toHaveBeenCalledWith(jasmine.objectContaining({ text: 'Bonjour Jarvis.' }),
-      jasmine.any(Object));
+      jasmine.any(Object), jasmine.any(AbortSignal));
     tick(3_000);
     fast!.onText('Bonjour, Monsieur.');
     fast!.onDone({ brain: 'FAST', spokenText: 'Bonjour, Monsieur.', firstTokenMs: 2_900, model: 'm' });
