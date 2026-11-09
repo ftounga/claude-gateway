@@ -2099,6 +2099,47 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
         expect(voice.enqueue).not.toHaveBeenCalled();
       }));
 
+    it('F-252 / SF-252-04 — anticipation : abandonnée si la parole reprend, gardée et adoptée si le texte final est le même',
+      fakeAsync(() => {
+        fastBrain.warm.and.resolveTo(true);
+        const ready = streamWithAudio();
+        const final = new Subject<JarvisUtterance>();
+        jarvisApi.utterance.and.returnValue(final.asObservable());
+        const fixture = TestBed.createComponent(JarvisComponent);
+        fixture.detectChanges();
+        const jarvis = fixture.componentInstance;
+        flushMicrotasks();
+        void jarvis.talk();
+        flushMicrotasks();
+        ready.stt().onPartial('Où en est CAGIP ?');
+        jarvis['anticipate']();
+        expect(fastBrain.converse).toHaveBeenCalledTimes(1);
+        const first = fastBrain.converse.calls.mostRecent().args[0];
+
+        ready.stt().onPartial('Où en est CAGIP et Agenor');
+        expect(fastBrain.verdict).toHaveBeenCalledOnceWith(first.speculationId!, false, null);
+
+        ready.stt().onPartial('Où en est CAGIP ?');
+        jarvis['anticipate']();
+        expect(fastBrain.converse).toHaveBeenCalledTimes(2);
+        const second = fastBrain.converse.calls.mostRecent().args[0];
+
+        ready.stt().onCommitted('Où en est CAGIP ?');
+        flushMicrotasks();
+        expect(fastBrain.converse).toHaveBeenCalledTimes(2); // l'anticipation devient la réponse provisoire du tour
+        final.next({ text: 'Où en est CAGIP ?', provider: 'elevenlabs-batch', ms: 600 });
+        final.complete();
+        flushMicrotasks();
+        expect(fastBrain.verdict).toHaveBeenCalledWith(second.speculationId!, true, 'Où en est CAGIP ?');
+        fast!.onDone({ brain: 'FAST', spokenText: '', firstTokenMs: 900, model: 'm' });
+        fastDone!('ok');
+        flushMicrotasks();
+        jarvis['flushParked']();
+        const report = jarvisApi.timings.calls.mostRecent().args[0];
+        expect(report.speculation).toBe('anticipee');
+        expect(report.anticipationsDropped).toBe(1);
+      }));
+
     it('parole non destinée au cerveau rapide (changement de sujet) : aucun appel provisoire', fakeAsync(() => {
       fastBrain.warm.and.resolveTo(true);
       const ready = streamWithAudio();
