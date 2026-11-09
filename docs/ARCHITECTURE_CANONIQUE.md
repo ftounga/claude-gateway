@@ -1591,7 +1591,7 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
 - **jarvis_fast_verdicts** — **le verdict d'une réponse provisoire** (F-252 / SF-252-02, migration `252-02`) : `id`,
   `user_id`, `speculation_id` (unique avec `user_id`), `adopted`, `text` (la retranscription de référence), `created_at`.
   Déposé par un pod, lu par celui qui tient le flux (attente ≤ 8 s), consommé puis supprimé ; purge des orphelins > 1 h.
-  `jarvis_turn_timings` gagne `prep_ms`, `speculation`, `end_silence_ms`, `anticipations_dropped` (migration `252-01`).
+  `jarvis_turn_timings` gagne `prep_ms`, `speculation`, `end_silence_ms`, `anticipations_dropped` (migration `252-01`), puis `empty_diagnostic` (F-253 / SF-253-06, migration `253-06` : cause d'un tour vide, sans contenu).
 - **jarvis_listen_traces** — **le journal de l'écoute** (F-233 / SF-233-15, migration `250-01`) : `id`, `user_id`,
   `page_id` (une ouverture de `/jarvis`), `page_version` (empreinte du `main-*.js`), `companion`, `seq`, `at_ms`
   (depuis l'ouverture), `event` (`[a-z0-9_]`), `state`, `mode`, `detail` (≤ 120, liste blanche technique),
