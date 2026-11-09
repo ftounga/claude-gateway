@@ -60,17 +60,53 @@ public class JarvisFastBrainController {
 
     /** La demande de l'écran. */
     public record ConverseRequest(UUID subjectId, String text, Integer chantier, String heardBeforeCut,
-            Long turnSeq, String screen, Boolean presentation) {
+            Long turnSeq, String screen, Boolean presentation, UUID speculationId) {
 
         public ConverseRequest(UUID subjectId, String text, Integer chantier, String heardBeforeCut, Long turnSeq) {
-            this(subjectId, text, chantier, heardBeforeCut, turnSeq, null, null);
+            this(subjectId, text, chantier, heardBeforeCut, turnSeq, null, null, null);
         }
 
         public ConverseRequest(UUID subjectId, String text, Integer chantier, String heardBeforeCut, Long turnSeq,
                 String screen) {
-            this(subjectId, text, chantier, heardBeforeCut, turnSeq, screen, null);
+            this(subjectId, text, chantier, heardBeforeCut, turnSeq, screen, null, null);
+        }
+
+        public ConverseRequest(UUID subjectId, String text, Integer chantier, String heardBeforeCut, Long turnSeq,
+                String screen, Boolean presentation) {
+            this(subjectId, text, chantier, heardBeforeCut, turnSeq, screen, presentation, null);
         }
     }
+
+    /** F-252 / SF-252-02 — le verdict de l'écran sur une réponse provisoire. */
+    public record VerdictRequest(UUID speculationId, Boolean adopted, String text) {
+    }
+
+    /**
+     * F-252 / SF-252-02 (D3) — dépose le verdict sous le {@code user_id} du principal ; le pod qui tient le flux le lit.
+     */
+    @PostMapping("/jarvis/converse/verdict")
+    public ResponseEntity<Void> verdict(@RequestBody(required = false) VerdictRequest request) {
+        if (request == null || request.speculationId() == null || request.adopted() == null
+                || (request.text() != null && request.text().length() > MAX_TEXT)
+                || (request.adopted() && (request.text() == null || request.text().isBlank()))) {
+            return ResponseEntity.badRequest().build();
+        }
+        verdicts.record(currentUser.requireId(), request.speculationId(), request.adopted(),
+                request.adopted() ? request.text().strip() : null);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** F-252 / SF-252-02 — les verdicts (facultatif : sans eux, aucune réponse provisoire). */
+    private JarvisFastVerdictService verdicts;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setVerdicts(JarvisFastVerdictService verdicts) {
+        this.verdicts = verdicts;
+    }
+
+    /** F-252 / SF-252-02 — coupe-circuit de la réponse provisoire. */
+    @org.springframework.beans.factory.annotation.Value("${app.jarvis.fast-brain.speculation:true}")
+    private boolean speculationOn = true;
 
     @PostMapping(path = "/jarvis/converse", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public ResponseEntity<SseEmitter> converse(@RequestBody(required = false) ConverseRequest request) {
@@ -92,11 +128,16 @@ public class JarvisFastBrainController {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
             }
         }
+        // F-252 / SF-252-02 — réponse provisoire refusée (coupe-circuit) : l'écran fait la retranscription d'abord.
+        if (request.speculationId() != null && (!speculationOn || verdicts == null)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+        }
         SseEmitter emitter = new SseEmitter(EMITTER_TIMEOUT_MS);
         JarvisFastBrainService.Request call = new JarvisFastBrainService.Request(userId, workspace.orElse(null),
                 request.chantier(), request.text(), request.heardBeforeCut(), request.screen(),
                 Boolean.TRUE.equals(request.presentation()));
-        SseStreamDispatch.submit(executor, emitter, () -> relay(emitter, call, request.turnSeq()));
+        SseStreamDispatch.submit(executor, emitter, () -> relay(emitter, call, request.turnSeq(),
+                request.speculationId()));
         return ResponseEntity.ok().contentType(MediaType.TEXT_EVENT_STREAM).body(emitter);
     }
 
@@ -120,14 +161,14 @@ public class JarvisFastBrainController {
         return ResponseEntity.noContent().build();
     }
 
-    private void relay(SseEmitter emitter, JarvisFastBrainService.Request call, Long turnSeq) {
+    private void relay(SseEmitter emitter, JarvisFastBrainService.Request call, Long turnSeq, UUID speculationId) {
         // F-248 / SF-248-02 — le catalogue des faits lus de la réplique (coupe-circuit, jamais en présentation).
         fr.claudegateway.jarvis.cards.JarvisCardCatalog catalog = cardsOn(call)
                 ? fr.claudegateway.jarvis.cards.JarvisCardCatalog.open() : null;
         // F-252 / SF-252-01 — la préparation serveur de la réplique (null : aucun appel au modèle).
         java.util.concurrent.atomic.AtomicReference<Long> prepMs = new java.util.concurrent.atomic.AtomicReference<>();
         try {
-            JarvisFastBrainService.Outcome outcome = service.converse(call, new JarvisFastBrainService.Sink() {
+            JarvisFastBrainService.Sink sink = new JarvisFastBrainService.Sink() {
                 @Override
                 public void text(String delta) {
                     send(emitter, "text", new TextEvent(delta));
@@ -151,7 +192,20 @@ public class JarvisFastBrainController {
                     // F-239 / SF-239-05 — la parole relue, affichée à l'écran avant la réponse ; jamais dite.
                     send(emitter, "understood", new UnderstoodEvent(text));
                 }
-            });
+            };
+            JarvisFastBrainService.Outcome outcome;
+            if (speculationId == null) {
+                outcome = service.converse(call, sink);
+            } else {
+                // F-252 / SF-252-02 — provisoire : sans adoption, aucun effet et l'écran est prévenu.
+                outcome = service.converseProvisional(call, sink,
+                        () -> verdicts.await(call.userId(), speculationId)).orElse(null);
+                if (outcome == null) {
+                    send(emitter, "dropped", new DroppedEvent());
+                    emitter.complete();
+                    return;
+                }
+            }
             switch (outcome.kind()) {
                 case FALLBACK -> send(emitter, "fallback", new FallbackEvent(outcome.reason()));
                 case DELEGATE -> {
@@ -227,6 +281,10 @@ public class JarvisFastBrainController {
     }
 
     record TextEvent(String delta) {
+    }
+
+    /** F-252 / SF-252-02 — la réponse provisoire a été jetée. */
+    record DroppedEvent() {
     }
 
     /**

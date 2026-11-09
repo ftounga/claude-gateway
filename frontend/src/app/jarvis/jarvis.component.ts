@@ -100,6 +100,7 @@ import {
 import { ExchangeFiller, FORMULA_CLIPS, FormulaPicker, LINKED_FILLER_DELAY_MS, linkedFiller } from './jarvis-phrases';
 import { MAX_LISTEN_MS, MIN_VOICED_MS, NoiseFloor, SpeechRejection, speechGate } from './jarvis-speech-gate';
 import { JARVIS_GRACE_MS, STREAM_FALLBACK_MS, SUSPENDED_EXTRA_MS, isSuspended } from './jarvis-turn-end';
+import { JarvisSpeculation } from './jarvis-speculation';
 import { CORRECTION_WINDOW_MS as VOICE_CORRECTION_WINDOW_MS, applyCorrection, parseVoiceCorrection } from './jarvis-correction';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -156,7 +157,8 @@ import { arrivalDelay } from './stage3d/jarvis-panels';
 import { AuthService } from '../core/services/auth.service';
 import { CompanionBridgeService } from '../core/services/companion-bridge.service';
 import {
-  ASK_SUBJECT, AnnouncementQueue, CORRECTION_WINDOW_MS, FastDelegation, FastDone, JarvisFastBrainClient,
+  ASK_SUBJECT, AnnouncementQueue, CORRECTION_WINDOW_MS, ConverseBody, FastBrainHandlers, FastDelegation, FastDone,
+  JarvisFastBrainClient,
   announcementText, isCorrection, isRepeatCommand,
 } from './jarvis-fast-brain';
 
@@ -2096,8 +2098,16 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** Arrête l'écoute, transcrit, puis agit sur ce qui a été dit. */
+  /** Arrête l'écoute, transcrit, puis agit sur ce qui a été dit ; une réponse provisoire non retenue est jetée. */
   async finishListening(): Promise<void> {
+    try {
+      await this.closeListening();
+    } finally {
+      this.dropSpeculation();
+    }
+  }
+
+  private async closeListening(): Promise<void> {
     if (this.state() !== 'ecoute' || this.bargeIn.capturing) {
       this.trace.mark('finish_skip', this.bargeIn.capturing ? 'capturing' : 'not_ecoute');
       return;
@@ -2133,6 +2143,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       const seconds = typeof listening.audioSeconds === 'function' ? listening.audioSeconds() : null;
       const retranscribed = this.retranscribe(audio, seconds);
       const streamed = (await this.finishStreaming()).trim();
+      this.startSpeculation(streamed, clock);
       const final = await retranscribed;
       text = final?.text.trim() || streamed;
       if (final?.text.trim()) {
@@ -2214,6 +2225,53 @@ export class JarvisComponent implements OnInit, OnDestroy {
       return;
     }
     this.sayPardon();
+  }
+
+  // ---- F-252 / SF-252-02 : répondre sans attendre la retranscription ----
+  /** La réponse provisoire de l'énoncé en cours (texte du flux), ou `null`. */
+  private speculation: JarvisSpeculation | null = null;
+
+  /** Ce que le cerveau rapide reçoit pour cette parole. */
+  private converseBody(text: string): ConverseBody {
+    return { subjectId: this.subjectId(), text, heardBeforeCut: this.heardBeforeCut,
+      screen: screenBlock(this.pieces.nav(), this.presentation()), presentation: this.presentation() };
+  }
+
+  /** Lance le cerveau rapide sur le texte du flux, en silence, si cette parole lui est destinée. */
+  private startSpeculation(streamed: string, clock: TurnClock): void {
+    this.dropSpeculation();
+    if (!streamed || !this.fastBrainOn() || this.interview || this.pendingConfirm || this.awaitingVerbal
+        || speechGate(streamed, { voicedMs: this.voicedMs, listenedMs: clock.speechMs, preRoll: this.listenPreRoll })
+        || isInterviewCommand(streamed) || parseVoiceCorrection(streamed) || subjectSwitch(streamed, this.subjects())) {
+      return;
+    }
+    this.speculation = new JarvisSpeculation(this.fastBrain, this.converseBody(streamed));
+  }
+
+  /** La réponse provisoire, si elle vaut pour ce texte de référence ; sinon jetée (`relancee`). */
+  private claimSpeculation(text: string, body: ConverseBody, clock: TurnClock | null): JarvisSpeculation | null {
+    const speculation = this.speculation;
+    if (!speculation) {
+      return null;
+    }
+    this.speculation = null;
+    if (speculation.matches(text, body)) {
+      if (clock) {
+        clock.speed = { ...clock.speed, speculation: 'adoptee' };
+      }
+      return speculation;
+    }
+    speculation.drop();
+    if (clock) {
+      clock.speed = { ...clock.speed, speculation: 'relancee' };
+    }
+    return null;
+  }
+
+  /** Jette une réponse provisoire non réclamée (parole non envoyée au cerveau, écran quitté). */
+  private dropSpeculation(): void {
+    this.speculation?.drop();
+    this.speculation = null;
   }
 
   // ---- F-239 / SF-239-06 : corriger d'un toucher ou de la voix ----
@@ -2557,8 +2615,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const screen = screenBlock(this.pieces.nav(), this.presentation());
     const heardAt = Date.now();
     let measuredLatency = false;
-    const outcome = await this.fastBrain.converse({ subjectId, text, heardBeforeCut, screen,
-      presentation: this.presentation() }, {
+    // F-252 / SF-252-02 — la réponse provisoire déjà calculée sur le même texte, s'il y en a une.
+    const body = { subjectId, text, heardBeforeCut, screen, presentation: this.presentation() };
+    const speculation = this.claimSpeculation(text, body, clock);
+    const handlers: FastBrainHandlers = {
       onText: (sentence) => this.zone.run(() => sayNow(sentence)),
       onCards: (event) => this.zone.run(() => {
         if (latest()) {
@@ -2606,7 +2666,18 @@ export class JarvisComponent implements OnInit, OnDestroy {
       onDone: (done) => {
         finished = done;
       },
-    });
+    };
+    let outcome = speculation ? await speculation.adopt(text, handlers)
+      : await this.fastBrain.converse(body, handlers);
+    if (speculation && outcome !== 'ok') {
+      // F-252 / SF-252-02 — provisoire perdue (verdict non reçu, panne) : rien n'a été dit ⇒ appel normal ; déjà dite,
+      // la réponse tient.
+      if (clock) {
+        clock.speed = { ...clock.speed, speculation: 'perdue' };
+      }
+      outcome = said === '' && !delegatedId ? await this.fastBrain.converse(body, handlers)
+        : outcome === 'dropped' ? 'ok' : outcome;
+    }
     this.trace.mark('brain_done', `${outcome}${fellBack ? ' repli' : ''} said=${said.length}`);
     // F-253 / SF-253-07 — l'échange rapide clôt sa scène et compte ce qu'elle a montré (SF-234-11), sauf si une
     // délégation, un repli vers Opus ou un échange plus récent l'a reprise.

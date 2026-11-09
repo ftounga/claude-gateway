@@ -107,7 +107,7 @@ export interface FastBrainHandlers {
 }
 
 /** L'issue d'un appel : parti au bout, cerveau rapide éteint (503), ou en échec (jamais muet : l'écran se replie). */
-export type FastBrainOutcome = 'ok' | 'unavailable' | 'failed';
+export type FastBrainOutcome = 'ok' | 'unavailable' | 'failed' | 'dropped';
 
 export interface ConverseBody {
   subjectId: string | null;
@@ -118,6 +118,8 @@ export interface ConverseBody {
   screen?: string | null;
   /** F-241 / SF-241-03 (D17) — l'écran est en présentation : aucun portrait, note figée. */
   presentation?: boolean;
+  /** F-252 / SF-252-02 — réponse provisoire : aucun effet tant que l'écran n'a pas adopté ({@link verdict}). */
+  speculationId?: string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -141,9 +143,31 @@ export class JarvisFastBrainClient {
     }
   }
 
-  /** Converse ; ne lève jamais. */
-  async converse(body: ConverseBody, handlers: FastBrainHandlers): Promise<FastBrainOutcome> {
+  /**
+   * F-252 / SF-252-02 — le verdict sur une réponse provisoire ; tenté deux fois, jamais d'exception (sans verdict, la
+   * passerelle jette la réponse).
+   */
+  async verdict(speculationId: string, adopted: boolean, text: string | null): Promise<void> {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const response = await fetch('/api/jarvis/converse/verdict', {
+          method: 'POST',
+          headers: this.headers(),
+          body: JSON.stringify({ speculationId, adopted, ...(text ? { text } : {}) }),
+        });
+        if (response.ok || response.status < 500) {
+          return;
+        }
+      } catch {
+        // réessai ci-dessous
+      }
+    }
+  }
+
+  /** Converse ; ne lève jamais. {@code signal} interrompt l'appel (réponse provisoire jetée). */
+  async converse(body: ConverseBody, handlers: FastBrainHandlers, signal?: AbortSignal): Promise<FastBrainOutcome> {
     let finished = false;
+    let dropped = false;
     try {
       const response = await fetch('/api/jarvis/converse', {
         method: 'POST',
@@ -155,7 +179,9 @@ export class JarvisFastBrainClient {
           ...(body.heardBeforeCut ? { heardBeforeCut: body.heardBeforeCut } : {}),
           ...(body.screen ? { screen: body.screen } : {}),
           ...(body.presentation ? { presentation: true } : {}),
+          ...(body.speculationId ? { speculationId: body.speculationId } : {}),
         }),
+        signal,
       });
       if (response.status === 503) {
         return 'unavailable';
@@ -181,8 +207,13 @@ export class JarvisFastBrainClient {
             finished = true;
           } else if (outcome === 'error') {
             failed = true;
+          } else if (outcome === 'dropped') {
+            dropped = true;
           }
         }
+      }
+      if (dropped) {
+        return 'dropped';
       }
       return finished && !failed ? 'ok' : 'failed';
     } catch {
@@ -197,7 +228,7 @@ export class JarvisFastBrainClient {
 }
 
 /** Lit un événement SSE et le relaie ; rend `done`, `error` ou `null`. Exporté pour les tests. */
-export function dispatch(raw: string, handlers: FastBrainHandlers): 'done' | 'error' | null {
+export function dispatch(raw: string, handlers: FastBrainHandlers): 'done' | 'error' | 'dropped' | null {
   let event = 'message';
   const data: string[] = [];
   for (const line of raw.split('\n')) {
@@ -245,6 +276,8 @@ export function dispatch(raw: string, handlers: FastBrainHandlers): 'done' | 'er
       return 'done';
     case 'error':
       return 'error';
+    case 'dropped':
+      return 'dropped';
     default:
       return null;
   }
