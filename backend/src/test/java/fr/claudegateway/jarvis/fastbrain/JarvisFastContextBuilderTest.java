@@ -196,6 +196,25 @@ class JarvisFastContextBuilderTest {
     }
 
     /** Une horloge qu'on avance à la main. */
+    @Test
+    void universeIsReadOncePer30sAndPerAccount() {
+        // F-252 / SF-252-01 (CA4, D4) — l'univers est relu au plus une fois par 30 s, et jamais partagé entre comptes.
+        MovingClock moving = new MovingClock(NOW);
+        JarvisFastContextBuilder cached = new JarvisFastContextBuilder(moving, delegations);
+        cached.setSources(universe, actions, returns, alerts, messages);
+        UUID bob = UUID.randomUUID();
+        when(universe.universe(bob)).thenReturn(new JarvisUniverse(OffsetDateTime.now(clock), List.of(), 0));
+        String first = cached.reference(alice);
+        moving.now = NOW.plusSeconds(29);
+        assertThat(cached.reference(alice)).isEqualTo(first).contains("CAGIP");
+        assertThat(cached.reference(bob)).doesNotContain("CAGIP");
+        org.mockito.Mockito.verify(universe, org.mockito.Mockito.times(1)).universe(alice);
+        org.mockito.Mockito.verify(universe, org.mockito.Mockito.times(1)).universe(bob);
+        moving.now = NOW.plusSeconds(31);
+        cached.reference(alice);
+        org.mockito.Mockito.verify(universe, org.mockito.Mockito.times(2)).universe(alice);
+    }
+
     static final class MovingClock extends Clock {
         Instant now;
 

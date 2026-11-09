@@ -165,11 +165,51 @@ public class JarvisFastContextBuilder {
         }
     }
 
+    /** F-252 / SF-252-01 (D4) — durée de vie de l'univers mis en cache, par compte. */
+    static final java.time.Duration UNIVERSE_TTL = java.time.Duration.ofSeconds(30);
+    /** Au-delà, les entrées périmées sont balayées à l'écriture. */
+    static final int UNIVERSE_CACHE_SWEEP = 512;
+
+    private java.time.Duration universeTtl = UNIVERSE_TTL;
+
+    /** Un univers lu, et quand. */
+    private record CachedUniverse(JarvisUniverse universe, java.time.Instant at) {
+    }
+
+    /** F-252 / SF-252-01 — l'univers par {@code user_id} (la clé : jamais un autre compte). */
+    private final java.util.Map<UUID, CachedUniverse> universes = new java.util.concurrent.ConcurrentHashMap<>();
+
+    @Autowired(required = false)
+    public void setUniverseTtl(
+            @org.springframework.beans.factory.annotation.Value("${app.jarvis.fast-brain.universe-ttl:30s}")
+            java.time.Duration ttl) {
+        this.universeTtl = ttl == null || ttl.isNegative() || ttl.isZero() ? UNIVERSE_TTL : ttl;
+    }
+
+    /**
+     * F-252 / SF-252-01 (B, D4) — l'univers du compte, relu au plus une fois par {@link #universeTtl} : c'est la lecture
+     * la plus lourde de la préparation (postes, sujets, tableaux des chantiers). Le texte et les fiches sont recalculés
+     * à chaque réplique ; seule la lecture en base est gardée.
+     */
+    JarvisUniverse universeOf(UUID userId) {
+        java.time.Instant now = clock.instant();
+        CachedUniverse cached = universes.get(userId);
+        if (cached != null && cached.at().plus(universeTtl).isAfter(now)) {
+            return cached.universe();
+        }
+        JarvisUniverse fresh = universe.universe(userId);
+        if (universes.size() >= UNIVERSE_CACHE_SWEEP) {
+            universes.values().removeIf(c -> !c.at().plus(universeTtl).isAfter(now));
+        }
+        universes.put(userId, new CachedUniverse(fresh, now));
+        return fresh;
+    }
+
     String universe(UUID userId) {
         if (universe == null) {
             return "";
         }
-        JarvisUniverse u = universe.universe(userId);
+        JarvisUniverse u = universeOf(userId);
         // F-248 / SF-248-02 — les personnes lues deviennent des fiches (lecture d'office : montrées si citées).
         fr.claudegateway.jarvis.cards.JarvisCardCatalog.collectAll(
                 () -> fr.claudegateway.jarvis.cards.JarvisCardSources.personnes(u, OffsetDateTime.now(clock)));

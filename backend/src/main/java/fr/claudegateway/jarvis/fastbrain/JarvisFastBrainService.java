@@ -190,6 +190,10 @@ public class JarvisFastBrainService {
         /** F-237 / SF-237-08 — un ordre d'écran validé, à relayer au navigateur (événement {@code show}). */
         default void show(JarvisShowCommand command) {
         }
+
+        /** F-252 / SF-252-01 — la préparation est finie (ms depuis l'entrée dans la décision) : le modèle est appelé. */
+        default void prepared(long prepMs) {
+        }
     }
 
     /** Raisons d'une délégation d'office ou d'un repli (comptées, jamais dites). */
@@ -367,7 +371,11 @@ public class JarvisFastBrainService {
      * (version) : il est relu en cache d'un appel à l'autre.
      */
     String systemFor(UUID userId, fr.claudegateway.jarvis.portrait.JarvisPortraitService.Snapshot portrait) {
-        String base = systemFor(userId);
+        return systemFor(systemFor(userId), portrait);
+    }
+
+    /** F-252 / SF-252-01 — la même consigne, à partir de la variante d'humour déjà lue. */
+    static String systemFor(String base, fr.claudegateway.jarvis.portrait.JarvisPortraitService.Snapshot portrait) {
         return portrait == null ? base
                 : base + "\n\n" + fr.claudegateway.jarvis.portrait.JarvisPortraitNote.block(portrait)
                         + fr.claudegateway.jarvis.portrait.JarvisPortraitNote.FAST_MARKS;
@@ -837,16 +845,27 @@ public class JarvisFastBrainService {
         // F-239 / SF-239-11 — jamais d'escalade de coût : au-delà du budget, le cerveau rapide CONTINUE (10 à 50 fois
         // moins cher qu'Opus) ; au plafond dur, une réponse fixe, aucun appel. F-244 / SF-244-02 (D4) : le quota Gateway
         // ne garde plus Jarvis (un quota épuisé ne le rend plus muet) ; seul son budget propre le garde.
-        Budget budget = bench ? Budget.NONE : budgetState(userId);
+        // F-252 / SF-252-01 (B) — hors banc, les lectures indépendantes partent ensemble ; consommées dans l'ordre d'avant.
+        Prepared prepared = bench ? null : prepare(request);
+        Budget budget = bench ? Budget.NONE : prepared.budget.get();
         if (budget == Budget.HARD) {
+            prepared.prep.cancelUnused();
             return fixed(out, BUDGET_HARD_REPLY, REASON_BUDGET_HARD);
         }
         // F-244 / SF-244-03 (D6) — le plafond global de Jarvis à 2 × : une phrase fixe, aucun appel. Au-delà de 100 %
         // (souple), le cerveau rapide CONTINUE : c'est la délégation qui demande un « oui », jamais une escalade.
-        if (!bench && jarvisBudget != null && jarvisBudget.hardStop(userId)) {
+        if (!bench && prepared.hardStop.get()) {
+            prepared.prep.cancelUnused();
             return fixed(out, fr.claudegateway.jarvis.budget.JarvisBudgetService.HARD_REPLY, REASON_BUDGET_HARD);
         }
-        Outcome decided = decideCall(request, out, benchModel, fixedContext, understood);
+        Outcome decided;
+        try {
+            decided = decideCall(request, out, benchModel, fixedContext, understood, prepared);
+        } finally {
+            if (prepared != null) {
+                prepared.prep.cancelUnused();
+            }
+        }
         if (budget == Budget.SOFT && decided.kind() == Kind.ANSWER && decided.reason() == null) {
             return new Outcome(decided.kind(), decided.spokenText(), decided.delegation(), REASON_BUDGET_SOFT,
                     decided.model(), decided.firstTokenMs(), decided.costUsd(), decided.guards());
@@ -856,6 +875,72 @@ public class JarvisFastBrainService {
 
     /** F-239 / SF-239-11 — l'état du budget mensuel du cerveau rapide. */
     enum Budget { NONE, SOFT, HARD }
+
+    /** F-252 / SF-252-01 — le contexte lu, et les lignes du bloc « État connu » qu'il a lues (garde de fraîcheur). */
+    record ContextRead(String text, List<fr.claudegateway.jarvis.state.JarvisStateBlock.Line> stateLines) {
+    }
+
+    /**
+     * F-252 / SF-252-01 (B) — <b>les lectures d'une réplique, parties ensemble</b> : chacune est la même méthode
+     * qu'avant, consommée au même endroit et dans le même ordre ; seul le temps d'attente change.
+     */
+    static final class Prepared {
+        final JarvisFastPrep prep;
+        final JarvisFastPrep.Early<Budget> budget;
+        final JarvisFastPrep.Early<Boolean> hardStop;
+        final JarvisFastPrep.Early<ContextRead> context;
+        final JarvisFastPrep.Early<String> pieces;
+        final JarvisFastPrep.Early<String> apiKey;
+        final JarvisFastPrep.Early<String> reference;
+        final JarvisFastPrep.Early<fr.claudegateway.jarvis.portrait.JarvisPortraitService.Snapshot> portrait;
+        final JarvisFastPrep.Early<String> system;
+        final JarvisFastPrep.Early<Boolean> soberRead;
+
+        private Prepared(JarvisFastBrainService s, Request request) {
+            UUID userId = request.userId();
+            prep = new JarvisFastPrep(s.calls, s.parallelPrep);
+            budget = prep.early(() -> s.budgetState(userId), () -> s.budgetState(userId));
+            hardStop = prep.early(() -> s.jarvisBudget != null && s.jarvisBudget.hardStop(userId),
+                    () -> s.jarvisBudget != null && s.jarvisBudget.hardStop(userId));
+            context = prep.early(() -> s.contextRead(request), () -> s.contextRead(request));
+            pieces = prep.early(() -> s.screenAndPieces(request), () -> s.screenAndPieces(request));
+            apiKey = prep.early(() -> s.apiKeyOf(userId), () -> s.apiKeyOf(userId));
+            reference = prep.early(() -> s.reference(request), () -> s.reference(request));
+            portrait = prep.early(() -> s.portraitFor(userId, request.presentation(), false),
+                    () -> s.portraitFor(userId, request.presentation(), false));
+            system = prep.early(() -> s.systemFor(userId), () -> s.systemFor(userId));
+            soberRead = prep.early(() -> s.sobriety != null && s.sobriety.sober(userId, request.text()),
+                    () -> s.sobriety != null && s.sobriety.sober(userId, request.text()));
+        }
+    }
+
+    /** F-252 / SF-252-01 — coupe-circuit de la préparation parallèle (faux : en série, comme avant). */
+    private boolean parallelPrep = true;
+
+    @Autowired(required = false)
+    public void setParallelPrep(
+            @org.springframework.beans.factory.annotation.Value("${app.jarvis.fast-brain.parallel-prep:true}")
+            boolean parallelPrep) {
+        this.parallelPrep = parallelPrep;
+    }
+
+    /** F-252 / SF-252-01 — lance les lectures de la réplique (hors banc). */
+    Prepared prepare(Request request) {
+        return new Prepared(this, request);
+    }
+
+    /** F-252 / SF-252-01 — le contexte et les lignes d'état qu'il a lues, sur le fil qui le lit. */
+    ContextRead contextRead(Request request) {
+        String text = context(request);
+        List<fr.claudegateway.jarvis.state.JarvisStateBlock.Line> lines = STATE_LINES.get();
+        STATE_LINES.remove();
+        return new ContextRead(text, lines);
+    }
+
+    /** La clé du compte (BYOK) ou {@code null}. */
+    String apiKeyOf(UUID userId) {
+        return byok == null ? null : byok.resolveActiveApiKey(userId).orElse(null);
+    }
 
     static final String REASON_BUDGET_SOFT = "budget_soft";
     static final String REASON_BUDGET_HARD = "budget_hard";
@@ -900,13 +985,13 @@ public class JarvisFastBrainService {
     public static final String REASON_PROOF_GUARD = "proof_guard";
 
     private Outcome decideCall(Request request, Sink out, String benchModel, String fixedContext,
-            java.util.concurrent.atomic.AtomicReference<String> understood) {
+            java.util.concurrent.atomic.AtomicReference<String> understood, Prepared prepared) {
         // F-239 / SF-239-08 — l'état du jour (à blanc, le banc ne lit pas la mémoire : « première salutation »).
         // F-237 / SF-237-08 — puis l'écran (« ## Écran ») et les pièces du sujet (« ## Pièces ») : volatils, dans le
         // message, jamais dans la consigne.
-        String context = fixedContext != null ? fixedContext : context(request) + "\n\n"
+        String context = fixedContext != null ? fixedContext : contextOf(request, prepared) + "\n\n"
                 + (benchModel != null ? JarvisFastContextBuilder.dayState(true, false) : dayState(request))
-                + screenAndPieces(request);
+                + (prepared != null ? prepared.pieces.get() : screenAndPieces(request));
         // F-237 / SF-237-15 — un doute sur un chantier sans aucune preuve : la proposition, sans appel au modèle.
         JarvisProofGuard.Decision before = JarvisProofGuard.before(request.text(), context, request.chantier());
         if (before != null) {
@@ -914,7 +999,24 @@ public class JarvisFastBrainService {
             return new Outcome(Kind.ANSWER, before.said(), null, REASON_PROOF_GUARD, properties.model(), 0L, null);
         }
         return withoutProofDelegation(request, out, context,
-                callModel(request, out, benchModel, context, understood));
+                callModel(request, out, benchModel, context, understood, prepared));
+    }
+
+    /**
+     * F-252 / SF-252-01 — le contexte de la réplique : lu en avance s'il l'a été (les lignes d'état qu'il a lues
+     * reviennent sur ce fil, pour la garde de fraîcheur), sinon lu ici comme avant.
+     */
+    private String contextOf(Request request, Prepared prepared) {
+        if (prepared == null) {
+            return context(request);
+        }
+        ContextRead read = prepared.context.get();
+        if (read.stateLines() == null) {
+            STATE_LINES.remove();
+        } else {
+            STATE_LINES.set(read.stateLines());
+        }
+        return read.text();
     }
 
     /**
@@ -944,17 +1046,17 @@ public class JarvisFastBrainService {
     }
 
     private Outcome callModel(Request request, Sink out, String benchModel, String context,
-            java.util.concurrent.atomic.AtomicReference<String> understood) {
+            java.util.concurrent.atomic.AtomicReference<String> understood, Prepared prepared) {
         UUID userId = request.userId();
         boolean bench = benchModel != null;
         String model = bench ? benchModel : properties.model();
-        String apiKey = byok == null ? null : byok.resolveActiveApiKey(userId).orElse(null);
+        String apiKey = prepared != null ? prepared.apiKey.get() : apiKeyOf(userId);
         // F-239 / SF-239-11 — l'univers de référence (préfixe relu du cache) ; les gardes voient tout le contexte.
-        String reference = bench ? "" : reference(request);
+        String reference = bench ? "" : prepared != null ? prepared.reference.get() : reference(request);
         String grounding = reference.isEmpty() ? context : reference + "\n\n" + context;
         // F-241 / SF-241-03 — le portrait : il ancre ce que Jarvis en dit, et ses interdits ferment la porte (D12 a).
-        fr.claudegateway.jarvis.portrait.JarvisPortraitService.Snapshot portrait = portraitFor(userId,
-                request.presentation(), bench);
+        fr.claudegateway.jarvis.portrait.JarvisPortraitService.Snapshot portrait = prepared != null
+                ? prepared.portrait.get() : portraitFor(userId, request.presentation(), bench);
         if (portrait != null) {
             grounding = grounding + "\n\n" + fr.claudegateway.jarvis.portrait.JarvisPortraitNote.block(portrait);
         }
@@ -975,7 +1077,7 @@ public class JarvisFastBrainService {
             java.time.OffsetDateTime now = java.time.OffsetDateTime.now(clock);
             List<String> benchRecent = bench && BENCH_RECENT.get() != null ? BENCH_RECENT.get() : List.of();
             List<fr.claudegateway.jarvis.portrait.JarvisAllusionService.Entry> recent = bench || allusions == null ? List.of()
-                    : allusions.recent(userId);
+                    : allusions.recent(userId); // F-252 : lue seulement si le portrait sert (jamais en avance)
             String trace = bench ? fr.claudegateway.jarvis.portrait.JarvisAllusionService.benchNote(benchRecent)
                     : fr.claudegateway.jarvis.portrait.JarvisAllusionService.note(recent, now);
             if (trace != null) {
@@ -1003,8 +1105,12 @@ public class JarvisFastBrainService {
                 ? List.of(AgentMessage.userText(message(context, request.text())
                         + (sober(request, context) ? "\n\n" + fr.claudegateway.jarvis.preferences.JarvisSobriety.NOTE
                                 : "") + notes))
-                : messages(request, context, reference, notes));
-        String system = systemFor(userId, portrait);
+                : messages(request, context, reference, notes, prepared == null ? null : prepared.soberRead));
+        String system = prepared != null ? systemFor(prepared.system.get(), portrait) : systemFor(userId, portrait);
+        // F-252 / SF-252-01 — la préparation est finie : le premier appel au modèle part maintenant.
+        if (prepared != null) {
+            out.prepared(prepared.prep.elapsedMs());
+        }
 
         AgentTurn turn = null;
         long firstMs = -1L;
@@ -2057,6 +2163,12 @@ public class JarvisFastBrainService {
 
     /** F-241 / SF-241-03 — les mêmes messages, le dernier suivi des notes volatiles du portrait (ou rien). */
     List<AgentMessage> messages(Request request, String context, String reference, String notes) {
+        return messages(request, context, reference, notes, null);
+    }
+
+    /** F-252 / SF-252-01 — les mêmes messages ; {@code soberRead} : la lecture de sobriété partie en avance, ou rien. */
+    List<AgentMessage> messages(Request request, String context, String reference, String notes,
+            JarvisFastPrep.Early<Boolean> soberRead) {
         List<AgentMessage> messages = new ArrayList<>();
         if (reference != null && !reference.isBlank()) {
             messages.add(AgentMessage.userText(REFERENCE_HEADER + reference.strip()));
@@ -2074,7 +2186,7 @@ public class JarvisFastBrainService {
             }
         }
         String last = message(context, request.text());
-        if (sober(request, context)) {
+        if (sober(request, context, soberRead)) {
             last = last + "\n\n" + fr.claudegateway.jarvis.preferences.JarvisSobriety.NOTE;
         }
         messages.add(AgentMessage.userText(last + (notes == null ? "" : notes)));
@@ -2086,8 +2198,14 @@ public class JarvisFastBrainService {
      * alerte / échec dans le contexte. Best-effort.
      */
     boolean sober(Request request, String context) {
+        return sober(request, context, null);
+    }
+
+    /** F-252 / SF-252-01 — idem, avec la lecture partie en avance ({@code null} : lue ici). */
+    boolean sober(Request request, String context, JarvisFastPrep.Early<Boolean> soberRead) {
         try {
-            if (sobriety != null && sobriety.sober(request.userId(), request.text())) {
+            if (soberRead != null ? soberRead.get()
+                    : sobriety != null && sobriety.sober(request.userId(), request.text())) {
                 return true;
             }
             return fr.claudegateway.jarvis.preferences.JarvisSobriety.mentionsTrouble(request.text());

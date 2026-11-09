@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-252 / SF-252-01 - JARVIS REPOND VITE : la mesure d'abord.
+
+      jarvis_turn_timings + prep_ms (preparation serveur du cerveau rapide, de l'entree dans la decision au depart du
+      premier appel au modele), speculation (liste fermee : adoptee, relancee, perdue, anticipee - SF-252-02/04),
+      end_silence_ms (silence reel mesure a la fin de tour - SF-252-04) et anticipations_dropped (anticipations
+      abandonnees parce que la parole a repris - SF-252-04). Jamais de contenu. Colonnes additives, NULL pour les lignes
+      existantes et les ecrans d'avant. Purge 90 j existante inchangee.
+
+      Rollback : les colonnes se retirent.
+    -->
+
+    <changeSet id="252-01-jarvis-turn-timings-speed" author="claude-gateway">
+        <addColumn tableName="jarvis_turn_timings">
+            <column name="prep_ms" type="integer"/>
+            <column name="speculation" type="varchar(12)"/>
+            <column name="end_silence_ms" type="integer"/>
+            <column name="anticipations_dropped" type="integer"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="jarvis_turn_timings" columnName="anticipations_dropped"/>
+            <dropColumn tableName="jarvis_turn_timings" columnName="end_silence_ms"/>
+            <dropColumn tableName="jarvis_turn_timings" columnName="speculation"/>
+            <dropColumn tableName="jarvis_turn_timings" columnName="prep_ms"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

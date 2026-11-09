@@ -124,6 +124,8 @@ public class JarvisFastBrainController {
         // F-248 / SF-248-02 — le catalogue des faits lus de la réplique (coupe-circuit, jamais en présentation).
         fr.claudegateway.jarvis.cards.JarvisCardCatalog catalog = cardsOn(call)
                 ? fr.claudegateway.jarvis.cards.JarvisCardCatalog.open() : null;
+        // F-252 / SF-252-01 — la préparation serveur de la réplique (null : aucun appel au modèle).
+        java.util.concurrent.atomic.AtomicReference<Long> prepMs = new java.util.concurrent.atomic.AtomicReference<>();
         try {
             JarvisFastBrainService.Outcome outcome = service.converse(call, new JarvisFastBrainService.Sink() {
                 @Override
@@ -137,6 +139,11 @@ public class JarvisFastBrainController {
                 public void show(JarvisShowCommand command) {
                     // F-237 / SF-237-08 — un ordre d'écran validé : l'écran l'applique à son réducteur.
                     send(emitter, "show", command);
+                }
+
+                @Override
+                public void prepared(long ms) {
+                    prepMs.compareAndSet(null, ms);
                 }
 
                 @Override
@@ -161,7 +168,8 @@ public class JarvisFastBrainController {
             flushCards(emitter, catalog);
             send(emitter, "done", new DoneEvent(brainOf(outcome), outcome.spokenText(), outcome.firstTokenMs(),
                     outcome.model(), turnSeq, outcome.guards(), budgetOf(outcome),
-                    service.portraitInUse(call.userId(), call.presentation()), stateOf(call, outcome)));
+                    service.portraitInUse(call.userId(), call.presentation()), stateOf(call, outcome),
+                    prepMs.get()));
             emitter.complete();
         } catch (RuntimeException e) {
             log.warn("Cerveau rapide : flux interrompu ({})", e.getClass().getSimpleName());
@@ -262,7 +270,9 @@ public class JarvisFastBrainController {
      */
     record DoneEvent(String brain, String spokenText, long firstTokenMs, String model, Long turnSeq,
             JarvisFastBrainService.Guards guards, String budget, boolean portrait,
-            fr.claudegateway.jarvis.state.JarvisStateTurnMeter.Measure state) {
+            fr.claudegateway.jarvis.state.JarvisStateTurnMeter.Measure state,
+            // F-252 / SF-252-01 — la préparation serveur (ms), null sans appel au modèle.
+            Long prepMs) {
     }
 
     /** F-247 / SF-247-01 — la mesure d'état de la réplique (facultative). */

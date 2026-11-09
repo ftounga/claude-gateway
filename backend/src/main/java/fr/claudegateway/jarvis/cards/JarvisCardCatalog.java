@@ -30,6 +30,8 @@ public final class JarvisCardCatalog {
 
     private final UUID responseId = UUID.randomUUID();
     private final Map<String, JarvisCard> cards = new LinkedHashMap<>();
+    /** F-252 / SF-252-01 — chaque fiche reçue, dans l'ordre (le rejeu de {@link #absorb}). */
+    private final List<JarvisCard> received = new java.util.ArrayList<>();
     private int version;
     private int sent = -1;
     private String offline;
@@ -101,10 +103,37 @@ public final class JarvisCardCatalog {
         return CURRENT.get() != null;
     }
 
+    /**
+     * F-252 / SF-252-01 — verse ici, dans leur ordre, les fiches et la mention d'un catalogue tenu par un fil de
+     * préparation parallèle : le jeu est le même que si la lecture avait eu lieu sur ce fil.
+     */
+    public void absorb(JarvisCardCatalog other) {
+        if (other == null || other == this) {
+            return;
+        }
+        List<JarvisCard> taken;
+        String note;
+        synchronized (other) {
+            // Les fiches reçues, dans l'ordre et doublons compris : le rejeu est exact, plafond et promotions compris.
+            taken = List.copyOf(other.received);
+            note = other.offline;
+        }
+        taken.forEach(this::add);
+        if (note != null) {
+            synchronized (this) {
+                if (offline == null) {
+                    offline = note;
+                    version++;
+                }
+            }
+        }
+    }
+
     public synchronized void add(JarvisCard card) {
         if (card == null || card.id() == null) {
             return;
         }
+        received.add(card);
         JarvisCard known = cards.get(card.id());
         if (known != null) {
             if (card.targeted() && !known.targeted()) {

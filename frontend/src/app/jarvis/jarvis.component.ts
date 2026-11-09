@@ -2661,6 +2661,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
           stateAnswer: done.state?.stateAnswer ?? null,
           stateBlockMs: done.state?.stateBlockMs ?? null,
         };
+        // F-252 / SF-252-01 — la préparation serveur de la réplique, recopiée telle quelle.
+        if (typeof done.prepMs === 'number' && done.prepMs >= 0) {
+          clock.speed = { ...clock.speed, prepMs: Math.min(600_000, Math.round(done.prepMs)) };
+        }
         if (done.brain === 'FAST') {
           this.lastFastAnswerAt = Date.now();
         }

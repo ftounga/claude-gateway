@@ -239,4 +239,22 @@ public class JarvisTurnTiming {
     /** La page tournait dans le compagnon Android ; {@code null} pour un écran d'avant SF-233-13. */
     @Column(name = "companion")
     private Boolean companion;
+
+    // ---- F-252 / SF-252-01 — Jarvis répond vite (cadrage §5). Jamais de contenu.
+
+    /** Préparation serveur du cerveau rapide : entrée dans la décision → départ du premier appel au modèle (ms). */
+    @Column(name = "prep_ms")
+    private Integer prepMs;
+
+    /** Réponse provisoire (SF-252-02/04) : {@code adoptee}, {@code relancee}, {@code perdue}, {@code anticipee}. */
+    @Column(name = "speculation", length = 12)
+    private String speculation;
+
+    /** Silence réel mesuré à la fin de tour (ms, SF-252-04). */
+    @Column(name = "end_silence_ms")
+    private Integer endSilenceMs;
+
+    /** Anticipations abandonnées parce que la parole a repris (SF-252-04). */
+    @Column(name = "anticipations_dropped")
+    private Integer anticipationsDropped;
 }
