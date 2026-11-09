@@ -1,4 +1,5 @@
 import { ConverseBody, FastBrainHandlers, FastBrainOutcome, JarvisFastBrainClient } from './jarvis-fast-brain';
+import { isSuspended } from './jarvis-turn-end';
 
 /**
  * **La réponse provisoire du cerveau rapide** (F-252 / SF-252-02, correctif A).
@@ -40,7 +41,7 @@ export class JarvisSpeculation {
 
   /** Lance l'appel provisoire ; rien de ce qu'il reçoit n'est joué avant {@link adopt}. */
   constructor(private readonly client: JarvisFastBrainClient, readonly body: ConverseBody,
-              readonly speculationId: string = crypto.randomUUID()) {
+              readonly speculationId: string = crypto.randomUUID(), readonly anticipated = false) {
     this.finished = client.converse({ ...body, speculationId }, this.holding(), this.controller.signal);
   }
 
@@ -89,5 +90,42 @@ export class JarvisSpeculation {
       onShow: (command) => this.held((h) => h.onShow?.(command)),
       onCards: (event) => this.held((h) => h.onCards?.(event)),
     };
+  }
+}
+
+/** F-252 / SF-252-04 — le silence (ms) à partir duquel une phrase close peut partir en avance. */
+export const ANTICIPATE_SILENCE_MS = 600;
+
+/**
+ * **Quand anticiper la fin de parole** (F-252 / SF-252-04, correctif F) — pur. Une fois par silence, à partir de
+ * {@link ANTICIPATE_SILENCE_MS} et sur une phrase close ; la voix qui revient réarme. La fin de tour reste décidée
+ * ailleurs (fournisseur, délai de grâce) : anticiper ne dit jamais rien.
+ */
+export class AnticipationWatch {
+  private lastVoice: number;
+  private armed = true;
+
+  constructor(now: number) {
+    this.lastVoice = now;
+  }
+
+  /** Une voix est entendue à cet instant. */
+  voice(now: number): void {
+    this.lastVoice = now;
+    this.armed = true;
+  }
+
+  /** Vrai une seule fois par silence, si ce texte peut partir. */
+  due(now: number, text: string): boolean {
+    if (!this.armed || !text.trim() || isSuspended(text) || now - this.lastVoice < ANTICIPATE_SILENCE_MS) {
+      return false;
+    }
+    this.armed = false;
+    return true;
+  }
+
+  /** Le silence en cours (ms). */
+  silenceMs(now: number): number {
+    return Math.max(0, Math.round(now - this.lastVoice));
   }
 }

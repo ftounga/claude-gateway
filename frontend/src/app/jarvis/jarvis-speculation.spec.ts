@@ -1,5 +1,5 @@
 import { FastBrainHandlers, FastBrainOutcome, FastDone, JarvisFastBrainClient } from './jarvis-fast-brain';
-import { JarvisSpeculation, normalizeUtterance, sameUtterance } from './jarvis-speculation';
+import { ANTICIPATE_SILENCE_MS, AnticipationWatch, JarvisSpeculation, normalizeUtterance, sameUtterance } from './jarvis-speculation';
 
 describe('sameUtterance (F-252 / SF-252-02, CA5)', () => {
   it('ignore casse, espaces et ponctuation', () => {
@@ -83,5 +83,27 @@ describe('JarvisSpeculation (F-252 / SF-252-02, CA6)', () => {
     expect(spec.matches('où en est proj-124 ?', body)).toBeFalse();
     expect(spec.matches('où en est proj-123 ?', { ...body, screen: 'autre' })).toBeFalse();
     expect(spec.matches('où en est proj-123 ?', { ...body, subjectId: 's2' })).toBeFalse();
+  });
+});
+
+describe('AnticipationWatch (F-252 / SF-252-04, CA1, CA2)', () => {
+  it('pas avant le seuil, puis une seule fois par silence', () => {
+    const watch = new AnticipationWatch(0);
+    expect(watch.due(ANTICIPATE_SILENCE_MS - 1, 'Où en est CAGIP ?')).toBeFalse();
+    expect(watch.due(ANTICIPATE_SILENCE_MS, 'Où en est CAGIP ?')).toBeTrue();
+    expect(watch.due(ANTICIPATE_SILENCE_MS + 100, 'Où en est CAGIP ?')).toBeFalse();
+  });
+  it('phrase en suspens ou texte vide : jamais', () => {
+    const watch = new AnticipationWatch(0);
+    expect(watch.due(2000, 'Allons chez le client et')).toBeFalse();
+    expect(watch.due(2000, '   ')).toBeFalse();
+  });
+  it('la voix réarme et remet le silence à zéro', () => {
+    const watch = new AnticipationWatch(0);
+    expect(watch.due(800, 'Bonjour Jarvis.')).toBeTrue();
+    watch.voice(1000);
+    expect(watch.silenceMs(1500)).toBe(500);
+    expect(watch.due(1500, 'Bonjour Jarvis.')).toBeFalse();
+    expect(watch.due(1700, 'Bonjour Jarvis.')).toBeTrue();
   });
 });

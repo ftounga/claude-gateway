@@ -100,7 +100,7 @@ import {
 import { ExchangeFiller, FORMULA_CLIPS, FormulaPicker, LINKED_FILLER_DELAY_MS, linkedFiller } from './jarvis-phrases';
 import { MAX_LISTEN_MS, MIN_VOICED_MS, NoiseFloor, SpeechRejection, speechGate } from './jarvis-speech-gate';
 import { JARVIS_GRACE_MS, STREAM_FALLBACK_MS, SUSPENDED_EXTRA_MS, isSuspended } from './jarvis-turn-end';
-import { JarvisSpeculation } from './jarvis-speculation';
+import { AnticipationWatch, JarvisSpeculation, sameUtterance } from './jarvis-speculation';
 import { CORRECTION_WINDOW_MS as VOICE_CORRECTION_WINDOW_MS, applyCorrection, parseVoiceCorrection } from './jarvis-correction';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -1543,6 +1543,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
       const endMs = () => (this.interviewListening() ? Math.max(silenceMs(), INTERVIEW_END_MS)
         : this.live ? silenceMs() + STREAM_FALLBACK_MS : silenceMs());
       let end = new EndOfSpeech(performance.now(), endMs());
+      // F-252 / SF-252-04 — le silence de cette écoute ; une anticipation d'une écoute passée ne survit pas.
+      this.anticipation = new AnticipationWatch(performance.now());
+      this.anticipationsDropped = 0;
+      this.dropSpeculation();
       let lastFrame = performance.now();
       // F-241 / SF-241-06 — la voix se compte au-dessus du bruit de fond mesuré (micro à gain bas, contrôle de gain).
       const floor = new NoiseFloor(SPEECH_LEVEL);
@@ -1559,8 +1563,13 @@ export class JarvisComponent implements OnInit, OnDestroy {
             if (this.voicedMs !== null) {
               this.voicedMs += frame;
             }
+            this.anticipation?.voice(now);
           }
           lastFrame = now;
+          // F-252 / SF-252-04 — silence sur une phrase close : la réponse provisoire part en avance (jamais dite).
+          if (this.live && this.anticipation?.due(now, this.heardSoFar())) {
+            this.zone.run(() => this.anticipate());
+          }
           // F-239 — une écoute ne dure jamais plus de MAX_LISTEN_MS : elle se clôt, et la porte décide.
           if (now - this.listenStartedAt >= MAX_LISTEN_MS) {
             // F-241 / SF-241-06 (E2) — en entretien, ce n'est qu'un segment : la réponse continue.
@@ -1677,6 +1686,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
           }
           live.lastPartial = text;
           this.partial.set([...live.committed, text].join(' ').trim() || null);
+          // F-252 / SF-252-04 — la parole reprend sur un autre texte : l'anticipation est abandonnée.
+          this.dropAnticipationIfStale([...live.committed, text].join(' '));
         }),
         onCommitted: (text) => this.zone.run(() => {
           if (text.trim()) {
@@ -2125,6 +2136,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
     clock.streamFallback = this.streamFallback;
     clock.companion = this.companionBridge.available;
     this.applyPendingCounts(clock);
+    // F-252 / SF-252-04 — le silence réel à la fin de tour (dernier instant de voix → fin d'écoute).
+    if (this.anticipation) {
+      clock.speed = { ...clock.speed, endSilenceMs: this.anticipation.silenceMs(endOfSpeech) };
+    }
+    this.anticipation = null;
     // SF-233-11 — plus de réaction immédiate : une seule formule d'attente, et seulement si la réponse tarde (send).
     // SF-231-05 — la mesure d'adoption : les secondes parlées (D9).
     this.jarvis.usage('SPOKEN', Math.max(0, (performance.now() - this.listenStartedAt) / 1000));
@@ -2144,6 +2160,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
       const retranscribed = this.retranscribe(audio, seconds);
       const streamed = (await this.finishStreaming()).trim();
       this.startSpeculation(streamed, clock);
+      if (this.anticipationsDropped > 0) {
+        clock.speed = { ...clock.speed, anticipationsDropped: this.anticipationsDropped };
+      }
       const final = await retranscribed;
       text = final?.text.trim() || streamed;
       if (final?.text.trim()) {
@@ -2237,15 +2256,55 @@ export class JarvisComponent implements OnInit, OnDestroy {
       screen: screenBlock(this.pieces.nav(), this.presentation()), presentation: this.presentation() };
   }
 
+  /** Cette parole peut-elle partir au cerveau rapide (provisoire) ? */
+  private speculable(text: string, listenedMs: number | null): boolean {
+    return !!text && this.fastBrainOn() && !this.interview && !this.pendingConfirm && !this.awaitingVerbal
+      && !speechGate(text, { voicedMs: this.voicedMs, listenedMs, preRoll: this.listenPreRoll })
+      && !isInterviewCommand(text) && !parseVoiceCorrection(text) && !subjectSwitch(text, this.subjects());
+  }
+
   /** Lance le cerveau rapide sur le texte du flux, en silence, si cette parole lui est destinée. */
   private startSpeculation(streamed: string, clock: TurnClock): void {
-    this.dropSpeculation();
-    if (!streamed || !this.fastBrainOn() || this.interview || this.pendingConfirm || this.awaitingVerbal
-        || speechGate(streamed, { voicedMs: this.voicedMs, listenedMs: clock.speechMs, preRoll: this.listenPreRoll })
-        || isInterviewCommand(streamed) || parseVoiceCorrection(streamed) || subjectSwitch(streamed, this.subjects())) {
+    // F-252 / SF-252-04 — l'anticipation du même texte devient la réponse provisoire du tour.
+    if (this.speculation?.anticipated && this.speculation.matches(streamed, this.converseBody(streamed))) {
       return;
     }
-    this.speculation = new JarvisSpeculation(this.fastBrain, this.converseBody(streamed));
+    this.dropAnticipationOrSpeculation();
+    if (this.speculable(streamed, clock.speechMs)) {
+      this.speculation = new JarvisSpeculation(this.fastBrain, this.converseBody(streamed));
+    }
+  }
+
+  /** F-252 / SF-252-04 — l'anticipation de la fin de parole : le texte du moment, jamais dit avant la fin de tour. */
+  private anticipation: AnticipationWatch | null = null;
+  private anticipationsDropped = 0;
+
+  /** Ce que le flux a entendu jusqu'ici. */
+  private heardSoFar(): string {
+    return this.live ? [...this.live.committed, this.live.lastPartial].join(' ').trim() : '';
+  }
+
+  private anticipate(): void {
+    const text = this.heardSoFar();
+    if (!this.live || this.state() !== 'ecoute' || this.speculation
+        || !this.speculable(text, performance.now() - this.listenStartedAt)) {
+      return;
+    }
+    this.speculation = new JarvisSpeculation(this.fastBrain, this.converseBody(text), undefined, true);
+  }
+
+  /** Jette l'anticipation si le texte du flux n'est plus le sien (la parole a repris). */
+  private dropAnticipationIfStale(text: string): void {
+    if (this.speculation?.anticipated && !sameUtterance(this.speculation.body.text, text)) {
+      this.dropAnticipationOrSpeculation();
+    }
+  }
+
+  private dropAnticipationOrSpeculation(): void {
+    if (this.speculation?.anticipated) {
+      this.anticipationsDropped++;
+    }
+    this.dropSpeculation();
   }
 
   /** La réponse provisoire, si elle vaut pour ce texte de référence ; sinon jetée (`relancee`). */
@@ -2257,7 +2316,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.speculation = null;
     if (speculation.matches(text, body)) {
       if (clock) {
-        clock.speed = { ...clock.speed, speculation: 'adoptee' };
+        clock.speed = { ...clock.speed, speculation: speculation.anticipated ? 'anticipee' : 'adoptee' };
       }
       return speculation;
     }
