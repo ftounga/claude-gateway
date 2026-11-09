@@ -516,8 +516,9 @@ public class JarvisFastBrainService {
 
     /** Ce qui suit la décision : routage, question du sujet, trace au fil, mémoire, registre (effets d'un échange). */
     private Outcome settle(Request request, Outcome decided, Sink sink) {
-        Outcome outcome = route(request, decided);
-        if (sink != null && decided.kind() == Kind.DELEGATE && outcome.kind() == Kind.ANSWER) {
+        Outcome outcome = offlineInstead(request, route(request, decided), sink);
+        if (sink != null && decided.kind() == Kind.DELEGATE && outcome.kind() == Kind.ANSWER
+                && !REASON_OFFLINE.equals(outcome.reason())) {
             // F-239 / SF-239-02 — la question du sujet est dite (elle n'était jamais poussée au fil de l'eau).
             sink.text(outcome.spokenText() + " ");
         }
@@ -541,6 +542,127 @@ public class JarvisFastBrainService {
                     d.label() == null || d.label().isBlank() ? d.demande() : d.label());
         }
         return outcome;
+    }
+
+    /** F-253 / SF-253-05 — la réponse a été faite côté passerelle, le poste étant éteint. */
+    static final String REASON_OFFLINE = "offline";
+    /** Appels au modèle au plus : trois lectures, puis la réponse. */
+    static final int OFFLINE_MAX_CALLS = 4;
+    static final String OFFLINE_FAILED = "Je ne peux pas vous en dire davantage pour le moment, Monsieur.";
+
+    /** F-253 / SF-253-05 — le poste éteint se détecte comme la mesure F-247 ; le modèle est celui du terminal. */
+    private fr.claudegateway.jarvis.state.JarvisStateTurnMeter offlineMeter;
+    private fr.claudegateway.atelier.AtelierProperties atelierProperties;
+
+    @Autowired(required = false)
+    public void setOffline(fr.claudegateway.jarvis.state.JarvisStateTurnMeter meter,
+            fr.claudegateway.atelier.AtelierProperties atelier,
+            @org.springframework.lang.Nullable fr.claudegateway.jarvis.universe.JarvisUniverseService universe) {
+        this.offlineMeter = meter;
+        this.atelierProperties = atelier;
+        this.offlineUniverse = universe;
+    }
+
+    private fr.claudegateway.jarvis.universe.JarvisUniverseService offlineUniverse;
+
+    /** L'univers du compte pour nommer le client ; {@code null} si illisible. */
+    private fr.claudegateway.jarvis.universe.JarvisUniverse offlineUniverseOf(UUID userId) {
+        try {
+            return offlineUniverse == null ? null : offlineUniverse.universe(userId);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
+     * F-253 / SF-253-05 (D3) — une délégation vers un poste éteint ne part pas : Jarvis le dit, puis Opus répond côté
+     * passerelle en lecture seule, sous le compte de l'appelant. Hors de ce cas, l'issue telle quelle. Après l'adoption
+     * d'une réponse provisoire seulement ({@code settle}), jamais au banc.
+     */
+    Outcome offlineInstead(Request request, Outcome outcome, Sink sink) {
+        if (sink == null || outcome.kind() != Kind.DELEGATE || outcome.delegation() == null || offlineMeter == null
+                || atelierProperties == null || request.userId() == null) {
+            return outcome;
+        }
+        Workspace target;
+        try {
+            UUID subject = outcome.delegation().subjectId();
+            target = subject == null ? null : workspaces.findByIdAndUserId(subject, request.userId()).orElse(null);
+            boolean hosted = subject != null && (target == null || target.getHostId() == null);
+            if (hosted || !Boolean.TRUE.equals(offlineMeter.hostOffline(request.userId(), target))) {
+                return outcome;
+            }
+        } catch (RuntimeException e) {
+            log.debug("Poste non vérifié ({})", e.getClass().getSimpleName());
+            return outcome;
+        }
+        String notice = offlineNotice(offlineUniverseOf(request.userId()), target);
+        sink.text(notice + " ");
+        String answer = answerOffline(request, target);
+        for (String sentence : JarvisFastGuards.split(answer + " ").sentences()) {
+            sink.text(sentence + " ");
+        }
+        return new Outcome(Kind.ANSWER, notice + " " + answer, null, REASON_OFFLINE, atelierProperties.model(),
+                outcome.firstTokenMs(), null, outcome.guards(), outcome.understood()).withShows(outcome.shows());
+    }
+
+    /** La phrase dite d'abord, au nom du client quand il est connu. */
+    static String offlineNotice(fr.claudegateway.jarvis.universe.JarvisUniverse universe, Workspace target) {
+        String name = universe == null || target == null ? null : universe.clients().stream()
+                .filter(c -> target.getHostId().equals(c.id())).map(fr.claudegateway.jarvis.universe.JarvisUniverse.Client::name)
+                .findFirst().orElse(null);
+        return (name == null ? "Le poste est éteint" : "Le poste de " + name + " est éteint")
+                + " ; je vous réponds avec ce que je sais.";
+    }
+
+    /** La boucle de lecture d'Opus : outils de lecture seule, chacun une fois ; jamais d'exception vers la réplique. */
+    private String answerOffline(Request request, Workspace target) {
+        try {
+            String apiKey = byok == null ? null : byok.resolveActiveApiKey(request.userId()).orElse(null);
+            List<AgentMessage> conversation = new ArrayList<>();
+            conversation.add(AgentMessage.userText(context(request) + "\n\nParole de Monsieur : " + request.text()));
+            java.util.Set<String> read = new java.util.HashSet<>();
+            for (int n = 0; n < OFFLINE_MAX_CALLS; n++) {
+                boolean last = n == OFFLINE_MAX_CALLS - 1;
+                AgentTurn turn = provider.nextTurn(new AgentTurnRequest(atelierProperties.model(),
+                        JarvisOfflinePrompt.SYSTEM, List.copyOf(conversation),
+                        last ? List.of() : JarvisOfflinePrompt.TOOLS, apiKey, AgentReasoning.off(properties.effort()),
+                        AgentContextPolicy.none(), AgentTurnMode.ACT, AgentCallShape.compact(properties.maxTokens())));
+                account(request.userId(), target, turn, JARVIS_OPUS);
+                if (turn.toolCalls().isEmpty()) {
+                    return turn.text() == null || turn.text().isBlank() ? OFFLINE_FAILED : turn.text().strip();
+                }
+                List<fr.claudegateway.agent.AgentContentBlock> said = new ArrayList<>();
+                List<fr.claudegateway.agent.AgentContentBlock> results = new ArrayList<>();
+                for (AgentToolCall tc : turn.toolCalls()) {
+                    said.add(new fr.claudegateway.agent.AgentContentBlock.ToolUse(tc.id(), tc.name(), tc.input()));
+                    String text = read.add(tc.name()) ? readOffline(request, tc) : ALREADY_READ;
+                    results.add(new fr.claudegateway.agent.AgentContentBlock.ToolResult(tc.id(), text, false));
+                }
+                conversation.add(AgentMessage.assistant(said));
+                conversation.add(AgentMessage.toolResults(results));
+            }
+        } catch (RuntimeException e) {
+            log.warn("Réponse poste éteint en échec ({})", e.getClass().getSimpleName());
+        }
+        return OFFLINE_FAILED;
+    }
+
+    /** Une lecture de l'outil demandé ; tout autre nom est refusé (la liste est celle de {@link JarvisOfflinePrompt}). */
+    private String readOffline(Request request, AgentToolCall tc) {
+        if (JarvisFastBrainPrompt.PIECES_TOOL.equals(tc.name())) {
+            return readPieces(request, tc.input(), false);
+        }
+        if (JarvisFastBrainPrompt.AGENDA_TOOL.equals(tc.name())) {
+            return readAgenda(request, tc.input(), false);
+        }
+        if (JarvisFastBrainPrompt.ETAT_TOOL.equals(tc.name())) {
+            return readState(request, tc.input(), null);
+        }
+        if (JarvisFastBrainPrompt.CONVERSATIONS_TOOL.equals(tc.name())) {
+            return readConversations(request, tc.input());
+        }
+        return "Outil inconnu.";
     }
 
     /** F-235 / SF-235-04 — la question posée quand la délégation n'a pas de sujet cible (D19 : jamais au hasard). */
@@ -2337,7 +2459,9 @@ public class JarvisFastBrainService {
         Workspace w = request.workspace();
         fr.claudegateway.jarvis.state.JarvisStateTool.Read r = stateTool.read(request.userId(),
                 w == null ? null : w.getHostId(), input, request.presentation());
-        gate.stale(r.lines(), java.time.OffsetDateTime.now(clock));
+        if (gate != null) {
+            gate.stale(r.lines(), java.time.OffsetDateTime.now(clock));
+        }
         return r.text();
     }
 
@@ -2514,11 +2638,19 @@ public class JarvisFastBrainService {
 
     /** Coût de l'appel : journal d'usage (annexe, étiqueté JARVIS / FAST) et journée Jarvis. Best-effort. */
     void account(UUID userId, Workspace workspace, AgentTurn turn) {
+        account(userId, workspace, turn, JARVIS_FAST);
+    }
+
+    /** F-253 / SF-253-05 (D3) — l'Opus du poste éteint : au budget Jarvis, jamais au quota du terminal. */
+    static final fr.claudegateway.quota.UsageTag JARVIS_OPUS =
+            fr.claudegateway.quota.UsageTag.jarvis(fr.claudegateway.quota.UsageTurn.JarvisPart.OPUS);
+
+    private void account(UUID userId, Workspace workspace, AgentTurn turn, fr.claudegateway.quota.UsageTag tag) {
         try {
             String model = turn.servedModel() != null ? turn.servedModel() : properties.model();
             if (ledger != null) {
                 ledger.recordAnnex(userId, workspace == null ? null : workspace.getId(), model, turn.inputTokens(),
-                        turn.outputTokens(), turn.cacheReadTokens(), turn.cacheWriteTokens(), JARVIS_FAST);
+                        turn.outputTokens(), turn.cacheReadTokens(), turn.cacheWriteTokens(), tag);
             }
             BigDecimal usd = BigDecimal.ZERO;
             if (costs != null) {
