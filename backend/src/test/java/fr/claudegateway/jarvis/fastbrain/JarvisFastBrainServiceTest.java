@@ -468,6 +468,13 @@ class JarvisFastBrainServiceTest {
     }
 
     @Test
+    void thePhraseComesBeforeTheScreenOrder() {
+        // F-252 / SF-252-03 (CA2) — l'ordre parole → outil : afficher n'est jamais seul.
+        assertThat(JarvisFastBrainPrompt.CORE).contains("La phrase d'abord, l'ordre d'écran ensuite")
+                .contains("jamais seul");
+    }
+
+    @Test
     void aDelegationIsRegisteredAsRunning() {
         JarvisFastBrainService service = service(delegating("""
                 {"demande": "x", "label": "tickets bloqués", "annonce": "Je regarde les tickets bloqués.",
@@ -1084,7 +1091,7 @@ class JarvisFastBrainServiceTest {
         assertThat(JSON.writeValueAsString(calls.get(1).tools())).isEqualTo(first);
         assertThat(JSON.writeValueAsString(calls.get(2).tools())).isEqualTo(first);
         assertThat(calls.get(0).system()).isEqualTo(calls.get(2).system());
-        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("19");
+        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("20");
         assertThat(first).doesNotContain("Kestrel").doesNotContain(subject.toString());
     }
 

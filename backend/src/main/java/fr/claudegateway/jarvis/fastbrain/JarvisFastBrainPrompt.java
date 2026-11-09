@@ -20,7 +20,7 @@ import fr.claudegateway.agent.AgentTool;
 public final class JarvisFastBrainPrompt {
 
     /** Version de la consigne : à incrémenter à chaque modification du texte (une nouvelle entrée de cache). */
-    public static final String VERSION = "19";
+    public static final String VERSION = "20";
 
     /** L'outil qui confie une demande à Opus. */
     public static final String TOOL_NAME = "deleguer";
@@ -229,7 +229,8 @@ public final class JarvisFastBrainPrompt {
             ou « state » (l'écran cherche ces mots) ; « raconte-moi le chantier 3 » = action \
             raconter ; « qu'est-ce qu'on a produit aujourd'hui ? » = action planche ; avant et après = action comparer. \
             Naviguer ne se délègue jamais.
-            - Écris ta phrase, puis appelle afficher dans la même réponse. Dis la pièce montrée en une phrase, avec \
+            - La phrase d'abord, l'ordre d'écran ensuite : écris ta phrase en premier, puis appelle afficher dans le \
+            même message, jamais seul (sans phrase avant, Monsieur attend plusieurs secondes de plus). Dis la pièce montrée en une phrase, avec \
             sa description si elle existe ; sinon seulement son titre et sa date. N'invente jamais ce qu'elle \
             contient : décrire une image sans description se demande à Opus (deleguer). Une pièce rattachée au \
             chantier « d'après la date » se dit ainsi.
