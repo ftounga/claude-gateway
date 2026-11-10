@@ -53,7 +53,12 @@ public class JarvisCaptureService {
     }
 
     /** Ce que l'écran envoie avec l'audio. */
-    public record Incoming(Double seconds, String listenMode, String provider, String streamText, String finalText) {
+    public record Incoming(Double seconds, String listenMode, String provider, String streamText, String finalText,
+            String turnId) {
+
+        public Incoming(Double seconds, String listenMode, String provider, String streamText, String finalText) {
+            this(seconds, listenMode, provider, streamText, finalText, null);
+        }
     }
 
     /**
@@ -80,6 +85,8 @@ public class JarvisCaptureService {
                 .provider(meta == null ? null : cut(meta.provider(), 32))
                 .streamText(meta == null ? null : cut(meta.streamText(), MAX_TEXT))
                 .finalText(meta == null ? null : cut(meta.finalText(), MAX_TEXT))
+                // F-255 / SF-255-01 — le tour vocal de l'énoncé.
+                .turnId(meta == null ? null : fr.claudegateway.jarvis.trace.JarvisTurnIds.clean(meta.turnId()))
                 .build());
         trim(userId);
         return true;

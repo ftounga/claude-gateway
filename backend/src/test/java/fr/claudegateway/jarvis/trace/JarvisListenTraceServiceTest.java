@@ -115,6 +115,55 @@ class JarvisListenTraceServiceTest {
     }
 
     @Test
+    @DisplayName("SF-255-01 : heure serveur = réception − (envoi − t) ; tour rangé, tour hors format écarté")
+    void serverTimeAndTurn() {
+        service.record(user, new JarvisListenTraceService.Batch("p", null, false, List.of(
+                new JarvisListenTraceService.Event(1, 4_000L, "listen_end", "ecoute", "active", null, null, "tour-1"),
+                new JarvisListenTraceService.Event(2, 12_000L, "transcript", null, null, null, null, "<tour>")),
+                10_000L));
+        List<JarvisListenTraceEvent> rows = saved();
+        OffsetDateTime received = OffsetDateTime.ofInstant(NOW, ZoneOffset.UTC);
+        assertThat(rows.get(0).getOccurredAt()).isEqualTo(received.minusSeconds(6));
+        assertThat(rows.get(0).getTurnId()).isEqualTo("tour-1");
+        // Un événement daté après l'envoi est ramené à la réception.
+        assertThat(rows.get(1).getOccurredAt()).isEqualTo(received);
+        assertThat(rows.get(1).getTurnId()).isNull();
+    }
+
+    @Test
+    @DisplayName("SF-255-01 : sans heure d'envoi (écran d'avant), aucune heure serveur, aucun tour")
+    void legacyBatch() {
+        service.record(user, new JarvisListenTraceService.Batch("p", null, false,
+                List.of(new JarvisListenTraceService.Event(1, 5L, "state", null, null, null, null))));
+        JarvisListenTraceEvent row = saved().get(0);
+        assertThat(row.getOccurredAt()).isNull();
+        assertThat(row.getTurnId()).isNull();
+    }
+
+    @Test
+    @DisplayName("SF-255-01 : événement serveur rangé sous le compte, à l'heure exacte ; rien sans tour ni au plafond")
+    void serverEvent() {
+        assertThat(service.recordServer(user, "page-1", "tour-1", JarvisListenTraceService.SERVER_CONVERSE,
+                "subject=none spec=0")).isTrue();
+        ArgumentCaptor<JarvisListenTraceEvent> captor = ArgumentCaptor.forClass(JarvisListenTraceEvent.class);
+        verify(repository).save(captor.capture());
+        JarvisListenTraceEvent row = captor.getValue();
+        assertThat(row.getUserId()).isEqualTo(user);
+        assertThat(row.getPageId()).isEqualTo("page-1");
+        assertThat(row.getTurnId()).isEqualTo("tour-1");
+        assertThat(row.getEvent()).isEqualTo("srv_converse");
+        assertThat(row.getDetail()).isEqualTo("subject=none spec=0");
+        assertThat(row.getOccurredAt()).isEqualTo(OffsetDateTime.ofInstant(NOW, ZoneOffset.UTC));
+
+        assertThat(service.recordServer(user, "page-1", null, "srv_converse", null)).isFalse();
+        assertThat(service.recordServer(user, "page-1", "x y", "srv_converse", null)).isFalse();
+        when(repository.countByUserIdAndCreatedAtAfter(eq(user), any()))
+                .thenReturn(JarvisListenTraceService.MAX_ROWS_PER_DAY);
+        assertThat(service.recordServer(user, "page-1", "tour-2", "srv_converse", null)).isFalse();
+        verify(repository).save(any());
+    }
+
+    @Test
     @DisplayName("purge : plus de 7 jours")
     void purge() {
         when(repository.deleteOlderThan(any())).thenReturn(3);

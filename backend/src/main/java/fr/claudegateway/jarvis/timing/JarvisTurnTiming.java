@@ -261,4 +261,12 @@ public class JarvisTurnTiming {
     /** Anticipations abandonnées parce que la parole a repris (SF-252-04). */
     @Column(name = "anticipations_dropped")
     private Integer anticipationsDropped;
+
+    // ---- F-255 / SF-255-01 — le tour et la page de l'écran (identifiants aléatoires, jamais de contenu).
+
+    @Column(name = "turn_id", length = 36)
+    private String turnId;
+
+    @Column(name = "page_id", length = 36)
+    private String pageId;
 }

@@ -60,4 +60,8 @@ public class JarvisAudioCapture {
     /** La correction du PO (SF-239-06), la référence du banc quand elle existe. */
     @Column(name = "corrected_text", length = 2000)
     private String correctedText;
+
+    /** F-255 / SF-255-01 — le tour vocal de l'énoncé (identifiant tiré par l'écran), {@code null} sinon. */
+    @Column(name = "turn_id", length = 36)
+    private String turnId;
 }

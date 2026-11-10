@@ -122,6 +122,9 @@ export interface ConverseBody {
   presentation?: boolean;
   /** F-252 / SF-252-02 — réponse provisoire : aucun effet tant que l'écran n'a pas adopté ({@link verdict}). */
   speculationId?: string;
+  /** F-255 / SF-255-01 — le tour vocal et la page de l'écran : la passerelle note la réception du tour. */
+  turnId?: string | null;
+  pageId?: string | null;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -182,6 +185,8 @@ export class JarvisFastBrainClient {
           ...(body.screen ? { screen: body.screen } : {}),
           ...(body.presentation ? { presentation: true } : {}),
           ...(body.speculationId ? { speculationId: body.speculationId } : {}),
+          ...(body.turnId ? { turnId: body.turnId } : {}),
+          ...(body.pageId ? { pageId: body.pageId } : {}),
         }),
         signal,
       });
