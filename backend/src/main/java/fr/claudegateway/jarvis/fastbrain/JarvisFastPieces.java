@@ -1,5 +1,7 @@
 package fr.claudegateway.jarvis.fastbrain;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -9,6 +11,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,6 +25,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import fr.claudegateway.atelier.WorkspaceNotFoundException;
 import fr.claudegateway.jarvis.pieces.JarvisPieceService;
 import fr.claudegateway.jarvis.pieces.Piece;
+import fr.claudegateway.jarvis.universe.JarvisUniverse;
 
 /**
  * <b>Les pièces, côté cerveau rapide</b> (F-237 / SF-237-08, cadrage §6.2) : l'outil {@code pieces} exécuté par la
@@ -49,24 +56,46 @@ public class JarvisFastPieces {
         this.pieces = pieces;
     }
 
-    /** L'outil {@code pieces} : la liste compacte, ≤ {@value #MAX_LINES} lignes. Ne lève jamais. */
+    /** L'outil {@code pieces} sans univers (les noms ne se rapprochent pas). */
     public String read(UUID userId, UUID currentSubject, JsonNode input) {
+        return read(userId, currentSubject, input, null);
+    }
+
+    /**
+     * L'outil {@code pieces} : la liste compacte, ≤ {@value #MAX_LINES} lignes. F-253 / SF-253-03 : sujet par nom ou
+     * identifiant, ou client entier, rapprochés sur l'univers <b>du compte</b>. Ne lève jamais.
+     */
+    public String read(UUID userId, UUID currentSubject, JsonNode input, JarvisUniverse universe) {
         UUID subject = currentSubject;
+        String clientKey = null;
+        Map<UUID, String> names = Map.of();
+        String askedClient = text(input, "client");
         String asked = text(input, "sujet");
-        if (!asked.isEmpty()) {
-            try {
-                subject = UUID.fromString(asked);
-            } catch (IllegalArgumentException e) {
-                return UNKNOWN_SUBJECT;
-            }
+        JarvisUniverseView.Scope target;
+        try {
+            target = JarvisUniverseView.scope(universe, askedClient, asked);
+        } catch (RuntimeException e) {
+            return FAILED;
+        }
+        if (target.refusal() != null) {
+            // Sans univers (lecture en échec), un nom n'est pas rapprochable : sujet inconnu, comme avant.
+            return universe == null ? UNKNOWN_SUBJECT : target.refusal();
+        }
+        if (target.subjectId() != null) {
+            subject = target.subjectId();
+        } else if (target.clientKey() != null) {
+            clientKey = target.clientKey();
+            names = JarvisUniverseView.subjectNames(universe);
         }
         JsonNode site = input == null ? null : input.get("chantier");
         Integer chantier = site != null && site.isIntegralNumber() ? site.asInt() : null;
         String search = JarvisFastGuards.normalize(text(input, "recherche"));
         try {
-            JarvisPieceService.Result result = pieces.list(userId, subject, new JarvisPieceService.Filter(chantier,
+            JarvisPieceService.Filter filter = new JarvisPieceService.Filter(chantier,
                     category(text(input, "categorie")), kind(text(input, "type")), null, null, null,
-                    JarvisPieceService.MAX_LIMIT));
+                    JarvisPieceService.MAX_LIMIT);
+            JarvisPieceService.Result result = clientKey != null ? pieces.listForClient(userId, clientKey, filter)
+                    : pieces.list(userId, subject, filter);
             List<Piece> kept = result.pieces().stream()
                     .filter(p -> search.isEmpty() || JarvisFastGuards.normalize(p.title() + " "
                             + (p.caption() == null ? "" : p.caption())).contains(search))
@@ -81,6 +110,10 @@ public class JarvisFastPieces {
             }
             for (Piece p : kept.subList(0, Math.min(MAX_LINES, kept.size()))) {
                 out.append('\n').append(line(p));
+                String name = p.subjectId() == null ? null : names.get(p.subjectId());
+                if (name != null) {
+                    out.append(" | sujet ").append(name); // portée client : de quel sujet vient la pièce
+                }
             }
             return out.toString();
         } catch (WorkspaceNotFoundException e) {
@@ -89,6 +122,104 @@ public class JarvisFastPieces {
             log.warn("Cerveau rapide : lecture des pièces en échec ({})", e.getClass().getSimpleName());
             return FAILED;
         }
+    }
+
+    /** F-253 / SF-253-03 — le bloc de tous les sujets au plus. */
+    static final int MAX_ALL_BLOCK = 1400;
+    /** Le bloc de tous les sujets reste valable 2 min (les comptes bougent peu). */
+    static final Duration ALL_BLOCK_TTL = Duration.ofMinutes(2);
+    /** Au-delà, le tour part sans le bloc (ou avec l'ancien) : la latence d'abord, l'outil {@code pieces} reste juste. */
+    static final Duration ALL_BLOCK_WAIT = Duration.ofMillis(350);
+
+    private record CachedBlock(Instant at, String text) {
+    }
+
+    private final Map<UUID, CachedBlock> allBlocks = new ConcurrentHashMap<>();
+    private final Map<UUID, CompletableFuture<String>> allBlockRuns = new ConcurrentHashMap<>();
+    private final java.util.concurrent.Executor allBlockPool = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
+
+    /**
+     * F-253 / SF-253-03 — le bloc {@code ## Pièces de tous les sujets} (dans le message, jamais dans la consigne) : mis en
+     * cache 2 min, recalculé à côté, attendu au plus {@code ALL_BLOCK_WAIT}. Vide si rien n'est prêt. Ne lève jamais.
+     */
+    public String allBlock(UUID userId, Supplier<JarvisUniverse> universe) {
+        if (userId == null) {
+            return "";
+        }
+        CachedBlock hit = allBlocks.get(userId);
+        if (hit != null && Duration.between(hit.at(), Instant.now()).compareTo(ALL_BLOCK_TTL) < 0) {
+            return hit.text();
+        }
+        CompletableFuture<String> run = allBlockRuns.computeIfAbsent(userId, id -> CompletableFuture.supplyAsync(() -> {
+            try {
+                JarvisUniverse u = universe.get();
+                String text = u == null ? "" : allBlock(u, pieces.bySubject(id));
+                allBlocks.put(id, new CachedBlock(Instant.now(), text));
+                return text;
+            } catch (RuntimeException e) {
+                log.debug("Bloc des pièces illisible ({})", e.getClass().getSimpleName());
+                return "";
+            } finally {
+                allBlockRuns.remove(id);
+            }
+        }, allBlockPool));
+        try {
+            return run.get(ALL_BLOCK_WAIT.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (Exception e) {
+            return hit == null ? "" : hit.text();
+        }
+    }
+
+    /** Le bloc (pur, testé) : une ligne par sujet ayant des pièces, les plus fournis d'abord. */
+    static String allBlock(JarvisUniverse universe, Map<UUID, List<Piece>> bySubject) {
+        record Row(String label, int total, String counts) {
+        }
+        List<Row> rows = new ArrayList<>();
+        for (JarvisUniverse.Client c : universe.clients()) {
+            for (JarvisUniverse.Subject s : c.subjects()) {
+                List<Piece> of = bySubject.getOrDefault(s.id(), List.of());
+                if (!of.isEmpty() && !s.hostTerminal()) {
+                    rows.add(new Row(c.name() + " / " + s.name(), of.size(), allCounts(of)));
+                }
+            }
+        }
+        if (rows.isEmpty()) {
+            return "";
+        }
+        rows.sort(java.util.Comparator.comparingInt(Row::total).reversed());
+        StringBuilder out = new StringBuilder("## Pièces de tous les sujets");
+        for (Row r : rows) {
+            String next = "\n" + r.label() + " : " + r.counts();
+            if (out.length() + next.length() > MAX_ALL_BLOCK) {
+                break;
+            }
+            out.append(next);
+        }
+        return out.toString();
+    }
+
+    private static String allCounts(List<Piece> list) {
+        Map<Piece.Kind, Integer> productions = new EnumMap<>(Piece.Kind.class);
+        int proofs = 0;
+        int entries = 0;
+        for (Piece p : list) {
+            if (p.category() == Piece.Category.PRODUCTION) {
+                productions.merge(p.kind(), 1, Integer::sum);
+            } else if (p.category() == Piece.Category.PREUVE) {
+                proofs++;
+            } else {
+                entries++;
+            }
+        }
+        List<String> parts = new ArrayList<>();
+        productions.forEach((kind, n) -> parts.add(n + " " + kindWord(kind) + (n > 1 ? plural(kind) : "")));
+        if (proofs > 0) {
+            parts.add(proofs + (proofs > 1 ? " preuves" : " preuve"));
+        }
+        if (entries > 0) {
+            parts.add(entries + (entries > 1 ? " entrées" : " entrée"));
+        }
+        return String.join(", ", parts);
     }
 
     /** Une ligne : {@code id | type | « titre » | description | date | chantier | disponibilité}. */

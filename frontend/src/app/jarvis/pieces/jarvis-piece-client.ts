@@ -6,6 +6,8 @@ import { PieceCategory, PieceKind, PieceListResponse } from './jarvis-piece.mode
 /** Une lecture de l'index des pièces (SF-237-01). */
 export interface PieceQuery {
   subjectId?: string | null;
+  /** F-253 / SF-253-03 — la portée client (clé de l'univers, rapprochée par la passerelle). */
+  clientId?: string | null;
   chantier?: number | null;
   category?: PieceCategory | null;
   kind?: PieceKind | null;
@@ -20,6 +22,9 @@ export function pieceQueryString(query: PieceQuery): string {
   const params = new URLSearchParams();
   if (query.subjectId) {
     params.set('subjectId', query.subjectId);
+  }
+  if (query.clientId && !query.subjectId) {
+    params.set('clientId', query.clientId);
   }
   if (query.chantier != null) {
     params.set('chantier', String(query.chantier));

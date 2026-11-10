@@ -82,9 +82,11 @@ export function createServer() {
     }
     if (p === '/api/jarvis/pieces') {
       const subject = url.searchParams.get('subjectId');
+      const client = url.searchParams.get('clientId');
       const kind = url.searchParams.get('kind');
-      const list = (PIECES[subject] ?? []).filter((x) => !kind || x.kind === kind);
-      return json(req, subject && PIECES[subject] !== undefined ? 200 : 404,
+      const source = client === CAGIP ? Object.values(PIECES).flat() : (PIECES[subject] ?? []);
+      const list = source.filter((x) => !kind || x.kind === kind);
+      return json(req, client || (subject && PIECES[subject] !== undefined) ? 200 : 404,
         { pieces: list, total: list.length, truncated: false });
     }
     if (p === '/api/jarvis/converse/warm') {

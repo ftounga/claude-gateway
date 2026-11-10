@@ -36,6 +36,7 @@ public class JarvisPieceController {
 
     @GetMapping("/jarvis/pieces")
     public JarvisPieceService.Result pieces(@RequestParam(required = false) UUID subjectId,
+            @RequestParam(required = false) String clientId,
             @RequestParam(required = false) Integer chantier,
             @RequestParam(required = false) String category,
             @RequestParam(required = false) String kind,
@@ -47,7 +48,10 @@ public class JarvisPieceController {
         JarvisPieceService.Filter filter = new JarvisPieceService.Filter(chantier,
                 parse(Piece.Category.class, category, "category"), parse(Piece.Kind.class, kind, "kind"), since,
                 until, series, limit == null ? JarvisPieceService.DEFAULT_LIMIT : limit);
-        return service.list(currentUser.requireId(), subjectId, filter);
+        // F-253 / SF-253-03 — portée client : les sujets du client, du seul compte courant ; le sujet nommé l'emporte.
+        return subjectId == null && clientId != null && !clientId.isBlank()
+                ? service.listForClient(currentUser.requireId(), clientId.strip(), filter)
+                : service.list(currentUser.requireId(), subjectId, filter);
     }
 
     private static <E extends Enum<E>> E parse(Class<E> type, String value, String name) {

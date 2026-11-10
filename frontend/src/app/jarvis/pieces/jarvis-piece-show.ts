@@ -16,6 +16,9 @@ export type ShowAction = 'galerie' | 'piece' | 'suivante' | 'precedente' | 'sele
 
 export interface ShowScope {
   subjectId?: string | null;
+  /** F-253 / SF-253-03 — le client (clé de l'univers) et son nom exact, rapprochés par la passerelle. */
+  client?: string | null;
+  clientName?: string | null;
   chantier?: number | null;
   category?: string | null;
   type?: string | null;
@@ -153,8 +156,10 @@ export function showPlan(cmd: ShowCommand, ctx: ShowContext): ShowPlan {
 
 function galleryPlan(cmd: ShowCommand, ctx: ShowContext, origin: NavOrigin): ShowPlan {
   const scope = cmd.scope ?? null;
-  const subjectId = scope?.subjectId || ctx.subjectId;
-  if (origin === 'PROACTIVE' && scope?.subjectId && ctx.subjectId && scope.subjectId !== ctx.subjectId) {
+  // F-253 / SF-253-03 — portée client : les sujets du client, sans le sujet courant.
+  const client = !scope?.subjectId && scope?.client ? scope.client : null;
+  const subjectId = scope?.subjectId || (client ? null : ctx.subjectId);
+  if (origin === 'PROACTIVE' && (client || (scope?.subjectId && ctx.subjectId && scope.subjectId !== ctx.subjectId))) {
     return { kind: 'refuse', reason: 'NOT_IN_SCOPE' }; // d'initiative : seulement le sujet dont on parle
   }
   let ids = [...(cmd.pieces ?? [])];
@@ -167,12 +172,13 @@ function galleryPlan(cmd: ShowCommand, ctx: ShowContext, origin: NavOrigin): Sho
       return { kind: 'refuse', reason: 'RECENT' };
     }
   }
-  if (!subjectId && !ids.length && !scope?.since) {
+  if (!subjectId && !client && !ids.length && !scope?.since) {
     return { kind: 'refuse', reason: 'NOTHING' };
   }
   const mode: GalleryMode = MODES[cmd.action] ?? 'fan';
   const query: PieceQuery = {
     subjectId: subjectId ?? null,
+    clientId: client,
     chantier: scope?.chantier ?? null,
     category: scope?.category ? CATEGORIES[scope.category] ?? null : null,
     kind: scope?.type ? KINDS[scope.type] ?? null : null,
@@ -182,7 +188,7 @@ function galleryPlan(cmd: ShowCommand, ctx: ShowContext, origin: NavOrigin): Sho
   };
   const navScope: NavScope = {
     subjectId: subjectId ?? null, chantier: scope?.chantier ?? null, category: query.category ?? null,
-    kind: query.kind ?? null, series: scope?.series ?? null, label: scopeLabel(scope, ctx.subjectName, mode),
+    kind: query.kind ?? null, series: scope?.series ?? null, label: scopeLabel(scope, client ? scope?.clientName ?? null : ctx.subjectName, mode),
   };
   const select = cmd.action === 'piece' && ids.length === 1 ? 1 : cmd.index ?? null;
   return { kind: 'gallery', scope: navScope, query, ids, select, origin, mode };

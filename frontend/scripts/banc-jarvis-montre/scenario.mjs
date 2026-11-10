@@ -220,6 +220,9 @@ const univers = (view) => [['show', { action: 'univers', pieces: [], reason: 'de
 const overrides = mode === 'apres' ? {
   clients: [...univers('clients'), ['text', { delta: 'Vos deux clients, CAGIP et Edenred. ' }]],
   sujets: [...univers('sujets'), ['text', { delta: 'Vos trois sujets, Monsieur. ' }]],
+  videos: [['show', { action: 'galerie', pieces: [], reason: 'demande',
+    scope: { client: 'c-cagip', clientName: 'CAGIP', type: 'video' } }],
+  ['text', { delta: 'Les vidéos de CAGIP, Monsieur. ' }]],
 } : {};
 const RUNS = [
   { width: 1920, height: 1080, tag: 'pc' },
