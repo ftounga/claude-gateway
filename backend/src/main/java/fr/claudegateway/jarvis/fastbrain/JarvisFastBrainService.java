@@ -758,6 +758,45 @@ public class JarvisFastBrainService {
         this.fastPieces = fastPieces;
     }
 
+    /** F-253 / SF-253-02 — l'univers du compte, pour vérifier une vue avant de la montrer (facultatif). */
+    private fr.claudegateway.jarvis.universe.JarvisUniverseService universeService;
+
+    @Autowired(required = false)
+    public void setUniverse(fr.claudegateway.jarvis.universe.JarvisUniverseService universeService) {
+        this.universeService = universeService;
+    }
+
+    /** F-253 / SF-253-02 — l'univers du compte, ou {@code null} (banc, service absent, lecture en échec). */
+    fr.claudegateway.jarvis.universe.JarvisUniverse universeOf(UUID userId, boolean bench) {
+        if (bench || universeService == null || userId == null) {
+            return null;
+        }
+        try {
+            return universeService.universe(userId);
+        } catch (RuntimeException e) {
+            log.debug("Univers illisible pour la vue ({})", e.getClass().getSimpleName());
+            return null;
+        }
+    }
+
+    /**
+     * F-237 / SF-237-08, F-253 / SF-253-02 — un ordre d'écran validé, puis, pour une vue de l'univers, vérifié contre
+     * l'univers du compte : ce que le modèle reçoit est ce qui va apparaître, ou le refus.
+     */
+    JarvisShowCommand.Parsed checkShow(JsonNode input, int appuiLeft, UUID userId, boolean bench,
+            boolean presentation) {
+        JarvisShowCommand.Parsed parsed = JarvisShowCommand.parse(input, appuiLeft);
+        if (parsed.command() == null || !"univers".equals(parsed.command().action())) {
+            return parsed;
+        }
+        if (presentation) {
+            return new JarvisShowCommand.Parsed(null, "refusé : en présentation, l'univers n'est pas montré", 0, 0);
+        }
+        JarvisUniverseView.Check check = JarvisUniverseView.check(parsed.command(), universeOf(userId, bench));
+        return new JarvisShowCommand.Parsed(check.command(), check.command() == null ? check.result() : null, 0, 0,
+                check.command() == null ? null : check.result());
+    }
+
     /** F-235 / SF-235-04 — la trace des échanges rapides dans le fil. */
     @Autowired(required = false)
     public void setExchanges(JarvisFastExchangeWriter exchanges) {
@@ -1310,7 +1349,7 @@ public class JarvisFastBrainService {
                         .noneMatch(tc -> JarvisFastBrainPrompt.TOOL_NAME.equals(tc.name()))) {
                     for (AgentToolCall tc : turn.toolCalls()) {
                         if (JarvisFastBrainPrompt.SHOW_TOOL.equals(tc.name())) {
-                            JarvisShowCommand.Parsed parsed = JarvisShowCommand.parse(tc.input(), appuiLeft);
+                            JarvisShowCommand.Parsed parsed = checkShow(tc.input(), appuiLeft, userId, bench, request.presentation());
                             if (parsed.command() != null) {
                                 out.show(parsed.command());
                                 shown.add(parsed.command());
@@ -1329,7 +1368,7 @@ public class JarvisFastBrainService {
                 if (JarvisFastBrainPrompt.TOOL_NAME.equals(tc.name())) {
                     delegates = true;
                 } else if (JarvisFastBrainPrompt.SHOW_TOOL.equals(tc.name())) {
-                    JarvisShowCommand.Parsed parsed = JarvisShowCommand.parse(tc.input(), appuiLeft);
+                    JarvisShowCommand.Parsed parsed = checkShow(tc.input(), appuiLeft, userId, bench, request.presentation());
                     if (parsed.command() != null) {
                         out.show(parsed.command());
                         shown.add(parsed.command());
@@ -1595,7 +1634,7 @@ public class JarvisFastBrainService {
                 input == null ? "" : input.path("date").asText(""));
         String view = "semaine".equals(p.name()) ? "semaine" : "jour";
         return new JarvisShowCommand("piece", List.of("agenda:" + view + ":" + p.first()), null, null, null, null,
-                null, null, null, "demande");
+                null, null, null, "demande", null, null);
     }
 
     /** Les blocs « ## Écran » (de l'écran, coupé) et « ## Pièces » (du sujet courant), précédés d'une ligne vide. */

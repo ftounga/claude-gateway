@@ -41,6 +41,16 @@ describe('F-234 / SF-234-02 — fil des scènes', () => {
     http.expectOne(JARVIS_UNIVERSE_URL).flush(testUniverse());
   });
 
+  it('F-253 / SF-253-02 — un ordre du cerveau rapide pose le « Montrer » ; une vue qui ne se résout pas ne change rien', () => {
+    bus.setUniverse(testUniverse());
+    expect(bus.showRequest({ filter: 'clients', client: null })).toBeTrue();
+    expect(bus.focus()?.filter).toBe('clients');
+    expect(bus.showRequest({ filter: 'clients', client: 'inconnu' })).toBeFalse();
+    expect(bus.focus()?.filter).toBe('clients');
+    expect(bus.dismissShow()).toBeTrue();
+    expect(bus.focus()).toBeNull();
+  });
+
   it('un univers illisible laisse l\'écran tel quel (scène générique quand même)', () => {
     bus.load();
     http.expectOne(JARVIS_UNIVERSE_URL).flush('boom', { status: 500, statusText: 'KO' });

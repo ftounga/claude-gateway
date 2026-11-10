@@ -10,7 +10,7 @@ import { sceneMessage } from './jarvis-scene-message';
 import { EMPTY_SESSION } from './jarvis-session-memory';
 import { directShow } from './jarvis-show-3d';
 
-const FILTERS: ShowFilter[] = ['clients', 'connectes', 'deconnectes', 'chantiers-bloques', 'etapes-en-cours',
+const FILTERS: ShowFilter[] = ['clients', 'sujets', 'connectes', 'deconnectes', 'chantiers-bloques', 'etapes-en-cours',
   'a-envoyer'];
 
 function ctx(extra: Partial<SceneContext> = {}): SceneContext {

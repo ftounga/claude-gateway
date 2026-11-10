@@ -10,7 +10,9 @@ import { PieceCategory, PieceKind } from './jarvis-piece.models';
 
 /** Les actions de l'outil `afficher` (fermées, mêmes que la passerelle). */
 export type ShowAction = 'galerie' | 'piece' | 'suivante' | 'precedente' | 'selection' | 'retour' | 'remonter'
-  | 'fermer' | 'lecture' | 'pause' | 'aller' | 'page' | 'zoom' | 'comparer' | 'raconter' | 'planche';
+  | 'fermer' | 'lecture' | 'pause' | 'aller' | 'page' | 'zoom' | 'comparer' | 'raconter' | 'planche'
+  /** F-253 / SF-253-02 — une vue de l'univers : appliquée par le « Montrer » F-234, jamais par la galerie. */
+  | 'univers';
 
 export interface ShowScope {
   subjectId?: string | null;
@@ -33,6 +35,10 @@ export interface ShowCommand {
   zoom?: string | null;
   target?: string | null;
   reason?: 'demande' | 'appui';
+  /** F-253 / SF-253-02 — la vue de l'action `univers` (filtre fermé du « Montrer »). */
+  view?: string | null;
+  /** F-253 / SF-253-02 — le client qui restreint la vue (nom exact, rapproché par la passerelle). */
+  client?: string | null;
 }
 
 /** Comment la galerie se présente : éventail normal, comparaison, récit, planche contact (SF-237-10/11). */

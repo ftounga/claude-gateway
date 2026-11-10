@@ -15,7 +15,8 @@ import { Panel3d, SceneTone } from './jarvis-scene3d.model';
  *   <li>`chantiers-bloques` : losanges en teinte d'<b>attente</b> + la personne attendue ;</li>
  *   <li>`etapes-en-cours` : chantiers déployés (chapelet) + l'étape en panneau ;</li>
  *   <li>`a-envoyer` : les enveloppes des destinataires, autour du compteur ;</li>
- *   <li>`clients` : tout l'univers déployé.</li>
+ *   <li>`clients` : tout l'univers déployé ;</li>
+ *   <li>`sujets` (F-253) : chaque sujet porte son nom et son client en panneau.</li>
  * </ul>
  * Le reste passe en latent (graphe F-236 / SF-236-04) ; la caméra dézoome, puis les éléments s'allument avec 50 ms
  * d'écart (T-M).
@@ -36,6 +37,7 @@ export interface ShowPlan3d {
 
 const TONE: Record<ShowFilter, (connected: boolean | null) => SceneTone> = {
   clients: (c) => (c === false ? 'off' : 'normal'),
+  sujets: () => 'normal',
   connectes: () => 'green',
   deconnectes: () => 'off',
   'chantiers-bloques': () => 'wait',
@@ -58,7 +60,7 @@ export function directShow(focus: ShowFocus | null): ShowPlan3d | null {
     kind: 'show', title: safeLine(focus.title, 48),
     lines: focus.more > 0 ? [{ text: `+${focus.more} autres` }] : [],
   };
-  const items: Panel3d[] = focus.filter === 'etapes-en-cours' || focus.filter === 'a-envoyer'
+  const items: Panel3d[] = focus.filter === 'etapes-en-cours' || focus.filter === 'a-envoyer' || focus.filter === 'sujets'
     ? focus.items.map((item) => ({
       id: `show:${item.node.key}`, anchor: item.node.key, tone: tones[item.node.key],
       kind: focus.filter === 'a-envoyer' ? 'envelope' as const : 'chantier' as const,

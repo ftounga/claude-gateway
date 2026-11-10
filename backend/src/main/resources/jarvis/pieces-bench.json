@@ -41,6 +41,12 @@
     { "id": "Z03", "category": "NEUTRAL", "text": "Quelle heure est-il ?", "expect": { "show": false } },
     { "id": "Z04", "category": "NEUTRAL", "text": "Tu es là ?", "expect": { "show": false } },
     { "id": "Z05", "category": "NEUTRAL", "text": "Passe sur Orion.", "expect": { "show": false } },
-    { "id": "Z06", "category": "NEUTRAL", "text": "Bonne soirée.", "expect": { "show": false } }
+    { "id": "Z06", "category": "NEUTRAL", "text": "Bonne soirée.", "expect": { "show": false } },
+    { "id": "U01", "category": "UNIVERS", "text": "Montre-moi la liste de mes clients.", "expect": { "show": true, "action": ["univers"], "vue": "clients" } },
+    { "id": "U02", "category": "UNIVERS", "text": "Montre-moi la liste de mes sujets en cours.", "expect": { "show": true, "action": ["univers"], "vue": "sujets" } },
+    { "id": "U03", "category": "UNIVERS", "text": "Montre-moi les sujets d'Orion.", "expect": { "show": true, "action": ["univers"], "vue": "sujets", "client": "Orion" } },
+    { "id": "U04", "category": "UNIVERS", "text": "Montre-moi les postes connectés.", "expect": { "show": true, "action": ["univers"], "vue": "connectes" } },
+    { "id": "U05", "category": "UNIVERS", "text": "Montre-moi les étapes en cours.", "expect": { "show": true, "action": ["univers"], "vue": "etapes-en-cours" } },
+    { "id": "U06", "category": "UNIVERS", "text": "Affiche mes clients à l'écran.", "expect": { "show": true, "action": ["univers"], "vue": "clients" } }
   ]
 }

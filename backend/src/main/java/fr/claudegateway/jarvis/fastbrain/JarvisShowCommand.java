@@ -19,10 +19,13 @@ import com.fasterxml.jackson.databind.JsonNode;
  * @param pieces  identifiants de pièces (≤ 8)
  * @param scope   la portée d'une galerie ({@code null} si vide)
  * @param reason  {@code demande} ou {@code appui}
+ * @param view    F-253 / SF-253-02 — la vue de l'univers de l'action {@code univers} (une des
+ *                {@link JarvisFastBrainPrompt#UNIVERSE_FILTERS}), sinon {@code null}
+ * @param client  F-253 / SF-253-02 — le client qui restreint la vue, nom tel que dans l'univers du compte
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record JarvisShowCommand(String action, List<String> pieces, Scope scope, Integer index, Integer time,
-        String chapter, Integer page, String zoom, String target, String reason) {
+        String chapter, Integer page, String zoom, String target, String reason, String view, String client) {
 
     /** Identifiants au plus par ordre (cadrage D8). */
     public static final int MAX_PIECES = 8;
@@ -53,6 +56,8 @@ public record JarvisShowCommand(String action, List<String> pieces, Scope scope,
 
     /** Le refus d'un ordre (rendu au modèle, jamais relayé). */
     public static final String UNKNOWN_ACTION = "UNKNOWN_ACTION";
+    /** F-253 / SF-253-02 — une action {@code univers} sans vue connue. */
+    public static final String NO_VIEW = "NO_VIEW";
     /** Un ordre d'initiative alors que les trois pièces de la réponse sont déjà montrées. */
     public static final String APPUI_EXHAUSTED = "APPUI_EXHAUSTED";
 
@@ -60,12 +65,22 @@ public record JarvisShowCommand(String action, List<String> pieces, Scope scope,
      * Le résultat de la validation : l'ordre gardé (ou {@code null}), la raison du refus, les pièces retirées et le
      * nombre de pièces d'initiative consommées.
      */
-    public record Parsed(JarvisShowCommand command, String refusal, int dropped, int appuiUsed) {
+    public record Parsed(JarvisShowCommand command, String refusal, int dropped, int appuiUsed, String checked) {
+
+        /** Un ordre validé dans sa forme seulement (pas encore confronté aux données). */
+        public Parsed(JarvisShowCommand command, String refusal, int dropped, int appuiUsed) {
+            this(command, refusal, dropped, appuiUsed, null);
+        }
 
         /** Ce qui est rendu au modèle comme résultat d'outil. */
         public String toolResult() {
             if (command == null) {
-                return "refusé : " + refusal;
+                // F-253 / SF-253-02 — un refus vérifié contre les données se rend tel quel (il dit pourquoi).
+                return refusal != null && (refusal.startsWith("refusé") || refusal.startsWith("rien à montrer"))
+                        ? refusal : "refusé : " + refusal;
+            }
+            if (checked != null) {
+                return checked;
             }
             return dropped > 0 ? "ok (" + dropped + " pièce(s) non montrée(s) : au plus trois d'initiative, huit "
                     + "en tout, identifiants connus)" : "ok";
@@ -79,6 +94,15 @@ public record JarvisShowCommand(String action, List<String> pieces, Scope scope,
             return new Parsed(null, UNKNOWN_ACTION, 0, 0);
         }
         String reason = "appui".equals(text(input, "raison")) ? "appui" : "demande";
+        if ("univers".equals(action)) {
+            // F-253 / SF-253-02 — une vue de l'univers : ni pièce ni portée, la vue (fermée) et le client facultatif.
+            String view = text(input, "vue").toLowerCase(Locale.ROOT);
+            if (view.isEmpty() || !JarvisFastBrainPrompt.UNIVERSE_FILTERS.contains(view)) {
+                return new Parsed(null, NO_VIEW, 0, 0);
+            }
+            return new Parsed(new JarvisShowCommand(action, List.of(), null, null, null, null, null, null, null,
+                    "demande", view, blankToNull(text(input, "client"))), null, 0, 0);
+        }
         List<String> ids = new ArrayList<>();
         int dropped = 0;
         JsonNode list = input == null ? null : input.get("pieces");
@@ -115,7 +139,7 @@ public record JarvisShowCommand(String action, List<String> pieces, Scope scope,
         JarvisShowCommand command = new JarvisShowCommand(action, List.copyOf(ids),
                 scope == null || scope.isEmpty() ? null : scope, integer(input, "index"), integer(input, "temps"),
                 blankToNull(text(input, "chapitre")), integer(input, "page"),
-                ZOOM.matcher(zoom).matches() ? zoom : null, blankToNull(text(input, "cible")), reason);
+                ZOOM.matcher(zoom).matches() ? zoom : null, blankToNull(text(input, "cible")), reason, null, null);
         return new Parsed(command, null, dropped, appuiUsed);
     }
 

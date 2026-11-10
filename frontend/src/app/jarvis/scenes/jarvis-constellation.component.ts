@@ -89,7 +89,7 @@ interface LitMark {
              (click)="pick(s)" (keydown.enter)="pick(s)" (keydown.space)="pick(s); $event.preventDefault()">
             <circle class="cst__hit" [attr.cx]="s.x" [attr.cy]="s.y" [attr.r]="hitRadius()" />
             <circle class="cst__dot" [attr.cx]="s.x" [attr.cy]="s.y" [attr.r]="s.ring === 'cluster' ? 1.4 : 2.6" />
-            @if (s.named || isLit(s.id) || s.id === subjectId()) {
+            @if (s.named || isLit(s.id) || isShown(s.id) || s.id === subjectId()) {
               @let sl = subjectLabel(s);
               <text aria-hidden="true" [attr.x]="sl.x" [attr.y]="sl.y" [attr.text-anchor]="sl.anchor">{{ s.name }}</text>
             }
@@ -306,7 +306,10 @@ export class JarvisConstellationComponent implements OnInit {
 
   /** Chantiers et personnes demandés, répartis sur l'anneau des chantiers (au premier plan, même sur téléphone). */
   readonly shown = computed<LitMark[]>(() => {
-    const items = (this.focus()?.items ?? []).filter((i) => i.node.kind === 'chantier' || i.node.kind === 'person');
+    // F-253 / SF-253-02 — un sujet montré qui n'est pas sur l'anneau (grappe d'un autre client, téléphone) y est écrit.
+    const onRing = new Set(this.layout().subjects.filter((s) => s.ring === 'current').map((s) => s.id));
+    const items = (this.focus()?.items ?? []).filter((i) => i.node.kind === 'chantier' || i.node.kind === 'person'
+      || (i.node.kind === 'subject' && !onRing.has(i.node.key)));
     return items.map((item, i) => {
       const at = polar(CHANTIER_RING, -90 + (360 * (i + 0.5)) / items.length);
       const label = item.node.kind === 'chantier' ? shortChantier(item.node.label) : item.node.label;

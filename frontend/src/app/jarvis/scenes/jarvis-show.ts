@@ -14,10 +14,12 @@ import { JarvisUniverse, NodeRef, clientKey } from './jarvis-universe.models';
 export const SHOW_MARK = '🖥';
 
 /** Les filtres compris. */
-export type ShowFilter = 'clients' | 'connectes' | 'deconnectes' | 'chantiers-bloques' | 'etapes-en-cours' | 'a-envoyer';
+export type ShowFilter = 'clients' | 'sujets' | 'connectes' | 'deconnectes' | 'chantiers-bloques' | 'etapes-en-cours'
+  | 'a-envoyer';
 
 const FILTERS: Record<string, ShowFilter> = {
   'clients': 'clients',
+  'sujets': 'sujets',
   'connectes': 'connectes',
   'deconnectes': 'deconnectes',
   'chantiers bloques': 'chantiers-bloques',
@@ -124,6 +126,15 @@ export function stripShowLines(text: string): string {
   return (text ?? '').split('\n').filter((l) => !isShowLine(l)).join('\n');
 }
 
+/**
+ * F-253 / SF-253-02 — l'ordre `univers` du cerveau rapide (vue et client validés par la passerelle) en demande de
+ * « Montrer » ; `null` si la vue n'est pas connue de l'écran.
+ */
+export function universeShowRequest(view: string | null | undefined, client: string | null | undefined): ShowRequest | null {
+  const filter = FILTERS[normalizeName(view ?? '').replace(/-/g, ' ')];
+  return filter ? { filter, client: client ? normalizeName(client) : null } : null;
+}
+
 /** Résout une demande sur l'univers. `null` si l'univers manque ou si le client nommé est inconnu. */
 export function resolveShow(universe: JarvisUniverse | null, request: ShowRequest | null): ShowFocus | null {
   if (!universe || !request) {
@@ -135,7 +146,7 @@ export function resolveShow(universe: JarvisUniverse | null, request: ShowReques
   }
   let clients = universe.clients;
   if (request.client) {
-    const wanted = request.client;
+    const wanted = normalizeName(request.client);
     clients = clients.filter((c) => normalizeName(c.name) === wanted || normalizeName(c.name).includes(wanted));
     if (clients.length === 0) {
       return null;
@@ -146,11 +157,23 @@ export function resolveShow(universe: JarvisUniverse | null, request: ShowReques
     ({ kind: 'client', key: clientKey(c), label: c.name, clientKey: clientKey(c) });
   let title: string;
   switch (filter) {
+    case 'sujets': {
+      for (const c of clients) {
+        for (const s of c.subjects.filter((x) => !x.hostTerminal)) {
+          items.push({ node: { kind: 'subject', key: s.id, label: s.name, clientKey: clientKey(c) }, note: c.name,
+            connected: null });
+        }
+      }
+      title = request.client ? `${plural(items.length, 'sujet')} · ${clients[0].name}` : plural(items.length, 'sujet');
+      break;
+    }
     case 'clients':
     case 'connectes':
     case 'deconnectes': {
-      const wanted = clients.filter((c) => request.filter === 'clients'
-        || (request.filter === 'connectes' ? c.connected : !c.connected));
+      // F-253 / SF-253-02 — un client hébergé n'a pas de poste : il ne compte ni connecté ni déconnecté.
+      const hosts = clients.filter((c) => !c.virtual);
+      const wanted = request.filter === 'clients' ? clients
+        : hosts.filter((c) => (request.filter === 'connectes' ? c.connected : !c.connected));
       for (const c of wanted) {
         items.push({ node: clientNode(c), note: c.virtual ? 'hébergé' : c.connected ? 'connecté' : 'déconnecté',
           connected: c.virtual ? null : c.connected });
@@ -159,8 +182,8 @@ export function resolveShow(universe: JarvisUniverse | null, request: ShowReques
       title = request.filter === 'clients'
         ? `${plural(wanted.length, 'client')} · ${connected} connecté${connected > 1 ? 's' : ''}`
         : request.filter === 'connectes'
-          ? `${plural(wanted.length, 'poste')} connecté${wanted.length > 1 ? 's' : ''} sur ${clients.length}`
-          : `${plural(wanted.length, 'poste')} déconnecté${wanted.length > 1 ? 's' : ''} sur ${clients.length}`;
+          ? `${plural(wanted.length, 'poste')} connecté${wanted.length > 1 ? 's' : ''} sur ${hosts.length}`
+          : `${plural(wanted.length, 'poste')} déconnecté${wanted.length > 1 ? 's' : ''} sur ${hosts.length}`;
       break;
     }
     case 'chantiers-bloques':
