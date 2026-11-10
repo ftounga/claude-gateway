@@ -20,7 +20,7 @@ import fr.claudegateway.agent.AgentTool;
 public final class JarvisFastBrainPrompt {
 
     /** Version de la consigne : à incrémenter à chaque modification du texte (une nouvelle entrée de cache). */
-    public static final String VERSION = "20";
+    public static final String VERSION = "21";
 
     /** L'outil qui confie une demande à Opus. */
     public static final String TOOL_NAME = "deleguer";
@@ -225,6 +225,11 @@ public final class JarvisFastBrainPrompt {
             - Le plus souvent, appelle directement afficher avec une portée (action galerie, portée chantier et \
             catégorie). Appelle pieces seulement pour choisir une pièce précise (« celle sur le déploiement ») ou \
             lire sa description, une seule fois par réponse.
+            - Le bloc « ## Pièces de tous les sujets », quand il est là, compte les pièces de chaque sujet de chaque \
+            client, pas seulement du sujet courant. « Les vidéos chez CAGIP » : afficher(action galerie, portée client \
+            « CAGIP » et type video, raison demande). « Les vidéos de data-platform » : portée sujet « data-platform ». \
+            Donne les noms tels que dans le contexte, ou tels que dits ; la passerelle les rapproche. Aucune pièce de \
+            ce type dans le contexte : dis-le et ne montre rien.
             - Pour naviguer, sers-toi du bloc « ## Écran » : « la deuxième » = action selection, index 2 ; « va au \
             chapitre sur Terraform » ou « va au moment où il parle du state » = action aller, chapitre « Terraform » \
             ou « state » (l'écran cherche ces mots) ; « le chapitre suivant » = action aller, chapitre : le numéro du \
@@ -469,7 +474,9 @@ public final class JarvisFastBrainPrompt {
     public static AgentTool piecesTool() {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("sujet", Map.of("type", "string",
-                "description", "Identifiant du sujet tel que dans le contexte ; vide pour le sujet courant."));
+                "description", "Nom ou identifiant du sujet tel que dans le contexte ; vide pour le sujet courant."));
+        properties.put("client", Map.of("type", "string",
+                "description", "Nom du client, pour lire les pièces de tous ses sujets ; vide sinon."));
         properties.put("chantier", Map.of("type", List.of("integer", "null"),
                 "description", "Numéro du chantier, sinon null."));
         properties.put("categorie", Map.of("type", "string", "enum", CATEGORIES,
@@ -541,7 +548,8 @@ public final class JarvisFastBrainPrompt {
     /** {@value #SHOW_TOOL} : pilote l'écran (relayé au navigateur), aucun effet en base. */
     public static AgentTool showTool() {
         Map<String, Object> scope = new LinkedHashMap<>();
-        scope.put("sujet", Map.of("type", "string", "description", "Identifiant du sujet ; vide pour le courant."));
+        scope.put("sujet", Map.of("type", "string", "description", "Nom ou identifiant du sujet ; vide pour le courant."));
+        scope.put("client", Map.of("type", "string", "description", "Nom du client (tous ses sujets) ; vide sinon."));
         scope.put("chantier", Map.of("type", List.of("integer", "null"), "description", "Numéro du chantier."));
         scope.put("categorie", Map.of("type", "string", "enum", CATEGORIES, "description", "Catégorie."));
         scope.put("type", Map.of("type", "string", "enum", TYPES, "description", "Type de pièce."));

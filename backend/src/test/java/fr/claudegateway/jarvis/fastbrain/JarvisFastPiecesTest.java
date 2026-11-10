@@ -32,6 +32,46 @@ class JarvisFastPiecesTest {
                 null, chantier, link, null, null, null, Piece.Availability.ONLINE);
     }
 
+    /** F-253 / SF-253-03 — un univers à un client et deux sujets. */
+    private fr.claudegateway.jarvis.universe.JarvisUniverse universe(UUID host, UUID videos, UUID empty) {
+        return new fr.claudegateway.jarvis.universe.JarvisUniverse(OffsetDateTime.now(), List.of(
+                new fr.claudegateway.jarvis.universe.JarvisUniverse.Client(host, "CAGIP", false, false, "ACTIVE", List.of(
+                        new fr.claudegateway.jarvis.universe.JarvisUniverse.Subject(videos, "data-platform", false, false,
+                                List.of()),
+                        new fr.claudegateway.jarvis.universe.JarvisUniverse.Subject(empty, "agenor", false, false,
+                                List.of())), List.of(), List.of(), false)), 0);
+    }
+
+    @Test
+    void allBlockCountsEachSubjectAndLeavesOutEmptyOnes() {
+        UUID host = UUID.randomUUID();
+        UUID videos = UUID.randomUUID();
+        String block = JarvisFastPieces.allBlock(universe(host, videos, UUID.randomUUID()), java.util.Map.of(videos,
+                List.of(piece("video:a", Piece.Category.PRODUCTION, Piece.Kind.VIDEO, "A", null, 3, Piece.ChantierLink.MESSAGE),
+                        piece("video:b", Piece.Category.PRODUCTION, Piece.Kind.VIDEO, "B", null, 3, Piece.ChantierLink.MESSAGE),
+                        piece("proof:c", Piece.Category.PREUVE, Piece.Kind.IMAGE, "C", null, 3, Piece.ChantierLink.MESSAGE))));
+        assertThat(block).startsWith("## Pièces de tous les sujets").contains("CAGIP / data-platform : 2 vidéos, 1 preuve")
+                .doesNotContain("agenor");
+        assertThat(JarvisFastPieces.allBlock(universe(host, videos, UUID.randomUUID()), java.util.Map.of())).isEmpty();
+    }
+
+    @Test
+    void readAcceptsAClientNameAndSaysWhichSubjectEachPieceComesFrom() throws Exception {
+        UUID host = UUID.randomUUID();
+        UUID videos = UUID.randomUUID();
+        JarvisPieceService service = mock(JarvisPieceService.class);
+        Piece video = new Piece("video:a", Piece.Category.PRODUCTION, Piece.Kind.VIDEO, "Cours", null,
+                Piece.CaptionSource.TITLE, OffsetDateTime.now(), videos, 3, Piece.ChantierLink.MESSAGE, null, null,
+                java.util.Map.of(), Piece.Availability.ONLINE);
+        when(service.listForClient(eq(alice), eq(host.toString()), any()))
+                .thenReturn(new JarvisPieceService.Result(List.of(video), 1, false));
+        String out = new JarvisFastPieces(service).read(alice, null,
+                JSON.readTree("{\"client\":\"Kajip\",\"type\":\"video\"}"), universe(host, videos, UUID.randomUUID()));
+        assertThat(out).contains("video:a").contains("sujet data-platform");
+        assertThat(new JarvisFastPieces(service).read(alice, null, JSON.readTree("{\"client\":\"Orange\"}"),
+                universe(host, videos, UUID.randomUUID()))).contains("inconnu");
+    }
+
     @Test
     void blockCountsPerChantierWithInitialNeedAndZeroProofs() {
         String block = JarvisFastPieces.block(List.of(

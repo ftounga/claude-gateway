@@ -136,7 +136,7 @@ public final class JarvisProofGuard {
             return new Decision(propose(chantier), null);
         }
         JarvisShowCommand gallery = new JarvisShowCommand("galerie", List.of(),
-                new JarvisShowCommand.Scope(null, chantier, "preuves", null, null, null), null, null, null, null, null,
+                new JarvisShowCommand.Scope(null, chantier, "preuves", null, null, null, null, null), null, null, null, null, null,
                 null, "appui", null, null);
         return new Decision(showing(chantier), gallery);
     }

@@ -28,7 +28,7 @@ public final class JarvisPiecesBench {
     /** Ce qui est attendu d'un cas ({@code null} : non vérifié). */
     public record Expect(Boolean show, Boolean delegate, boolean asks, List<String> actions, String reason,
             Integer chantier, String categorie, String type, Integer index, List<String> pieces, String vue,
-            String client) {
+            String client, String sujet) {
     }
 
     /** Un cas : la parole, l'écran éventuel, les échanges précédents, l'attendu. */
@@ -66,7 +66,7 @@ public final class JarvisPiecesBench {
                         new Expect(bool(e, "show"), bool(e, "delegate"), e.path("asks").asBoolean(false),
                                 strings(e.get("action")), text(e, "reason"), integer(e, "chantier"),
                                 text(e, "categorie"), text(e, "type"), integer(e, "index"), strings(e.get("pieces")),
-                                text(e, "vue"), text(e, "client"))));
+                                text(e, "vue"), text(e, "client"), text(e, "sujet"))));
             }
             return new Set(root.get("context").asText(), root.get("pieces").asText(), screens, cases);
         } catch (Exception e) {
@@ -160,8 +160,14 @@ public final class JarvisPiecesBench {
         if (e.vue() != null && !e.vue().equals(s.view())) {
             return false;
         }
-        if (e.client() != null && (s.client() == null || !JarvisFastGuards.normalize(s.client())
+        // F-253 / SF-253-03 — le client (vue de l'univers, ou portée d'une galerie) ; le sujet nommé d'une galerie.
+        String client = s.client() != null ? s.client() : s.scope() == null ? null : s.scope().client();
+        if (e.client() != null && (client == null || !JarvisFastGuards.normalize(client)
                 .contains(JarvisFastGuards.normalize(e.client())))) {
+            return false;
+        }
+        if (e.sujet() != null && (s.scope() == null || s.scope().subjectId() == null
+                || !JarvisFastGuards.normalize(s.scope().subjectId()).contains(JarvisFastGuards.normalize(e.sujet())))) {
             return false;
         }
         return e.pieces() == null || e.pieces().isEmpty() || s.pieces().containsAll(e.pieces());

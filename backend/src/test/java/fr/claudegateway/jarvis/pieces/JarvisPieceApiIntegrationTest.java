@@ -180,6 +180,18 @@ class JarvisPieceApiIntegrationTest {
     }
 
     @Test
+    @DisplayName("SF-253-03 — portée client : ses sujets à soi seulement ; un client d'autrui ou inconnu ne rend rien")
+    void clientScopeIsIsolated() throws Exception {
+        call(aliceToken, "?clientId=hosted").andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(org.hamcrest.Matchers.greaterThan(0)));
+        call(bobToken, "?clientId=hosted").andExpect(status().isOk()).andExpect(jsonPath("$.total").value(0));
+        call(aliceToken, "?clientId=" + UUID.randomUUID()).andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(0));
+        call(aliceToken, "?clientId=pas-un-identifiant").andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(0));
+    }
+
+    @Test
     @DisplayName("un dépôt sur un poste hors ligne est dit hors ligne, jamais remplacé")
     void hostOffline() throws Exception {
         User carol = user("pieces-carol");

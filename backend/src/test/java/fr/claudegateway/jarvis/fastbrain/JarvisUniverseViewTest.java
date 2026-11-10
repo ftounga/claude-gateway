@@ -22,6 +22,36 @@ class JarvisUniverseViewTest {
                 step ? new JarvisUniverse.Step(2, "Valider") : null, false, false, waiting);
     }
 
+    @Test
+    void aSpokenClientOrSubjectBecomesItsIdentifierAndAnUnknownNameIsRefused() {
+        JarvisUniverseView.Scope client = JarvisUniverseView.scope(universe(), "Kajip", "");
+        assertThat(client.clientName()).isEqualTo("CAGIP");
+        assertThat(client.clientKey()).isNotNull();
+        JarvisUniverseView.Scope subject = JarvisUniverseView.scope(universe(), "", "agénor");
+        assertThat(subject.subjectId()).isNotNull();
+        assertThat(JarvisUniverseView.scope(universe(), "Orange", "").refusal()).contains("inconnu");
+        assertThat(JarvisUniverseView.scope(universe(), "", "orion-run").refusal()).contains("inconnu");
+        assertThat(JarvisUniverseView.scope(null, "CAGIP", "").refusal()).isNotNull();
+        assertThat(JarvisUniverseView.scope(universe(), "", "").clientKey()).isNull();
+    }
+
+    @Test
+    void aGalleryScopeIsResolvedBeforeReachingTheScreen() throws Exception {
+        JarvisShowCommand asked = JarvisShowCommand.parse(JSON.readTree(
+                "{\"action\":\"galerie\",\"portee\":{\"client\":\"cagip\",\"type\":\"video\"},\"raison\":\"demande\"}"), 3)
+                .command();
+        JarvisUniverseView.Check ok = JarvisUniverseView.resolveScope(asked, universe());
+        assertThat(ok.command().scope().clientName()).isEqualTo("CAGIP");
+        assertThat(ok.command().scope().client()).isNotEqualTo("cagip");
+        assertThat(ok.command().scope().type()).isEqualTo("video");
+        JarvisShowCommand wrong = JarvisShowCommand.parse(JSON.readTree(
+                "{\"action\":\"galerie\",\"portee\":{\"client\":\"Orange\"},\"raison\":\"demande\"}"), 3).command();
+        assertThat(JarvisUniverseView.resolveScope(wrong, universe()).command()).isNull();
+        JarvisShowCommand none = JarvisShowCommand.parse(JSON.readTree(
+                "{\"action\":\"galerie\",\"portee\":{\"chantier\":3},\"raison\":\"demande\"}"), 3).command();
+        assertThat(JarvisUniverseView.resolveScope(none, universe()).command()).isSameAs(none);
+    }
+
     static JarvisUniverse universe() {
         JarvisUniverse.Client cagip = new JarvisUniverse.Client(UUID.randomUUID(), "CAGIP", false, false, "ACTIVE",
                 List.of(new JarvisUniverse.Subject(UUID.randomUUID(), "data-platform", false, false,

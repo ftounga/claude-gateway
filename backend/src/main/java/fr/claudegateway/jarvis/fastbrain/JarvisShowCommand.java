@@ -46,11 +46,11 @@ public record JarvisShowCommand(String action, List<String> pieces, Scope scope,
     /** La portée d'une galerie : sujet, chantier, catégorie, type, série, depuis. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Scope(String subjectId, Integer chantier, String category, String type, String series,
-            String since) {
+            String since, String client, String clientName) {
 
         boolean isEmpty() {
             return subjectId == null && chantier == null && category == null && type == null && series == null
-                    && since == null;
+                    && since == null && client == null;
         }
     }
 
@@ -134,7 +134,7 @@ public record JarvisShowCommand(String action, List<String> pieces, Scope scope,
         String since = scope == null ? null : scope.since();
         if (scope != null && since != null && !DATE.matcher(since).matches()) {
             scope = new Scope(scope.subjectId(), scope.chantier(), scope.category(), scope.type(), scope.series(),
-                    null);
+                    null, scope.client(), scope.clientName());
         }
         JarvisShowCommand command = new JarvisShowCommand(action, List.copyOf(ids),
                 scope == null || scope.isEmpty() ? null : scope, integer(input, "index"), integer(input, "temps"),
@@ -152,7 +152,8 @@ public record JarvisShowCommand(String action, List<String> pieces, Scope scope,
         return new Scope(blankToNull(text(node, "sujet")), integer(node, "chantier"),
                 JarvisFastBrainPrompt.CATEGORIES.contains(category) ? blankToNull(category) : null,
                 JarvisFastBrainPrompt.TYPES.contains(type) ? blankToNull(type) : null,
-                blankToNull(text(node, "serie")), blankToNull(text(node, "depuis")));
+                blankToNull(text(node, "serie")), blankToNull(text(node, "depuis")),
+                blankToNull(text(node, "client")), null);
     }
 
     private static Integer integer(JsonNode input, String field) {

@@ -1084,7 +1084,7 @@ class JarvisFastBrainServiceTest {
         assertThat(JSON.writeValueAsString(calls.get(1).tools())).isEqualTo(first);
         assertThat(JSON.writeValueAsString(calls.get(2).tools())).isEqualTo(first);
         assertThat(calls.get(0).system()).isEqualTo(calls.get(2).system());
-        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("20");
+        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("21");
         assertThat(first).doesNotContain("Kestrel").doesNotContain(subject.toString());
     }
 
@@ -1129,7 +1129,7 @@ class JarvisFastBrainServiceTest {
     @Test
     void piecesIsReadOnceByTheGatewayThenTheModelAnswersGroundedOnIt() {
         JarvisFastPieces pieces = mock(JarvisFastPieces.class);
-        when(pieces.read(eq(alice), eq(subject), any())).thenReturn(
+        when(pieces.read(eq(alice), eq(subject), any(), any())).thenReturn(
                 "1 pièce\nvideo:abc@v2 | vidéo | « Démo du déploiement » | Le déploiement sur EKS | chantier 3");
         when(pieces.block(alice, subject)).thenReturn("## Pièces\nchantier 3 : besoin initial, 0 entrée, 0 preuve");
         String pick = """
@@ -1148,7 +1148,7 @@ class JarvisFastBrainServiceTest {
         JarvisFastBrainService.Outcome outcome = service.converse(ask("Montre celle sur le déploiement"), screen);
 
         assertThat(calls).hasSize(2);
-        verify(pieces, org.mockito.Mockito.times(1)).read(eq(alice), eq(subject), any());
+        verify(pieces, org.mockito.Mockito.times(1)).read(eq(alice), eq(subject), any(), any());
         assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
         // « EKS » vient du résultat de pieces : la phrase est ancrée, pas déléguée d'office.
         assertThat(outcome.spokenText()).contains("EKS");
@@ -1158,6 +1158,42 @@ class JarvisFastBrainServiceTest {
                 .get(calls.get(0).messages().size() - 1).content().get(0)).text();
         assertThat(message).contains("## Pièces").contains("chantier 3 : besoin initial");
         assertThat(calls.get(0).system()).doesNotContain("## Pièces\nchantier");
+    }
+
+    @Test
+    void f253ClientGalleryIsResolvedOnTheAccountUniverseAndTheCountsGoInTheMessage() throws Exception {
+        JarvisFastPieces pieces = mock(JarvisFastPieces.class);
+        when(pieces.allBlock(eq(alice), any())).thenReturn("## Pièces de tous les sujets\nCAGIP / data-platform : 2 vidéos");
+        fr.claudegateway.jarvis.universe.JarvisUniverseService universes =
+                mock(fr.claudegateway.jarvis.universe.JarvisUniverseService.class);
+        when(universes.universe(alice)).thenReturn(JarvisUniverseViewTest.universe());
+        String gallery = """
+                {"action":"galerie","pieces":[],"portee":{"client":"Kajip","type":"video"},"raison":"demande"}""";
+        String unknown = """
+                {"action":"galerie","pieces":[],"portee":{"client":"Orange","type":"video"},"raison":"demande"}""";
+        Screen screen = new Screen();
+        JarvisFastBrainService service = service(scripted(
+                new AgentTurn("", List.of(tool("s1", "afficher", unknown), tool("s2", "afficher", gallery)), false,
+                        100, 10),
+                new AgentTurn("Les vidéos de CAGIP, Monsieur.", List.of(), true, 100, 10)), null, null);
+        service.setPieces(pieces);
+        service.setUniverse(universes);
+
+        service.converse(ask("Montre-moi les vidéos chez Kajip"), screen);
+
+        // Le client dit est rapproché : la clé de l'univers et le nom exact partent vers l'écran.
+        assertThat(screen.shows).hasSize(1);
+        JarvisShowCommand.Scope scope = screen.shows.get(0).scope();
+        assertThat(scope.clientName()).isEqualTo("CAGIP");
+        assertThat(UUID.fromString(scope.client())).isNotNull();
+        assertThat(scope.type()).isEqualTo("video");
+        // Le nom inconnu est refusé au modèle, avec la liste des clients.
+        assertThat(JSON.writeValueAsString(calls.get(1).messages())).contains("Client « Orange » inconnu");
+        // Les comptes de tous les sujets : dans le message, jamais dans la consigne (préfixe stable).
+        String message = ((fr.claudegateway.agent.AgentContentBlock.Text) calls.get(0).messages()
+                .get(calls.get(0).messages().size() - 1).content().get(0)).text();
+        assertThat(message).contains("## Pièces de tous les sujets");
+        assertThat(calls.get(0).system()).doesNotContain("Pièces de tous les sujets\nCAGIP");
     }
 
     // ------------------------------------------------------- F-243 / SF-243-02 : l'outil agenda
@@ -1242,7 +1278,7 @@ class JarvisFastBrainServiceTest {
     @Test
     void neverMoreThanThreeModelCallsAndASecondReadIsRefused() {
         JarvisFastPieces pieces = mock(JarvisFastPieces.class);
-        when(pieces.read(any(), any(), any())).thenReturn("Aucune pièce.");
+        when(pieces.read(any(), any(), any(), any())).thenReturn("Aucune pièce.");
         AgentTurn reading = new AgentTurn("", List.of(tool("p", "pieces", """
                 {"sujet":"","chantier":null,"categorie":"","type":"","recherche":""}"""),
                 tool("s", "afficher", SHOW_PROOFS)), false, 100, 10);
@@ -1252,7 +1288,7 @@ class JarvisFastBrainServiceTest {
         service.converse(ask("Montre les preuves"), new Screen());
 
         assertThat(calls).hasSizeLessThanOrEqualTo(JarvisFastBrainService.MAX_CALLS);
-        verify(pieces, org.mockito.Mockito.times(1)).read(any(), any(), any());
+        verify(pieces, org.mockito.Mockito.times(1)).read(any(), any(), any(), any());
     }
 
     @Test

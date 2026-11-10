@@ -18,6 +18,30 @@ function piece(id: string, kind: Piece['kind'] = 'IMAGE'): Piece {
   return { id, kind, title: `Pièce ${id}`, category: 'PREUVE', at: '2026-11-03T09:42:00Z' };
 }
 
+describe('F-253 / SF-253-03 — une galerie à la portée d\'un client', () => {
+  const ctx = (subjectId: string | null): ShowContext => ({ subjectId, subjectName: subjectId ? 'Edenred' : null,
+    presentation: false, sober: false, nav: initialNav(), recent: new Map(), now: 1_000 });
+  const asked: ShowCommand = { action: 'galerie', reason: 'demande',
+    scope: { client: 'h-cagip', clientName: 'CAGIP', type: 'video' } };
+
+  it('s\'ouvre sans sujet choisi, sur les sujets du client', () => {
+    const plan = showPlan(asked, ctx(null));
+    expect(plan.kind).toBe('gallery');
+    if (plan.kind === 'gallery') {
+      expect(plan.query.clientId).toBe('h-cagip');
+      expect(plan.query.subjectId).toBeNull();
+      expect(plan.scope.label).toContain('CAGIP');
+      expect(pieceQueryString(plan.query)).toContain('clientId=h-cagip');
+    }
+  });
+
+  it('ignore le sujet courant, et reste refusée d\'initiative', () => {
+    const plan = showPlan(asked, ctx('s1'));
+    expect(plan.kind === 'gallery' && plan.query.subjectId).toBeNull();
+    expect(showPlan({ ...asked, reason: 'appui' }, ctx('s1')).kind).toBe('refuse');
+  });
+});
+
 describe('Jarvis — l\'outil afficher du cerveau rapide (F-237 / SF-237-08)', () => {
   it('une galerie d\'initiative : portée du chantier, catégorie traduite, origine PROACTIVE', () => {
     const plan = showPlan(PROOFS, CTX);

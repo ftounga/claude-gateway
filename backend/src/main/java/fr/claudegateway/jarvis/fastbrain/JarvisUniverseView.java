@@ -1,8 +1,12 @@
 package fr.claudegateway.jarvis.fastbrain;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
+import fr.claudegateway.jarvis.pieces.JarvisPieceService;
 import fr.claudegateway.jarvis.universe.JarvisUniverse;
 
 /**
@@ -24,6 +28,127 @@ public final class JarvisUniverseView {
 
     /** Le verdict : l'ordre à relayer (client rapproché au nom exact de l'univers) ou {@code null}, et le résultat. */
     public record Check(JarvisShowCommand command, String result) {
+    }
+
+    /**
+     * F-253 / SF-253-03 — ce qu'un nom dit désigne : un sujet ({@code subjectId}), un client entier ({@code clientKey}),
+     * ou le refus à rendre au modèle ; rien de nommé ⇒ tout {@code null}.
+     */
+    public record Scope(UUID subjectId, String clientKey, String clientName, String refusal) {
+
+        static Scope none() {
+            return new Scope(null, null, null, null);
+        }
+
+        static Scope refused(String why) {
+            return new Scope(null, null, null, why);
+        }
+    }
+
+    /** Un sujet et son client. */
+    private record Placed(JarvisUniverse.Client client, JarvisUniverse.Subject subject) {
+    }
+
+    private static List<Placed> placed(List<JarvisUniverse.Client> clients) {
+        List<Placed> out = new ArrayList<>();
+        for (JarvisUniverse.Client c : clients) {
+            c.subjects().stream().filter(s -> !s.hostTerminal()).forEach(s -> out.add(new Placed(c, s)));
+        }
+        return out;
+    }
+
+    /** La clé d'un client : son identifiant, ou « hosted » (comme à l'écran). */
+    static String clientKey(JarvisUniverse.Client c) {
+        return c.id() == null ? JarvisPieceService.HOSTED_CLIENT : c.id().toString();
+    }
+
+    /** Les noms des sujets du compte, par identifiant ; vide sans univers. */
+    static Map<UUID, String> subjectNames(JarvisUniverse universe) {
+        if (universe == null) {
+            return Map.of();
+        }
+        Map<UUID, String> out = new HashMap<>();
+        placed(universe.clients()).forEach(p -> out.put(p.subject().id(), p.subject().name()));
+        return out;
+    }
+
+    /**
+     * Rapproche un client et un sujet dits ({@code ""} : non dits). Un identifiant de sujet reste accepté tel quel (le
+     * contrôle d'appartenance est celui de l'index) ; un nom se cherche dans l'univers <b>du compte</b> seulement.
+     */
+    public static Scope scope(JarvisUniverse universe, String clientSaid, String subjectSaid) {
+        String client = clientSaid == null ? "" : clientSaid.strip();
+        String subject = subjectSaid == null ? "" : subjectSaid.strip();
+        if (client.isEmpty() && subject.isEmpty()) {
+            return Scope.none();
+        }
+        UUID id = uuid(subject);
+        if (id != null) {
+            return new Scope(id, null, null, null);
+        }
+        if (universe == null) {
+            return Scope.refused("Noms illisibles pour le moment.");
+        }
+        List<JarvisUniverse.Client> clients = universe.clients();
+        JarvisUniverse.Client found = null;
+        if (!client.isEmpty()) {
+            JarvisNameMatch.Result<JarvisUniverse.Client> m = JarvisNameMatch.match(client, clients,
+                    JarvisUniverse.Client::name);
+            if (m.found() == null) {
+                return Scope.refused("Client « " + client + " » " + (m.none() ? "inconnu" : "ambigu") + " ; clients : "
+                        + String.join(", ", clients.stream().map(JarvisUniverse.Client::name).toList()) + ".");
+            }
+            found = m.found();
+            clients = List.of(found);
+        }
+        if (subject.isEmpty()) {
+            return new Scope(null, clientKey(found), found.name(), null);
+        }
+        List<Placed> all = placed(clients);
+        JarvisNameMatch.Result<Placed> m = JarvisNameMatch.match(subject, all, p -> p.subject().name());
+        if (m.found() != null) {
+            return new Scope(m.found().subject().id(), null, null, null);
+        }
+        if (m.none()) {
+            return Scope.refused("Sujet « " + subject + " » inconnu.");
+        }
+        return Scope.refused("Sujet « " + subject + " » ambigu : " + String.join(", ", m.ambiguous().stream()
+                .map(p -> p.subject().name() + " (" + p.client().name() + ")").toList()) + ".");
+    }
+
+    private static UUID uuid(String text) {
+        try {
+            return text.isEmpty() ? null : UUID.fromString(text);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /** Vrai si la portée de {@code command} nomme un client ou un sujet (pas un identifiant) : l'univers est à lire. */
+    public static boolean needsNames(JarvisShowCommand command) {
+        JarvisShowCommand.Scope s = command == null ? null : command.scope();
+        return s != null && (s.client() != null || (s.subjectId() != null && uuid(s.subjectId()) == null));
+    }
+
+    /**
+     * F-253 / SF-253-03 — la portée d'un ordre d'écran : un client ou un sujet nommé devient son identifiant, et le
+     * nom exact part vers l'écran ; refus si le nom n'est pas rapproché. Sans nom : l'ordre tel quel.
+     */
+    public static Check resolveScope(JarvisShowCommand command, JarvisUniverse universe) {
+        if (!needsNames(command)) {
+            return new Check(command, null);
+        }
+        JarvisShowCommand.Scope s = command.scope();
+        Scope target = scope(universe, s.client(), s.subjectId());
+        if (target.refusal() != null) {
+            return new Check(null, "refusé : " + target.refusal());
+        }
+        JarvisShowCommand.Scope resolved = new JarvisShowCommand.Scope(
+                target.subjectId() == null ? null : target.subjectId().toString(), s.chantier(), s.category(), s.type(),
+                s.series(), s.since(), target.clientKey(), target.clientName());
+        return new Check(new JarvisShowCommand(command.action(), command.pieces(), resolved, command.index(),
+                command.time(), command.chapter(), command.page(), command.zoom(), command.target(), command.reason(),
+                command.view(), command.client()), null);
     }
 
     /** Vérifie {@code command} (action {@code univers}) contre {@code universe} ; {@code null} : univers illisible. */

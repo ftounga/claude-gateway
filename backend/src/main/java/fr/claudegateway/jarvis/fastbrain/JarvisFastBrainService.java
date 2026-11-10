@@ -786,6 +786,13 @@ public class JarvisFastBrainService {
     JarvisShowCommand.Parsed checkShow(JsonNode input, int appuiLeft, UUID userId, boolean bench,
             boolean presentation) {
         JarvisShowCommand.Parsed parsed = JarvisShowCommand.parse(input, appuiLeft);
+        if (!bench && parsed.command() != null && !"univers".equals(parsed.command().action())
+                && JarvisUniverseView.needsNames(parsed.command())) {
+            // F-253 / SF-253-03 — un client ou un sujet nommé dans la portée : rapproché sur l'univers du compte.
+            JarvisUniverseView.Check named = JarvisUniverseView.resolveScope(parsed.command(), universeOf(userId, false));
+            return named.command() == null ? new JarvisShowCommand.Parsed(null, named.result(), 0, 0)
+                    : new JarvisShowCommand.Parsed(named.command(), null, parsed.dropped(), parsed.appuiUsed());
+        }
         if (parsed.command() == null || !"univers".equals(parsed.command().action())) {
             return parsed;
         }
@@ -1569,7 +1576,7 @@ public class JarvisFastBrainService {
             return bench && fixture != null ? fixture : BENCH_PIECES;
         }
         return fastPieces.read(request.userId(), request.workspace() == null ? null : request.workspace().getId(),
-                input);
+                input, universeOf(request.userId(), false));
     }
 
     /** F-243 / SF-243-02 — la lecture de l'agenda au banc : le texte fixe du scénario, pour le fil appelant. */
@@ -1654,6 +1661,13 @@ public class JarvisFastBrainService {
             String block = fastPieces.block(request.userId(), request.workspace().getId());
             if (block != null && !block.isBlank()) {
                 out.append("\n\n").append(block);
+            }
+        }
+        if (fastPieces != null) {
+            // F-253 / SF-253-03 — les pièces de tous les sujets, comptées (volatil : dans le message).
+            String all = fastPieces.allBlock(request.userId(), () -> universeOf(request.userId(), false));
+            if (all != null && !all.isBlank()) {
+                out.append("\n\n").append(all);
             }
         }
         return out.toString();

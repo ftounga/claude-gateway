@@ -185,6 +185,53 @@ public class JarvisPieceService {
         List<Workspace> scope = subjectId != null
                 ? List.of(workspaces.requireOwned(userId, subjectId)) // 404 — TOUJOURS en premier
                 : workspaces.list(userId).stream().limit(MAX_SUBJECTS).toList();
+        return read(userId, scope, filter);
+    }
+
+    /** F-253 / SF-253-03 — la clé du client « hébergé » (sujets sans poste), comme dans l'univers. */
+    public static final String HOSTED_CLIENT = "hosted";
+
+    /**
+     * F-253 / SF-253-03 — les pièces des sujets d'un client (identifiant du poste, ou {@value #HOSTED_CLIENT}), pour le
+     * seul compte : un client d'un autre compte ou inconnu ne désigne aucun sujet, la liste est vide.
+     */
+    @Transactional(readOnly = true)
+    public Result listForClient(UUID userId, String clientKey, Filter filter) {
+        return read(userId, subjectsOf(userId, clientKey), filter);
+    }
+
+    /** F-253 / SF-253-03 — les pièces de chaque sujet du compte, pour les compter (lues au cache de 60 s). */
+    @Transactional(readOnly = true)
+    public Map<UUID, List<Piece>> bySubject(UUID userId) {
+        Map<UUID, List<Piece>> out = new java.util.LinkedHashMap<>();
+        for (Workspace w : workspaces.list(userId).stream().filter(x -> chooseable(userId, x)).limit(MAX_SUBJECTS)
+                .toList()) {
+            out.put(w.getId(), cached(userId, w));
+        }
+        return out;
+    }
+
+    private List<Workspace> subjectsOf(UUID userId, String clientKey) {
+        UUID host;
+        if (HOSTED_CLIENT.equals(clientKey)) {
+            host = null;
+        } else {
+            try {
+                host = UUID.fromString(String.valueOf(clientKey));
+            } catch (IllegalArgumentException e) {
+                return List.of();
+            }
+        }
+        return workspaces.list(userId).stream().filter(w -> chooseable(userId, w))
+                .filter(w -> java.util.Objects.equals(host, w.getHostId())).limit(MAX_SUBJECTS).toList();
+    }
+
+    /** Un sujet du compte (ni terminal Teams, ni fil Jarvis, ni relevé), comme dans l'univers. */
+    private static boolean chooseable(UUID userId, Workspace w) {
+        return userId.equals(w.getUserId()) && !w.isTeamsTerminal() && !w.isJarvisThread() && !w.isJarvisReleve();
+    }
+
+    private Result read(UUID userId, List<Workspace> scope, Filter filter) {
         List<Piece> all = new ArrayList<>();
         for (Workspace w : scope) {
             all.addAll(cached(userId, w));
