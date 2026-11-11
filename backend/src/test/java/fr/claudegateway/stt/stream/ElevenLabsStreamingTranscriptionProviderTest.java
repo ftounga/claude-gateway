@@ -17,6 +17,16 @@ import fr.claudegateway.teams.meeting.stt.TranscriptionProviderUnavailableExcept
 class ElevenLabsStreamingTranscriptionProviderTest {
 
     @Test
+    void manualSessionUrl() {
+        String url = ElevenLabsStreamingTranscriptionProvider.manualSessionUrl("wss://api.elevenlabs.io",
+                "scribe_v2_realtime", "FR", java.util.List.of("agenor", "data-platform"));
+        assertThat(url).isEqualTo("wss://api.elevenlabs.io/v1/speech-to-text/realtime?model_id=scribe_v2_realtime"
+                + "&audio_format=pcm_16000&commit_strategy=manual&language_code=fr&keyterms=agenor"
+                + "&keyterms=data-platform");
+        assertThat(url).doesNotContain("vad_silence");
+    }
+
+    @Test
     @DisplayName("l'URL fixe modèle, PCM 16 kHz, fin de tour par VAD (bornée) et langue ; jamais de jeton")
     void sessionUrl() {
         String url = ElevenLabsStreamingTranscriptionProvider.sessionUrl("wss://api.elevenlabs.io",

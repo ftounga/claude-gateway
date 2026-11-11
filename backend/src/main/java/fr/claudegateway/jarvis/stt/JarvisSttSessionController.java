@@ -39,10 +39,13 @@ public class JarvisSttSessionController {
     }
 
     @PostMapping("/jarvis/stt-session")
-    public ResponseEntity<?> open() {
+    public ResponseEntity<?> open(@RequestBody(required = false) OpenRequest body) {
         atelierAccess.requireAccess();
         try {
-            return ResponseEntity.ok(service.open(currentUser.requireId()));
+            // F-257 / SF-257-04 — {"mode":"long"} : la session longue du service vocal (commit manuel).
+            boolean longSession = body != null && "long".equalsIgnoreCase(body.mode());
+            UUID userId = currentUser.requireId();
+            return ResponseEntity.ok(longSession ? service.openLong(userId) : service.open(userId));
         } catch (TranscriptionProviderUnavailableException e) {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(new ErrorResponse(
                     "stt_stream_unavailable", "L'écoute en flux n'est pas disponible sur cette installation."));
@@ -66,6 +69,11 @@ public class JarvisSttSessionController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse("not_found",
                     "Session inconnue."));
         }
+    }
+
+    /** F-257 / SF-257-04 — corps facultatif de l'ouverture : {@code mode} = {@code long} pour le service vocal. */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record OpenRequest(String mode) {
     }
 
     /** Corps de la clôture : la durée de session vue par l'écran, en secondes. */
