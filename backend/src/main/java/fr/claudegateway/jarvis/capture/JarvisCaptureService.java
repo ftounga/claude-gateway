@@ -54,11 +54,28 @@ public class JarvisCaptureService {
 
     /** Ce que l'écran envoie avec l'audio. */
     public record Incoming(Double seconds, String listenMode, String provider, String streamText, String finalText,
-            String turnId) {
+            String turnId, String contentType) {
 
         public Incoming(Double seconds, String listenMode, String provider, String streamText, String finalText) {
-            this(seconds, listenMode, provider, streamText, finalText, null);
+            this(seconds, listenMode, provider, streamText, finalText, null, null);
         }
+
+        public Incoming(Double seconds, String listenMode, String provider, String streamText, String finalText,
+                String turnId) {
+            this(seconds, listenMode, provider, streamText, finalText, turnId, null);
+        }
+    }
+
+    /** F-255 / SF-255-04 — l'audio d'une capture et son type ({@code audio/wav} ou {@code audio/webm}). */
+    public record AudioFile(byte[] bytes, String contentType) {
+    }
+
+    static final String WAV = "audio/wav";
+    static final String WEBM = "audio/webm";
+
+    /** F-255 / SF-255-04 — la dictée de repli (WebM) garde son type ; tout le reste est rangé comme WAV (avant). */
+    static String typeOf(String declared) {
+        return declared != null && declared.toLowerCase(java.util.Locale.ROOT).startsWith(WEBM) ? WEBM : WAV;
     }
 
     /**
@@ -70,9 +87,10 @@ public class JarvisCaptureService {
             return false;
         }
         UUID id = UUID.randomUUID();
-        String key = "atelier/" + userId + "/jarvis-captures/" + id + ".wav";
+        String type = typeOf(meta == null ? null : meta.contentType());
+        String key = "atelier/" + userId + "/jarvis-captures/" + id + (WEBM.equals(type) ? ".webm" : ".wav");
         try {
-            storage.putFile(key, audio, "audio/wav");
+            storage.putFile(key, audio, type);
         } catch (RuntimeException e) {
             log.warn("Capture d'énoncé non gardée : stockage en échec ({})", e.getClass().getSimpleName());
             return false;
@@ -98,6 +116,12 @@ public class JarvisCaptureService {
                 .map(c -> new CaptureView(c.getId(), c.getCreatedAt(), c.getSeconds(), c.getListenMode(),
                         c.getProvider(), c.getStreamText(), c.getFinalText(), c.getCorrectedText()))
                 .toList();
+    }
+
+    /** F-255 / SF-255-04 — l'audio d'une capture du compte et son type (selon l'extension rangée), ou vide. */
+    public Optional<AudioFile> audioFile(UUID userId, UUID id) {
+        return repository.findByIdAndUserId(id, userId).flatMap(c -> storage.getFile(c.getStorageKey())
+                .map(bytes -> new AudioFile(bytes, c.getStorageKey().endsWith(".webm") ? WEBM : WAV)));
     }
 
     /** L'audio d'une capture du compte, ou vide (autrui, effacée). */

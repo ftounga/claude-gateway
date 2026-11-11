@@ -2585,9 +2585,12 @@ public class JarvisFastBrainService {
             chantier = null;
             asked = "";
         }
+        String rawSubject = asked;
+        String rawKind = asked.isEmpty() ? "vide" : "illisible";
         if (!asked.isEmpty()) {
             try {
                 UUID candidate = UUID.fromString(asked);
+                rawKind = "inconnu";
                 if (workspaces.findByIdAndUserId(candidate, request.userId()).isPresent()) {
                     if (!candidate.equals(subject)) {
                         chantier = null;
@@ -2597,6 +2600,12 @@ public class JarvisFastBrainService {
             } catch (IllegalArgumentException ignored) {
                 // Identifiant illisible : le sujet courant reste la cible.
             }
+        }
+        if (subject == null) {
+            // F-255 / SF-255-04 — point de trace seulement : la valeur brute de « sujet » rendue par le modèle quand la
+            // délégation n'a pas de cible (issue no_subject, « Pour quel client ou quel sujet, Monsieur ? »).
+            log.info("Jarvis no_subject : user={} sujet brut={} « {} », aucun sujet à l'écran", request.userId(),
+                    rawKind, rawSubjectForLog(rawSubject));
         }
         JsonNode site = input == null ? null : input.get("chantier");
         if (site != null && site.isIntegralNumber() && !JARVIS_THREAD_TARGET.equals(subject)) {
@@ -2609,6 +2618,15 @@ public class JarvisFastBrainService {
             annonce = AUTO_ANNOUNCE;
         }
         return new Delegation(UUID.randomUUID(), demande, label, annonce, subject, chantier, false, null);
+    }
+
+    /** F-255 / SF-255-04 — la valeur brute de « sujet » pour le journal : une ligne, 80 caractères au plus. */
+    static String rawSubjectForLog(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String line = raw.replaceAll("[\\r\\n\\t]+", " ").strip();
+        return line.length() <= 80 ? line : line.substring(0, 80) + "…";
     }
 
     /** Délégation d'office de la parole d'origine (D9b) : jamais de silence, jamais d'invention. */
