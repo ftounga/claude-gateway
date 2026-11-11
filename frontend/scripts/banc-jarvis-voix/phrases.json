@@ -1,0 +1,37 @@
+{
+  "_": "F-256 — corpus SYNTHÉTIQUE du banc à vraie voix (données fictives, univers du compte de test : CAGIP > agenor, data-platform ; EDENRED > waf). Une phrase = des segments dits par la voix de synthèse, séparés par des pauses (ms). `expected` = ce qui doit être compris ; `show` = la phrase demande un affichage.",
+  "voices": [
+    { "id": "mS2c341jkKGRuIkGxaYf", "name": "fr-1" },
+    { "id": "JBFqnCBsd6RMkjVDRZzb", "name": "george" }
+  ],
+  "phrases": [
+    { "id": "n01", "kind": "normale", "segments": ["Bonjour Jarvis."], "pauses": [] },
+    { "id": "n02", "kind": "normale", "segments": ["Est-ce que tu vois des sujets en cours côté WAF chez EDENRED ?"], "pauses": [] },
+    { "id": "n03", "kind": "pause", "segments": ["Où en est le sujet agenor,", "chez CAGIP ?"], "pauses": [1200] },
+    { "id": "n04", "kind": "ecran", "show": true, "segments": ["Montre-moi la liste de mes clients."], "pauses": [] },
+    { "id": "n05", "kind": "ecran", "show": true, "segments": ["Montre-moi les sujets de CAGIP."], "pauses": [] },
+    { "id": "n06", "kind": "court", "segments": ["Allons-y."], "pauses": [] },
+    { "id": "n07", "kind": "court", "segments": ["Oui."], "pauses": [] },
+    { "id": "n08", "kind": "normale", "segments": ["Qu'est-ce qui reste à faire sur data-platform ?"], "pauses": [] },
+    { "id": "n09", "kind": "pause", "segments": ["Attends,", "en fait, parle-moi plutôt du WAF."], "pauses": [900] },
+    { "id": "n10", "kind": "normale", "segments": ["Merci Jarvis, ce sera tout pour le moment."], "pauses": [] },
+    { "id": "n11", "kind": "ecran", "show": true, "segments": ["Montre-moi les sujets d'EDENRED."], "pauses": [] },
+    { "id": "c01", "kind": "coupure", "segments": ["Non, attends, parle-moi plutôt d'agenor."], "pauses": [] }
+  ],
+  "scenarios": [
+    { "id": "conversation", "label": "Conversation suivie", "voice": "fr-1",
+      "steps": [{ "say": "n01" }, { "say": "n02" }, { "say": "n03" }, { "say": "n08" }, { "say": "n09" }, { "say": "n10" }] },
+    { "id": "mots-courts", "label": "Mots courts après une question", "voice": "fr-1",
+      "steps": [{ "say": "n05" }, { "say": "n06" }, { "say": "n07" }] },
+    { "id": "ecran", "label": "Ordres d'écran", "voice": "george",
+      "steps": [{ "say": "n04" }, { "say": "n05" }, { "say": "n11" }] },
+    { "id": "enchainement", "label": "Enchaînement rapide (sans attendre la réponse)", "voice": "george",
+      "steps": [{ "say": "n02" }, { "say": "n08", "after": "fin", "gapMs": 800 }] },
+    { "id": "coupure", "label": "Coupure pendant que Jarvis parle (voix renvoyée au micro)", "voice": "fr-1", "echo": 0.25,
+      "steps": [{ "say": "n02" }, { "say": "c01", "after": "voix", "gapMs": 1500 }] },
+    { "id": "bruit", "label": "Bruit de fond", "voice": "george", "noise": 0.02,
+      "steps": [{ "say": "n02" }, { "say": "n03" }, { "say": "n06" }] },
+    { "id": "captures-prod", "label": "Vraies captures du PO (09/11)", "captures": true },
+    { "id": "temoin", "label": "Témoin : micro factice de Chrome (fichier), sans le mélangeur du banc", "voice": "fr-1", "chromeMic": "n02" }
+  ]
+}
