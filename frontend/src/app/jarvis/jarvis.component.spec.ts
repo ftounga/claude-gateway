@@ -2152,6 +2152,102 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       expect(jarvisApi.timings.calls.mostRecent().args[0].sttProvider).toBe('elevenlabs-batch');
     }));
 
+  describe('F-257 / SF-257-06 — la boucle en flux prend la main', () => {
+    /** Le lien vocal remplacé par un double : prêt ou non, et ses arrêts comptés. */
+    function withStream(jarvis: JarvisComponent, ready = true) {
+      const link = { ready, start: jasmine.createSpy('start').and.resolveTo(), stop: jasmine.createSpy('stop') };
+      (jarvis as unknown as { voiceShadow: unknown }).voiceShadow = link;
+      return link;
+    }
+
+    function streaming(ready = true): { jarvis: JarvisComponent; link: { ready: boolean } } {
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      const jarvis = fixture.componentInstance;
+      flushMicrotasks();
+      const link = withStream(jarvis, ready);
+      void jarvis.talk();
+      flushMicrotasks();
+      return { jarvis, link };
+    }
+
+    const turn = (jarvis: JarvisComponent, event: Record<string, unknown>) => {
+      void jarvis['onStreamTurn'](event);
+      flushMicrotasks();
+    };
+
+    it('lien prêt : aucune écoute de l’ancienne boucle ; candidat → provisoire en silence ; confirmé → adoptée',
+      fakeAsync(() => {
+        fastBrain.warm.and.resolveTo(true);
+        const { jarvis } = streaming();
+        expect(jarvis.state()).toBe('ecoute');
+        expect(jarvisApi.sttSession).not.toHaveBeenCalled();
+        turn(jarvis, { type: 'turn', state: 'speech' });
+        turn(jarvis, { type: 'turn', state: 'candidate', text: 'Où en est CAGIP ?', speechMs: 1300, by: 'modele' });
+        expect(fastBrain.converse).toHaveBeenCalledTimes(1);
+        const body = fastBrain.converse.calls.mostRecent().args[0];
+        expect(body.text).toBe('Où en est CAGIP ?');
+        expect(body.speculationId).toBeTruthy();
+        fast!.onText('Le chantier est prêt.');
+        flushMicrotasks();
+        expect(voice.enqueue).not.toHaveBeenCalled(); // rien n'est dit avant la confirmation
+
+        turn(jarvis, { type: 'turn', state: 'confirmed', text: 'Où en est CAGIP ?', speechMs: 1300, silenceMs: 700 });
+        expect(fastBrain.converse).toHaveBeenCalledTimes(1);
+        expect(fastBrain.verdict).toHaveBeenCalledOnceWith(body.speculationId!, true, 'Où en est CAGIP ?');
+        expect(voice.enqueue).toHaveBeenCalledTimes(1);
+        fast!.onDone({ brain: 'FAST', spokenText: 'Le chantier est prêt.', firstTokenMs: 900, model: 'm' });
+        fastDone!('ok');
+        flushMicrotasks();
+        jarvis['flushParked']();
+        const report = jarvisApi.timings.calls.mostRecent().args[0];
+        expect(report.loop).toBe('stream');
+        expect(report.speculation).toBe('adoptee');
+        expect(report.listenMode).toBe('STREAM');
+        expect(report.speechMs).toBe(1300);
+      }));
+
+    it('parole reprise : la provisoire est jetée ; texte final différent : appel normal sur le texte confirmé',
+      fakeAsync(() => {
+        fastBrain.warm.and.resolveTo(true);
+        const { jarvis } = streaming();
+        turn(jarvis, { type: 'turn', state: 'candidate', text: 'Attends.', speechMs: 400 });
+        const first = fastBrain.converse.calls.mostRecent();
+        turn(jarvis, { type: 'turn', state: 'cancelled' });
+        expect((first.args[2] as AbortSignal).aborted).toBeTrue();
+        expect(fastBrain.verdict).toHaveBeenCalledWith(first.args[0].speculationId!, false, null);
+        turn(jarvis, { type: 'turn', state: 'candidate', text: 'Attends. Parle-moi du WAF', speechMs: 1500 });
+        turn(jarvis, { type: 'turn', state: 'confirmed', text: 'Attends. Parle-moi plutôt du WAF.', speechMs: 1500,
+          silenceMs: 700 });
+        expect(fastBrain.converse).toHaveBeenCalledTimes(3);
+        const normal = fastBrain.converse.calls.mostRecent().args[0];
+        expect(normal.text).toBe('Attends. Parle-moi plutôt du WAF.');
+        expect(normal.speculationId).toBeUndefined();
+      }));
+
+    it('lien qui tombe : repli tracé sur l’ancienne boucle ; tour hors écoute ignoré', fakeAsync(() => {
+      const { jarvis, link } = streaming();
+      jarvis['conversation'].start(); // en conversation : l'ancienne écoute reprend aussitôt
+      expect(jarvisApi.sttSession).not.toHaveBeenCalled();
+      link.ready = false;
+      jarvis['onStreamReady'](false, 'reconnecting code=1006');
+      flushMicrotasks();
+      expect(jarvisApi.sttSession).toHaveBeenCalled(); // l'ancienne écoute repart
+      turn(jarvis, { type: 'turn', state: 'confirmed', text: 'Bonjour', speechMs: 500, silenceMs: 700 });
+      expect(fastBrain.converse).not.toHaveBeenCalled();
+      const trace = TestBed.inject(JarvisListenTrace);
+      trace.flush();
+      const events = traceBatches.flatMap((b) => b.events);
+      expect(events.some((e) => e.ev === 'voice_link' && /fallback/.test(String(e.d)))).toBeTrue();
+      expect(events.some((e) => e.ev === 'voice_turn_ignored')).toBeTrue();
+    }));
+
+    it('lien pas prêt : l’ancienne boucle écoute comme avant', fakeAsync(() => {
+      streaming(false);
+      expect(jarvisApi.sttSession).toHaveBeenCalled();
+    }));
+  });
+
   describe('F-252 / SF-252-02 — répondre sans attendre la retranscription', () => {
     function started(ready: { stt: () => StreamHandlers }): JarvisComponent {
       const fixture = TestBed.createComponent(JarvisComponent);

@@ -50,7 +50,7 @@ import {
 import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom, timeout } from 'rxjs';
 import {
-  JarvisVoiceShadow, VoiceLoop, openLinkMic, readVoiceLoop, realVoiceLink, writeVoiceLoop,
+  JarvisVoiceShadow, VoiceLoop, VoiceLoopHooks, openLinkMic, readVoiceLoop, realVoiceLink, writeVoiceLoop,
 } from './jarvis-voice-shadow';
 import {
   JARVIS_BUDGET_CONFIRM, JARVIS_BUDGET_HARD, JarvisCostSummary, JarvisHumour, JarvisSttTicket, JarvisUtterance,
@@ -896,8 +896,145 @@ export class JarvisComponent implements OnInit, OnDestroy {
     if (loop === 'legacy') {
       this.voiceShadow.stop();
     } else if (this.conversation.active) {
-      void this.voiceShadow.start(loop, this.subjectId());
+      void this.voiceShadow.start(loop, this.subjectId(), this.streamHooks());
     }
+  }
+
+  // ---- F-257 / SF-257-06 : la boucle en flux prend la main (décision PO du 2026-11-11, voie A) ----
+  /** L'écoute est tenue par le service vocal (le lien est prêt) : l'ancienne écoute est suspendue. */
+  private streamListening = false;
+  private streamIdleTimer: ReturnType<typeof setInterval> | null = null;
+
+  /** Ce que la boucle en flux rapporte à l'écran. */
+  private streamHooks(): VoiceLoopHooks {
+    return {
+      onReadyChange: (ready, detail) => this.zone.run(() => this.onStreamReady(ready, detail)),
+      onTurn: (event) => this.zone.run(() => void this.onStreamTurn(event)),
+      // La voix de Jarvis ne part jamais au service (l'interruption côté serveur viendra en SF-257-08).
+      silenced: () => this.state() === 'parole' || this.saying > 0 || !!this.voice.busy,
+    };
+  }
+
+  /** Vrai si le service tient l'écoute : lien prêt, et pas d'entretien (sa fin de tour reste celle de l'écran). */
+  private streamTakesOver(): boolean {
+    return this.voiceShadow.ready && !this.interview;
+  }
+
+  /** Le lien devient prêt (prise de main) ou tombe (repli sur l'ancienne boucle, tracé). */
+  private onStreamReady(ready: boolean, detail: string): void {
+    if (ready) {
+      this.trace.mark('voice_link', 'takeover');
+      // Une ancienne écoute ouverte avant que le lien soit prêt cède la place.
+      if (this.state() === 'ecoute' && !this.streamListening && !this.bargeIn.capturing) {
+        this.cancelListening();
+        void this.listen();
+      }
+      return;
+    }
+    this.trace.mark('voice_link', `fallback ${detail}`);
+    if (this.streamListening) {
+      this.leaveStreamListening();
+      this.state.set(this.turnRunning ? 'reflexion' : 'repos');
+      this.dropSpeculation();
+      if (this.conversation.active && !this.turnRunning) {
+        void this.listen();
+      }
+    }
+  }
+
+  /** L'écoute tenue par le service : l'écran attend ses tours (aucun micro de l'ancienne boucle n'est ouvert). */
+  private enterStreamListening(): void {
+    this.streamListening = true;
+    this.listenStartedAt = performance.now();
+    this.voicedMs = null;
+    this.listenPreRoll = false;
+    this.listenRingMs = 0;
+    this.wakeEngine.stop();
+    this.dropSpeculation();
+    this.state.set('ecoute');
+    this.trace.mark('stream_open', 'service');
+    if (this.streamIdleTimer === null) {
+      // SF-233-11 — la conversation s'éteint après le silence habituel, comme dans l'ancienne boucle.
+      this.streamIdleTimer = setInterval(() => this.zone.run(() => {
+        if (this.streamListening && this.conversation.idleExpired()) {
+          this.trace.mark('listen_idle_expired', 'service');
+          void this.endConversation();
+        }
+      }), 1_000);
+    }
+  }
+
+  private leaveStreamListening(): void {
+    this.streamListening = false;
+    if (this.streamIdleTimer !== null) {
+      clearInterval(this.streamIdleTimer);
+      this.streamIdleTimer = null;
+    }
+  }
+
+  /**
+   * Un tour décidé par le service. `candidate` : le cerveau rapide part en provisoire sur le texte du moment (F-252,
+   * rien n'est dit) ; `cancelled` : la parole a repris, la réponse provisoire est jetée ; `confirmed` : le texte final
+   * suit exactement le chemin d'une parole entendue par l'ancienne boucle (porte de parole, commandes, cerveau), et la
+   * réponse provisoire n'est adoptée que si c'est le même texte (`claimSpeculation`).
+   */
+  private async onStreamTurn(event: Record<string, unknown>): Promise<void> {
+    const state = String(event['state'] ?? '');
+    if (!this.streamListening || this.state() !== 'ecoute') {
+      this.trace.mark('voice_turn_ignored', `${state} ${this.state()}`);
+      return;
+    }
+    const text = typeof event['text'] === 'string' ? event['text'].trim() : '';
+    const speechMs = typeof event['speechMs'] === 'number' ? event['speechMs'] : null;
+    switch (state) {
+      case 'speech':
+        this.conversation.touch();
+        this.trace.newTurn();
+        this.listenStartedAt = performance.now();
+        return;
+      case 'candidate':
+        this.dropSpeculation();
+        if (this.speculable(text, speechMs)) {
+          this.speculation = new JarvisSpeculation(this.fastBrain, this.converseBody(text));
+        }
+        return;
+      case 'cancelled':
+        this.dropAnticipationOrSpeculation();
+        return;
+      case 'rejected':
+        this.dropSpeculation();
+        return;
+      case 'confirmed':
+        await this.acceptStreamTurn(text, speechMs, typeof event['silenceMs'] === 'number' ? event['silenceMs'] : 0);
+        return;
+      default:
+        return;
+    }
+  }
+
+  /** Le tour confirmé par le service : même mesure, même porte et même suite que l'ancienne boucle. */
+  private async acceptStreamTurn(text: string, speechMs: number | null, silenceMs: number): Promise<void> {
+    this.leaveStreamListening();
+    this.state.set('reflexion');
+    const now = performance.now();
+    // t0 = la fin de parole : le service confirme après `silenceMs` de silence.
+    const clock = new TurnClock(now - silenceMs, speechMs);
+    this.tagTurn(clock);
+    clock.loop = 'stream';
+    clock.workspaceId = this.subjectId();
+    clock.ttsProvider = this.ttsProvider;
+    clock.companion = this.companionBridge.available;
+    clock.listenMode = this.conversation.active ? 'CONV_STREAM' : 'STREAM';
+    clock.sttProvider = 'elevenlabs';
+    clock.speed = { ...clock.speed, endSilenceMs: silenceMs };
+    if (this.anticipationsDropped > 0) {
+      clock.speed = { ...clock.speed, anticipationsDropped: this.anticipationsDropped };
+    }
+    this.anticipationsDropped = 0;
+    this.applyPendingCounts(clock);
+    this.jarvis.usage('SPOKEN', Math.max(0, (speechMs ?? 0) / 1000));
+    this.voicedMs = speechMs;
+    await this.acceptHeard(text, clock, true);
   }
 
   toggleCards(): void {
@@ -1185,6 +1322,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.leaveStreamListening();
     this.voiceShadow.stop();
     // F-240 / SF-240-01 — les mesures gardées partent à la sortie de l'écran.
     this.flushParked();
@@ -1471,7 +1609,12 @@ export class JarvisComponent implements OnInit, OnDestroy {
     // F-255 / SF-255-01 — chaque écoute ouvre un tour vocal : son identifiant suit les événements, la mesure, la
     // capture et la requête au cerveau rapide.
     this.trace.newTurn();
-    this.trace.mark('listen_open', preRoll ? 'preroll' : '');
+    this.trace.mark('listen_open', preRoll ? 'preroll' : this.streamTakesOver() ? 'service' : '');
+    // F-257 / SF-257-06 — le service vocal tient l'écoute : aucun micro de l'ancienne boucle.
+    if (this.streamTakesOver()) {
+      this.enterStreamListening();
+      return;
+    }
     this.listenOpening = true;
     try {
       await this.openListening(preRoll);
@@ -2203,6 +2346,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   /** Arrête l'écoute, transcrit, puis agit sur ce qui a été dit ; une réponse provisoire non retenue est jetée. */
   async finishListening(): Promise<void> {
+    if (this.streamListening) {
+      return;
+    }
     try {
       await this.closeListening();
     } finally {
@@ -2278,6 +2424,14 @@ export class JarvisComponent implements OnInit, OnDestroy {
         return;
       }
     }
+    await this.acceptHeard(text, clock, transcribed);
+  }
+
+  /**
+   * Une parole entendue (ancienne boucle, ou tour confirmé par le service — F-257 / SF-257-06) : porte de parole réelle,
+   * puis la suite commune (confirmation, commandes, cerveau).
+   */
+  private async acceptHeard(text: string, clock: TurnClock, transcribed: boolean): Promise<void> {
     this.trace.mark('transcript', `chars=${text.length} mode=${clock.listenMode}`);
     // SF-233-11 — un bruit ou une phrase vide n'est jamais envoyé ; en conversation, l'écoute repart sans un mot.
     // F-239 / SF-239-01 (D3b) — la porte de parole réelle : sans parole réelle, AUCUN tour (ni cerveau rapide, ni
@@ -4676,7 +4830,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.started.set(true);
     this.conversation.start();
     // F-257 / SF-257-03 — le lien en flux ne s'ouvre qu'une fois la conversation engagée (F-231 D5).
-    void this.voiceShadow.start(this.voiceLoop(), this.subjectId());
+    void this.voiceShadow.start(this.voiceLoop(), this.subjectId(), this.streamHooks());
   }
 
   /** La pause : micro coupé, voix coupée ; le tour en cours continue. `say` : Jarvis le dit (ordre vocal). */
@@ -4737,6 +4891,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
   /** Coupe l'écoute en cours sans rien envoyer. */
   private cancelListening(): void {
     if (this.state() !== 'ecoute') {
+      return;
+    }
+    if (this.streamListening) {
+      this.leaveStreamListening();
+      this.state.set(this.turnRunning ? 'reflexion' : 'repos');
       return;
     }
     this.stopMeter();
