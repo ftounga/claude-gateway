@@ -118,12 +118,51 @@ function statusOf(error: unknown): number | null {
   return typeof status === 'number' ? status : null;
 }
 
-/** Le micro réel du lien : contraintes d'écho de l'écoute, capture existante, 16 kHz PCM 16 bits. */
+/**
+ * Un envoi tous les ≈ 100 ms (3 200 octets à 16 kHz) : le module de capture rend des blocs de 128 échantillons
+ * (2,7 ms) ; les envoyer un à un, en rafale quand le fil principal est occupé, a fait fermer les sessions du fournisseur
+ * (`queue_overflow`, référence du banc F-256 §7).
+ */
+export const PCM_CHUNK_BYTES = 3_200;
+
+/** Regroupe des blocs PCM en envois d'au moins `size` octets, dans l'ordre ; `flush()` rend le reste. */
+export class PcmChunker {
+  private parts: Uint8Array[] = [];
+  private bytes = 0;
+
+  constructor(private readonly size: number, private readonly emit: (pcm: Uint8Array) => void) {}
+
+  push(pcm: Uint8Array): void {
+    this.parts.push(pcm);
+    this.bytes += pcm.length;
+    if (this.bytes >= this.size) {
+      this.flush();
+    }
+  }
+
+  flush(): void {
+    if (this.bytes === 0) {
+      return;
+    }
+    const out = new Uint8Array(this.bytes);
+    let at = 0;
+    for (const part of this.parts) {
+      out.set(part, at);
+      at += part.length;
+    }
+    this.parts = [];
+    this.bytes = 0;
+    this.emit(out);
+  }
+}
+
+/** Le micro réel du lien : contraintes d'écho de l'écoute, capture existante, 16 kHz PCM 16 bits par ≈ 100 ms. */
 export async function openLinkMic(onPcm: (pcm: Uint8Array) => void): Promise<LinkMic> {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: LISTEN_AUDIO });
+  const chunker = new PcmChunker(PCM_CHUNK_BYTES, onPcm);
   try {
     const opened = await openCaptureGraph(stream,
-      (samples, rate) => onPcm(toPcm16(downsample(samples, rate, PRE_ROLL_RATE))));
+      (samples, rate) => chunker.push(toPcm16(downsample(samples, rate, PRE_ROLL_RATE))));
     return {
       close: () => {
         opened.source.disconnect();

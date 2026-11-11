@@ -1,4 +1,6 @@
-import { JarvisVoiceShadow, PING_EVERY_MS, VoiceShadowDeps, readVoiceLoop, writeVoiceLoop } from './jarvis-voice-shadow';
+import {
+  JarvisVoiceShadow, PCM_CHUNK_BYTES, PING_EVERY_MS, PcmChunker, VoiceShadowDeps, readVoiceLoop, writeVoiceLoop,
+} from './jarvis-voice-shadow';
 import { VoiceLink, VoiceTicket } from './jarvis-voice-link';
 
 const TICKET: VoiceTicket = { ticket: 't', url: '/voice/ws', expiresAt: '2999-01-01T00:00:00Z', sampleRate: 16000 };
@@ -109,5 +111,25 @@ describe('JarvisVoiceShadow (F-257 / SF-257-03)', () => {
     writeVoiceLoop(storage, 'stream');
     expect(readVoiceLoop(storage)).toBe('stream');
     expect(readVoiceLoop(null)).toBe('legacy');
+  });
+
+  it('regroupe les blocs de 2,7 ms en envois de ≈ 100 ms, dans l’ordre (pas de rafale chez le fournisseur)', () => {
+    const sent: Uint8Array[] = [];
+    const chunker = new PcmChunker(PCM_CHUNK_BYTES, (pcm) => sent.push(pcm));
+    for (let i = 0; i < 12; i++) {
+      chunker.push(new Uint8Array(256).fill(i));
+    }
+    expect(sent.length).toBe(0);
+    chunker.push(new Uint8Array(256).fill(12));
+    expect(sent.length).toBe(1);
+    expect(sent[0].length).toBe(3328);
+    expect(sent[0][0]).toBe(0);
+    expect(sent[0][3327]).toBe(12);
+    chunker.push(new Uint8Array(10));
+    chunker.flush();
+    expect(sent.length).toBe(2);
+    expect(sent[1].length).toBe(10);
+    chunker.flush();
+    expect(sent.length).toBe(2);
   });
 });
