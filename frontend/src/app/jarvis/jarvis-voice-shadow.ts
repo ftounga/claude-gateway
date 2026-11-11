@@ -83,6 +83,13 @@ export class JarvisVoiceShadow {
       },
     }, {
       onState: (state: VoiceLinkState, detail: string) => this.deps.trace(`${state} ${detail}`.trim()),
+      // F-257 / SF-257-05 — le tour décidé par le service et l'état de l'écoute, au journal (jamais le texte).
+      onEvent: (event) => {
+        const line = serviceEventTrace(event);
+        if (line) {
+          this.deps.trace(line);
+        }
+      },
     });
     this.link = link;
     try {
@@ -111,6 +118,29 @@ export class JarvisVoiceShadow {
     this.link?.close();
     this.link = null;
   }
+}
+
+/**
+ * F-257 / SF-257-05 — la ligne de journal d'un événement du service : tour (`turn candidate by=modele silence=100`) ou
+ * écoute (`stt reopen session=2`), avec l'heure serveur. **Jamais le texte** ; `transcript` n'est pas journalisé.
+ */
+export function serviceEventTrace(event: Record<string, unknown>): string | null {
+  const safe = (value: unknown) => String(value).replace(/[^\p{L}\p{N}_=.:-]+/gu, '').slice(0, 40);
+  const ts = typeof event['serverTs'] === 'number' ? ` srv=${event['serverTs']}` : '';
+  if (event['type'] === 'turn' && typeof event['state'] === 'string') {
+    const parts = [`turn ${safe(event['state'])}`];
+    for (const [key, label] of [['by', 'by'], ['via', 'via'], ['reason', 'reason'], ['silenceMs', 'silence'],
+      ['speechMs', 'speech'], ['finalMs', 'final'], ['probability', 'p']] as const) {
+      if (event[key] !== undefined && event[key] !== null) {
+        parts.push(`${label}=${safe(event[key])}`);
+      }
+    }
+    return parts.join(' ') + ts;
+  }
+  if (event['type'] === 'stt' && typeof event['state'] === 'string') {
+    return `stt ${safe(event['state'])} ${safe(event['detail'] ?? '')}`.trim() + ts;
+  }
+  return null;
 }
 
 function statusOf(error: unknown): number | null {
