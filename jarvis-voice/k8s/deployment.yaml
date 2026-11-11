@@ -1,4 +1,4 @@
-# F-257 / SF-257-02 — le service vocal de Jarvis (ADR-021). PRÉPARÉ, NON DÉPLOYÉ.
+# F-257 / SF-257-02 — le service vocal de Jarvis (ADR-021). Déployé par jarvis-voice/deploy.sh (SF-257-11).
 #
 # Volontairement HORS de k8s/** (partagé) : rien ici n'est appliqué par le déploiement habituel. Une réplique, sans
 # HPA : les sessions vivent en mémoire du processus (une conversation = une connexion). Mémoire sobre (cluster EKS sans
