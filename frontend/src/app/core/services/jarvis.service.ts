@@ -186,7 +186,8 @@ export class JarvisService {
   /** F-239 / SF-239-03 — garde un énoncé pour le banc (la passerelle l'ignore sans interrupteur). Best-effort. */
   capture(audio: Blob, meta: JarvisCaptureMeta): void {
     const form = new FormData();
-    form.append('audio', audio, 'enonce.wav');
+    // F-255 / SF-255-04 — la dictée de repli garde son type (WebM) ; le reste est du WAV.
+    form.append('audio', audio, audio.type.includes('webm') ? 'enonce.webm' : 'enonce.wav');
     if (meta.seconds !== null && Number.isFinite(meta.seconds)) {
       form.append('seconds', String(Math.round(meta.seconds * 10) / 10));
     }
