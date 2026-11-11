@@ -540,3 +540,40 @@ ne peut pas garantir ce que l'IA connectée fait des données : c'est dit.
 Server, aucune cryptographie maison). Le périmètre reste borné : pas de client MCP intégré à
 l'application, pas d'annuaire public, et une IA ne peut jamais accorder une autorisation (cadrage
 §12). Toute subfeature qui ouvrirait une route hors `/api/mcp` à un jeton MCP contredit cet ADR.
+
+---
+
+## ADR-021 — Un service vocal séparé en Python (Pipecat) pour la boucle vocale en flux (F-257, tranche OQ-24)
+
+**Date** : 2026-11-11
+**Statut** : Acceptée
+**Décideur** : product owner
+
+**Contexte.** La boucle vocale de Jarvis ouvre une session de transcription par tour et décide la fin de tour au
+silence, dans le navigateur (cadrage F-257 §1) : une ouverture sur deux échoue, la fin de tour coûte 1,2 à 2 s, et la
+chaîne est séquentielle (premier son 5,5-6 s). Les références (OpenAI Realtime, LiveKit, Pipecat) tiennent un flux
+audio continu vers un serveur, une session d'écoute longue, une fin de tour décidée côté serveur par un modèle, une
+génération préemptive et une interruption gérée côté serveur. Aucun cadre Java ne fournit cet ensemble.
+
+**Décision.**
+1. **Variante de pile** : un service **`jarvis-voice` en Python avec le cadre Pipecat** rejoint le cluster, à côté du
+   backend Java. Il ne fait que du **signal et de l'ordonnancement** : transport WebSocket, VAD Silero, détecteur de fin
+   de tour smart-turn (CPU), session de transcription longue, préemption, interruption.
+2. **Gateway-First et Provider Independence inchangés** : le cerveau (`AIProvider`), la voix (`SpeechProvider`), le
+   budget, la journalisation et **toutes les clés fournisseur** restent dans la passerelle. Le service appelle la
+   passerelle **au nom de l'utilisateur** par un ticket court émis par la passerelle (`user_id`, sujet vérifié) ; il ne
+   reçoit qu'un jeton éphémère de transcription, ne stocke rien et ne détient aucun secret fournisseur.
+3. **L'audio passe par notre service** (révise F-233 D-PO-3) : une seule session de transcription par conversation.
+   Fournisseur : **ElevenLabs Scribe v2 Realtime** en *commit* manuel ; **Deepgram Flux (UE)** mesuré en alternative
+   au banc F-256, adopté seulement s'il gagne (adaptateur remplaçable).
+4. **Construit, empaqueté et déployé comme `diagram-renderer`** (précédent F-142) : dossier à la racine du dépôt,
+   image dédiée, Service ClusterIP sans exposition directe, politique réseau, 1 réplique, mémoire sobre (requête
+   256 Mi, limite 768 Mi), aucun HPA au départ. Seul un chemin WebSocket de l'ingress y mène.
+5. **À côté, pas à la place** : drapeau par appareil (`legacy` / `stream`) et coupe-circuit serveur
+   `APP_JARVIS_VOICE_STREAM_ENABLED` (défaut `false`) ; l'ancienne boucle reste le défaut jusqu'à la bascule mesurée
+   (cadrage §5, seuils figés en SF-257-01).
+
+**Conséquences.** Un deuxième langage en production (image, dépendances, tests Python) ; un saut réseau interne de
+quelques millisecondes ; en échange, un déploiement du backend ne coupe plus la conversation audio, et le tour,
+l'interruption et la préemption reposent sur un cadre éprouvé au lieu d'une quatrième réimplémentation maison.
+Toute logique « moteur d'IA » dans `jarvis-voice` contredit cet ADR.

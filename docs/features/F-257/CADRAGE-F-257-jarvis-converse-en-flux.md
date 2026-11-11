@@ -1,6 +1,7 @@
 # Cadrage F-257 — Jarvis converse en flux
 
-**Statut :** cadrage du 2026-11-11 · aucun code · famille « Jarvis » (F-233, F-251, F-252, F-253 ; F-255 rejeu de
+**Statut :** cadrage du 2026-11-11 · **décisions PO du 2026-11-11 prises (OQ-24 tranchée, §7)** · développement
+SF par SF · famille « Jarvis » (F-233, F-251, F-252, F-253 ; F-255 rejeu de
 séance et F-256 banc à vraie voix, en cours ailleurs).
 
 **Demande PO (2026-11-11)** : un assistant vocal **conversationnel mains libres**, au niveau des modes voix de ChatGPT
@@ -132,6 +133,13 @@ le service voix ne fait que du signal et de l'ordonnancement. Gateway-First et P
   SF-257-04, avant tout code** : plan réel du compte, code de fermeture WebSocket des 31 replis, sessions ouvertes
   simultanément au moment des échecs. Une session par conversation ramène le besoin à **1** simultanée par
   utilisateur.
+- **Vérifié le 2026-11-11 (sonde sur la clé de prod, lue à la volée)** : plan à **15 sessions simultanées** (16ᵉ
+  refusée par un message `rate_limited` explicite, puis fermeture 1000) ; nom du plan illisible par API (la clé n'a
+  pas le droit `user_read`) ; 15 jetons à usage unique en rafale acceptés ; jeton réutilisé ou invalide → `auth_error`
+  puis fermeture 1000 ; paramètre invalide → `invalid_request` puis fermeture 1008. **Toutes ces fermetures sont
+  précédées d'un message** : les 31 replis du 09/11, tracés `ouverture_fermee` (fermeture **sans** message, 250-300 ms
+  après l'ouverture), ne viennent donc **pas** de la simultanéité (on aurait eu `ouverture_refusee`) ; la cause n'est
+  pas lisible dans les traces (aucun code de fermeture rangé). Le service tracera code et type de chaque fermeture.
 - **Durée maximale d'une session : non publiée.** Le service la traite comme finie : reconnexion transparente avec
   rejeu d'un tampon circulaire de 2 s, sans phrase perdue (critère §5).
 - **Facturation** à la durée de session : 1 h de conversation ≈ 0,36 € (à 0,92 €/$) — négligeable devant la voix.
@@ -246,6 +254,13 @@ disponible pour 09 (01 peut démarrer avant).
 | **D-PO-1** | Accepter un **service Python** (Pipecat) dans le cluster pour la boucle vocale ? | A Pipecat / B tout Java / C LiveKit | **A** : cadre éprouvé, déploiements backend sans coupure audio, cerveau et clés restent dans la passerelle |
 | **D-PO-2** | **Fournisseur d'écoute** de la session longue | ElevenLabs Scribe v2 (actuel) / Deepgram Flux UE (nouveau sous-traitant, fin de tour native) | **ElevenLabs** si la limite de simultanéité du plan est vérifiée et la session longue tient (SF-257-04) ; Deepgram branché en alternative **mesurée** au banc, adopté seulement s'il gagne |
 | **D-PO-3** | Révision de **F-233 D-PO-3** : l'audio passe par notre service (et non plus navigateur ↔ fournisseur en direct) | oui / non | **Oui** : condition de la session longue et du tour côté serveur ; rien n'est conservé (même régime que F-145) |
+
+**Décisions PO du 2026-11-11 (OQ-24 tranchée)** :
+- **D-PO-1 → A** : service `jarvis-voice` en Python avec Pipecat ; construit, empaqueté et déployé comme
+  `diagram-renderer` (image à part, service ClusterIP, politique réseau) — ADR-021, `TECH_STACK.md`.
+- **D-PO-2 → ElevenLabs** gardé (Scribe v2 Realtime, *commit* manuel) ; **Deepgram Flux UE mesuré** en alternative au
+  banc à vraie voix F-256.
+- **D-PO-3 → Oui** : l'audio passe par notre service, **une seule session de transcription par conversation**.
 
 ## 8. Hors périmètre
 

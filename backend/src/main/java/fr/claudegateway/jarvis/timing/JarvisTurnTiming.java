@@ -269,4 +269,10 @@ public class JarvisTurnTiming {
 
     @Column(name = "page_id", length = 36)
     private String pageId;
+    /**
+     * F-257 / SF-257-01 — la boucle vocale du tour : {@code legacy} (boucle de l'écran) ou {@code stream} (flux
+     * permanent). NULL pour les lignes d'avant la migration, lues {@code legacy}.
+     */
+    @Column(name = "voice_loop", length = 8)
+    private String voiceLoop;
 }

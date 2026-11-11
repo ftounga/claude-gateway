@@ -705,10 +705,26 @@ scellés, sur la passerelle, beaucoup plus longtemps.
 
 ## OQ-24 — Quelle pile et quel fournisseur pour la boucle vocale en flux (F-257) ?
 
-**Statut : ouverte, bloque le développement de F-257.** Détail : `docs/features/F-257/CADRAGE-F-257-jarvis-converse-en-flux.md` §3.3, §3.4, §7.
+**Statut : TRANCHÉE le 2026-11-11 par le PO** (voir « Décision » ci-dessous). Détail : `docs/features/F-257/CADRAGE-F-257-jarvis-converse-en-flux.md` §3.3, §3.4, §7 ; ADR-021.
 
 | # | Question | Recommandation |
 |---|---|---|
 | 1 | Accepter un service **Python** (`jarvis-voice`, cadre Pipecat) dans le cluster, à côté du backend Java ? (variante de pile) | **Oui** : cadre éprouvé pour le tour et l'interruption ; un déploiement du backend ne coupe plus l'audio ; cerveau, clés et budget restent dans la passerelle |
 | 2 | Fournisseur de la session d'écoute longue : ElevenLabs Scribe v2 (actuel) ou Deepgram Flux UE (nouveau sous-traitant) ? | **ElevenLabs**, sous réserve du plan et de la tenue de la session (vérifiés en SF-257-04) ; Deepgram mesuré en alternative |
 | 3 | Réviser F-233 D-PO-3 : l'audio passe par notre service au lieu d'aller du navigateur au fournisseur en direct ? | **Oui** : condition de la session longue et du tour côté serveur ; rien n'est conservé |
+
+**Décision PO (2026-11-11)** :
+1. **Oui** — service vocal séparé `jarvis-voice` en **Python avec Pipecat** (variante de pile acceptée, sur le modèle
+   du précédent `diagram-renderer` : image dédiée, manifestes à part, service interne au cluster) — ADR-021,
+   `docs/TECH_STACK.md`.
+2. **ElevenLabs gardé** pour la transcription (Scribe v2 Realtime, *commit* manuel) ; **Deepgram Flux (région Europe)**
+   sera **mesuré** en alternative au banc à vraie voix (F-256), adopté seulement s'il gagne.
+3. **Oui** — l'audio passe par notre service : **une seule session de transcription par conversation** (révise F-233
+   D-PO-3).
+
+**Vérification du compte ElevenLabs (2026-11-11, préalable SF-257-04)** : simultanéité **15** sessions (refus explicite
+`rate_limited` « maximum of 15 concurrent requests » à la 16ᵉ) ; jetons à usage unique sans limite observée (15 en
+rafale) ; un jeton réutilisé ou invalide rend `auth_error` puis une fermeture 1000 ; un paramètre invalide rend
+`invalid_request` puis 1008. Les 31 replis du 09/11 sont tracés `ouverture_fermee` (fermeture **sans** message) : ce
+n'est donc **pas** la limite de simultanéité (qui aurait donné `ouverture_refusee`) ; cause non identifiée côté écran
+(aucun code de fermeture tracé). Le service `jarvis-voice` tracera code et type de chaque fermeture.

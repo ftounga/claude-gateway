@@ -46,6 +46,11 @@ Ce document explique pourquoi chaque technologie majeure a été retenue pour Cl
   (OLE2/MAPI, HSMF) déposés par le runner — en-têtes, texte, pièce `.ics`, demandes de réunion. **Variante de pile
   signalée** : aucune autre bibliothèque ne lit ce format ; la lecture reste côté serveur (runner léger, correctifs sans
   mise à jour des postes). Les `.eml` passent par `jakarta.mail`, déjà présent.
+- **Python 3.12 + Pipecat** (licence BSD-2, F-257, ADR-021) : service vocal séparé `jarvis-voice` (flux audio
+  permanent, VAD Silero, fin de tour smart-turn v3 sur CPU, session de transcription longue, préemption,
+  interruption). **Variante de pile signalée et acceptée par le PO le 2026-11-11 (OQ-24)** : aucun cadre Java ne
+  fournit l'orchestration du tour vocal ; le service ne fait que du signal, sans clé fournisseur ni état durable.
+  Construit et déployé sur le modèle de `diagram-renderer` (Node + Python, F-142).
 
 ## Guiding Principle
 Les choix technologiques sont guidés par : simplicité, fiabilité, maintenabilité, production readiness, évolution long terme. De nouvelles technologies ne sont introduites que si elles améliorent clairement ces objectifs.
