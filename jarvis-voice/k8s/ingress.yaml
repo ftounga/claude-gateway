@@ -1,0 +1,31 @@
+# F-257 / SF-257-02 — le chemin WebSocket /voice vers jarvis-voice. PRÉPARÉ, NON DÉPLOYÉ.
+#
+# Un Ingress À PART (même hôte, même certificat) plutôt qu'une ligne dans k8s/base/ingress/ingress.yaml (partagé) :
+# nginx fusionne les règles des Ingress d'un même hôte. Une conversation peut durer : délais d'une heure (le service
+# ferme lui-même après 60 s de silence, SF-233-11) ; le ticket ne passe jamais dans l'URL (premier message).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: jarvis-voice-ingress
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  tls:
+    - hosts:
+        - portal.ng-itconsulting.com
+      secretName: claude-gateway-tls
+  rules:
+    - host: portal.ng-itconsulting.com
+      http:
+        paths:
+          - path: /voice
+            pathType: Prefix
+            backend:
+              service:
+                name: jarvis-voice
+                port:
+                  number: 80

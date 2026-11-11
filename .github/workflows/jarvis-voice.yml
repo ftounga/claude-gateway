@@ -1,0 +1,29 @@
+name: Jarvis voice CI
+
+# F-257 / SF-257-02 — le service vocal (ADR-021). Tests et construction de l'image SEULEMENT : aucun déploiement
+# (le service est préparé, pas déployé). Déclenchement manuel, comme les autres workflows pendant la vague V1.
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Tests et image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: jarvis-voice/requirements-dev.txt
+
+      - name: Install dependencies
+        run: cd jarvis-voice && pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: cd jarvis-voice && python -m pytest -q
+
+      - name: Build image (no push)
+        run: docker build -t jarvis-voice:ci jarvis-voice
