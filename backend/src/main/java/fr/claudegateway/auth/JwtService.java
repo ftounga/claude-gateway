@@ -35,13 +35,17 @@ public class JwtService {
     static final String CLAIM_ROLE = "role";
     static final String CLAIM_TOKEN_VERSION = "tv";
     /** F-232 / SF-232-05 — la portée d'une session restreinte ; absente d'une session ordinaire. */
-    static final String CLAIM_SCOPE = "scope";
+    public static final String CLAIM_SCOPE = "scope";
     /** F-232 / SF-232-05 — le compagnon Android qui a ouvert la session (révocable avec lui). */
     static final String CLAIM_COMPANION = "cid";
     /** F-232 / SF-232-06 — le téléphone était-il verrouillé à l'émission de la session ? */
     static final String CLAIM_LOCKED = "lk";
     /** F-232 / SF-232-05 — la seule portée restreinte connue : l'écran Jarvis ouvert par le compagnon. */
     public static final String SCOPE_JARVIS_COMPANION = "jarvis-compagnon";
+    /** F-257 / SF-257-02 — le ticket de session vocale, présenté par le service {@code jarvis-voice}. */
+    public static final String SCOPE_JARVIS_VOICE = "jarvis-voice";
+    /** F-257 / SF-257-02 — le sujet de la conversation vocale, vérifié sous {@code user_id} à l'émission. */
+    public static final String CLAIM_VOICE_WORKSPACE = "ws";
 
     private final SecretKey signingKey;
     private final Duration expiration;
@@ -92,6 +96,25 @@ public class JwtService {
                 .expiration(Date.from(expiresAt))
                 .signWith(signingKey)
                 .compact();
+    }
+
+    /**
+     * F-257 / SF-257-02 — un <b>ticket de session vocale</b>, portée {@value #SCOPE_JARVIS_VOICE} : mêmes {@code sub} /
+     * {@code tv} qu'une session ordinaire (logout-all le coupe), le sujet vérifié ({@code ws}, absent sans sujet). Le
+     * filtre d'authentification le borne à la liste fermée {@link VoiceTicketScope}.
+     */
+    public String generateVoiceTicket(User user, UUID workspaceId, Instant expiresAt) {
+        Instant now = Instant.now();
+        var builder = Jwts.builder()
+                .subject(user.getId().toString())
+                .claim(CLAIM_EMAIL, user.getEmail())
+                .claim(CLAIM_ROLE, user.getRole().name())
+                .claim(CLAIM_TOKEN_VERSION, user.getTokenVersion())
+                .claim(CLAIM_SCOPE, SCOPE_JARVIS_VOICE);
+        if (workspaceId != null) {
+            builder.claim(CLAIM_VOICE_WORKSPACE, workspaceId.toString());
+        }
+        return builder.issuedAt(Date.from(now)).expiration(Date.from(expiresAt)).signWith(signingKey).compact();
     }
 
     /**

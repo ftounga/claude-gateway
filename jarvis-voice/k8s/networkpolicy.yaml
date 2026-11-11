@@ -1,0 +1,53 @@
+# F-257 / SF-257-02 — ce que le pod vocal peut recevoir et joindre. PRÉPARÉ, NON DÉPLOYÉ.
+#
+# Entrée : l'ingress nginx seulement (le WebSocket de l'écran). Sortie : le DNS, la passerelle (ticket, cerveau, voix)
+# et HTTPS vers l'extérieur (le fournisseur d'écoute, à partir de SF-257-04). Rien d'autre du cluster.
+# Libellé de l espace de noms ingress-nginx vérifié sur le cluster le 2026-11-11.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: jarvis-voice
+spec:
+  podSelector:
+    matchLabels:
+      app: jarvis-voice
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app: claude-gateway-backend
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Le fournisseur d'écoute (wss sur 443), hors du cluster.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443

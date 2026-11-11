@@ -37,6 +37,9 @@ import jakarta.servlet.http.HttpServletResponse;
  * lui-même <b>403</b> {@code jarvis_companion_scope} (seule exception à la règle ci-dessus). Le compagnon doit être
  * encore appairé à chaque requête (révocation immédiate) ; la version de jeton s'applique comme partout. Toute autre
  * portée est refusée.</p>
+ *
+ * <p><b>F-257 / SF-257-02 — le ticket de session vocale.</b> La portée {@code jarvis-voice} n'ouvre que
+ * {@link VoiceTicketScope} : hors liste, 403 {@code jarvis_voice_scope} ; la version de jeton s'applique comme partout.</p>
  */
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
@@ -58,7 +61,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     /** Ce que le filtre a conclu du jeton présenté. */
-    private enum Outcome { CONTINUE, OUT_OF_SCOPE }
+    private enum Outcome { CONTINUE, OUT_OF_SCOPE, OUT_OF_VOICE_SCOPE }
 
     @Override
     protected void doFilterInternal(
@@ -67,8 +70,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             @NonNull FilterChain filterChain) throws ServletException, IOException {
 
         String token = extractBearerToken(request);
-        if (token != null && SecurityContextHolder.getContext().getAuthentication() == null
-                && authenticate(token, request) == Outcome.OUT_OF_SCOPE) {
+        Outcome outcome = token != null && SecurityContextHolder.getContext().getAuthentication() == null
+                ? authenticate(token, request) : Outcome.CONTINUE;
+        if (outcome == Outcome.OUT_OF_VOICE_SCOPE) {
+            // F-257 / SF-257-02 : un ticket de session vocale hors de sa liste fermée — refus net, jamais une 401.
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            response.setContentType("application/json");
+            response.setCharacterEncoding("UTF-8");
+            response.getWriter().write("{\"error\":\"jarvis_voice_scope\","
+                    + "\"message\":\"Cette route n'est pas ouverte au ticket de session vocale.\"}");
+            return;
+        }
+        if (outcome == Outcome.OUT_OF_SCOPE) {
             // F-232 / SF-232-05 : une session « jarvis-compagnon » hors de la liste fermée — refus net, jamais
             // une 401 (l'écran du compagnon ne doit pas croire sa session expirée et la renouveler en boucle).
             response.setStatus(HttpServletResponse.SC_FORBIDDEN);
@@ -87,7 +100,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             UUID userId = UUID.fromString(claims.getSubject());
             String scope = claims.get(JwtService.CLAIM_SCOPE, String.class);
             CompanionSession companion = null;
-            if (scope != null) {
+            if (JwtService.SCOPE_JARVIS_VOICE.equals(scope)) {
+                // F-257 / SF-257-02 — le ticket de session vocale : sa liste fermée, puis la version de jeton.
+                if (!VoiceTicketScope.allows(request.getMethod(), pathWithinApplication(request))) {
+                    return Outcome.OUT_OF_VOICE_SCOPE;
+                }
+            } else if (scope != null) {
                 CompanionSessionVerifier verifier = companionVerifier.getIfAvailable();
                 if (!JwtService.SCOPE_JARVIS_COMPANION.equals(scope) || verifier == null) {
                     log.debug("JWT rejeté : portée inconnue");
