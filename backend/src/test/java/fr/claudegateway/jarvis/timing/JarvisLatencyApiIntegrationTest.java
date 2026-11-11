@@ -205,6 +205,32 @@ class JarvisLatencyApiIntegrationTest {
     }
 
     @Test
+    @DisplayName("F-257 / SF-257-01 — la boucle est rangée (legacy par défaut) et les deux boucles se lisent côte à côte")
+    void loopIsTracedAndCompared() throws Exception {
+        report(adminToken, "{\"loop\":\"stream\",\"firstSoundMs\":1900,\"speculation\":\"adoptee\"}")
+                .andExpect(status().isNoContent());
+        report(adminToken, "{\"firstSoundMs\":5600,\"streamFallback\":\"ouverture_fermee\"}")
+                .andExpect(status().isNoContent());
+        report(adminToken, "{\"loop\":\"lune\"}").andExpect(status().isBadRequest());
+
+        var rows = timings.findByUserIdAndCreatedAtGreaterThanEqual(admin.getId(), OffsetDateTime.now().minusDays(1));
+        assertThat(rows).hasSize(2);
+        assertThat(rows).extracting(JarvisTurnTiming::getVoiceLoop).containsExactlyInAnyOrder("stream", "legacy");
+
+        latency(adminToken).andExpect(status().isOk())
+                .andExpect(jsonPath("$.byLoop[0].loop").value("legacy"))
+                .andExpect(jsonPath("$.byLoop[0].turns").value(1))
+                .andExpect(jsonPath("$.byLoop[0].streamFallbacks").value(1))
+                .andExpect(jsonPath("$.byLoop[1].loop").value("stream"))
+                .andExpect(jsonPath("$.byLoop[1].turns").value(1))
+                .andExpect(jsonPath("$.byLoop[1].adoptionRate").value(1.0))
+                .andExpect(jsonPath("$.byLoop[1].steps[?(@.step=='firstSound')].p50").value(1900));
+        latency(otherAdminToken).andExpect(status().isOk())
+                .andExpect(jsonPath("$.byLoop[0].turns").value(0))
+                .andExpect(jsonPath("$.byLoop[1].turns").value(0));
+    }
+
+    @Test
     @DisplayName("F-233 / SF-233-13 — la raison du repli hors flux (liste fermée) et le compagnon sont gardés")
     void streamFallbackAndCompanionAreTraced() throws Exception {
         report(adminToken, "{\"listenMode\":\"CONV_BATCH\",\"streamFallback\":\"ouverture_refusee\","

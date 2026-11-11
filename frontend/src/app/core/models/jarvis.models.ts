@@ -178,6 +178,8 @@ export interface TurnTimingReport {
   /** F-255 / SF-255-01 — le tour vocal et la page de l'écran (identifiants aléatoires, jamais de contenu). */
   turnId?: string | null;
   pageId?: string | null;
+  /** F-257 / SF-257-01 — la boucle vocale du tour (`legacy` : boucle de l'écran ; `stream` : flux permanent). */
+  loop?: 'legacy' | 'stream';
   /**
    * F-239 / SF-239-01 (D3b) — une parole refusée par la porte de parole réelle (aucun tour) : la raison et la longueur
    * du texte transcrit, **jamais le texte**.
