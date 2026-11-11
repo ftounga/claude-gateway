@@ -6,7 +6,7 @@ import { AuthService } from './auth.service';
 
 import {
   JarvisAbsence, JarvisCompanionDevice, JarvisCompanionPairingCode, JarvisCompanionVersion, JarvisHumour,
-  JarvisBudgetStatus, JarvisCaptureMeta, JarvisCostSummary, JarvisPreferences, JarvisToSendList, JarvisSttTicket, JarvisUtterance, TurnTimingReport,
+  JarvisBudgetStatus, JarvisCaptureMeta, JarvisCostSummary, JarvisPreferences, JarvisToSendList, JarvisSttTicket, JarvisUtterance, JarvisVoiceTicket, TurnTimingReport,
 } from '../models/jarvis.models';
 
 /** F-232 / SF-232-02 — l'APK du compagnon Android, servi par le chemin des paquets du runner (F-44). */
@@ -107,6 +107,14 @@ export class JarvisService {
    */
   sttSession(): Observable<JarvisSttTicket> {
     return this.http.post<JarvisSttTicket>('/api/jarvis/stt-session', {});
+  }
+
+  /**
+   * F-257 / SF-257-03 — un ticket de session vocale pour le lien en flux (`jarvis-voice`). 503 : coupe-circuit fermé,
+   * l'écran garde l'ancienne boucle.
+   */
+  voiceSession(workspaceId: string | null): Observable<JarvisVoiceTicket> {
+    return this.http.post<JarvisVoiceTicket>('/api/jarvis/voice-session', { workspaceId });
   }
 
   /**

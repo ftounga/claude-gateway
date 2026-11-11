@@ -248,6 +248,14 @@ export interface JarvisUtterance {
 }
 
 /** F-233 / SF-233-04 — une session d'écoute en flux : de quoi parler directement au fournisseur (jamais la clé). */
+/** F-257 / SF-257-03 — le ticket de session vocale (`POST /api/jarvis/voice-session`) ; jamais journalisé. */
+export interface JarvisVoiceTicket {
+  ticket: string;
+  url: string;
+  expiresAt: string;
+  sampleRate: number;
+}
+
 export interface JarvisSttTicket {
   sessionId: string;
   provider: string;
