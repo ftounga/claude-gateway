@@ -62,7 +62,8 @@ public class JarvisCaptureController {
                     .body(new ErrorResponse("too_large", "Énoncé trop long."));
         }
         service.record(currentUser.requireId(), adminService.isAdmin(), audio.getBytes(),
-                new JarvisCaptureService.Incoming(seconds, listenMode, provider, streamText, finalText, turnId));
+                new JarvisCaptureService.Incoming(seconds, listenMode, provider, streamText, finalText, turnId,
+                        audio.getContentType()));
         return ResponseEntity.noContent().build();
     }
 
@@ -90,8 +91,8 @@ public class JarvisCaptureController {
     @GetMapping("/admin/jarvis/captures/{id}/audio")
     public ResponseEntity<byte[]> audio(@PathVariable UUID id) {
         adminService.assertAdmin();
-        return service.audio(currentUser.requireId(), id)
-                .map(bytes -> ResponseEntity.ok().contentType(MediaType.parseMediaType("audio/wav")).body(bytes))
+        return service.audioFile(currentUser.requireId(), id)
+                .map(f -> ResponseEntity.ok().contentType(MediaType.parseMediaType(f.contentType())).body(f.bytes()))
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 }

@@ -966,8 +966,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
   private keepForBench(audio: Blob | null, seconds: number | null, mode: string, provider: string | null,
                        streamText: string, finalText: string): void {
     // F-241 / SF-241-02 — les réponses de l'entretien ne sont jamais gardées pour le banc.
+    // F-255 / SF-255-04 — la dictée de repli (WebM) est gardée aussi, pour être réécoutée au rejeu de séance.
     if (this.interview || !this.captureAudio() || !this.admin() || !audio || audio.size === 0
-        || !audio.type.includes('wav')) {
+        || !(audio.type.includes('wav') || audio.type.includes('webm'))) {
       return;
     }
     this.jarvis.capture(audio, { seconds, listenMode: mode, provider, streamText, finalText,
@@ -2182,8 +2183,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
     } else {
       // F-239 / SF-239-04 — la dictée (repli sans flux) passe aussi par la retranscription de Jarvis.
       try {
-        text = (await this.transcribeClip(await this.dictation.stopRecording(), null, 'dictee.webm', clock)).trim();
+        const dictated = await this.dictation.stopRecording();
+        text = (await this.transcribeClip(dictated, null, 'dictee.webm', clock)).trim();
         transcribed = text !== '';
+        // F-255 / SF-255-04 — l'énoncé dicté en repli est gardé comme les autres (ADMIN, interrupteur, 7 j).
+        this.keepForBench(dictated, null, clock.listenMode, clock.sttProvider, '', text);
       } catch (error) {
         this.trace.mark('transcribe_fail', errorName(error));
         this.state.set('repos');

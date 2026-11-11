@@ -2240,6 +2240,27 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
         finalText: 'Où en est CAGIP ?', seconds: 2 }));
     }));
 
+  it('F-255 / SF-255-04 — ADMIN, interrupteur allumé : l’énoncé dicté en repli (WebM) est gardé avec son tour',
+    fakeAsync(() => {
+      TestBed.overrideProvider(AuthService, { useValue: { isAdmin: () => true } });
+      jarvisApi.preferences.and.returnValue(of({ humour: 'LIGHT' as const, captureAudio: true }));
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      const jarvis = fixture.componentInstance;
+      fixture.autoDetectChanges();
+      jarvis.startConversation();
+      tick(300);
+      dictation.stop.and.resolveTo('Où en est la migration ?');
+      void jarvis.finishListening();
+      flushMicrotasks();
+      const turn = TestBed.inject(JarvisListenTrace).turnId();
+      expect(turn).toBeTruthy();
+      expect(jarvisApi.capture).toHaveBeenCalledWith(jasmine.any(Blob), jasmine.objectContaining({
+        listenMode: 'CONV_BATCH', streamText: '', finalText: 'Où en est la migration ?', turnId: turn }));
+      expect(jarvisApi.capture.calls.mostRecent().args[0].type).toBe('audio/webm');
+      jarvis.ngOnDestroy();
+    }));
+
   it('F-239 / SF-239-10 — phrase en suspens : pas de fin de tour au premier segment, la suite est jointe',
     fakeAsync(() => {
       const ready = streamWithAudio();
