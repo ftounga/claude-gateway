@@ -22,7 +22,9 @@ coupure passagère ne coûte plus la phrase.
 2. **Lissage** : tous les messages vers le fournisseur passent par une file envoyée dans l'ordre, **au plus un message
    toutes les 25 ms** (`SEND_GAP_MS`) ; un message arrivé quand rien n'attend part tout de suite (le flux vivant, un
    bloc toutes les 100 ms, n'est jamais retardé). La pré-écoute de 1,5 s (15 blocs) part donc en ≈ 375 ms au lieu
-   d'un coup ; une rafale du navigateur occupé est étalée de même.
+   d'un coup ; une rafale du navigateur occupé est étalée de même. Si la minuterie d'envoi part en retard (fil
+   principal occupé, vue 3D), l'envoi rattrape **au plus 4 messages d'un coup** (`SEND_CATCH_UP`) : la file ne prend
+   jamais de retard sur le temps réel et ne repart jamais en rafale.
 3. **Erreurs nommées** : les 14 types d'erreur documentés (`queue_overflow`, `rate_limited`, `resource_exhausted`,
    `commit_throttled`, `auth_error`, `quota_exceeded`, …) sont reconnus ; le journal d'écoute reçoit
    `stream_error type=…` au message, `stream_close type=… code=… reason=…` à la fermeture, `stream_cut …` au repli.

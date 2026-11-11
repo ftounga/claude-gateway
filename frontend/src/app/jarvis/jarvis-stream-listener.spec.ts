@@ -515,6 +515,24 @@ describe('Jarvis n’est plus raccroché (F-258 / SF-258-01)', () => {
     expect(outbox.waiting).toBe(0);
   });
 
+  it('minuterie en retard (fil occupé) : rattrapage par 4 messages au plus, la file ne dérive pas', () => {
+    const base = manualTimers();
+    // Chaque minuterie part 200 ms plus tard que demandé.
+    const late: OutboxTimers = { now: base.now, set: (fn, ms) => base.set(fn, ms + 200), clear: base.clear };
+    const written: string[] = [];
+    const outbox = new PacedOutbox((m) => written.push(m), 25, late);
+    for (let i = 0; i < 10; i++) {
+      outbox.enqueue(`m${i}`);
+    }
+    expect(written.length).toBe(1);
+    base.advance(225);
+    expect(written.length).toBe(5);
+    base.advance(225);
+    expect(written.length).toBe(9);
+    base.advance(225);
+    expect(written.length).toBe(10);
+  });
+
   it('1 s de micro à 48 kHz part en 10 messages de 100 ms, pas en 375 petits', async () => {
     const { mic, timers, listener } = await opened(48_000);
     feedBlocks(mic, 48_000, 1);

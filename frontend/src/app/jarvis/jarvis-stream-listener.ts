@@ -165,6 +165,8 @@ export const CHUNK_MS = 100;
  * occupé, rattrapage après réouverture) part au plus à 4× le temps réel, jamais d'un coup.
  */
 export const SEND_GAP_MS = 25;
+/** F-258 / SF-258-01 — au plus autant de messages d'un coup quand l'envoi rattrape une minuterie en retard. */
+export const SEND_CATCH_UP = 4;
 
 /**
  * F-258 / SF-258-01 — **regroupe** les petits blocs du micro (128 échantillons ≈ 2,7 ms à 48 kHz avec AudioWorklet)
@@ -243,7 +245,8 @@ const REAL_TIMERS: OutboxTimers = {
  */
 export class PacedOutbox {
   private queue: string[] = [];
-  private last = Number.NEGATIVE_INFINITY;
+  /** L'heure à partir de laquelle le prochain message peut partir. */
+  private next = Number.NEGATIVE_INFINITY;
   private timer: unknown = null;
 
   constructor(private readonly write: (message: string) => void, private readonly gapMs = SEND_GAP_MS,
@@ -267,20 +270,24 @@ export class PacedOutbox {
     return this.queue.length;
   }
 
-  private drain(): void {
+  /** @param late appelé par la minuterie : la file attendait (rattrapage permis). */
+  private drain(late = false): void {
     if (this.timer !== null) {
       return;
     }
     while (this.queue.length > 0) {
-      const wait = this.last + this.gapMs - this.timers.now();
-      if (wait > 0) {
+      const now = this.timers.now();
+      if (now < this.next) {
         this.timer = this.timers.set(() => {
           this.timer = null;
-          this.drain();
-        }, wait);
+          this.drain(true);
+        }, this.next - now);
         return;
       }
-      this.last = this.timers.now();
+      // Au repos : le message part et le suivant attend un écart. En retard (minuterie tardive d'un fil principal
+      // occupé) : rattrapage borné à SEND_CATCH_UP messages d'un coup — la file ne prend jamais de retard sur le
+      // temps réel, et ne repart jamais en rafale.
+      this.next = (late ? Math.max(this.next, now - (SEND_CATCH_UP - 1) * this.gapMs) : now) + this.gapMs;
       this.write(this.queue.shift()!);
     }
   }
