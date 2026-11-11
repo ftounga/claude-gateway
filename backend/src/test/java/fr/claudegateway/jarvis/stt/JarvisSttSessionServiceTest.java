@@ -97,6 +97,35 @@ class JarvisSttSessionServiceTest {
     }
 
     @Test
+    @DisplayName("F-257 / SF-257-04 — session longue : commit manuel, comptée jusqu'à 30 min, balayée à son maximum")
+    void longSession() {
+        when(provider.openManualCommitSession(any(), any())).thenReturn(new StreamingTranscriptionProvider
+                .StreamingSession("elevenlabs", "wss://x/realtime?commit_strategy=manual", "tok2",
+                        clock.now.plusSeconds(900), 16000));
+        JarvisSttSessionService.Ticket ticket = service.openLong(alice);
+        assertThat(ticket.maxSeconds()).isEqualTo(JarvisSttSessionService.LONG_MAX_SECONDS);
+        verify(provider).openManualCommitSession(eq("fr"), any());
+
+        clock.now = clock.now.plusSeconds(600);
+        service.close(alice, ticket.sessionId(), 600L);
+        // 600 s : au-delà du maximum d'une session courte (120 s), compté en entier.
+        verify(usage).addStream(alice, 600L, new BigDecimal("0.060000"));
+
+        service.openLong(alice);
+        clock.now = clock.now.plusSeconds(200);
+        service.sweep();
+        assertThat(service.openCount()).isEqualTo(1);
+        clock.now = clock.now.plusSeconds(JarvisSttSessionService.LONG_MAX_SECONDS);
+        service.sweep();
+        assertThat(service.openCount()).isZero();
+        verify(usage).addStream(eq(alice), eq((long) JarvisSttSessionService.LONG_MAX_SECONDS), any());
+
+        when(voice.status(bob)).thenReturn(new JarvisVoiceService.VoiceStatus(true, "onyx", BigDecimal.TEN,
+                BigDecimal.TEN, true, "openai"));
+        assertThatThrownBy(() -> service.openLong(bob)).isInstanceOf(JarvisVoiceBudgetException.class);
+    }
+
+    @Test
     @DisplayName("la session d'autrui, ou déjà close, est introuvable")
     void closeIsolation() {
         JarvisSttSessionService.Ticket ticket = service.open(alice);

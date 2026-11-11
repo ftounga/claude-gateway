@@ -21,6 +21,19 @@ class GatewayUnavailable(Exception):
 
 
 @dataclass(frozen=True)
+class SttTicket:
+    """F-257 / SF-257-04 — une session d'écoute longue ouverte par la passerelle (jeton éphémère, jamais journalisé)."""
+
+    session_id: str
+    url: str
+    token: str
+    max_seconds: int
+
+    def __repr__(self) -> str:  # le jeton ne s'affiche jamais
+        return f"SttTicket(session_id={self.session_id!r}, max_seconds={self.max_seconds})"
+
+
+@dataclass(frozen=True)
 class VoiceIdentity:
     """Ce que la passerelle dit d'un ticket valide. Aucun contenu de conversation."""
 
@@ -63,3 +76,36 @@ class GatewayClient:
         except (ValueError, KeyError, TypeError):
             raise GatewayUnavailable("réponse illisible") from None
         return VoiceIdentity(user_id=user_id, workspace_id=body.get("workspaceId"), expires_at=body.get("expiresAt"))
+
+    async def open_stt(self, ticket: str) -> SttTicket:
+        """F-257 / SF-257-04 — ouvre une session d'écoute longue (``POST /jarvis/stt-session {"mode":"long"}``).
+
+        :raises TicketRejected: ticket refusé (401/403)
+        :raises GatewayUnavailable: passerelle injoignable, plafond atteint (429), écoute indisponible (503)…
+        """
+        try:
+            async with self._client() as client:
+                resp = await client.post("/jarvis/stt-session", json={"mode": "long"},
+                                         headers={"Authorization": f"Bearer {ticket}"})
+        except httpx.HTTPError as exc:
+            raise GatewayUnavailable(type(exc).__name__) from None
+        if resp.status_code in (401, 403):
+            raise TicketRejected(f"refus {resp.status_code}")
+        if resp.status_code != 200:
+            raise GatewayUnavailable(f"statut {resp.status_code}")
+        try:
+            body = resp.json()
+            return SttTicket(session_id=str(body["sessionId"]), url=str(body["url"]), token=str(body["token"]),
+                             max_seconds=int(body.get("maxSeconds") or 0))
+        except (ValueError, KeyError, TypeError):
+            raise GatewayUnavailable("réponse illisible") from None
+
+    async def close_stt(self, ticket: str, session_id: str, seconds: float) -> None:
+        """F-257 / SF-257-04 — clôt une session d'écoute et la fait compter à sa durée. Les erreurs sont avalées :
+        une session non close est comptée par le balayage de la passerelle."""
+        try:
+            async with self._client() as client:
+                await client.post(f"/jarvis/stt-session/{session_id}/close", json={"seconds": max(0, round(seconds))},
+                                  headers={"Authorization": f"Bearer {ticket}"})
+        except httpx.HTTPError:
+            pass

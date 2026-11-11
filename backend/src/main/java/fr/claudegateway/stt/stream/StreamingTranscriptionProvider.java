@@ -32,6 +32,17 @@ public interface StreamingTranscriptionProvider {
     StreamingSession openStreamingSession(String languageHint, double silenceSeconds, java.util.List<String> vocabulary);
 
     /**
+     * F-257 / SF-257-04 — une session <b>longue</b> en <i>commit</i> manuel : le fournisseur ne décide plus la fin de
+     * tour, c'est le service vocal qui l'envoie. Par défaut : non prise en charge (aucun appel).
+     *
+     * @throws fr.claudegateway.teams.meeting.stt.TranscriptionProviderUnavailableException non prise en charge
+     */
+    default StreamingSession openManualCommitSession(String languageHint, java.util.List<String> vocabulary) {
+        throw new fr.claudegateway.teams.meeting.stt.TranscriptionProviderUnavailableException(
+                "La session d'écoute longue n'est pas prise en charge par ce fournisseur.");
+    }
+
+    /**
      * Une session prête : l'URL WebSocket <b>sans</b> le jeton (l'écran l'ajoute), le jeton, son échéance et le format
      * audio attendu (PCM 16 bits mono à {@code sampleRate} Hz).
      */
