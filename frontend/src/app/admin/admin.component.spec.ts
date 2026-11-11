@@ -16,6 +16,7 @@ import { AdminDiagnosticService } from './diagnostic/admin-diagnostic.service';
 import { AdminUsageService } from './admin-usage.service';
 import { AppRequestService } from '../core/services/app-request.service';
 import { AdminJarvisVoiceService } from './jarvis-voice/admin-jarvis-voice.service';
+import { AdminJarvisReplayService } from './jarvis-replay/admin-jarvis-replay.service';
 
 describe('AdminComponent', () => {
   let fixture: ComponentFixture<AdminComponent>;
@@ -130,6 +131,9 @@ describe('AdminComponent', () => {
         { provide: AppRequestService, useValue: besoinsSpy },
         { provide: AdminJarvisVoiceService, useValue: jasmine.createSpyObj<AdminJarvisVoiceService>(
           'AdminJarvisVoiceService', { audition: of({ phrases: [], candidates: [], chosen: null }) }) },
+        // F-255 / SF-255-03 — le rejeu des séances Jarvis : service doublé, aucune séance.
+        { provide: AdminJarvisReplayService, useValue: jasmine.createSpyObj<AdminJarvisReplayService>(
+          'AdminJarvisReplayService', { sessions: of([]) }) },
       ],
     }).compileComponents();
 
@@ -143,6 +147,12 @@ describe('AdminComponent', () => {
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('a@example.com');
     expect(text).toContain('ADMIN');
+  });
+
+  it('F-255 / SF-255-03 — porte la section du rejeu des séances Jarvis', () => {
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('app-admin-jarvis-replay')).not.toBeNull();
+    expect(host.textContent).toContain('Rejeu des séances Jarvis');
   });
 
   // F-159 / SF-159-06 — responsive téléphone : la table à 6 colonnes doit défiler dans son propre
