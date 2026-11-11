@@ -43,6 +43,7 @@ fi
 cp "$JAR" "$WORK/passerelle.jar"
 
 export BANC_PORT="$PORT" BANC_DB="$WORK/db"
+: > "$OUT/passerelle.log"
 "$HERE/passerelle.sh" "$WORK/passerelle.jar" > "$OUT/passerelle.log" 2>&1 &
 GW=$!
 trap 'kill $GW 2>/dev/null || true; rm -f "$WORK/jeton"' EXIT

@@ -51,10 +51,16 @@ const isSpeech = (e) => e.method === 'POST' && /^\/api\/jarvis\/speech/.test(e.p
 const isTrace = (e) => e.method === 'POST' && /^\/api\/jarvis\/listen-trace/.test(e.path);
 const isOpusSend = (e) => e.method === 'POST' && /^\/api\/atelier\//.test(e.path) && e.body && typeof e.body.text === 'string';
 
-/** Les événements du journal d'écoute, remis à l'heure epoch (`origin` = ouverture du journal). */
-export function traceEvents(api, origin) {
-  return api.filter(isTrace).flatMap((e) => e.body?.events ?? [])
-    .map((ev) => ({ ...ev, at: origin === null ? null : origin + ev.t }));
+/**
+ * Les événements du journal d'écoute, remis à l'heure epoch. `origins` : l'ouverture du journal, un nombre, ou par page
+ * (`pageId` → ms epoch) quand la page s'est rechargée en cours de scénario.
+ */
+export function traceEvents(api, origins) {
+  const originOf = (pageId) => (typeof origins === 'number' ? origins : origins?.[pageId] ?? null);
+  return api.filter(isTrace).flatMap((e) => (e.body?.events ?? []).map((ev) => {
+    const origin = originOf(e.body?.pageId);
+    return { ...ev, page: e.body?.pageId ?? null, at: origin === null ? null : origin + ev.t };
+  }));
 }
 
 /** Analyse un tour. `next` = début du tour suivant (ou fin du scénario). */
@@ -87,11 +93,17 @@ export function analyseTurn(turn, { api, probes, traces, next, spokenBefore }) {
   const rejected = tr.filter((t) => t.ev === 'speech_rejected').map((t) => t.d ?? '');
   const voici = said.some((s) => /\b(voici|voil[aà])\b/i.test(s));
   const fallback = timing?.streamFallback ?? null;
+  // Une phrase peut être entendue puis traitée sur place, sans cerveau (réponse à un entretien, au budget, une
+  // correction) : l'écran note alors `transcript chars=N` ; le texte est celui que le flux a validé.
+  const transcribed = tr.some((t) => t.ev === 'transcript' && /chars=[1-9]/.test(t.d ?? ''));
+  const local = heardText === null && transcribed;
+  const text = heardText ?? (local ? committed.at(-1) ?? '' : null);
   return {
     id: turn.id, kind: turn.kind, after: turn.after, expected: turn.expected, note: turn.note ?? null,
-    heard: heardText !== null,
-    heardText,
-    wer: turn.expected && heardText !== null ? wer(turn.expected, heardText) : null,
+    heard: text !== null,
+    heardText: text,
+    handledLocally: local,
+    wer: turn.expected && text !== null ? wer(turn.expected, text) : null,
     speculative: converses.length - kept.length,
     listenMode: timing?.listenMode ?? null,
     streamFallback: fallback,
@@ -116,7 +128,7 @@ export function analyseTurn(turn, { api, probes, traces, next, spokenBefore }) {
 /** Analyse tous les scénarios ; `costs` = coûts Jarvis du jour avant/après (`GET /api/jarvis/costs`). */
 export function analyse(runs, costs = {}) {
   const scenarios = runs.map((run) => {
-    const traces = traceEvents(run.api, run.traceOrigin ?? null);
+    const traces = traceEvents(run.api, run.traceOrigins ?? run.traceOrigin ?? null);
     const spokenBefore = new Set();
     const turns = run.turns.filter((t) => t.start).map((turn, i, all) => {
       const next = all[i + 1]?.start ?? run.ended;
@@ -125,7 +137,10 @@ export function analyse(runs, costs = {}) {
       return a;
     });
     return { id: run.id, label: run.label, ready: run.ready, pageErrors: run.pageErrors, turns,
-      missedListening: run.turns.filter((t) => t.note === 'jarvis_n_ecoutait_pas').length };
+      missedListening: run.turns.filter((t) => t.note === 'jarvis_n_ecoutait_pas').length,
+      // Rechargements réels de la page APRÈS l'ouverture (un document neuf = `page_open` ; le premier est celui du banc).
+      reloads: Math.max(0, run.probes.filter((p) => p.kind === 'page_open').length - 1),
+      reloadCauses: traces.filter((t) => /reload|appupdate/.test(t.ev)).map((t) => t.ev) };
   });
   const all = scenarios.flatMap((s) => s.turns.map((t) => ({ ...t, scenario: s.id })));
   const expected = all.filter((t) => t.expected);
@@ -170,6 +185,8 @@ export function analyse(runs, costs = {}) {
       emptyCapturesAnswered: empties.filter((t) => t.heard).map((t) => `${t.id}: ${t.heardText}`),
       delegated: all.filter((t) => t.delegated).length,
       notListening: scenarios.reduce((n, s) => n + s.missedListening, 0),
+      reloads: scenarios.reduce((n, s) => n + s.reloads, 0),
+      reloadCauses: scenarios.flatMap((s) => s.reloadCauses),
       costEur,
     },
   };
@@ -200,6 +217,7 @@ export function summary(report) {
     `Captures vides        : ${t.emptyCaptures} jouées, ${t.emptyCapturesAnswered.length} ont donné un tour${t.emptyCapturesAnswered.length ? ` (${t.emptyCapturesAnswered.join(' | ')})` : ''}`,
     `Délégations à Opus    : ${t.delegated}`,
     `Jarvis n'écoutait pas : ${t.notListening} fois au moment de jouer une phrase (40 s d'attente)`,
+    `Page rechargée        : ${t.reloads} fois en plein scénario${t.reloadCauses.length ? ` (${t.reloadCauses.join(', ')})` : ''}`,
     `Coût du passage       : ${t.costEur === null ? '—' : `${t.costEur.toFixed(4)} €`} (compteur Jarvis de la passerelle)`,
     '',
   ];
@@ -209,7 +227,7 @@ export function summary(report) {
       lines.push(`  ${turn.id.padEnd(9).slice(0, 9)} ${turn.heard ? 'entendu' : 'PERDU  '} ${(turn.listenMode ?? '—').padEnd(11)}`
         + ` ${turn.streamFallback ? `repli=${turn.streamFallback} ` : ''}son ${ms(turn.firstSoundMs)}`
         + ` wer ${turn.wer ?? '—'} « ${(turn.heardText ?? '').slice(0, 70)} »`
-        + `${turn.repeated.length ? ' RÉPÉTÉ' : ''}${turn.voiciWithoutShow ? ' VOICI-SANS-IMAGE' : ''}`
+        + `${turn.handledLocally ? ' (traité sur place, sans cerveau)' : ''}${turn.repeated.length ? ' RÉPÉTÉ' : ''}${turn.voiciWithoutShow ? ' VOICI-SANS-IMAGE' : ''}`
         + `${turn.rejected.length ? ` rejet=${turn.rejected.join(',')}` : ''}`);
     }
   }

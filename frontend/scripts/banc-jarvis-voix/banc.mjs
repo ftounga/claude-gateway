@@ -156,18 +156,38 @@ async function gatewayCosts() {
 // ---------------------------------------------------------------------------------------------------------------
 const component = () => window.ng.getComponent(document.querySelector('app-jarvis'));
 
+/** Origine (ms epoch) du journal d'écoute de chaque page ouverte (`pageId`) : ses `t` y sont relatifs. */
+let traceOrigins = {};
+
 async function pageState(page) {
-  return page.evaluate((c) => {
-    try {
-      const cmp = (0, eval)(c)();
-      const b = window.__banc;
-      const last = [...b.events].reverse().find((e) => e.kind === 'sound_start' || e.kind === 'sound_end');
-      return { state: cmp.state(), mode: cmp.conversation?.mode?.() ?? null, sounding: last?.kind === 'sound_start',
-        lastSound: last?.t ?? 0, now: performance.timeOrigin + performance.now() };
-    } catch (e) {
-      return { state: null, error: String(e).slice(0, 80) };
-    }
-  }, component.toString());
+  try {
+    const s = await page.evaluate((c) => {
+      try {
+        const cmp = (0, eval)(c)();
+        const b = window.__banc;
+        const last = [...b.events].reverse().find((e) => e.kind === 'sound_start' || e.kind === 'sound_end');
+        return { state: cmp.state(), sounding: last?.kind === 'sound_start', lastSound: last?.t ?? 0,
+          now: performance.timeOrigin + performance.now(), tracePage: cmp.trace.pageId,
+          traceOrigin: Math.round(performance.timeOrigin + cmp.trace.started) };
+      } catch (e) {
+        return { state: null, error: String(e).slice(0, 80) };
+      }
+    }, component.toString());
+    if (s.tracePage) traceOrigins[s.tracePage] = s.traceOrigin;
+    return s;
+  } catch (e) {
+    // La page se recharge (contexte détruit) : on réessaie au tour de boucle suivant.
+    return { state: null, error: String(e?.message ?? e).slice(0, 80) };
+  }
+}
+
+/** Joue une phrase ; `null` si la page s'est rechargée pendant ce temps. */
+async function say(page, url, id) {
+  try {
+    return await page.evaluate((u, i) => window.__banc.play(u, 1, i), url, id);
+  } catch {
+    return null;
+  }
 }
 
 /** Attend que Jarvis écoute et se taise depuis `quietMs` (ou expire). */
@@ -200,13 +220,15 @@ async function waitLeaving(page, timeoutMs) {
 async function waitVoice(page, since, timeoutMs) {
   const end = Date.now() + timeoutMs;
   while (Date.now() < end) {
-    const t = await page.evaluate((s) => window.__banc.events.find((e) => e.kind === 'sound_start' && e.what === 'voix'
-      && e.t > s)?.t ?? null, since);
+    const t = probes.find((e) => e.kind === 'sound_start' && e.what === 'voix' && e.t > since)?.t ?? null;
     if (t) return t;
     await sleep(100);
   }
   return null;
 }
+
+/** Les sondes de la page, reçues au fil de l'eau (survivent à un rechargement). */
+let probes = [];
 
 function recordings(scenario) {
   if (scenario.captures) {
@@ -240,7 +262,14 @@ async function runScenario(scenario) {
       '--ignore-gpu-blocklist'] });
   const page = await browser.newPage();
   const pageErrors = [];
+  probes = [];
+  traceOrigins = {};
   page.on('pageerror', (e) => pageErrors.push(String(e.message).slice(0, 160)));
+  await page.exposeFunction('__bancLog', (event) => { probes.push(event); });
+  // Un rechargement de la page en plein scénario est un fait mesuré (la conversation repart de zéro).
+  page.on('framenavigated', (frame) => {
+    if (frame === page.mainFrame()) probes.push({ t: Date.now(), kind: 'page_navigated', url: frame.url().slice(0, 120) });
+  });
   await page.setViewport({ width: 1366, height: 768 });
   // Vue 2D par défaut : sans GPU, la 3D en rendu logiciel (swiftshader) occupe le fil principal et gonfle toutes les
   // latences de plusieurs secondes — un biais du banc, pas de Jarvis. `--vue 3d` pour mesurer la 3D quand même.
@@ -256,16 +285,16 @@ async function runScenario(scenario) {
   const started = Date.now();
   await page.goto(`http://localhost:${PORT}/jarvis`, { waitUntil: 'load' });
   if (scenario.echo) {
-    await page.evaluate((g) => { window.__banc.echo = g; }, scenario.echo);
+    await page.evaluate((g) => { window.__banc.echo = g; }, scenario.echo).catch(() => undefined);
   }
   const ready = await waitListening(page, 45_000, 1500);
   if (scenario.noise) {
-    await page.evaluate((g) => window.__banc.background(g), scenario.noise);
+    await page.evaluate((g) => window.__banc.background(g), scenario.noise).catch(() => undefined);
   }
   const turns = [];
   if (temoin) {
     // Le fichier part à l'ouverture du micro : la phrase commence 12 s après le premier `getUserMedia`.
-    const opened = await page.evaluate(() => window.__banc.events.find((e) => e.kind === 'mic_get')?.t ?? null);
+    const opened = probes.find((e) => e.kind === 'mic_get')?.t ?? null;
     const start = (opened ?? Date.now()) + 12_000;
     turns.push({ id: scenario.chromeMic, kind: 'temoin', expected: temoin.entry.expected, show: false, after: 'ecoute',
       start, end: start + temoin.entry.durationMs, speechEnd: start + temoin.entry.speechEndMs,
@@ -286,7 +315,11 @@ async function runScenario(scenario) {
       if (!ok) turns.push({ id: rec.id, note: 'jarvis_n_ecoutait_pas' });
     }
     const url = `/__banc/audio?f=${encodeURIComponent(rec.file)}`;
-    const played = await page.evaluate((u, id) => window.__banc.play(u, 1, id), url, rec.id);
+    const played = await say(page, url, rec.id);
+    if (!played) {
+      turns.push({ id: rec.id, note: 'page_rechargee' });
+      continue;
+    }
     turns.push({ id: rec.id, kind: rec.kind, expected: rec.expected, stream: rec.stream ?? null, show: !!rec.show,
       after: after ?? 'ecoute', start: played.start, end: played.end,
       speechEnd: rec.speechEndMs === null ? null : played.start + rec.speechEndMs, activeMs: rec.activeMs });
@@ -299,23 +332,22 @@ async function runScenario(scenario) {
   // La dernière réponse, puis le journal d'écoute envoyé (sortie de page).
   await waitListening(page, 40_000);
   await sleep(1500);
-  await page.evaluate((c) => { try { (0, eval)(c)().trace.flush(); } catch { /* best-effort */ } }, component.toString());
+  await pageState(page);
+  await page.evaluate((c) => { try { (0, eval)(c)().trace.flush(); } catch { /* best-effort */ } }, component.toString())
+    .catch(() => undefined);
   await sleep(800);
-  const probes = await page.evaluate(() => window.__banc.events);
   const screen = await page.evaluate((c) => {
     try {
       const cmp = (0, eval)(c)();
-      // L'origine du journal d'écoute (ses `t` sont relatifs à son ouverture) : remise à l'heure epoch.
-      return { state: cmp.state(), notice: cmp.notice?.() ?? null,
-        traceOrigin: Math.round(performance.timeOrigin + cmp.trace.started) };
+      return { state: cmp.state(), notice: cmp.notice?.() ?? null };
     } catch {
       return null;
     }
-  }, component.toString());
-  await page.screenshot({ path: join(OUT, `${scenario.id}.png`) });
+  }, component.toString()).catch(() => null);
+  await page.screenshot({ path: join(OUT, `${scenario.id}.png`) }).catch(() => undefined);
   await browser.close();
   return { id: scenario.id, label: scenario.label ?? scenario.id, ready, started, ended: Date.now(), turns,
-    probes, api: api.slice(apiFrom), pageErrors, screen, traceOrigin: screen?.traceOrigin ?? null };
+    probes, api: api.slice(apiFrom), pageErrors, screen, traceOrigins: { ...traceOrigins } };
 }
 
 const only = args.scenarios?.split(',');

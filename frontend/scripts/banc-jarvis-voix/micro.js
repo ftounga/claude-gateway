@@ -13,7 +13,15 @@
 (() => {
   const now = () => performance.timeOrigin + performance.now();
   const banc = (window.__banc = { events: [], echo: 0, ctx: null, mix: null, noise: null });
-  const log = (kind, data = {}) => banc.events.push({ t: Math.round(now()), kind, ...data });
+  // Chaque sonde part aussi tout de suite vers le banc (`__bancLog`, exposée par puppeteer) : rien n'est perdu si la
+  // page se recharge en plein scénario.
+  const log = (kind, data = {}) => {
+    const event = { t: Math.round(now()), kind, ...data };
+    banc.events.push(event);
+    try { window.__bancLog?.(event); } catch { /* banc absent */ }
+  };
+  // Un document neuf (le premier, puis tout rechargement réel ; une navigation du routeur n'en crée pas).
+  log('page_open');
 
   function ensure() {
     if (!banc.ctx) {

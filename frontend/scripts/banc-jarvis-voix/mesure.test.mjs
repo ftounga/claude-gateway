@@ -86,6 +86,20 @@ test('analyseTurn : « Voici » sans affichage, réponse déjà dite, phrase per
   assert.equal(lost.firstSoundMs, null);
 });
 
+test('analyseTurn : phrase entendue puis traitée sur place (sans appel au cerveau)', () => {
+  const turn = { id: 'n07', expected: 'Oui.', start: 1000, end: 2000, speechEnd: 1600 };
+  const probes = [{ t: 2500, kind: 'ws_msg', type: 'committed_transcript', text: 'Oui.' }];
+  const traces = [{ ev: 'transcript', d: 'chars=3 mode=CONV_STREAM', at: 2600 }];
+  const a = analyseTurn(turn, { api: [], probes, traces, next: 9000, spokenBefore: new Set() });
+  assert.equal(a.heard, true);
+  assert.equal(a.handledLocally, true);
+  assert.equal(a.heardText, 'Oui.');
+  assert.equal(a.wer, 0);
+  const empty = analyseTurn(turn, { api: [], probes: [], traces: [{ ev: 'transcript', d: 'chars=0', at: 2600 }],
+    next: 9000, spokenBefore: new Set() });
+  assert.equal(empty.heard, false);
+});
+
 test('analyse + porte : taux entendu, replis comptés, porte non franchie, résumé lisible', () => {
   const { turn, api, probes } = turnFixture();
   const run = { id: 's', label: 'Scénario', ready: true, pageErrors: [], ended: 12000, traceOrigin: 0, probes, api,

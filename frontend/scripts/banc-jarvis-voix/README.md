@@ -26,6 +26,10 @@ node --test frontend/scripts/banc-jarvis-voix/mesure.test.mjs                # t
 | `banc.mjs` | sert la page, relaie `/api`, joue les scénarios, écrit le rapport |
 | `mesure.mjs`, `porte.mjs` | mesure tour par tour, totaux, résumé ; objectifs chiffrés |
 | `chrono.mjs` | chronologie d'un passage (sondes, appels, journal d'écoute) |
+| `relire.mjs` | relit un `rapport.json` avec la mesure et la porte actuelles (comparer sans rejouer ni repayer) |
+
+Vue **2D par défaut** (`--vue 3d` pour la 3D) : sans GPU, la 3D en rendu logiciel occupe le fil principal et gonfle
+les latences ; elle change aussi le comportement du flux (voir la référence dans le cadrage).
 
 **Hors dépôt, toujours** : le corpus (`~/.local/share/claude-gateway/jarvis-voice-corpus/` — voix et contenu client),
 les rapports (`~/.local/share/claude-gateway/banc-jarvis-voix/`), les clés (jamais écrites, affichées ni journalisées).

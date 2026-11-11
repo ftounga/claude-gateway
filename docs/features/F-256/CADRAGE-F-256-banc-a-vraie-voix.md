@@ -43,6 +43,13 @@ blocs) est le vrai.
 **Témoin** (scénario `temoin`) : la même phrase lue par le micro factice **de Chrome** (fichier), sans le mélangeur du
 banc. Il reproduit exactement les mêmes fermetures du flux : le banc n'invente rien.
 
+**Vue 2D par défaut** (`--vue 3d` sinon) : le poste du banc n'a pas de GPU ; la 3D en rendu logiciel (swiftshader)
+occupe le fil principal et gonfle toutes les latences — un biais du banc. La 3D reste mesurable à part : elle change
+aussi le comportement du flux (§7).
+
+**Les sondes partent au fil de l'eau** vers le banc (fonction exposée par puppeteer) : un rechargement de la page en
+plein scénario ne perd rien, et il est compté (document neuf).
+
 **Voix de Jarvis au haut-parleur** : `echo` > 0 renvoie la voix jouée dans le micro **sans annulation d'écho** (cas le
 plus dur) pour le scénario de coupure.
 

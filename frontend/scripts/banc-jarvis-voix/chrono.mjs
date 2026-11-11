@@ -17,7 +17,8 @@ for (const run of report.runs.filter((r) => !only || r.id === only)) {
     const path = a.path.split('?')[0];
     if (path.includes('listen-trace')) {
       for (const e of a.body?.events ?? []) {
-        rows.push([run.traceOrigin + e.t, 'T', e.ev, `${e.d ?? ''}${e.n ? ` ×${e.n}` : ''} [${e.st}/${e.md}]`]);
+        const origin = run.traceOrigins?.[a.body?.pageId] ?? run.traceOrigin ?? run.started;
+        rows.push([origin + e.t, 'T', e.ev, `${e.d ?? ''}${e.n ? ` ×${e.n}` : ''} [${e.st}/${e.md}]`]);
       }
       continue;
     }
