@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-255 / SF-255-01 - UN IDENTIFIANT DE TOUR COMMUN.
+
+      Le meme identifiant de tour (tire par l'ecran a chaque ecoute) relie le journal d'ecoute, la mesure du tour et la
+      capture ; chaque evenement du journal recoit son heure serveur (occurred_at). Aucun contenu. Colonnes additives,
+      NULL pour les lignes existantes ; purges existantes inchangees.
+
+      Rollback : l'index et les colonnes se retirent.
+    -->
+
+    <changeSet id="255-01-jarvis-turn-id" author="claude-gateway">
+        <addColumn tableName="jarvis_listen_traces">
+            <column name="turn_id" type="varchar(36)"/>
+            <column name="occurred_at" type="timestamp with time zone"/>
+        </addColumn>
+        <addColumn tableName="jarvis_turn_timings">
+            <column name="turn_id" type="varchar(36)"/>
+            <column name="page_id" type="varchar(36)"/>
+        </addColumn>
+        <addColumn tableName="jarvis_audio_captures">
+            <column name="turn_id" type="varchar(36)"/>
+        </addColumn>
+        <createIndex tableName="jarvis_listen_traces" indexName="idx_jarvis_listen_traces_user_occurred">
+            <column name="user_id"/>
+            <column name="occurred_at"/>
+        </createIndex>
+        <rollback>
+            <dropIndex tableName="jarvis_listen_traces" indexName="idx_jarvis_listen_traces_user_occurred"/>
+            <dropColumn tableName="jarvis_audio_captures" columnName="turn_id"/>
+            <dropColumn tableName="jarvis_turn_timings" columnName="page_id"/>
+            <dropColumn tableName="jarvis_turn_timings" columnName="turn_id"/>
+            <dropColumn tableName="jarvis_listen_traces" columnName="occurred_at"/>
+            <dropColumn tableName="jarvis_listen_traces" columnName="turn_id"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

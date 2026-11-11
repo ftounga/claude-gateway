@@ -73,6 +73,17 @@ class JarvisCaptureServiceTest {
     }
 
     @Test
+    void f255TheTurnIsKeptWhenWellFormed() {
+        when(preferences.captureAudio(alice)).thenReturn(true);
+        service().record(alice, true, new byte[] { 1 }, new JarvisCaptureService.Incoming(1.0, "CONV_STREAM", null,
+                "", "", "tour-1"));
+        service().record(alice, true, new byte[] { 1 }, new JarvisCaptureService.Incoming(1.0, "CONV_STREAM", null,
+                "", "", "pas un identifiant"));
+        assertThat(rows.get(0).getTurnId()).isEqualTo("tour-1");
+        assertThat(rows.get(1).getTurnId()).isNull();
+    }
+
+    @Test
     void neverMoreThanTwoHundredPerAccount() {
         for (int i = 0; i < 205; i++) {
             now = now.plusSeconds(1);

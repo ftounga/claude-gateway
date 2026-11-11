@@ -42,12 +42,26 @@ public class JarvisListenTraceService {
         this.clock = clock;
     }
 
-    /** Un lot de l'écran. */
-    public record Batch(String pageId, String version, Boolean companion, List<Event> events) {
+    /**
+     * Un lot de l'écran. F-255 / SF-255-01 : {@code now} = ms depuis l'ouverture de la page au moment de l'envoi
+     * (facultatif) ; il date chaque événement à l'heure du serveur.
+     */
+    public record Batch(String pageId, String version, Boolean companion, List<Event> events, Long now) {
+
+        public Batch(String pageId, String version, Boolean companion, List<Event> events) {
+            this(pageId, version, companion, events, null);
+        }
     }
 
-    /** Un événement : numéro, ms depuis l'ouverture, nom, état, mode, détail, répétitions. */
-    public record Event(Integer seq, Long t, String ev, String st, String md, String d, Integer n) {
+    /**
+     * Un événement : numéro, ms depuis l'ouverture, nom, état, mode, détail, répétitions. F-255 / SF-255-01 :
+     * {@code tu} = le tour vocal courant (facultatif).
+     */
+    public record Event(Integer seq, Long t, String ev, String st, String md, String d, Integer n, String tu) {
+
+        public Event(Integer seq, Long t, String ev, String st, String md, String d, Integer n) {
+            this(seq, t, ev, st, md, d, n, null);
+        }
     }
 
     /** Range le lot ; rend le nombre de lignes écrites (0 si vide, ignoré ou plafond atteint). */
@@ -63,18 +77,22 @@ public class JarvisListenTraceService {
         String pageId = batch.pageId() != null && PAGE_ID.matcher(batch.pageId()).matches() ? batch.pageId() : "?";
         String version = batch.version() != null && VERSION.matcher(batch.version()).matches() ? batch.version() : null;
         boolean companion = Boolean.TRUE.equals(batch.companion());
+        Long sentAt = batch.now() == null || batch.now() < 0 ? null : Math.min(MAX_AT_MS, batch.now());
         List<JarvisListenTraceEvent> rows = new ArrayList<>();
         for (Event e : batch.events().subList(0, Math.min(MAX_EVENTS_PER_BATCH, batch.events().size()))) {
             if (e == null || e.ev() == null || !EVENT.matcher(e.ev()).matches()) {
                 continue;
             }
+            long atMs = e.t() == null ? 0 : Math.min(MAX_AT_MS, Math.max(0, e.t()));
             rows.add(JarvisListenTraceEvent.builder()
                     .userId(userId)
                     .pageId(pageId)
                     .pageVersion(version)
                     .companion(companion)
                     .seq(e.seq() == null ? 0 : Math.max(0, e.seq()))
-                    .atMs(e.t() == null ? 0 : Math.min(MAX_AT_MS, Math.max(0, e.t())))
+                    .atMs(atMs)
+                    .turnId(JarvisTurnIds.clean(e.tu()))
+                    .occurredAt(occurredAt(now, sentAt, atMs))
                     .event(e.ev())
                     .state(clean(e.st()))
                     .mode(clean(e.md()))
@@ -85,6 +103,54 @@ public class JarvisListenTraceService {
         }
         repository.saveAll(rows);
         return rows.size();
+    }
+
+    /**
+     * F-255 / SF-255-01 — l'heure serveur d'un événement : réception − (heure de page à l'envoi − heure de page de
+     * l'événement) ; {@code null} sans heure d'envoi. Un événement daté après l'envoi est ramené à la réception.
+     */
+    static OffsetDateTime occurredAt(OffsetDateTime received, Long sentAtMs, long atMs) {
+        if (sentAtMs == null) {
+            return null;
+        }
+        return received.minus(Duration.ofMillis(Math.max(0, sentAtMs - atMs)));
+    }
+
+    /** F-255 / SF-255-01 — la requête d'un tour reçue par le cerveau rapide (événement serveur). */
+    public static final String SERVER_CONVERSE = "srv_converse";
+
+    /**
+     * F-255 / SF-255-01 — un événement constaté par la <b>passerelle</b> (ex. la requête d'un tour reçue par le cerveau
+     * rapide), daté à l'heure serveur exacte, sous le compte de l'appelant. Rien sans tour valide ou au-delà du plafond.
+     * Ne lève jamais : le journal ne gêne pas le tour.
+     */
+    @Transactional
+    public boolean recordServer(UUID userId, String pageId, String turnId, String event, String detail) {
+        try {
+            String turn = JarvisTurnIds.clean(turnId);
+            if (userId == null || turn == null || event == null || !EVENT.matcher(event).matches()) {
+                return false;
+            }
+            OffsetDateTime now = OffsetDateTime.now(clock);
+            if (repository.countByUserIdAndCreatedAtAfter(userId, now.minusDays(1)) >= MAX_ROWS_PER_DAY) {
+                return false;
+            }
+            String page = JarvisTurnIds.clean(pageId);
+            repository.save(JarvisListenTraceEvent.builder()
+                    .userId(userId)
+                    .pageId(page == null ? "?" : page)
+                    .seq(0)
+                    .atMs(0)
+                    .event(event)
+                    .detail(detail(detail))
+                    .createdAt(now)
+                    .occurredAt(now)
+                    .turnId(turn)
+                    .build());
+            return true;
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     /** Purge des événements de plus de {@link #RETENTION_DAYS} jours. */

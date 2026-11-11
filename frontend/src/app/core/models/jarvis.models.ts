@@ -21,6 +21,8 @@ export interface JarvisCaptureMeta {
   provider: string | null;
   streamText: string;
   finalText: string;
+  /** F-255 / SF-255-01 — le tour vocal de l'énoncé. */
+  turnId?: string | null;
 }
 
 /** Une demande dite à la voix, et la phrase de sa réponse. */
@@ -173,6 +175,9 @@ export interface TurnTimingReport {
   speculation?: 'adoptee' | 'relancee' | 'perdue' | 'anticipee' | null;
   endSilenceMs?: number | null;
   anticipationsDropped?: number | null;
+  /** F-255 / SF-255-01 — le tour vocal et la page de l'écran (identifiants aléatoires, jamais de contenu). */
+  turnId?: string | null;
+  pageId?: string | null;
   /**
    * F-239 / SF-239-01 (D3b) — une parole refusée par la porte de parole réelle (aucun tour) : la raison et la longueur
    * du texte transcrit, **jamais le texte**.

@@ -970,7 +970,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
         || !audio.type.includes('wav')) {
       return;
     }
-    this.jarvis.capture(audio, { seconds, listenMode: mode, provider, streamText, finalText });
+    this.jarvis.capture(audio, { seconds, listenMode: mode, provider, streamText, finalText,
+      turnId: this.trace.turnId() });
   }
 
   constructor() {
@@ -1437,6 +1438,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
       this.trace.mark('listen_skip', this.listenOpening ? 'opening' : 'ecoute');
       return;
     }
+    // F-255 / SF-255-01 — chaque écoute ouvre un tour vocal : son identifiant suit les événements, la mesure, la
+    // capture et la requête au cerveau rapide.
+    this.trace.newTurn();
     this.trace.mark('listen_open', preRoll ? 'preroll' : '');
     this.listenOpening = true;
     try {
@@ -2020,6 +2024,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.state.set('reflexion');
     const endOfSpeech = performance.now();
     const clock = new TurnClock(endOfSpeech, (audio.length / 16_000) * 1000);
+    // F-255 / SF-255-01 — la parole qui coupe Jarvis est un tour à part.
+    this.trace.newTurn();
+    this.trace.mark('barge_in_turn');
+    this.tagTurn(clock);
     clock.workspaceId = this.subjectId();
     clock.ttsProvider = this.ttsProvider;
     this.applyPendingCounts(clock);
@@ -2130,6 +2138,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     // F-233 / SF-233-01 — t0 = la fin de parole détectée ; le chronomètre suit le tour jusqu'à la réponse dite.
     const endOfSpeech = performance.now();
     const clock = new TurnClock(endOfSpeech, endOfSpeech - this.listenStartedAt);
+    this.tagTurn(clock);
     clock.workspaceId = this.subjectId();
     clock.ttsProvider = this.ttsProvider;
     // F-233 / SF-233-13 — pourquoi ce tour n'a pas été écouté en flux (ou coupé), et s'il vient du compagnon.
@@ -2253,7 +2262,14 @@ export class JarvisComponent implements OnInit, OnDestroy {
   /** Ce que le cerveau rapide reçoit pour cette parole. */
   private converseBody(text: string): ConverseBody {
     return { subjectId: this.subjectId(), text, heardBeforeCut: this.heardBeforeCut,
-      screen: screenBlock(this.pieces.nav(), this.presentation()), presentation: this.presentation() };
+      screen: screenBlock(this.pieces.nav(), this.presentation()), presentation: this.presentation(),
+      turnId: this.trace.turnId(), pageId: this.trace.page() };
+  }
+
+  /** F-255 / SF-255-01 — la mesure du tour porte le tour vocal courant et la page. */
+  private tagTurn(clock: TurnClock): void {
+    clock.turnId = this.trace.turnId();
+    clock.pageId = this.trace.page();
   }
 
   /** Cette parole peut-elle partir au cerveau rapide (provisoire) ? */
@@ -2676,7 +2692,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const heardAt = Date.now();
     let measuredLatency = false;
     // F-252 / SF-252-02 — la réponse provisoire déjà calculée sur le même texte, s'il y en a une.
-    const body = { subjectId, text, heardBeforeCut, screen, presentation: this.presentation() };
+    const body = { subjectId, text, heardBeforeCut, screen, presentation: this.presentation(),
+      turnId: this.trace.turnId(), pageId: this.trace.page() };
     const speculation = this.claimSpeculation(text, body, clock);
     const handlers: FastBrainHandlers = {
       onText: (sentence) => this.zone.run(() => sayNow(sentence)),

@@ -20,6 +20,8 @@ export interface TraceEvent {
   d?: string;
   /** Répétitions d'un même événement consécutif (≥ 2 seulement). */
   n?: number;
+  /** F-255 / SF-255-01 — le tour vocal courant (identifiant aléatoire), absent avant la première écoute. */
+  tu?: string;
 }
 
 export interface TraceBatch {
@@ -27,6 +29,8 @@ export interface TraceBatch {
   version: string | null;
   companion: boolean;
   events: TraceEvent[];
+  /** F-255 / SF-255-01 — ms depuis l'ouverture de la page, à l'envoi : la passerelle en déduit l'heure de chaque événement. */
+  now?: number;
 }
 
 /** Au plus autant d'événements par ouverture de page. */
@@ -108,6 +112,26 @@ export class JarvisListenTrace {
   private state: () => string = () => '';
   private mode: () => string = () => '';
   private detach: (() => void) | null = null;
+  private turn: string | null = null;
+
+  /**
+   * F-255 / SF-255-01 — ouvre un nouveau tour vocal (à chaque écoute, à chaque parole qui coupe Jarvis) : les
+   * événements suivants, la mesure, la capture et la requête au cerveau rapide portent cet identifiant.
+   */
+  newTurn(): string {
+    this.turn = randomId();
+    return this.turn;
+  }
+
+  /** F-255 / SF-255-01 — le tour vocal courant, ou `null` avant la première écoute. */
+  turnId(): string | null {
+    return this.turn;
+  }
+
+  /** F-255 / SF-255-01 — l'identifiant de cette ouverture de page. */
+  page(): string {
+    return this.pageId;
+  }
 
   /** Ouvre le journal de cette page ; `state`/`mode` sont relus à chaque événement. */
   start(options: { companion: boolean; state: () => string; mode: () => string; version?: string | null }): void {
@@ -121,6 +145,7 @@ export class JarvisListenTrace {
     this.seq = 0;
     this.total = 0;
     this.buffer = [];
+    this.turn = null;
     this.listen();
   }
 
@@ -134,12 +159,13 @@ export class JarvisListenTrace {
       const st = safe(this.state);
       const md = safe(this.mode);
       const last = this.buffer[this.buffer.length - 1];
-      if (last && last.ev === ev && last.d === d && last.st === st && last.md === md) {
+      const tu = this.turn ?? undefined;
+      if (last && last.ev === ev && last.d === d && last.st === st && last.md === md && last.tu === tu) {
         last.n = (last.n ?? 1) + 1;
       } else {
         this.total++;
         this.buffer.push({ seq: ++this.seq, t: Math.max(0, Math.round(now() - this.started)), ev, st, md,
-          ...(d ? { d } : {}) });
+          ...(d ? { d } : {}), ...(tu ? { tu } : {}) });
       }
       if (URGENT.test(ev) || this.buffer.length >= TRACE_BATCH_SIZE || now() - this.lastFlush >= TRACE_FLUSH_MS) {
         this.flush();
@@ -157,7 +183,8 @@ export class JarvisListenTrace {
     const events = this.buffer;
     this.buffer = [];
     this.lastFlush = now();
-    this.sink.send({ pageId: this.pageId, version: this.version, companion: this.companion, events });
+    this.sink.send({ pageId: this.pageId, version: this.version, companion: this.companion, events,
+      now: Math.max(0, Math.round(this.lastFlush - this.started)) });
   }
 
   /** Ferme le journal (sortie de l'écran) : dernier envoi, écouteurs retirés. */
