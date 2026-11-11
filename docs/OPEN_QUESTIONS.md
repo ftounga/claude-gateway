@@ -700,3 +700,15 @@ scellés, sur la passerelle, beaucoup plus longtemps.
 | C | 12 derniers mois, seuls les mails rattachés à un sujet sont gardés | Le plus sobre, mais un mail mal rattaché est perdu |
 
 À trancher par le PO, après vérification de ce que chaque contrat client autorise.
+
+---
+
+## OQ-24 — Quelle pile et quel fournisseur pour la boucle vocale en flux (F-257) ?
+
+**Statut : ouverte, bloque le développement de F-257.** Détail : `docs/features/F-257/CADRAGE-F-257-jarvis-converse-en-flux.md` §3.3, §3.4, §7.
+
+| # | Question | Recommandation |
+|---|---|---|
+| 1 | Accepter un service **Python** (`jarvis-voice`, cadre Pipecat) dans le cluster, à côté du backend Java ? (variante de pile) | **Oui** : cadre éprouvé pour le tour et l'interruption ; un déploiement du backend ne coupe plus l'audio ; cerveau, clés et budget restent dans la passerelle |
+| 2 | Fournisseur de la session d'écoute longue : ElevenLabs Scribe v2 (actuel) ou Deepgram Flux UE (nouveau sous-traitant) ? | **ElevenLabs**, sous réserve du plan et de la tenue de la session (vérifiés en SF-257-04) ; Deepgram mesuré en alternative |
+| 3 | Réviser F-233 D-PO-3 : l'audio passe par notre service au lieu d'aller du navigateur au fournisseur en direct ? | **Oui** : condition de la session longue et du tour côté serveur ; rien n'est conservé |
