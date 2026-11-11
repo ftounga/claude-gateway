@@ -15,4 +15,8 @@ public interface JarvisAudioCaptureRepository extends JpaRepository<JarvisAudioC
     Optional<JarvisAudioCapture> findByIdAndUserId(UUID id, UUID userId);
 
     List<JarvisAudioCapture> findByCreatedAtBefore(OffsetDateTime limit);
+
+    /** F-255 / SF-255-02 — les captures d'une fenêtre, sous le compte. */
+    List<JarvisAudioCapture> findByUserIdAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(UUID userId,
+            OffsetDateTime from, OffsetDateTime to);
 }

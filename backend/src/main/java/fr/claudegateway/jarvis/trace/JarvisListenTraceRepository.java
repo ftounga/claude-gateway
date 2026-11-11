@@ -17,6 +17,10 @@ public interface JarvisListenTraceRepository extends JpaRepository<JarvisListenT
 
     List<JarvisListenTraceEvent> findByUserIdOrderByCreatedAtAscSeqAsc(UUID userId);
 
+    /** F-255 / SF-255-02 — le journal d'une fenêtre (heure d'envoi), sous le compte. */
+    List<JarvisListenTraceEvent> findByUserIdAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(UUID userId,
+            OffsetDateTime from, OffsetDateTime to);
+
     /** Purge des lignes plus vieilles que {@code before} (tous comptes : maintenance). */
     @Modifying
     @Transactional

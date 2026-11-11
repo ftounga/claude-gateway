@@ -58,11 +58,14 @@ des tours séparés de moins de 10 min (plusieurs pages possibles).
 | SF | Titre | Contenu | Est. |
 |---|---|---|---|
 | SF-255-01 | Un identifiant de tour commun | l'écran tire un `turnId` à chaque écoute ; il part avec les événements du journal, la mesure, la capture et la requête au cerveau rapide ; le lot porte l'heure de page à l'envoi ⇒ chaque événement reçoit son heure serveur (`occurred_at`) ; le contrôleur du cerveau rapide trace la réception du tour (`srv_converse`, sujet de l'écran) — un tour délégué existe même si la page se recharge. Migration additive. | 1 j |
-| SF-255-02 | Le rejeu assemblé, en JSON | `GET /api/admin/jarvis/replay/sessions` et `GET /api/admin/jarvis/replay?from=&to=` : séances, tours (journal, mesure, capture, messages, délégations), corrélation exacte par `turnId`, **estimée** par l'heure pour les séances d'avant SF-255-01. | 1,5 j |
-| SF-255-03 | Verdicts et bilan | moteur de verdicts déterministe (§3), bilan par séance, liste comparée des séances ; validé sur la séance du 09/11. | 1 j |
-| SF-255-04 | L'écran d'administration | onglet « Rejeu » de la page Jarvis d'administration : séances comparées, tours avec verdicts, étapes chronométrées, audio réécoutable (route existante des captures), ce qui a été montré ou refusé. | 1,5 j |
+| SF-255-02 | Le rejeu en JSON : tours, verdicts, bilan | `GET /api/admin/jarvis/replay/sessions` et `GET /api/admin/jarvis/replay?from=&to=` : séances et leur bilan, tours (journal, mesure, capture, messages, délégations), corrélation exacte par `turnId`, **estimée** par l'heure pour les séances d'avant SF-255-01 ; verdicts déterministes (§3) et bilan ; validé sur la séance du 09/11. | 2 j |
+| SF-255-03 | L'écran d'administration | onglet « Rejeu » de la page Jarvis d'administration : séances comparées, tours avec verdicts, étapes chronométrées, audio réécoutable (route existante des captures), ce qui a été montré ou refusé. | 1,5 j |
 
-Total ≈ 5 j. Ordre de valeur : 01 → 02 → 03 → 04 (le JSON sert Claude Code dès SF-255-03).
+Total ≈ 4,5 j. Ordre de valeur : 01 → 02 → 03 (le JSON sert Claude Code dès SF-255-02).
+
+> **Re-découpage du 2026-11-11** (pendant SF-255-02) : le cadrage initial séparait l'assemblage (1,5 j) et les
+> verdicts (1 j). Les verdicts n'ont de sens que sur le rejeu assemblé et la route rend les deux ; les garder ensemble
+> évite une route intermédiaire sans verdicts. SF-255-02 reste ≤ 2 j ; l'écran devient SF-255-03.
 
 ## 5. Hors périmètre
 
