@@ -36,6 +36,13 @@ Tous les items doivent être verts.
 - [ ] Si la PR touche Jarvis (cerveau rapide, consigne, écoute, formules) : le banc de conversation est au vert
       (`POST /api/admin/jarvis/fast-brain/bench {"set":"CONVERSATION"}` sur le modèle de prod) — **aucun déploiement
       de Jarvis sans banc au vert** ; coût moyen par échange et taux de délégation reportés dans la PR
+- [ ] **Banc à vraie voix (F-256)** — si la PR touche ce que Jarvis entend, dit ou montre (écoute, micro, transcription,
+      voix, cerveau rapide, affichage, `/jarvis`) : `frontend/scripts/banc-jarvis-voix/lancer.sh --build` **au vert**
+      (porte : ≥ 95 % de phrases entendues, premier son médian ≤ 2 s après la fin réelle de parole, 0 réponse répétée,
+      0 « Voici » sans image, 0 repli de transcription) ; `resume.txt` collé dans la PR, comparé à la référence
+      (`docs/features/F-256/CADRAGE-F-256-banc-a-vraie-voix.md` §7). **Aucun déploiement de Jarvis sans banc à vraie
+      voix au vert.** Une porte non franchie se corrige d'abord ; tant qu'un correctif est en cours, la PR qui le livre
+      montre l'écart avant / après au banc.
 
 ## Sécurité
 
