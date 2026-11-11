@@ -210,4 +210,5 @@ mais le script des vagues ordonnait la suite complète à chaque subfeature : de
 | V6 | **Worktree supprimé après merge** | `target/` + `node_modules/` d'un worktree ≈ 1 Go : 114 Go saturés le 2026-11-05, plus aucune commande ne répondait. |
 | V7 | **Un seul déploiement par vague**, jamais par subfeature | Le déploiement coûte ~20 min ; il reconstruit le runner seulement si `runner/` a changé (cache d'image). |
 | V8 | **Bancs Jarvis : inchangés** | 2 passages verts avant merge + 1 tour en prod, dès qu'un prompt ou un modèle Jarvis change (décision PO, ne pas alléger). Rien quand aucun prompt ne bouge. |
+| V9 | **Banc à vraie voix avant toute mise en ligne de Jarvis** (F-256, décision PO du 2026-11-11) | Dès qu'une PR touche l'écoute, la voix, le cerveau rapide ou l'affichage de `/jarvis` : `frontend/scripts/banc-jarvis-voix/lancer.sh --build`, au **premier plan**, **seul** sur le poste (latences mesurées : pas de suite Maven en parallèle) et **une session de transcription à la fois** (compte ElevenLabs partagé avec la prod). ≈ 15 min, ≈ 0,5 € par passage. |
 

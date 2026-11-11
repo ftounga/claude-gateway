@@ -123,6 +123,54 @@ vraie voix au vert**.
 Préoccupations transversales : **aucune** (aucun code de production, aucune route, aucune table). Isolation `user_id` :
 sans objet (passerelle locale, compte de test unique) ; le corpus réel est lu en lecture seule et rangé hors dépôt.
 
-## 7. Référence de la version actuelle
+## 7. Référence de la version actuelle (passages du 2026-11-11, code `8ce0649d` = `origin/main` du 11/11 au matin)
 
-Voir SF-256-02 (renseigné après le passage de référence).
+Passerelle locale, modèle et voix de la prod (cerveau rapide `claude-sonnet-5-5`, voix OpenAI `onyx`, écoute
+ElevenLabs Scribe v2 Realtime + retranscription Scribe v2 batch), 8 scénarios, 33 enregistrements (25 à texte attendu,
+7 captures presque muettes, 1 témoin). Rapports : `~/.local/share/claude-gateway/banc-jarvis-voix/reference-8ce0649d-2d/`
+(vue 2D, défaut) et `…/reference-8ce0649d/` (vue 3D en rendu logiciel).
+
+| Mesure | Vue 2D (défaut) | Vue 3D (rendu logiciel) | Objectif |
+|---|---|---|---|
+| Phrases entendues | **24/25 (96 %)** | 23/25 (92 %) | ≥ 95 % |
+| Phrases comprises (WER ≤ 0,25) | 24/25 (96 %) | **15/25 (60 %)** | — (rapporté) |
+| Premier son après la fin réelle de parole, médiane / p90 | **6,1 s / 8,2 s** | 5,7 s / 14,8 s | ≤ 2,0 s (p90 ≤ 3,0 s) |
+| Replis de transcription | 1 (`coupe`) | **26/27 tours** (`coupe`) | 0 |
+| Fermetures de session ElevenLabs | 17 × 1005, 7 × 1006 (fermées par l'écran), **1 × `queue_overflow`** | **45/45 × `queue_overflow`** | — |
+| Réponses répétées | 0 | 0 | 0 |
+| « Voici » sans image | **1** (capture « montre-moi la galerie vidéo » : ordre `galerie` refusé `NOTHING`, Jarvis dit « Voilà ») | 0 | 0 |
+| Ordres d'écran | 6 demandés, 5 affichés, 1 refusé | 4 / 4 / 0 | — |
+| Captures vides du PO (7) | aucune ne donne de tour | idem | — |
+| Coût du passage | **0,51 €** | 0,31 € | — |
+
+**Porte : NON FRANCHIE** sur la version actuelle (premier son ; « Voici » sans image ; repli en 2D — et entendu,
+compris, replis en 3D). La règle s'applique aux prochaines mises en ligne de Jarvis : les correctifs d'abord.
+
+### Ce que la référence confirme
+
+1. **La régression de la transcription en direct est confirmée, et sa cause est lue** : la session ElevenLabs est
+   fermée par le **serveur** avec la raison **`queue_overflow`** — « *Session terminated: audio data is being sent too
+   frequently. Please reduce the rate at which you send audio chunks.* » (message `queue_overflow` reçu juste avant la
+   fermeture 1000). Le client ne reconnaît pas ce type de message (il voit `stream_error`, puis repli batch `coupe`), d'où
+   l'absence de raison dans le journal de prod.
+2. **Elle dépend de la charge du fil principal** : 45/45 sessions tuées en 3D logicielle (fil principal saturé), 1/25 en
+   2D. Le **témoin** (micro factice de Chrome, sans le mélangeur du banc) donne la même fermeture en 3D : le banc
+   n'invente rien. Mécanisme le plus probable : le module de capture poste **un bloc de 128 échantillons (2,7 ms) par
+   message** vers le fil principal, qui l'envoie aussitôt au fournisseur ; quand le fil principal est occupé, les blocs
+   arrivent **en rafale**, et la pré-écoute de 1,5 s (SF-251-02, micro gardé, 09/11) part elle aussi d'un bloc de 15
+   envois à l'ouverture. À confirmer par l'enquête (piste : regrouper par ~100 ms et lisser l'envoi).
+3. **Une session tuée en pleine phrase coupe la phrase** : en 3D, les vraies captures du PO sont entendues **tronquées**
+   (« Est-ce que tu vois des sujets » pour « … en cours côté WAF sur EDENRED ? », « Annonce » pour « Allons sur le
+   dernier chantier… ») et Jarvis répond « Pardon, Monsieur, je n'ai pas saisi » — exactement le ressenti du PO. En 2D,
+   les 5 mêmes captures sont comprises mot pour mot (WER 0).
+4. **Lenteur** : 6,1 s en médiane entre la fin réelle de parole et le premier son. Décomposition (mesures de l'écran,
+   médianes) : **≈ 2,2 s** de silence avant que l'écran déclare la fin de tour, **0,9 s** de retranscription, **0,7 s**
+   jusqu'au premier mot du cerveau rapide, **≈ 2,1 s** de voix jusqu'au premier octet audio (OpenAI `onyx`), 0,2 s de
+   lecture. Aucune de ces étapes ne tient seule l'objectif de 2 s (cohérent avec F-257).
+5. **« Voici » sans image** reproduit sur une vraie phrase du PO (galerie vidéo refusée, réponse « Voilà… »).
+6. **Mot court traité hors sujet** : « Oui. » après « Allons-y » est pris pour l'acceptation de l'**entretien du
+   portrait** (« Très bien. Dites « je passe » quand vous voulez… ») — un « mauvais sujet » reproductible.
+7. **Captures vides** : les 7 captures sans texte du 09/11 ne contiennent que ≤ 0,5 s de son (bruits, débuts de mot) ;
+   Jarvis ne les prend pas pour des phrases (aucune réponse) — pas de phrase perdue dans le bruit.
+8. **Enchaînement rapide** : une seconde question posée 0,8 s après la première, sans attendre la réponse, est perdue
+   (2D et 3D).
