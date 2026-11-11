@@ -67,11 +67,13 @@ async def test_finished_sentence_candidate_then_confirmed_after_grace():
     await feed(1.5, True)
     assert events.states() == ["speech"]
     await feed(0.1, False)
-    assert events.states() == ["speech", "candidate"]
-    assert events.log[1][1]["by"] == "modele" and events.log[1][1]["probability"] == 0.97
-    assert events.log[1][1]["text"] == ""
+    # Fin de tour décidée : `commit` tout de suite, candidat annoncé quand le texte final revient.
+    assert events.states() == ["speech"]
     assert len(commits) == 1
     await det.final("Bonjour Jarvis.")
+    assert events.states() == ["speech", "candidate"]
+    assert events.log[1][1]["by"] == "modele" and events.log[1][1]["probability"] == 0.97
+    assert events.log[1][1]["text"] == "Bonjour Jarvis."
     # Le texte est là, mais la grâce n'est pas écoulée : pas encore confirmé.
     assert events.states()[-1] == "candidate"
     await feed(CONFIRM_SILENCE_S, False)
@@ -106,6 +108,8 @@ async def test_unfinished_sentence_waits_for_the_ceiling():
     await feed(CEILING_S - 0.2, False)
     assert "candidate" not in events.states()
     await feed(0.3, False)
+    assert commits and "candidate" not in events.states()
+    await feed(0.5, False)  # sans texte final, annoncé après CANDIDATE_TEXT_WAIT_S
     assert events.states()[-1] == "candidate" and events.log[-1][1]["by"] == "plafond"
 
 
@@ -115,8 +119,9 @@ async def test_candidate_carries_the_text_heard_so_far():
     await feed(1.0, True)
     await det.final("Où en est")
     await det.partial("le sujet agenor ?")
-    await feed(0.1, False)
+    await feed(0.6, False)  # le final du commit n'est pas revenu : le texte du moment part
     assert events.log[-1][0] == "candidate" and events.log[-1][1]["text"] == "Où en est le sujet agenor ?"
+    assert events.log[-1][1]["waitMs"] >= 400
 
 
 @pytest.mark.asyncio
@@ -127,7 +132,9 @@ async def test_suspended_sentence_waits_longer_even_if_the_model_says_finished()
     await feed(CEILING_S + 0.1, False)
     assert "candidate" not in events.states()
     await feed(SUSPENDED_EXTRA_S, False)
-    assert events.states()[-1] == "candidate" and events.log[-1][1]["by"] == "plafond"
+    await det.final("Allons chez le client et regarde")
+    # Silence déjà plus long que la grâce : candidat annoncé puis confirmé aussitôt, par le plafond.
+    assert events.states()[-2:] == ["candidate", "confirmed"] and events.log[-2][1]["by"] == "plafond"
 
 
 @pytest.mark.asyncio
@@ -143,7 +150,7 @@ async def test_a_partial_opens_the_turn_when_the_vad_missed_a_short_word():
     det, vad, model, events, commits, feed, t = harness(complete=False)
     await det.partial("Oui")
     assert events.log[0] == ("speech", {"via": "texte"})
-    await feed(CEILING_S + 0.1, False)
+    await feed(CEILING_S + 0.6, False)
     assert events.states()[-1] == "candidate"
     await det.final("Oui.")
     assert events.log[-1][0] == "confirmed" and events.log[-1][1]["text"] == "Oui."
