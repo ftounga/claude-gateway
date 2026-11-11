@@ -45,6 +45,35 @@ describe('JarvisListenTrace (F-233 / SF-233-15)', () => {
     expect(batches[0].events[0].n).toBe(3);
   });
 
+  it('F-255 / SF-255-01 — un tour par écoute : chaque événement porte le tour courant, le lot son heure d’envoi', () => {
+    trace.mark('page_load');
+    expect(trace.turnId()).toBeNull();
+    const first = trace.newTurn();
+    trace.mark('listen_open');
+    trace.mark('listen_end');
+    const second = trace.newTurn();
+    trace.mark('listen_open');
+    trace.flush();
+    const events = batches[0].events;
+    expect(events[0].tu).toBeUndefined();
+    expect(events[1].tu).toBe(first);
+    expect(events[2].tu).toBe(first);
+    expect(events[3].tu).toBe(second);
+    expect(second).not.toBe(first);
+    expect(trace.turnId()).toBe(second);
+    expect(trace.page()).toBe(batches[0].pageId);
+    expect(batches[0].now).toBeGreaterThanOrEqual(events[3].t);
+  });
+
+  it('F-255 / SF-255-01 — deux événements identiques de tours différents restent deux lignes', () => {
+    trace.newTurn();
+    trace.mark('listen_silence', 'peak=0.00');
+    trace.newTurn();
+    trace.mark('listen_silence', 'peak=0.00');
+    trace.flush();
+    expect(batches[0].events.length).toBe(2);
+  });
+
   it('une erreur ou un arrêt part tout de suite', () => {
     trace.mark('mic_fail', 'NotReadableError');
     expect(batches.length).toBe(1);

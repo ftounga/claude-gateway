@@ -60,7 +60,14 @@ public class JarvisFastBrainController {
 
     /** La demande de l'écran. */
     public record ConverseRequest(UUID subjectId, String text, Integer chantier, String heardBeforeCut,
-            Long turnSeq, String screen, Boolean presentation, UUID speculationId) {
+            Long turnSeq, String screen, Boolean presentation, UUID speculationId,
+            // F-255 / SF-255-01 — facultatifs : le tour vocal et la page de l'écran (identifiants aléatoires).
+            String turnId, String pageId) {
+
+        public ConverseRequest(UUID subjectId, String text, Integer chantier, String heardBeforeCut, Long turnSeq,
+                String screen, Boolean presentation, UUID speculationId) {
+            this(subjectId, text, chantier, heardBeforeCut, turnSeq, screen, presentation, speculationId, null, null);
+        }
 
         public ConverseRequest(UUID subjectId, String text, Integer chantier, String heardBeforeCut, Long turnSeq) {
             this(subjectId, text, chantier, heardBeforeCut, turnSeq, null, null, null);
@@ -104,6 +111,14 @@ public class JarvisFastBrainController {
         this.verdicts = verdicts;
     }
 
+    /** F-255 / SF-255-01 — le journal d'écoute, où la réception d'un tour est notée (facultatif). */
+    private fr.claudegateway.jarvis.trace.JarvisListenTraceService listenTrace;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setListenTrace(fr.claudegateway.jarvis.trace.JarvisListenTraceService listenTrace) {
+        this.listenTrace = listenTrace;
+    }
+
     /** F-252 / SF-252-02 — coupe-circuit de la réponse provisoire. */
     @org.springframework.beans.factory.annotation.Value("${app.jarvis.fast-brain.speculation:true}")
     private boolean speculationOn = true;
@@ -131,6 +146,14 @@ public class JarvisFastBrainController {
         // F-252 / SF-252-02 — réponse provisoire refusée (coupe-circuit) : l'écran fait la retranscription d'abord.
         if (request.speculationId() != null && (!speculationOn || verdicts == null)) {
             return ResponseEntity.status(HttpStatus.CONFLICT).build();
+        }
+        // F-255 / SF-255-01 — le tour est reçu : noté au journal d'écoute (heure serveur, sujet de l'écran), même si la
+        // page se recharge avant d'envoyer sa mesure. Aucun contenu ; ne change rien au tour.
+        if (listenTrace != null && request.turnId() != null) {
+            listenTrace.recordServer(userId, request.pageId(), request.turnId(),
+                    fr.claudegateway.jarvis.trace.JarvisListenTraceService.SERVER_CONVERSE,
+                    "subject=" + (request.subjectId() == null ? "none" : request.subjectId())
+                            + " spec=" + (request.speculationId() == null ? 0 : 1));
         }
         SseEmitter emitter = new SseEmitter(EMITTER_TIMEOUT_MS);
         JarvisFastBrainService.Request call = new JarvisFastBrainService.Request(userId, workspace.orElse(null),

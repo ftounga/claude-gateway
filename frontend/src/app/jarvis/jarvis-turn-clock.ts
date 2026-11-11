@@ -45,6 +45,9 @@ export class TurnClock {
   companion: boolean | null = null;
   /** F-252 — la vitesse : préparation serveur, réponse provisoire, silence de fin, anticipations abandonnées. */
   speed: Partial<Pick<TurnTimingReport, 'prepMs' | 'speculation' | 'endSilenceMs' | 'anticipationsDropped'>> = {};
+  /** F-255 / SF-255-01 — le tour vocal et la page de l'écran (identifiants aléatoires), pour le rejeu de séance. */
+  turnId: string | null = null;
+  pageId: string | null = null;
   private reported = false;
 
   /**
@@ -137,6 +140,8 @@ export class TurnClock {
       ...(this.streamFallback ? { streamFallback: this.streamFallback } : {}),
       ...(this.companion !== null ? { companion: this.companion } : {}),
       ...this.speed,
+      ...(this.turnId ? { turnId: this.turnId } : {}),
+      ...(this.pageId ? { pageId: this.pageId } : {}),
     };
   }
 }

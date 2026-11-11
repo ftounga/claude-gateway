@@ -154,6 +154,9 @@ public class JarvisLatencyService {
                 .endSilenceMs(mark(report.endSilenceMs()))
                 .anticipationsDropped(report.anticipationsDropped() == null ? null
                         : counter(report.anticipationsDropped()))
+                // F-255 / SF-255-01 — le tour et la page, écartés s'ils n'ont pas la forme d'un identifiant.
+                .turnId(fr.claudegateway.jarvis.trace.JarvisTurnIds.clean(report.turnId()))
+                .pageId(fr.claudegateway.jarvis.trace.JarvisTurnIds.clean(report.pageId()))
                 .build());
     }
 
@@ -360,7 +363,9 @@ public class JarvisLatencyService {
             // F-252 / SF-252-01 — facultatifs : préparation serveur, réponse provisoire, silence de fin, anticipations.
             Integer prepMs, String speculation, Integer endSilenceMs, Integer anticipationsDropped,
             // F-253 / SF-253-06 — facultatif : la cause d'un tour vide (arrêt, outils, motifs de rejet).
-            String emptyDiagnostic) {
+            String emptyDiagnostic,
+            // F-255 / SF-255-01 — facultatifs : le tour et la page de l'écran (identifiants aléatoires).
+            String turnId, String pageId) {
     }
 
     /** F-253 / SF-253-06 — vocabulaire du diagnostic, borné : tout autre caractère retire la valeur. */

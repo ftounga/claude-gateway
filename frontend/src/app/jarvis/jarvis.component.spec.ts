@@ -2088,6 +2088,35 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
         expect(jarvisApi.timings.calls.mostRecent().args[0].speculation).toBe('adoptee');
       }));
 
+    it('F-255 / SF-255-01 — un même identifiant de tour, de l’ouverture d’écoute à la mesure et au cerveau rapide',
+      fakeAsync(() => {
+        fastBrain.warm.and.resolveTo(true);
+        const ready = streamWithAudio();
+        const final = new Subject<JarvisUtterance>();
+        jarvisApi.utterance.and.returnValue(final.asObservable());
+        const jarvis = started(ready);
+        const body = fastBrain.converse.calls.mostRecent().args[0];
+        final.next({ text: 'où en est cagip ?', provider: 'elevenlabs-batch', ms: 600 });
+        final.complete();
+        flushMicrotasks();
+        fast!.onDone({ brain: 'FAST', spokenText: 'Le chantier est prêt.', firstTokenMs: 900, model: 'm' });
+        fastDone!('ok');
+        flushMicrotasks();
+        jarvis['flushParked']();
+        const trace = TestBed.inject(JarvisListenTrace);
+        trace.flush();
+        const events = traceBatches.flatMap((b) => b.events);
+        const opened = events.filter((e) => e.ev === 'listen_open').pop()!;
+        expect(opened.tu).toBeTruthy();
+        expect(body.turnId).toBe(opened.tu!);
+        expect(body.pageId).toBe(traceBatches[0].pageId);
+        const report = jarvisApi.timings.calls.mostRecent().args[0];
+        expect(report.turnId).toBe(opened.tu!);
+        expect(report.pageId).toBe(traceBatches[0].pageId);
+        expect(events.find((e) => e.ev === 'transcript')!.tu).toBe(opened.tu!);
+        expect(traceBatches.every((b) => typeof b.now === 'number')).toBeTrue();
+      }));
+
     it('CA7 — texte différent : appel provisoire interrompu, appel normal avec la retranscription, rien de provisoire dit',
       fakeAsync(() => {
         fastBrain.warm.and.resolveTo(true);

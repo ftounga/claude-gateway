@@ -59,6 +59,18 @@ describe('TurnClock (F-233 / SF-233-01)', () => {
     expect('speculation' in bare).toBeFalse();
   });
 
+  it('F-255 / SF-255-01 — porte le tour et la page ; rien quand ils sont absents', () => {
+    const clock = new TurnClock(0, null, () => 0);
+    clock.turnId = 'tour-1';
+    clock.pageId = 'page-1';
+    const report = clock.takeReport()!;
+    expect(report.turnId).toBe('tour-1');
+    expect(report.pageId).toBe('page-1');
+    const bare = new TurnClock(0, null, () => 0).takeReport()!;
+    expect('turnId' in bare).toBeFalse();
+    expect('pageId' in bare).toBeFalse();
+  });
+
   it('F-233 / SF-233-13 — porte la raison du repli hors flux et le compagnon ; rien quand ils sont absents', () => {
     const clock = new TurnClock(0, null, () => 0);
     clock.streamFallback = 'ouverture_refusee';

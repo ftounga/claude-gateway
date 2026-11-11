@@ -51,7 +51,8 @@ public class JarvisCaptureController {
             @RequestParam(value = "listenMode", required = false) String listenMode,
             @RequestParam(value = "provider", required = false) String provider,
             @RequestParam(value = "streamText", required = false) String streamText,
-            @RequestParam(value = "finalText", required = false) String finalText) throws IOException {
+            @RequestParam(value = "finalText", required = false) String finalText,
+            @RequestParam(value = "turnId", required = false) String turnId) throws IOException {
         atelierAccess.requireAccess();
         if (audio == null || audio.isEmpty()) {
             return ResponseEntity.badRequest().body(new ErrorResponse("validation_error", "Aucun énoncé reçu."));
@@ -61,7 +62,7 @@ public class JarvisCaptureController {
                     .body(new ErrorResponse("too_large", "Énoncé trop long."));
         }
         service.record(currentUser.requireId(), adminService.isAdmin(), audio.getBytes(),
-                new JarvisCaptureService.Incoming(seconds, listenMode, provider, streamText, finalText));
+                new JarvisCaptureService.Incoming(seconds, listenMode, provider, streamText, finalText, turnId));
         return ResponseEntity.noContent().build();
     }
 

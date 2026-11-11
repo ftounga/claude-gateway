@@ -189,6 +189,22 @@ class JarvisLatencyApiIntegrationTest {
     }
 
     @Test
+    @DisplayName("F-255 / SF-255-01 — le tour et la page sont gardés ; hors format, écartés sans refuser la mesure")
+    void turnAndPageAreTraced() throws Exception {
+        report(adminToken, "{\"listenMode\":\"CONV_BATCH\",\"turnId\":\"7f1c2e0a-0000-4000-8000-000000000001\","
+                + "\"pageId\":\"page-1\"}").andExpect(status().isNoContent());
+        report(adminToken, "{\"listenMode\":\"CONV_BATCH\",\"turnId\":\"<script>\"}").andExpect(status().isNoContent());
+
+        var rows = timings.findByUserIdAndCreatedAtGreaterThanEqual(admin.getId(), OffsetDateTime.now().minusDays(1));
+        assertThat(rows).hasSize(2);
+        assertThat(rows).anySatisfy(r -> {
+            assertThat(r.getTurnId()).isEqualTo("7f1c2e0a-0000-4000-8000-000000000001");
+            assertThat(r.getPageId()).isEqualTo("page-1");
+        });
+        assertThat(rows).anySatisfy(r -> assertThat(r.getTurnId()).isNull());
+    }
+
+    @Test
     @DisplayName("F-233 / SF-233-13 — la raison du repli hors flux (liste fermée) et le compagnon sont gardés")
     void streamFallbackAndCompanionAreTraced() throws Exception {
         report(adminToken, "{\"listenMode\":\"CONV_BATCH\",\"streamFallback\":\"ouverture_refusee\","

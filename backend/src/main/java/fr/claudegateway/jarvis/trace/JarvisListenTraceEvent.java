@@ -76,4 +76,12 @@ public class JarvisListenTraceEvent {
 
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
+
+    /** F-255 / SF-255-01 — le tour vocal de l'événement (tiré par l'écran à chaque écoute), {@code null} sinon. */
+    @Column(name = "turn_id", length = 36)
+    private String turnId;
+
+    /** F-255 / SF-255-01 — l'heure serveur de l'événement (réception − (heure de page à l'envoi − {@link #atMs})). */
+    @Column(name = "occurred_at")
+    private OffsetDateTime occurredAt;
 }

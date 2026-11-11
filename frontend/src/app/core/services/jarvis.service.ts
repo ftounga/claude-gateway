@@ -196,6 +196,9 @@ export class JarvisService {
     }
     form.append('streamText', meta.streamText.slice(0, 2_000));
     form.append('finalText', meta.finalText.slice(0, 2_000));
+    if (meta.turnId) {
+      form.append('turnId', meta.turnId);
+    }
     this.http.post<void>('/api/jarvis/captures', form).subscribe({ error: () => undefined });
   }
 
