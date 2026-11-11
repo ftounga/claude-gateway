@@ -1,4 +1,4 @@
-# F-257 / SF-257-02 — le chemin WebSocket /voice vers jarvis-voice. PRÉPARÉ, NON DÉPLOYÉ.
+# F-257 / SF-257-02 — le chemin WebSocket /voice vers jarvis-voice. Déployé par jarvis-voice/deploy.sh (SF-257-11).
 #
 # Un Ingress À PART (même hôte, même certificat) plutôt qu'une ligne dans k8s/base/ingress/ingress.yaml (partagé) :
 # nginx fusionne les règles des Ingress d'un même hôte. Une conversation peut durer : délais d'une heure (le service

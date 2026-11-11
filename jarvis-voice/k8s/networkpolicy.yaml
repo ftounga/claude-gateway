@@ -1,4 +1,4 @@
-# F-257 / SF-257-02 — ce que le pod vocal peut recevoir et joindre. PRÉPARÉ, NON DÉPLOYÉ.
+# F-257 / SF-257-02 — ce que le pod vocal peut recevoir et joindre. Déployé par jarvis-voice/deploy.sh (SF-257-11).
 #
 # Entrée : l'ingress nginx seulement (le WebSocket de l'écran). Sortie : le DNS, la passerelle (ticket, cerveau, voix)
 # et HTTPS vers l'extérieur (le fournisseur d'écoute, à partir de SF-257-04). Rien d'autre du cluster.
