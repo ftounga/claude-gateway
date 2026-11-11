@@ -79,9 +79,33 @@ public class JarvisSttSessionService {
                 provider.openStreamingSession(properties.language(), properties.vadSilenceSeconds(),
                         vocabulary == null ? List.of() : vocabulary.of(userId));
         UUID id = UUID.randomUUID();
-        open.put(id, new OpenSession(userId, clock.instant()));
+        open.put(id, new OpenSession(userId, clock.instant(), properties.maxSessionSeconds()));
         return new Ticket(id, session.provider(), session.url(), session.token(), session.expiresAt(),
                 session.sampleRate(), properties.maxSessionSeconds());
+    }
+
+    /**
+     * F-257 / SF-257-04 — durée maximale comptée d'une session <b>longue</b> (service vocal) : le fournisseur la ferme
+     * de lui-même vers 24,5 min (mesuré le 2026-11-11), le service la rouvre alors (nouvelle session, comptée à part).
+     */
+    public static final int LONG_MAX_SECONDS = 1_800;
+
+    /**
+     * F-257 / SF-257-04 — ouvre une session <b>longue</b> en <i>commit</i> manuel pour le service vocal (une par
+     * conversation, rouverte si le fournisseur la coupe). Même plafond, même comptage à la durée, maximum
+     * {@link #LONG_MAX_SECONDS}.
+     */
+    public Ticket openLong(UUID userId) {
+        StreamingTranscriptionProvider provider = provider();
+        if (voice.status(userId).budgetReached()) {
+            throw new JarvisVoiceBudgetException();
+        }
+        StreamingTranscriptionProvider.StreamingSession session = provider.openManualCommitSession(
+                properties.language(), vocabulary == null ? List.of() : vocabulary.of(userId));
+        UUID id = UUID.randomUUID();
+        open.put(id, new OpenSession(userId, clock.instant(), LONG_MAX_SECONDS));
+        return new Ticket(id, session.provider(), session.url(), session.token(), session.expiresAt(),
+                session.sampleRate(), LONG_MAX_SECONDS);
     }
 
     /**
@@ -95,16 +119,17 @@ public class JarvisSttSessionService {
             throw new NoSuchElementException("Session inconnue.");
         }
         long elapsed = Duration.between(session.openedAt(), clock.instant()).plus(SLACK).toSeconds();
-        account(userId, billedSeconds(seconds, elapsed, properties.maxSessionSeconds()));
+        account(userId, billedSeconds(seconds, elapsed, session.maxSeconds()));
     }
 
     /** Compte au maximum les sessions jamais closes (écran fermé, réseau coupé). */
     @Scheduled(fixedDelayString = "${app.jarvis.stt-stream.sweep-ms:60000}")
     public void sweep() {
-        Instant limit = clock.instant().minusSeconds(properties.maxSessionSeconds()).minus(SWEEP_AFTER);
+        Instant now = clock.instant();
         open.forEach((id, session) -> {
+            Instant limit = now.minusSeconds(session.maxSeconds()).minus(SWEEP_AFTER);
             if (session.openedAt().isBefore(limit) && open.remove(id, session)) {
-                account(session.userId(), properties.maxSessionSeconds());
+                account(session.userId(), session.maxSeconds());
             }
         });
     }
@@ -142,7 +167,7 @@ public class JarvisSttSessionService {
                         "L'écoute en flux n'est pas configurée."));
     }
 
-    private record OpenSession(UUID userId, Instant openedAt) {
+    private record OpenSession(UUID userId, Instant openedAt, int maxSeconds) {
     }
 
     /** Ce que l'écran reçoit : de quoi parler directement au fournisseur. Jamais la clé. */

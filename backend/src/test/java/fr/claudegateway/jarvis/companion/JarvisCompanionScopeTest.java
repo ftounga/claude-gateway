@@ -27,6 +27,8 @@ class JarvisCompanionScopeTest {
             "GET,/jarvis/preferences/",
             "POST,/jarvis/listen-trace",
             "GET,/jarvis/face",
+            // F-257 / SF-257-03 — le ticket du lien vocal en flux.
+            "POST,/jarvis/voice-session",
     })
     void opens(String method, String path) {
         assertThat(JarvisCompanionScope.allows(method, path)).isTrue();

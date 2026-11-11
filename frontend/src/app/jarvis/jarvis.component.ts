@@ -50,6 +50,9 @@ import {
 import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom, timeout } from 'rxjs';
 import {
+  JarvisVoiceShadow, VoiceLoop, openLinkMic, readVoiceLoop, realVoiceLink, writeVoiceLoop,
+} from './jarvis-voice-shadow';
+import {
   JARVIS_BUDGET_CONFIRM, JARVIS_BUDGET_HARD, JarvisCostSummary, JarvisHumour, JarvisSttTicket, JarvisUtterance,
 } from '../core/models/jarvis.models';
 
@@ -873,6 +876,30 @@ export class JarvisComponent implements OnInit, OnDestroy {
   /** F-248 / SF-248-04 — le jeu de la dernière réponse (pour la pastille). */
   private cardsResponseId: string | null = null;
 
+  /** F-257 / SF-257-03 — la boucle vocale de cet appareil (`legacy` par défaut ; `stream` : lien en flux, en ombre). */
+  readonly voiceLoop = signal<VoiceLoop>(readVoiceLoop(localStorageOrNull()));
+  /** F-257 / SF-257-03 — le lien vocal en flux, tenu pendant la conversation (ombre de l'ancienne boucle). */
+  private readonly voiceShadow = new JarvisVoiceShadow({
+    ticket: (workspaceId) => firstValueFrom(this.jarvis.voiceSession(workspaceId)),
+    openMic: openLinkMic,
+    link: realVoiceLink,
+    trace: (detail) => this.trace.mark('voice_link', detail),
+    setInterval: (fn, ms) => window.setInterval(fn, ms),
+    clearInterval: (handle) => window.clearInterval(handle as number),
+  });
+
+  /** F-257 / SF-257-03 — « Conversation en flux (essai) » : par appareil ; s'applique à la conversation en cours. */
+  toggleVoiceLoop(): void {
+    const loop: VoiceLoop = this.voiceLoop() === 'stream' ? 'legacy' : 'stream';
+    this.voiceLoop.set(loop);
+    writeVoiceLoop(localStorageOrNull(), loop);
+    if (loop === 'legacy') {
+      this.voiceShadow.stop();
+    } else if (this.conversation.active) {
+      void this.voiceShadow.start(loop, this.subjectId());
+    }
+  }
+
   toggleCards(): void {
     const on = !this.cardsOn();
     this.cardsOn.set(on);
@@ -1158,6 +1185,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.voiceShadow.stop();
     // F-240 / SF-240-01 — les mesures gardées partent à la sortie de l'écran.
     this.flushParked();
     this.delegationClocks.forEach(({ clock, timer }) => {
@@ -4647,11 +4675,14 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.wakeGate.set(false);
     this.started.set(true);
     this.conversation.start();
+    // F-257 / SF-257-03 — le lien en flux ne s'ouvre qu'une fois la conversation engagée (F-231 D5).
+    void this.voiceShadow.start(this.voiceLoop(), this.subjectId());
   }
 
   /** La pause : micro coupé, voix coupée ; le tour en cours continue. `say` : Jarvis le dit (ordre vocal). */
   async pauseConversation(say: boolean): Promise<void> {
     this.trace.mark('conv_pause', say ? 'voix' : 'bouton');
+    this.voiceShadow.stop();
     // F-241 / SF-241-06 (E4) — la pause suspend l'entretien.
     this.suspendInterview();
     this.conversation.pause();
@@ -4671,6 +4702,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       return;
     }
     this.trace.mark('conv_idle_end');
+    this.voiceShadow.stop();
     // F-241 / SF-241-06 (E4) — la mise en veille suspend l'entretien.
     this.suspendInterview();
     this.conversation.rest();
@@ -4942,5 +4974,14 @@ export function voiceMessage(error: JarvisVoiceError): string {
     case 'budget': return 'Plafond du mois atteint pour la voix : je réponds par écrit.';
     case 'non-configure': return 'La voix n’est pas configurée : je réponds par écrit.';
     default: return 'La voix n’a pas répondu : la réponse est écrite.';
+  }
+}
+
+/** F-257 / SF-257-03 — le stockage local, ou `null` s'il est indisponible (navigation privée, bac à sable). */
+function localStorageOrNull(): Storage | null {
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage;
+  } catch {
+    return null;
   }
 }

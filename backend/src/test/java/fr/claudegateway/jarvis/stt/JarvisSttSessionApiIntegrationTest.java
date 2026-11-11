@@ -104,6 +104,26 @@ class JarvisSttSessionApiIntegrationTest {
     }
 
     @Test
+    @DisplayName("F-257 / SF-257-04 — {\"mode\":\"long\"} : commit manuel, 1 800 s, ouvert au ticket de session vocale")
+    void longSessionUnderVoiceTicket() throws Exception {
+        when(provider.openManualCommitSession(any(), any())).thenReturn(new StreamingTranscriptionProvider
+                .StreamingSession("elevenlabs", "wss://api.elevenlabs.io/v1/speech-to-text/realtime?commit_strategy=manual",
+                        "single-use-2", Instant.parse("2030-01-01T00:00:00Z"), 16000));
+        String voiceTicket = jwtService.generateVoiceTicket(alice, null, Instant.now().plusSeconds(600));
+        String body = mockMvc.perform(post("/api/jarvis/stt-session").contextPath("/api")
+                        .header("Authorization", "Bearer " + voiceTicket).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"mode\":\"long\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.url").value(org.hamcrest.Matchers.containsString("commit_strategy=manual")))
+                .andExpect(jsonPath("$.maxSeconds").value(1800))
+                .andReturn().getResponse().getContentAsString();
+        String id = mapper.readTree(body).path("sessionId").asText();
+        close(voiceTicket, id, "{\"seconds\":4}").andExpect(status().isNoContent());
+        // Sans corps : la session courte d'avant, inchangée.
+        open(aliceToken).andExpect(status().isOk()).andExpect(jsonPath("$.maxSeconds").value(120));
+    }
+
+    @Test
     @DisplayName("503 non configuré ; 502 fournisseur en échec ; 401 sans jeton")
     void errors() throws Exception {
         when(provider.openStreamingSession(any(), anyDouble(), any()))

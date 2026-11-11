@@ -868,7 +868,7 @@ export class StreamingListener {
 }
 
 /** Branche le module de capture sur `stream` : chaque bloc du micro part vers `onBlock`. */
-async function openCaptureGraph(stream: MediaStream, onBlock: (samples: Float32Array, rate: number) => void): Promise<{
+export async function openCaptureGraph(stream: MediaStream, onBlock: (samples: Float32Array, rate: number) => void): Promise<{
   context: AudioContext; source: MediaStreamAudioSourceNode; node: AudioNode; tapUrl: string | null;
 }> {
   const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext })

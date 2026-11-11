@@ -45,6 +45,8 @@ public final class JarvisCompanionScope {
             // Le cerveau rapide.
             new Route("POST", "/jarvis/converse"),
             new Route("POST", "/jarvis/converse/warm"),
+            // F-257 / SF-257-03 — le ticket du lien vocal en flux (l'écran /jarvis ouvert dans le compagnon).
+            new Route("POST", "/jarvis/voice-session"),
             // F-248 / SF-248-06 — le plein écran d'une pancarte (lecture, une ligne sous le compte).
             new Route("GET", "/jarvis/cards/*"),
             // F-248 / SF-248-08 — les pancartes des clés citées par Opus (lecture par index, après le premier mot).

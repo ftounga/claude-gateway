@@ -11,7 +11,11 @@ Protocole WebSocket ``/voice/ws`` (texte JSON + trames binaires PCM 16 kHz mono 
 - le service répond ``{"type":"ready","sessionId":…,"serverTs":…}`` ou ferme : 4401 ticket refusé, 4503 passerelle
   injoignable, 4429 service plein, 4400 premier message illisible ;
 - ``{"type":"ping","clientTs":n}`` → ``{"type":"pong","clientTs":n,"serverTs":…}`` (crochet de mesure F-256) ;
-- trames binaires : l'audio du micro.
+- trames binaires : l'audio du micro, poussé dans la session d'écoute longue (SF-257-04) ;
+- descendant (SF-257-04) : ``{"type":"stt","state":"open|reopen|closing|closed","detail":…}`` et
+  ``{"type":"transcript","final":bool,"text":…,"serverTs":…}`` (le texte va à l'écran, jamais aux journaux) ;
+- descendant (SF-257-05) : ``{"type":"turn","state":"speech|candidate|cancelled|confirmed|rejected",…,"serverTs":…}``
+  — le tour décidé côté serveur (``text`` seulement sur ``confirmed``).
 """
 
 from __future__ import annotations
@@ -25,6 +29,8 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 from .gateway import GatewayClient, GatewayUnavailable, TicketRejected
 from .session import SessionRegistry, VoiceSession, server_ts
+from .stt import LongTranscription
+from .turn import TurnDetector
 
 log = logging.getLogger("jarvis-voice")
 
@@ -36,8 +42,74 @@ CLOSE_FULL = 4429
 CLOSE_GATEWAY_DOWN = 4503
 
 
-def create_app(gateway: GatewayClient | None = None, max_sessions: int | None = None) -> FastAPI:
-    """Fabrique l'application (injectable pour les tests)."""
+class _Downlink:
+    """Les événements vers l'écran, envoyés un à un (plusieurs tâches écrivent sur le même WebSocket)."""
+
+    def __init__(self, ws: WebSocket):
+        self._ws = ws
+        self._lock = asyncio.Lock()
+
+    async def send(self, event: dict) -> None:
+        async with self._lock:
+            try:
+                await self._ws.send_json(event)
+            except (RuntimeError, WebSocketDisconnect):
+                pass
+
+    async def partial(self, text: str) -> None:
+        await self.send({"type": "transcript", "final": False, "text": text, "serverTs": server_ts()})
+
+    async def final(self, text: str) -> None:
+        await self.send({"type": "transcript", "final": True, "text": text, "serverTs": server_ts()})
+
+    async def state(self, state: str, detail: str) -> None:
+        log.info("écoute : %s %s", state, detail)
+        await self.send({"type": "stt", "state": state, "detail": detail, "serverTs": server_ts()})
+
+    async def turn(self, state: str, **fields) -> None:
+        log.info("tour : %s %s", state, {k: v for k, v in fields.items() if k != "text"})
+        await self.send({"type": "turn", "state": state, **fields, "serverTs": server_ts()})
+
+
+class _SttFanout:
+    """Ce que dit la session d'écoute va à l'écran ET au détecteur de tour."""
+
+    def __init__(self, downlink: _Downlink):
+        self.downlink = downlink
+        self.detector: TurnDetector | None = None
+
+    async def partial(self, text: str) -> None:
+        await self.downlink.partial(text)
+        if self.detector:
+            await self.detector.partial(text)
+
+    async def final(self, text: str) -> None:
+        await self.downlink.final(text)
+        if self.detector:
+            await self.detector.final(text)
+
+    async def state(self, state: str, detail: str) -> None:
+        await self.downlink.state(state, detail)
+
+
+def _real_turn_factory(commit, events) -> TurnDetector:
+    from .turn_models import SileroVad, SmartTurn  # modèles ONNX chargés à la demande (pas dans les tests)
+    return TurnDetector(SileroVad(), SmartTurn(), commit, events)
+
+
+#: Le détecteur de tour est consulté au moins à ce rythme, même sans audio (délai du texte final).
+TICK_S = 0.1
+
+
+def create_app(gateway: GatewayClient | None = None, max_sessions: int | None = None,
+               stt_factory=None, turn_factory=None) -> FastAPI:
+    """Fabrique l'application (injectable pour les tests). ``stt_factory(gateway, ticket, events)`` rend la session
+    d'écoute longue ; ``None`` : la vraie (ElevenLabs par la passerelle) ; ``False`` : aucune écoute."""
+    if stt_factory is None:
+        stt_factory = (lambda gw, ticket, events: LongTranscription(gw, ticket, events)) \
+            if os.environ.get("JARVIS_VOICE_STT", "on") != "off" else False
+    if turn_factory is None:
+        turn_factory = _real_turn_factory if os.environ.get("JARVIS_VOICE_TURN", "on") != "off" else False
     gateway = gateway or GatewayClient(os.environ.get("JARVIS_VOICE_GATEWAY_URL",
                                                       "http://claude-gateway-backend:8080/api"))
     registry = SessionRegistry(max_sessions or int(os.environ.get("JARVIS_VOICE_MAX_SESSIONS", "8")))
@@ -75,19 +147,40 @@ def create_app(gateway: GatewayClient | None = None, max_sessions: int | None = 
         session = VoiceSession(identity=identity, ticket=ticket)
         registry.add(session)
         log.info("session %s ouverte", session.session_id)
+        downlink = _Downlink(ws)
+        fanout = _SttFanout(downlink)
+        stt = stt_factory(gateway, ticket, fanout) if stt_factory else None
+        detector = turn_factory(stt.commit if stt else (lambda: None), downlink) if turn_factory else None
+        fanout.detector = detector
+        ticker = None
         try:
-            await ws.send_json({"type": "ready", "sessionId": session.session_id, "serverTs": server_ts()})
+            await downlink.send({"type": "ready", "sessionId": session.session_id, "serverTs": server_ts()})
+            if stt:
+                stt.start()
+            if detector:
+                ticker = asyncio.create_task(_tick(detector))
             while True:
                 message = await ws.receive()
                 if message.get("type") == "websocket.disconnect":
                     break
                 if message.get("bytes") is not None:
-                    session.on_audio(message["bytes"])
+                    pcm = message["bytes"]
+                    if session.on_audio(pcm):
+                        if stt:
+                            stt.push(pcm)
+                        if detector:
+                            await detector.audio(pcm)
                 elif message.get("text") is not None:
-                    await _on_text(ws, message["text"])
+                    await _on_text(downlink, message["text"])
         except WebSocketDisconnect:
             pass
         finally:
+            if ticker:
+                ticker.cancel()
+            if stt:
+                await stt.close()
+            if detector:
+                log.info("tours : %s", detector.counters)
             registry.remove(session)
             log.info("session %s fermée : %d trames audio, %d ignorées", session.session_id,
                      session.audio_frames, session.oversized_frames)
@@ -95,13 +188,19 @@ def create_app(gateway: GatewayClient | None = None, max_sessions: int | None = 
     return app
 
 
-async def _on_text(ws: WebSocket, text: str) -> None:
+async def _tick(detector: TurnDetector) -> None:
+    while True:
+        await asyncio.sleep(TICK_S)
+        await detector.tick()
+
+
+async def _on_text(downlink: "_Downlink", text: str) -> None:
     try:
         event = json.loads(text)
     except ValueError:
         return
     if isinstance(event, dict) and event.get("type") == "ping":
-        await ws.send_json({"type": "pong", "clientTs": event.get("clientTs"), "serverTs": server_ts()})
+        await downlink.send({"type": "pong", "clientTs": event.get("clientTs"), "serverTs": server_ts()})
 
 
 async def _close(ws: WebSocket, code: int, reason: str) -> None:

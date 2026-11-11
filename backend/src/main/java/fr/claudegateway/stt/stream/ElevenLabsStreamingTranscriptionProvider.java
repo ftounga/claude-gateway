@@ -4,7 +4,6 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.Locale;
 
 import org.slf4j.Logger;
@@ -69,6 +68,35 @@ public class ElevenLabsStreamingTranscriptionProvider implements StreamingTransc
     @Override
     public StreamingSession openStreamingSession(String languageHint, double silenceSeconds,
             java.util.List<String> vocabulary) {
+        String token = singleUseToken();
+        return new StreamingSession(NAME, sessionUrl(elevenLabs.wsBaseUrl(), properties.model(), languageHint,
+                silenceSeconds, vocabulary), token, clock.instant().plus(TOKEN_TTL), SAMPLE_RATE);
+    }
+
+    /** F-257 / SF-257-04 — la session longue du service vocal : même jeton, {@code commit_strategy=manual}. */
+    @Override
+    public StreamingSession openManualCommitSession(String languageHint, java.util.List<String> vocabulary) {
+        String token = singleUseToken();
+        return new StreamingSession(NAME, manualSessionUrl(elevenLabs.wsBaseUrl(), properties.model(), languageHint,
+                vocabulary), token, clock.instant().plus(TOKEN_TTL), SAMPLE_RATE);
+    }
+
+    /** F-257 / SF-257-04 — l'URL d'une session en <i>commit</i> manuel (sans seuil de silence), sans le jeton. */
+    static String manualSessionUrl(String wsBaseUrl, String model, String languageHint,
+            java.util.List<String> vocabulary) {
+        StringBuilder url = new StringBuilder(wsBaseUrl).append("/v1/speech-to-text/realtime?model_id=")
+                .append(encode(model))
+                .append("&audio_format=pcm_").append(SAMPLE_RATE)
+                .append("&commit_strategy=manual");
+        if (languageHint != null && !languageHint.isBlank()) {
+            url.append("&language_code=").append(encode(languageHint.strip().toLowerCase(Locale.ROOT)));
+        }
+        streamKeyterms(vocabulary).forEach(term -> url.append("&keyterms=").append(encode(term)));
+        return url.toString();
+    }
+
+    /** Un jeton à usage unique ; ni la clé ni le jeton ne sont journalisés. */
+    private String singleUseToken() {
         if (!isConfigured()) {
             throw new TranscriptionProviderUnavailableException("L'écoute en flux n'est pas configurée.");
         }
@@ -94,9 +122,7 @@ public class ElevenLabsStreamingTranscriptionProvider implements StreamingTransc
         if (token == null || token.isBlank()) {
             throw new TranscriptionProviderException("Réponse du fournisseur d'écoute sans jeton.");
         }
-        Instant expiresAt = clock.instant().plus(TOKEN_TTL);
-        return new StreamingSession(NAME, sessionUrl(elevenLabs.wsBaseUrl(), properties.model(), languageHint,
-                silenceSeconds, vocabulary), token, expiresAt, SAMPLE_RATE);
+        return token;
     }
 
     /** L'URL WebSocket de la session, sans le jeton. */
