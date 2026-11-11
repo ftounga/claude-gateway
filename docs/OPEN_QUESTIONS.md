@@ -727,4 +727,6 @@ scellés, sur la passerelle, beaucoup plus longtemps.
 rafale) ; un jeton réutilisé ou invalide rend `auth_error` puis une fermeture 1000 ; un paramètre invalide rend
 `invalid_request` puis 1008. Les 31 replis du 09/11 sont tracés `ouverture_fermee` (fermeture **sans** message) : ce
 n'est donc **pas** la limite de simultanéité (qui aurait donné `ouverture_refusee`) ; cause non identifiée côté écran
-(aucun code de fermeture tracé). Le service `jarvis-voice` tracera code et type de chaque fermeture.
+(aucun code de fermeture tracé). Le service `jarvis-voice` tracera code et type de chaque fermeture. Durée : une session au silence a tenu
+≈ 24,5 min puis a été fermée par le fournisseur (1000, sans message) — reconnexion avec rejeu du tampon requise ; en
+*commit* manuel, un `committed_transcript` vide arrive toutes les ≈ 36 s.

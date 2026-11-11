@@ -139,7 +139,10 @@ le service voix ne fait que du signal et de l'ordonnancement. Gateway-First et P
   puis fermeture 1000 ; paramètre invalide → `invalid_request` puis fermeture 1008. **Toutes ces fermetures sont
   précédées d'un message** : les 31 replis du 09/11, tracés `ouverture_fermee` (fermeture **sans** message, 250-300 ms
   après l'ouverture), ne viennent donc **pas** de la simultanéité (on aurait eu `ouverture_refusee`) ; la cause n'est
-  pas lisible dans les traces (aucun code de fermeture rangé). Le service tracera code et type de chaque fermeture.
+  pas lisible dans les traces (aucun code de fermeture rangé). Le service tracera code et type de chaque fermeture. Une session tenue au silence (trames de silence en continu, *commit* manuel) est restée ouverte **≈ 24,5 min**,
+  puis le fournisseur l'a fermée (1000, **sans message**) : la reconnexion transparente avec rejeu du tampon est donc
+  indispensable, pas théorique. En *commit* manuel, le fournisseur émet quand même un `committed_transcript` (vide au
+  silence) **toutes les ≈ 36 s** : l'adaptateur doit l'accepter sans le prendre pour une fin de tour.
 - **Durée maximale d'une session : non publiée.** Le service la traite comme finie : reconnexion transparente avec
   rejeu d'un tampon circulaire de 2 s, sans phrase perdue (critère §5).
 - **Facturation** à la durée de session : 1 h de conversation ≈ 0,36 € (à 0,92 €/$) — négligeable devant la voix.
