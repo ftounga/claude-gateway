@@ -5,11 +5,16 @@
 //
 //   node banc.mjs --dist <dist>/browser --token <fichier du jeton> [--scenarios a,b] [--out <dossier>]
 //                 [--gateway http://localhost:18256] [--corpus <dossier>] [--deps <dossier de puppeteer-core>]
+//                 [--boucle legacy|stream] [--voix-service http://localhost:18257]
+//
+// F-257 / SF-257-06 — `--boucle stream` : la page est réglée sur la conversation en flux (`cg.jarvis.loop`) et le
+// WebSocket `/voice/…` est relayé vers le service `jarvis-voice` local (`--voix-service`), comme l'ingress en prod.
 //
 // Sortie (hors dépôt) : `rapport.json` (tour par tour, et les sondes brutes) + `resume.txt` ; code 1 si la porte
 // (`porte.mjs`) n'est pas franchie. UNE seule session de transcription à la fois (compte ElevenLabs partagé avec la
 // prod) : les scénarios passent l'un après l'autre.
 import { createServer } from 'node:http';
+import { connect as tcpConnect } from 'node:net';
 import { createRequire } from 'node:module';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -33,6 +38,9 @@ const OUT = args.out ?? join(homedir(), '.local/share/claude-gateway/banc-jarvis
 const DEPS = args.deps ?? join(homedir(), '.local/share/claude-gateway/banc-jarvis-voix-deps');
 const PORT = Number(args.port ?? 4356);
 const VIEW = args.vue === '3d' ? '3d' : '2d';
+// F-257 / SF-257-06 — la boucle mesurée : l'ancienne (défaut) ou la conversation en flux (service jarvis-voice).
+const LOOP = args.boucle === 'stream' ? 'stream' : 'legacy';
+const VOICE_SERVICE = new URL(args['voix-service'] ?? 'http://localhost:18257');
 const TOKEN = (await readFile(args.token, 'utf8')).trim();
 const puppeteer = createRequire(join(DEPS, 'package.json'))('puppeteer-core');
 
@@ -137,6 +145,27 @@ const server = createServer(async (req, res) => {
     res.writeHead(404);
     res.end();
   }
+});
+// F-257 / SF-257-06 — le WebSocket de la conversation en flux, relayé octet pour octet vers jarvis-voice (le ticket
+// voyage dans le premier message, jamais dans l'URL : rien à garder ici).
+server.on('upgrade', (req, socket, head) => {
+  if (!req.url.startsWith('/voice/')) {
+    socket.destroy();
+    return;
+  }
+  const upstream = tcpConnect(Number(VOICE_SERVICE.port), VOICE_SERVICE.hostname, () => {
+    const lines = [`${req.method} ${req.url} HTTP/1.1`];
+    for (let i = 0; i < req.rawHeaders.length; i += 2) {
+      const name = req.rawHeaders[i];
+      lines.push(`${name}: ${/^host$/i.test(name) ? VOICE_SERVICE.host : req.rawHeaders[i + 1]}`);
+    }
+    upstream.write(lines.join('\r\n') + '\r\n\r\n');
+    if (head?.length) upstream.write(head);
+    upstream.pipe(socket);
+    socket.pipe(upstream);
+  });
+  upstream.on('error', () => socket.destroy());
+  socket.on('error', () => upstream.destroy());
 });
 await new Promise((r) => server.listen(PORT, r));
 await mkdir(OUT, { recursive: true });
@@ -273,10 +302,11 @@ async function runScenario(scenario) {
   await page.setViewport({ width: 1366, height: 768 });
   // Vue 2D par défaut : sans GPU, la 3D en rendu logiciel (swiftshader) occupe le fil principal et gonfle toutes les
   // latences de plusieurs secondes — un biais du banc, pas de Jarvis. `--vue 3d` pour mesurer la 3D quand même.
-  await page.evaluateOnNewDocument((token, view) => {
+  await page.evaluateOnNewDocument((token, view, loop) => {
     localStorage.setItem('cg_token', token);
     if (view === '2d') localStorage.setItem('cg.jarvis.view', '2d');
-  }, TOKEN, VIEW);
+    localStorage.setItem('cg.jarvis.loop', loop);
+  }, TOKEN, VIEW, LOOP);
   if (temoin) {
     await page.evaluateOnNewDocument(() => { window.__bancChromeMic = true; });
   }
@@ -375,7 +405,7 @@ for (const scenario of scenarios) {
 const afterCosts = await gatewayCosts();
 const report = analyse(runs, { before, after: afterCosts });
 report.meta = { at: new Date().toISOString(), gateway: GATEWAY, dist: DIST, view: VIEW, scenarios: scenarios.map((s) => s.id),
-  commit: process.env.BANC_COMMIT ?? null };
+  commit: process.env.BANC_COMMIT ?? null, loop: LOOP, voice: process.env.APP_JARVIS_VOICE_PROVIDER ?? null };
 report.gate = gate(report);
 await writeFile(join(OUT, 'rapport.json'), JSON.stringify({ ...report, runs }, null, 2));
 const text = summary(report);

@@ -69,6 +69,7 @@ async def test_finished_sentence_candidate_then_confirmed_after_grace():
     await feed(0.1, False)
     assert events.states() == ["speech", "candidate"]
     assert events.log[1][1]["by"] == "modele" and events.log[1][1]["probability"] == 0.97
+    assert events.log[1][1]["text"] == ""
     assert len(commits) == 1
     await det.final("Bonjour Jarvis.")
     # Le texte est là, mais la grâce n'est pas écoulée : pas encore confirmé.
@@ -105,6 +106,16 @@ async def test_unfinished_sentence_waits_for_the_ceiling():
     assert "candidate" not in events.states()
     await feed(0.3, False)
     assert events.states()[-1] == "candidate" and events.log[-1][1]["by"] == "plafond"
+
+
+@pytest.mark.asyncio
+async def test_candidate_carries_the_text_heard_so_far():
+    det, vad, model, events, commits, feed, t = harness(complete=True)
+    await feed(1.0, True)
+    await det.final("Où en est")
+    await det.partial("le sujet agenor ?")
+    await feed(0.1, False)
+    assert events.log[-1][0] == "candidate" and events.log[-1][1]["text"] == "Où en est le sujet agenor ?"
 
 
 @pytest.mark.asyncio

@@ -233,7 +233,10 @@ class TurnDetector:
         else:
             self.counters.by_ceiling += 1
         self._commit()
-        await self._events.turn("candidate", by=by, silenceMs=round(turn.silence_s * 1000),
+        # F-257 / SF-257-06 — le texte du moment (finals + partiel) : l'écran lance le cerveau rapide en provisoire
+        # dessus (F-252) ; il n'est adopté que si le texte confirmé est le même. Jamais journalisé.
+        heard = " ".join([*turn.text, turn.partial]).strip()
+        await self._events.turn("candidate", text=heard, by=by, silenceMs=round(turn.silence_s * 1000),
                                 speechMs=round(turn.speech_s * 1000),
                                 probability=None if turn.probability is None else round(turn.probability, 3))
 

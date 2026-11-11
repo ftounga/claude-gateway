@@ -2,7 +2,7 @@ import {
   JarvisVoiceShadow, PCM_CHUNK_BYTES, PING_EVERY_MS, PcmChunker, VoiceShadowDeps, readVoiceLoop, serviceEventTrace,
   writeVoiceLoop,
 } from './jarvis-voice-shadow';
-import { VoiceLink, VoiceTicket } from './jarvis-voice-link';
+import { VoiceLink, VoiceLinkHandlers, VoiceTicket } from './jarvis-voice-link';
 
 const TICKET: VoiceTicket = { ticket: 't', url: '/voice/ws', expiresAt: '2999-01-01T00:00:00Z', sampleRate: 16000 };
 
@@ -13,6 +13,8 @@ function harness(opts: { ticketError?: unknown; micError?: boolean } = {}) {
   const link = jasmine.createSpyObj<VoiceLink>('VoiceLink', ['open', 'close', 'ping', 'sendPcm']);
   link.open.and.resolveTo();
   let linkTicket: (() => Promise<VoiceTicket>) | null = null;
+  let linkHandlers: VoiceLinkHandlers | null = null;
+  let now = 0;
   let onPcm: ((pcm: Uint8Array) => void) | null = null;
   const mic = { close: jasmine.createSpy('close') };
   const deps: VoiceShadowDeps = {
@@ -30,10 +32,12 @@ function harness(opts: { ticketError?: unknown; micError?: boolean } = {}) {
       onPcm = fn;
       return mic;
     },
-    link: (source) => {
+    link: (source, handlers) => {
       linkTicket = source.ticket;
+      linkHandlers = handlers;
       return link;
     },
+    now: () => now,
     trace: (d) => traces.push(d),
     setInterval: (fn, ms) => {
       const i = { fn, ms, cleared: false };
@@ -48,7 +52,8 @@ function harness(opts: { ticketError?: unknown; micError?: boolean } = {}) {
   };
   return {
     shadow: new JarvisVoiceShadow(deps), link, mic, traces, asked, intervals,
-    linkTicket: () => linkTicket!, pcm: (b: Uint8Array) => onPcm!(b),
+    linkTicket: () => linkTicket!, pcm: (b: Uint8Array) => onPcm!(b), handlers: () => linkHandlers!,
+    at: (t: number) => { now = t; },
   };
 }
 
@@ -144,5 +149,45 @@ describe('JarvisVoiceShadow (F-257 / SF-257-03)', () => {
     expect(serviceEventTrace({ type: 'stt', state: 'reopen', detail: 'session=2' })).toBe('stt reopen session=2');
     expect(serviceEventTrace({ type: 'transcript', final: true, text: 'secret' })).toBeNull();
     expect(serviceEventTrace({ type: 'turn', state: 'speech', via: 'vad <script>' })).toBe('turn speech via=vadscript');
+  });
+
+  it('F-257 / SF-257-06 — prend la main quand le lien est prêt, rend la main s’il tombe ; les tours remontent', async () => {
+    const h = harness();
+    const changes: [boolean, string][] = [];
+    const turns: Record<string, unknown>[] = [];
+    await h.shadow.start('stream', null, { onReadyChange: (r, d) => changes.push([r, d]), onTurn: (e) => turns.push(e) });
+    expect(h.shadow.ready).toBeFalse();
+    h.handlers().onState!('ready', 'ms=80');
+    expect(h.shadow.ready).toBeTrue();
+    h.handlers().onState!('ready', 'ms=80'); // pas de doublon
+    h.handlers().onEvent!({ type: 'turn', state: 'confirmed', text: 'Bonjour' });
+    h.handlers().onEvent!({ type: 'stt', state: 'reopen' });
+    h.handlers().onState!('reconnecting', 'code=1006');
+    expect(h.shadow.ready).toBeFalse();
+    expect(changes).toEqual([[true, 'ready ms=80'], [false, 'reconnecting code=1006']]);
+    expect(turns).toEqual([{ type: 'turn', state: 'confirmed', text: 'Bonjour' }]);
+    // Une fermeture voulue (fin de conversation) n'annonce pas de repli.
+    h.shadow.stop();
+    expect(changes.length).toBe(2);
+  });
+
+  it('F-257 / SF-257-06 — le micro du lien envoie du silence quand Jarvis parle, et 150 ms après', async () => {
+    const h = harness();
+    let speaking = false;
+    await h.shadow.start('stream', null, { silenced: () => speaking });
+    const voice = new Uint8Array([1, 2, 3, 4]);
+    h.pcm(voice);
+    expect(h.link.sendPcm.calls.mostRecent().args[0]).toBe(voice);
+    speaking = true;
+    h.at(1000);
+    h.pcm(voice);
+    expect(Array.from(h.link.sendPcm.calls.mostRecent().args[0])).toEqual([0, 0, 0, 0]);
+    speaking = false;
+    h.at(1100);
+    h.pcm(voice);
+    expect(Array.from(h.link.sendPcm.calls.mostRecent().args[0])).toEqual([0, 0, 0, 0]);
+    h.at(1151);
+    h.pcm(voice);
+    expect(h.link.sendPcm.calls.mostRecent().args[0]).toBe(voice);
   });
 });

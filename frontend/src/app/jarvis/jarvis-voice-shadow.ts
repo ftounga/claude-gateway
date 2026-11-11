@@ -1,12 +1,26 @@
 /**
- * **La boucle en flux, en ombre** (F-257 / SF-257-03) — réglée par appareil (`cg.jarvis.loop`), elle tient le lien
- * vocal pendant la conversation et y envoie le micro en continu. L'ancienne boucle reste seule à décider et à répondre
- * tant que le service ne prend pas le tour (SF-257-04 →). Rien n'est ouvert en `legacy` (défaut) ni si la passerelle
- * refuse (coupe-circuit, 503).
+ * **La boucle en flux** (F-257) — réglée par appareil (`cg.jarvis.loop`), elle tient le lien vocal pendant la
+ * conversation et y envoie le micro en continu (SF-257-03). Depuis SF-257-06 (décision PO du 2026-11-11, voie A), elle
+ * **prend la main** tant que le lien est prêt : le service décide les tours (`onTurn`) et l'ancienne écoute se
+ * suspend ; le lien tombe → `onReadyChange(false)` → l'écran reprend l'ancienne boucle (repli tracé). Rien n'est ouvert
+ * en `legacy` (défaut) ni si la passerelle refuse (coupe-circuit, 503).
  */
 
 import { downsample, LISTEN_AUDIO, openCaptureGraph, PRE_ROLL_RATE, toPcm16 } from './jarvis-stream-listener';
 import { VoiceLink, VoiceLinkHandlers, VoiceLinkState, VoiceTicket, voiceSocketUrl } from './jarvis-voice-link';
+
+/** F-257 / SF-257-06 — ce que l'écran suit de la boucle en flux. */
+export interface VoiceLoopHooks {
+  /** Le lien devient prêt (la boucle en flux prend la main) ou cesse de l'être (repli sur l'ancienne boucle). */
+  onReadyChange?(ready: boolean, detail: string): void;
+  /** Un événement de tour du service (`speech`, `candidate`, `cancelled`, `confirmed`, `rejected`). */
+  onTurn?(event: Record<string, unknown>): void;
+  /** Vrai tant que Jarvis parle : le micro du lien envoie du silence (sa voix ne part jamais au service). */
+  silenced?(): boolean;
+}
+
+/** Après la voix de Jarvis, le micro du lien reste muet autant de temps (queue d'écho, comme `ECHO_HOLD_MS`). */
+export const LINK_ECHO_HOLD_MS = 150;
 
 /** Le réglage par appareil. */
 export const VOICE_LOOP_KEY = 'cg.jarvis.loop';
@@ -44,6 +58,8 @@ export interface VoiceShadowDeps {
   trace(detail: string): void;
   setInterval(fn: () => void, ms: number): unknown;
   clearInterval(handle: unknown): void;
+  /** L'horloge (ms), pour la queue d'écho. */
+  now?(): number;
 }
 
 export class JarvisVoiceShadow {
@@ -51,6 +67,9 @@ export class JarvisVoiceShadow {
   private mic: LinkMic | null = null;
   private pinger: unknown = null;
   private generation = 0;
+  private readyNow = false;
+  private hooks: VoiceLoopHooks = {};
+  private mutedUntil = 0;
 
   constructor(private readonly deps: VoiceShadowDeps) {}
 
@@ -58,12 +77,18 @@ export class JarvisVoiceShadow {
     return this.link !== null;
   }
 
-  /** Ouvre l'ombre pour la conversation (sans effet en `legacy` ou si elle est déjà ouverte). */
-  async start(loop: VoiceLoop, workspaceId: string | null): Promise<void> {
+  /** F-257 / SF-257-06 — vrai tant que le lien est prêt : la boucle en flux tient la conversation. */
+  get ready(): boolean {
+    return this.readyNow;
+  }
+
+  /** Ouvre la boucle en flux pour la conversation (sans effet en `legacy` ou si elle est déjà ouverte). */
+  async start(loop: VoiceLoop, workspaceId: string | null, hooks: VoiceLoopHooks = {}): Promise<void> {
     if (loop !== 'stream' || this.link) {
       return;
     }
     const generation = ++this.generation;
+    this.hooks = hooks;
     let first: VoiceTicket;
     try {
       first = await this.deps.ticket(workspaceId);
@@ -82,18 +107,24 @@ export class JarvisVoiceShadow {
         return t;
       },
     }, {
-      onState: (state: VoiceLinkState, detail: string) => this.deps.trace(`${state} ${detail}`.trim()),
+      onState: (state: VoiceLinkState, detail: string) => {
+        this.deps.trace(`${state} ${detail}`.trim());
+        this.setReady(state === 'ready', `${state} ${detail}`.trim());
+      },
       // F-257 / SF-257-05 — le tour décidé par le service et l'état de l'écoute, au journal (jamais le texte).
       onEvent: (event) => {
         const line = serviceEventTrace(event);
         if (line) {
           this.deps.trace(line);
         }
+        if (event['type'] === 'turn') {
+          this.hooks.onTurn?.(event);
+        }
       },
     });
     this.link = link;
     try {
-      this.mic = await this.deps.openMic((pcm) => link.sendPcm(pcm));
+      this.mic = await this.deps.openMic((pcm) => link.sendPcm(this.muted() ? new Uint8Array(pcm.length) : pcm));
     } catch {
       this.deps.trace('closed micro');
       this.stop();
@@ -108,15 +139,35 @@ export class JarvisVoiceShadow {
     this.pinger = this.deps.setInterval(() => link.ping(), PING_EVERY_MS);
   }
 
-  /** Ferme l'ombre (pause, fin de conversation, sortie de l'écran). */
+  /** Ferme la boucle en flux (pause, fin de conversation, sortie de l'écran) : aucun repli annoncé. */
   stop(): void {
     this.generation++;
+    this.readyNow = false;
+    this.hooks = {};
     this.deps.clearInterval(this.pinger);
     this.pinger = null;
     this.mic?.close();
     this.mic = null;
     this.link?.close();
     this.link = null;
+  }
+
+  /** Vrai tant que Jarvis parle, et {@link LINK_ECHO_HOLD_MS} après. */
+  private muted(): boolean {
+    const now = this.deps.now?.() ?? performance.now();
+    if (this.hooks.silenced?.()) {
+      this.mutedUntil = now + LINK_ECHO_HOLD_MS;
+      return true;
+    }
+    return now < this.mutedUntil;
+  }
+
+  private setReady(ready: boolean, detail: string): void {
+    if (ready === this.readyNow) {
+      return;
+    }
+    this.readyNow = ready;
+    this.hooks.onReadyChange?.(ready, detail);
   }
 }
 
