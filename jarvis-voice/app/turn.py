@@ -27,6 +27,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Callable, Protocol
 
+import array
+import math
+
 SAMPLE_RATE = 16_000
 BYTES_PER_SECOND = SAMPLE_RATE * 2
 
@@ -44,15 +47,22 @@ MIN_SPEECH_S = _env_float("JARVIS_VOICE_MIN_SPEECH_S", 0.15)
 CEILING_S = _env_float("JARVIS_VOICE_CEILING_S", 2.0)
 #: Une phrase en suspens attend autant de plus (F-239 / SF-239-10 : `SUSPENDED_EXTRA_MS` = 1 500).
 SUSPENDED_EXTRA_S = _env_float("JARVIS_VOICE_SUSPENDED_EXTRA_S", 1.5)
-#: Silence minimal avant de confirmer : une parole qui reprend dans ce délai continue le tour. 1,2 s (et non 0,7 s
-#: comme la grâce F-251) : au premier banc en flux, « Attends. — En fait, parle-moi du WAF » et « Où en est le sujet
-#: Agenor ? — Chez CAGIP » se coupaient en deux tours. Le cerveau part dès le candidat : attendre la confirmation ne
-#: retarde la voix que si son premier mot arrive avant (≈ 1,2-1,9 s après le candidat, cadrage §4.1).
-CONFIRM_SILENCE_S = _env_float("JARVIS_VOICE_CONFIRM_SILENCE_S", 1.2)
+#: Silence minimal avant de confirmer : une parole qui reprend dans ce délai continue le même tour (le candidat est
+#: annulé, la réponse provisoire jetée, puis relancée sur la phrase entière). 0,7 s (grâce F-251) puis 1,2 s coupaient
+#: encore en deux « Attends. — En fait, parle-moi du WAF » et « Où en est le sujet Agenor ? — Chez CAGIP » (pauses de
+#: 1,3 à 1,8 s au banc). 1,8 s ne retarde pas la voix : la première phrase du cerveau, parti au candidat, arrive ≈ 2,0 s
+#: après lui (bancs SF-257-06), donc après la confirmation (F-257 / SF-257-08).
+CONFIRM_SILENCE_S = _env_float("JARVIS_VOICE_CONFIRM_SILENCE_S", 1.8)
 #: Le candidat est annoncé à l'écran avec le texte FINAL du `commit` (≈ 0,2-0,3 s) : le partiel retarde souvent du
 #: dernier mot, et une réponse provisoire lancée sur un texte incomplet était jetée (9 relances sur 22 au 2ᵉ banc en
 #: flux). Au-delà de ce délai, il part avec ce qui est là.
 CANDIDATE_TEXT_WAIT_S = _env_float("JARVIS_VOICE_CANDIDATE_TEXT_WAIT_S", 0.4)
+#: F-257 / SF-257-08 — un son au-dessus de ce niveau (RMS, PCM 16 bits ≈ -36 dBFS) que le VAD n'a pas pris pour de
+#: la parole (un « Oui. » bref et sourd) : au silence qui suit, la session d'écoute est sondée par un `commit`
+#: discret ; si elle rend un texte, c'est un tour (au 4ᵉ banc en flux, « Oui. » n'avait donné ni VAD ni partiel).
+PROBE_RMS = _env_float("JARVIS_VOICE_PROBE_RMS", 500.0)
+#: Durée minimale de ce son pour sonder (s).
+PROBE_MIN_S = _env_float("JARVIS_VOICE_PROBE_MIN_S", 0.1)
 #: Le texte final doit revenir dans ce délai après le `commit`, sinon on confirme sur ce qui est là.
 FINAL_TIMEOUT_S = _env_float("JARVIS_VOICE_FINAL_TIMEOUT_S", 1.5)
 
@@ -112,6 +122,8 @@ class TurnCounters:
     by_model: int = 0
     by_ceiling: int = 0
     noise: int = 0
+    probes: int = 0
+    by_text: int = 0
 
 
 @dataclass
@@ -152,6 +164,7 @@ class TurnDetector:
         self.phase = Phase.IDLE
         self._turn: _Turn | None = None
         self.counters = TurnCounters()
+        self._probe_s = 0.0
 
     # ---- entrées -----------------------------------------------------------------------------------------------
 
@@ -161,9 +174,22 @@ class TurnDetector:
         speech = await self._vad.speaking(pcm)
         self._model.append(pcm, speech)
         if speech:
+            self._probe_s = 0.0
             await self._on_speech(seconds)
         elif self._turn is not None:
             await self._on_silence(seconds)
+        else:
+            self._probe(pcm, seconds)
+
+    def _probe(self, pcm: bytes, seconds: float) -> None:
+        """Hors tour : un son que le VAD n'a pas retenu est-il un mot bref ? On demande à la session d'écoute."""
+        if rms(pcm) >= PROBE_RMS:
+            self._probe_s += seconds
+            return
+        if self._probe_s >= PROBE_MIN_S:
+            self.counters.probes += 1
+            self._commit()
+        self._probe_s = 0.0
 
     async def partial(self, text: str) -> None:
         """Un texte partiel : il ouvre le tour si le VAD n'a rien vu (mot bref), et sert au test « en suspens »."""
@@ -183,10 +209,17 @@ class TurnDetector:
         if turn is None:
             if not text.strip():
                 return
-            # Un mot bref que ni le VAD ni un partiel n'ont signalé : le texte final ouvre le tour (comme un partiel).
+            # Un mot bref que ni le VAD ni un partiel n'ont signalé (sonde, ou commit automatique du fournisseur) : le
+            # texte est déjà FINAL — le tour s'ouvre et part aussitôt en candidat ; la grâce de confirmation s'applique.
             await self.partial(text)
             turn = self._turn
             assert turn is not None
+            turn.text.append(text.strip())
+            turn.partial = ""
+            await self._candidate("texte", commit=False)
+            turn.final_seen = True
+            await self._announce_candidate()
+            return
         if text.strip():
             turn.text.append(text.strip())
             turn.partial = ""
@@ -250,7 +283,7 @@ class TurnDetector:
         elif self.phase is Phase.CANDIDATE:
             await self.tick()
 
-    async def _candidate(self, by: str) -> None:
+    async def _candidate(self, by: str, commit: bool = True) -> None:
         turn = self._turn
         assert turn is not None
         self.phase = Phase.CANDIDATE
@@ -261,9 +294,12 @@ class TurnDetector:
         self.counters.candidates += 1
         if by == "modele":
             self.counters.by_model += 1
+        elif by == "texte":
+            self.counters.by_text += 1
         else:
             self.counters.by_ceiling += 1
-        self._commit()
+        if commit:
+            self._commit()
 
     async def _announce_candidate(self) -> None:
         """F-257 / SF-257-06 — le candidat et son texte (finals + partiel) : l'écran lance le cerveau rapide en
@@ -309,3 +345,12 @@ class TurnDetector:
         self._turn = None
         self.phase = Phase.IDLE
         self._model.clear()
+
+
+def rms(pcm: bytes) -> float:
+    """Niveau efficace d'un bloc PCM 16 bits petit-boutiste."""
+    samples = array.array("h")
+    samples.frombytes(pcm[: len(pcm) - len(pcm) % 2])
+    if not samples:
+        return 0.0
+    return math.sqrt(sum(x * x for x in samples) / len(samples))
