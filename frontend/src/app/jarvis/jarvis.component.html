@@ -96,6 +96,12 @@
         <mat-icon aria-hidden="true">{{ humour() === 'LIGHT' ? 'sentiment_satisfied' : 'sentiment_neutral' }}</mat-icon>
         Humour : {{ humour() === 'LIGHT' ? 'léger' : 'aucun' }}
       </button>
+      <!-- F-257 / SF-257-03 — la conversation en flux (essai), par appareil (défaut : ancienne boucle). -->
+      <button mat-button type="button" class="jv__loop-toggle" [attr.aria-pressed]="voiceLoop() === 'stream'"
+              (click)="toggleVoiceLoop()">
+        <mat-icon aria-hidden="true">{{ voiceLoop() === 'stream' ? 'graphic_eq' : 'mic_none' }}</mat-icon>
+        Conversation en flux (essai) : {{ voiceLoop() === 'stream' ? 'oui' : 'non' }}
+      </button>
       <!-- F-248 / SF-248-04 (D12) — les pancartes, par appareil (défaut oui). -->
       <button mat-button type="button" class="jv__cards-toggle" [attr.aria-pressed]="cardsOn()" (click)="toggleCards()">
         <mat-icon aria-hidden="true">{{ cardsOn() ? 'style' : 'hide_source' }}</mat-icon>
@@ -270,6 +276,12 @@
               (click)="toggleHumour()">
         <mat-icon aria-hidden="true">{{ humour() === 'LIGHT' ? 'sentiment_satisfied' : 'sentiment_neutral' }}</mat-icon>
         Humour : {{ humour() === 'LIGHT' ? 'léger' : 'aucun' }}
+      </button>
+      <!-- F-257 / SF-257-03 — la conversation en flux (essai), par appareil (défaut : ancienne boucle). -->
+      <button mat-button type="button" class="jv__wake-button jv__loop-toggle" [attr.aria-pressed]="voiceLoop() === 'stream'"
+              (click)="toggleVoiceLoop()">
+        <mat-icon aria-hidden="true">{{ voiceLoop() === 'stream' ? 'graphic_eq' : 'mic_none' }}</mat-icon>
+        Conversation en flux (essai) : {{ voiceLoop() === 'stream' ? 'oui' : 'non' }}
       </button>
       <!-- F-248 / SF-248-04 (D12) — les pancartes, par appareil (défaut oui). -->
       <button mat-button type="button" class="jv__wake-button jv__cards-toggle" [attr.aria-pressed]="cardsOn()"
