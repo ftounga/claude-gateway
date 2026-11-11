@@ -15,6 +15,10 @@ public interface JarvisTurnTimingRepository extends JpaRepository<JarvisTurnTimi
 
     List<JarvisTurnTiming> findByUserIdAndCreatedAtGreaterThanEqual(UUID userId, OffsetDateTime from);
 
+    /** F-255 / SF-255-02 — les mesures d'une fenêtre, sous le compte. */
+    List<JarvisTurnTiming> findByUserIdAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(UUID userId,
+            OffsetDateTime from, OffsetDateTime to);
+
     /** Purge des lignes plus vieilles que {@code before} (tous comptes : maintenance). */
     @Modifying
     @Transactional

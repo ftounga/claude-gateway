@@ -45,4 +45,36 @@ class JarvisLatencyServiceTest {
         assertThat(JarvisLatencyService.STEPS.keySet()).containsExactly("speech", "transcript", "reaction", "sent",
                 "firstToken", "firstOralSentence", "firstAudioByte", "firstSound", "done");
     }
+
+    @Test
+    @DisplayName("F-257 / SF-257-01 — byLoop : legacy puis stream, NULL compté legacy, replis et adoption")
+    void byLoopComparesBothLoops() {
+        List<JarvisTurnTiming> rows = List.of(
+                JarvisTurnTiming.builder().voiceLoop(null).firstSoundMs(5000).streamFallback("ouverture_fermee")
+                        .speculation("perdue").build(),
+                JarvisTurnTiming.builder().voiceLoop("legacy").firstSoundMs(6000).speculation("adoptee").build(),
+                JarvisTurnTiming.builder().voiceLoop("stream").firstSoundMs(1800).build());
+        List<JarvisLatencyService.LoopMeasure> loops = JarvisLatencyService.byLoop(rows);
+        assertThat(loops).extracting(JarvisLatencyService.LoopMeasure::loop).containsExactly("legacy", "stream");
+        JarvisLatencyService.LoopMeasure legacy = loops.get(0);
+        assertThat(legacy.turns()).isEqualTo(2);
+        assertThat(legacy.streamFallbacks()).isEqualTo(1);
+        assertThat(legacy.adoptionRate()).isEqualTo(0.5);
+        assertThat(legacy.steps()).filteredOn(s -> s.step().equals("firstSound")).singleElement()
+                .satisfies(s -> assertThat(s.p50()).isEqualTo(5000));
+        JarvisLatencyService.LoopMeasure stream = loops.get(1);
+        assertThat(stream.turns()).isEqualTo(1);
+        assertThat(stream.adoptionRate()).isNull();
+        assertThat(JarvisLatencyService.byLoop(List.of())).allSatisfy(l -> assertThat(l.turns()).isZero());
+    }
+
+    @Test
+    @DisplayName("F-257 / SF-257-01 — la boucle : absente = legacy, casse ignorée, hors liste refusée")
+    void loopIsClosed() {
+        assertThat(JarvisLatencyService.loop(null)).isEqualTo("legacy");
+        assertThat(JarvisLatencyService.loop(" ")).isEqualTo("legacy");
+        assertThat(JarvisLatencyService.loop("STREAM")).isEqualTo("stream");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> JarvisLatencyService.loop("lune"))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
 }
