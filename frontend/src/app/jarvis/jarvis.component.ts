@@ -44,7 +44,8 @@ import {
 import { BargeInController, JarvisVadService, RunningVad, bargeInEnabled, encodeWav, VAD_MAX_FAILURES, vadFailureDetail } from './jarvis-barge-in';
 import { CutSnapshot } from '../core/services/jarvis-voice.service';
 import {
-  JarvisStreamOpener, LISTEN_AUDIO, LiveListening, MicKeep, StreamFallback, streamFailureOf, ticketFailureOf,
+  JarvisStreamOpener, LISTEN_AUDIO, LiveListening, MicKeep, StreamFallback, StreamHandlers, failureDetail,
+  streamFailureOf, ticketFailureOf,
 } from './jarvis-stream-listener';
 import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom, timeout } from 'rxjs';
@@ -1682,7 +1683,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const live = { ticket, listening: null as unknown as LiveListening, committed: [] as string[], lastPartial: '',
       onCommit: null as (() => void) | null };
     try {
-      live.listening = await this.streamOpener.open(ticket, {
+      const handlers: StreamHandlers = {
         onPartial: (text) => this.zone.run(() => {
           // F-239 / SF-239-10 — la parole reprend : l'attente d'une phrase en suspens est relancée par le commit suivant.
           if (text.trim()) {
@@ -1707,17 +1708,35 @@ export class JarvisComponent implements OnInit, OnDestroy {
             this.holdForGrace(live);
           }
         }),
-        onError: () => this.zone.run(() => {
+        onError: (failure) => this.zone.run(() => {
           live.onCommit?.();
-          this.trace.mark('stream_error');
+          // F-258 / SF-258-01 — la coupure est nommée (type d'erreur, code, raison) ; la réouverture a échoué ou n'avait
+          // pas de sens.
+          this.trace.mark('stream_cut', failure ? failureDetail(failure) : undefined);
           if (this.live === live && this.state() === 'ecoute') {
             this.streamFallback = 'coupe';
             void this.finishListening();
           }
         }),
-      }, preRoll, this.conversation.active ? this.micKeep : null);
+        // F-258 / SF-258-01 — une réouverture après une coupure passagère : ticket neuf, l'ancienne session est close.
+        renewTicket: async (previous, seconds) => {
+          const fresh = await firstValueFrom(this.jarvis.sttSession().pipe(timeout(STT_TICKET_TIMEOUT_MS)));
+          if (this.live !== live) {
+            // L'écoute s'est terminée entre-temps : la session neuve ne servira pas.
+            this.jarvis.closeSttSession(fresh.sessionId, 0);
+            throw new Error('ferme');
+          }
+          this.jarvis.closeSttSession(previous.sessionId, seconds);
+          live.ticket = fresh;
+          return fresh;
+        },
+        onTrace: (event, detail) => this.trace.mark(event, detail),
+      };
+      live.listening = await this.openStream(ticket, handlers, preRoll, (fresh) => {
+        live.ticket = fresh;
+      });
     } catch (error) {
-      this.jarvis.closeSttSession(ticket.sessionId, 0);
+      this.jarvis.closeSttSession(live.ticket.sessionId, 0);
       this.streamFallback = streamFailureOf(error);
       return false;
     }
@@ -1728,6 +1747,42 @@ export class JarvisComponent implements OnInit, OnDestroy {
       this.trace.mark('preroll', `ms=${this.listenRingMs}`);
     }
     return true;
+  }
+
+  /**
+   * F-258 / SF-258-01 — ouvre la session ; si le fournisseur la **ferme avant de l'accepter** (`ouverture_fermee`),
+   * une seule nouvelle tentative avec un ticket neuf (le son attend dans le tampon du micro gardé) avant le repli.
+   * `onRenewed` reçoit le ticket neuf (c'est lui qu'il faudra clore).
+   */
+  private async openStream(ticket: JarvisSttTicket, handlers: StreamHandlers,
+                           preRoll: (() => Float32Array) | null,
+                           onRenewed: (ticket: JarvisSttTicket) => void): Promise<LiveListening> {
+    const keep = this.conversation.active ? this.micKeep : null;
+    try {
+      return await this.streamOpener.open(ticket, handlers, preRoll, keep);
+    } catch (error) {
+      if (streamFailureOf(error) !== 'ouverture_fermee') {
+        throw error;
+      }
+      const startedAt = performance.now();
+      let fresh: JarvisSttTicket;
+      try {
+        fresh = await firstValueFrom(this.jarvis.sttSession().pipe(timeout(STT_TICKET_TIMEOUT_MS)));
+      } catch {
+        this.trace.mark('stream_reopen', 'at_open fail ticket');
+        throw error;
+      }
+      this.jarvis.closeSttSession(ticket.sessionId, 0);
+      onRenewed(fresh);
+      try {
+        const listening = await this.streamOpener.open(fresh, handlers, preRoll, keep);
+        this.trace.mark('stream_reopen', `at_open ok ms=${Math.round(performance.now() - startedAt)}`);
+        return listening;
+      } catch (again) {
+        this.trace.mark('stream_reopen', `at_open fail ${streamFailureOf(again)}`);
+        throw again;
+      }
+    }
   }
 
   // ---- F-251 / SF-251-02 : le micro reste ouvert ----

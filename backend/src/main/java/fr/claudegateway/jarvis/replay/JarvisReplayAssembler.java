@@ -310,7 +310,8 @@ public final class JarvisReplayAssembler {
                 case "speech_rejected" -> rejected = detail.isBlank() ? "empty" : detail.split(" ")[0];
                 case "brain_done" -> said = intOf(SAID, detail);
                 case "stream_fallback" -> fallbacks.add(detail.isBlank() ? "autre" : detail);
-                case "stream_error" -> streamError = true;
+                // F-258 / SF-258-01 — la coupure nommée (`stream_cut`) compte aussi.
+                case "stream_error", "stream_cut" -> streamError = true;
                 case "show" -> shows.add(new Show(detail.split(" ")[0], false, null));
                 case "show_refused" -> {
                     String[] parts = detail.split(" ", 2);

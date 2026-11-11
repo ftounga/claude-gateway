@@ -2007,6 +2007,111 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       expect(jarvisApi.timings.calls.mostRecent().args[0].ttsProvider).toBe('openai');
     }));
 
+  describe('F-258 / SF-258-01 — Jarvis n’est plus raccroché', () => {
+    const ticketOf = (id: string) => ({
+      sessionId: id, provider: 'elevenlabs', url: 'wss://x/realtime?model_id=m', token: `t-${id}`,
+      expiresAt: '2030-01-01T00:00:00Z', sampleRate: 16000, maxSeconds: 120,
+    });
+
+    it('coupure en cours d’écoute : ticket neuf, ancienne session close avec sa durée, la neuve close à la fin',
+      fakeAsync(() => {
+        jarvisApi.sttSession.and.returnValues(of(ticketOf('s-1')), of(ticketOf('s-2')));
+        let stt: StreamHandlers | null = null;
+        const listening = jasmine.createSpyObj('LiveListening', ['commit', 'close'], { stream: undefined });
+        listening.close.and.returnValue(3);
+        opener.open.and.callFake((_t, h) => {
+          stt = h;
+          return Promise.resolve(listening);
+        });
+        const fixture = TestBed.createComponent(JarvisComponent);
+        fixture.detectChanges();
+        const jarvis = fixture.componentInstance;
+        void jarvis.talk();
+        flushMicrotasks();
+
+        let renewed: { sessionId: string } | null = null;
+        void stt!.renewTicket!(ticketOf('s-1'), 5).then((t) => renewed = t);
+        flushMicrotasks();
+        expect(renewed!.sessionId).toBe('s-2');
+        expect(jarvisApi.closeSttSession).toHaveBeenCalledWith('s-1', 5);
+        expect(jarvis.state()).toBe('ecoute');
+
+        stt!.onCommitted('Où en est la migration ?');
+        flushMicrotasks();
+        expect(jarvisApi.closeSttSession).toHaveBeenCalledWith('s-2', 3);
+      }));
+
+    it('écoute terminée pendant la demande de ticket : la session neuve est rendue, rien ne se rouvre',
+      fakeAsync(() => {
+        const second = new Subject<ReturnType<typeof ticketOf>>();
+        jarvisApi.sttSession.and.returnValues(of(ticketOf('s-1')), second.asObservable());
+        let stt: StreamHandlers | null = null;
+        const listening = jasmine.createSpyObj('LiveListening', ['commit', 'close'], { stream: undefined });
+        listening.close.and.returnValue(2);
+        opener.open.and.callFake((_t, h) => {
+          stt = h;
+          return Promise.resolve(listening);
+        });
+        const fixture = TestBed.createComponent(JarvisComponent);
+        fixture.detectChanges();
+        const jarvis = fixture.componentInstance;
+        void jarvis.talk();
+        flushMicrotasks();
+
+        let failed = false;
+        void stt!.renewTicket!(ticketOf('s-1'), 1).catch(() => failed = true);
+        stt!.onCommitted('Bonjour');
+        flushMicrotasks();
+        expect(jarvisApi.closeSttSession).toHaveBeenCalledWith('s-1', 2);
+        second.next(ticketOf('s-2'));
+        second.complete();
+        flushMicrotasks();
+        expect(failed).toBeTrue();
+        expect(jarvisApi.closeSttSession).toHaveBeenCalledWith('s-2', 0);
+        expect(jarvisApi.closeSttSession).not.toHaveBeenCalledWith('s-1', 1);
+        discardPeriodicTasks();
+      }));
+
+    it('session fermée avant d’être acceptée : une seconde tentative avec un ticket neuf, pas de repli',
+      fakeAsync(() => {
+        jarvisApi.sttSession.and.returnValues(of(ticketOf('s-1')), of(ticketOf('s-2')));
+        const listening = jasmine.createSpyObj('LiveListening', ['commit', 'close'], { stream: undefined });
+        listening.close.and.returnValue(1);
+        let stt: StreamHandlers | null = null;
+        opener.open.and.callFake((_t, h) => {
+          stt = h;
+          return opener.open.calls.count() === 1 ? Promise.reject(new Error('ferme')) : Promise.resolve(listening);
+        });
+        const fixture = TestBed.createComponent(JarvisComponent);
+        fixture.detectChanges();
+        const jarvis = fixture.componentInstance;
+        void jarvis.talk();
+        flushMicrotasks();
+        expect(opener.open).toHaveBeenCalledTimes(2);
+        expect(opener.open.calls.mostRecent().args[0].sessionId).toBe('s-2');
+        expect(jarvisApi.closeSttSession).toHaveBeenCalledWith('s-1', 0);
+        expect(dictation.start).not.toHaveBeenCalled();
+        expect(jarvis.state()).toBe('ecoute');
+        stt!.onCommitted('Bonjour');
+        flushMicrotasks();
+        expect(jarvisApi.closeSttSession).toHaveBeenCalledWith('s-2', 1);
+      }));
+
+    it('fermée deux fois à l’ouverture : repli sur la dictée (une seule nouvelle tentative)', fakeAsync(() => {
+      jarvisApi.sttSession.and.returnValues(of(ticketOf('s-1')), of(ticketOf('s-2')));
+      opener.open.and.callFake(() => Promise.reject(new Error('ferme')));
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      const jarvis = fixture.componentInstance;
+      void jarvis.talk();
+      flushMicrotasks();
+      expect(opener.open).toHaveBeenCalledTimes(2);
+      expect(jarvisApi.closeSttSession).toHaveBeenCalledWith('s-2', 0);
+      expect(dictation.start).toHaveBeenCalled();
+      discardPeriodicTasks();
+    }));
+  });
+
   /** Une écoute en flux dont l'énoncé est gardé (WAV de 2 s). */
   function streamWithAudio(): { stt: () => StreamHandlers } {
     jarvisApi.sttSession.and.returnValue(of({
