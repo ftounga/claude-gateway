@@ -48,6 +48,8 @@ export class TurnClock {
   /** F-255 / SF-255-01 — le tour vocal et la page de l'écran (identifiants aléatoires), pour le rejeu de séance. */
   turnId: string | null = null;
   pageId: string | null = null;
+  /** F-257 / SF-257-01 — la boucle vocale du tour : `legacy` (cet écran) tant que le flux permanent n'a pas servi. */
+  loop: NonNullable<TurnTimingReport['loop']> = 'legacy';
   private reported = false;
 
   /**
@@ -142,6 +144,7 @@ export class TurnClock {
       ...this.speed,
       ...(this.turnId ? { turnId: this.turnId } : {}),
       ...(this.pageId ? { pageId: this.pageId } : {}),
+      loop: this.loop,
     };
   }
 }

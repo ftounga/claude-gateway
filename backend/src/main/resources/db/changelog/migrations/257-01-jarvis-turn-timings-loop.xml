@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-257 / SF-257-01 - MESURER LES DEUX BOUCLES PAREIL.
+
+      jarvis_turn_timings + voice_loop : la boucle vocale du tour (legacy = boucle de l'ecran, stream = flux permanent
+      vers jarvis-voice). Aucun contenu. Colonne additive, NULL pour les lignes existantes (lues legacy).
+      Purge 90 j existante inchangee.
+
+      Rollback : la colonne se retire.
+    -->
+
+    <changeSet id="257-01-jarvis-turn-timings-loop" author="claude-gateway">
+        <addColumn tableName="jarvis_turn_timings">
+            <column name="voice_loop" type="varchar(8)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="jarvis_turn_timings" columnName="voice_loop"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

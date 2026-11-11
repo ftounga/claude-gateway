@@ -28,6 +28,14 @@ describe('TurnClock (F-233 / SF-233-01)', () => {
     expect(report.listenMode).toBe('BATCH');
   });
 
+  it('F-257 / SF-257-01 — la mesure porte la boucle : legacy par défaut, stream si posée', () => {
+    const legacy = new TurnClock(0, null, () => 0);
+    expect(legacy.takeReport()!.loop).toBe('legacy');
+    const stream = new TurnClock(0, null, () => 0);
+    stream.loop = 'stream';
+    expect(stream.takeReport()!.loop).toBe('stream');
+  });
+
   it('F-247 / SF-247-01 — recopie la mesure d’état de la réplique (poste éteint, question, issue)', () => {
     const clock = new TurnClock(0, null, () => 0);
     clock.fast = { brain: 'FAST', hostOffline: true, stateQuestion: true, stateAnswer: 'UNKNOWN', stateBlockMs: 2 };

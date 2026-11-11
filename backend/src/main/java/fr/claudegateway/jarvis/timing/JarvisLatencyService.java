@@ -157,6 +157,8 @@ public class JarvisLatencyService {
                 // F-255 / SF-255-01 — le tour et la page, écartés s'ils n'ont pas la forme d'un identifiant.
                 .turnId(fr.claudegateway.jarvis.trace.JarvisTurnIds.clean(report.turnId()))
                 .pageId(fr.claudegateway.jarvis.trace.JarvisTurnIds.clean(report.pageId()))
+                // F-257 / SF-257-01 — la boucle vocale du tour (liste fermée), legacy si absente.
+                .voiceLoop(loop(report.loop()))
                 .build());
     }
 
@@ -176,7 +178,40 @@ public class JarvisLatencyService {
                 rows.stream().mapToLong(JarvisTurnTiming::getAcknowledgements).sum(),
                 rows.stream().mapToLong(JarvisTurnTiming::getFalseTriggers).sum());
         return new Latency(window, rows.size(), rows.stream().filter(JarvisTurnTiming::isToolTurn).count(), steps,
-                interruptions, byMode, spoken(rows), oralLines(userId, window), allusions(rows));
+                interruptions, byMode, spoken(rows), oralLines(userId, window), allusions(rows), byLoop(rows));
+    }
+
+    /** F-257 / SF-257-01 — les boucles vocales, dans l'ordre de comparaison. */
+    public static final List<String> LOOPS = List.of("legacy", "stream");
+
+    /** F-257 / SF-257-01 — la boucle d'un tour : absente = {@code legacy} ; hors liste = refus. */
+    static String loop(String value) {
+        String closed = closed(value, LOOPS);
+        return closed == null ? "legacy" : closed;
+    }
+
+    /**
+     * F-257 / SF-257-01 — les deux boucles côte à côte : tours, p50/p90 par étape, replis hors flux, adoption de la
+     * réponse provisoire. Une ligne d'avant la colonne ({@code voice_loop} NULL) compte en {@code legacy}.
+     */
+    static List<LoopMeasure> byLoop(List<JarvisTurnTiming> rows) {
+        List<LoopMeasure> loops = new ArrayList<>();
+        for (String loop : LOOPS) {
+            List<JarvisTurnTiming> mine = rows.stream()
+                    .filter(r -> loop.equals(r.getVoiceLoop() == null ? "legacy" : r.getVoiceLoop())).toList();
+            List<Step> steps = new ArrayList<>();
+            STEPS.forEach((name, read) -> steps.add(step(name, mine.stream().map(read).toList())));
+            long fallbacks = mine.stream().filter(r -> r.getStreamFallback() != null).count();
+            long speculated = mine.stream().filter(r -> r.getSpeculation() != null).count();
+            long adopted = mine.stream().filter(r -> "adoptee".equals(r.getSpeculation())).count();
+            loops.add(new LoopMeasure(loop, mine.size(), steps, fallbacks,
+                    speculated == 0 ? null : Math.round(adopted * 1000.0 / speculated) / 1000.0));
+        }
+        return loops;
+    }
+
+    /** F-257 / SF-257-01 — une boucle : tours, étapes, replis hors flux, taux d'adoption ({@code null} sans essai). */
+    public record LoopMeasure(String loop, int turns, List<Step> steps, long streamFallbacks, Double adoptionRate) {
     }
 
     /** F-240 / SF-240-01 — ce qui a été dit sur les tours de la fenêtre (sans contenu). */
@@ -365,7 +400,9 @@ public class JarvisLatencyService {
             // F-253 / SF-253-06 — facultatif : la cause d'un tour vide (arrêt, outils, motifs de rejet).
             String emptyDiagnostic,
             // F-255 / SF-255-01 — facultatifs : le tour et la page de l'écran (identifiants aléatoires).
-            String turnId, String pageId) {
+            String turnId, String pageId,
+            // F-257 / SF-257-01 — facultatif : la boucle vocale (legacy, stream), legacy si absente.
+            String loop) {
     }
 
     /** F-253 / SF-253-06 — vocabulaire du diagnostic, borné : tout autre caractère retire la valeur. */
@@ -402,7 +439,8 @@ public class JarvisLatencyService {
 
     /** La mesure rendue à l'administrateur. */
     public record Latency(int days, int turns, long toolTurns, List<Step> steps, Interruptions interruptions,
-            Map<String, Long> byListenMode, Spoken spoken, Spoken.OralLines oralLines, Allusions allusions) {
+            Map<String, Long> byListenMode, Spoken spoken, Spoken.OralLines oralLines, Allusions allusions,
+            List<LoopMeasure> byLoop) {
     }
 
     /** F-241 / SF-241-04 — le taux d'allusion spontanée, sur les tours où le portrait servait. */
