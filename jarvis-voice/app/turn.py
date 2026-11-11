@@ -181,7 +181,12 @@ class TurnDetector:
         """Un texte final (après `commit`, ou le commit automatique du fournisseur)."""
         turn = self._turn
         if turn is None:
-            return
+            if not text.strip():
+                return
+            # Un mot bref que ni le VAD ni un partiel n'ont signalé : le texte final ouvre le tour (comme un partiel).
+            await self.partial(text)
+            turn = self._turn
+            assert turn is not None
         if text.strip():
             turn.text.append(text.strip())
             turn.partial = ""
@@ -285,7 +290,9 @@ class TurnDetector:
         if turn.silence_s < CONFIRM_SILENCE_S and not timed_out:
             return
         await self._announce_candidate()
-        text = " ".join(turn.text).strip()
+        # Sans texte final (le fournisseur a déjà tout validé, ou tarde) : la dernière hypothèse partielle tient lieu
+        # de texte — au 3ᵉ banc en flux, « Oui. » était rejeté vide alors que le partiel le portait.
+        text = " ".join([*turn.text, turn.partial if not turn.final_seen else ""]).strip()
         via = "final" if turn.final_seen else "delai"
         if text:
             self.counters.confirmed += 1

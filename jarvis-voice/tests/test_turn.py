@@ -167,10 +167,29 @@ async def test_empty_turn_is_rejected_and_late_final_times_out():
 
     await feed(0.5, True)
     await feed(0.1, False)
-    await det.partial("ignoré")  # partiel seul : jamais confirmé comme texte
     t["now"] += FINAL_TIMEOUT_S
     await det.tick()
     assert events.log[-1][0] == "rejected" and events.log[-1][1]["via"] == "delai"
+
+
+@pytest.mark.asyncio
+async def test_a_partial_alone_is_confirmed_when_the_final_never_comes():
+    det, vad, model, events, commits, feed, t = harness(complete=False)
+    await det.partial("Oui.")
+    await feed(CEILING_S + 0.6, False)
+    t["now"] += FINAL_TIMEOUT_S
+    await det.tick()
+    assert events.log[-1][0] == "confirmed" and events.log[-1][1]["text"] == "Oui."
+    assert events.log[-1][1]["via"] == "delai"
+
+
+@pytest.mark.asyncio
+async def test_a_final_without_any_turn_opens_one():
+    det, vad, model, events, commits, feed, t = harness(complete=False)
+    await det.final("Oui.")
+    assert events.log[0] == ("speech", {"via": "texte"})
+    await feed(CEILING_S + 0.6, False)
+    assert events.states()[-1] == "candidate" and events.log[-1][1]["text"] == "Oui."
 
 
 def test_is_suspended_matches_the_screen_rule():
