@@ -217,8 +217,8 @@ def test_the_server_decides_the_turn_and_confirms_it_with_the_final_text():
         assert ws.receive_json()["type"] == "ready"
         for _ in range(10):
             ws.send_bytes(b"\x01\x00" * 1600)  # 1 s de parole
-        for _ in range(8):
-            ws.send_bytes(b"\x00\x00" * 1600)  # 0,8 s de silence
+        for _ in range(13):
+            ws.send_bytes(b"\x00\x00" * 1600)  # 1,3 s de silence (grâce de 1,2 s)
         seen = []
         while not seen or seen[-1]["state"] != "confirmed":
             event = ws.receive_json()
@@ -226,6 +226,7 @@ def test_the_server_decides_the_turn_and_confirms_it_with_the_final_text():
                 seen.append(event)
         assert [e["state"] for e in seen] == ["speech", "candidate", "confirmed"]
         assert seen[1]["by"] == "modele" and seen[2]["text"] == "Montre-moi les clients."
+        assert seen[2]["via"] == "final"
         assert CommittingStt.instances[0].commits == 1
 
 

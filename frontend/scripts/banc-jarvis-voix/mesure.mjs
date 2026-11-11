@@ -202,7 +202,8 @@ const ms = (v) => (v === null || v === undefined ? '—' : `${(v / 1000).toFixed
 export function summary(report) {
   const t = report.totals;
   const lines = [
-    `BANC À VRAIE VOIX — ${report.meta?.at ?? ''} ${report.meta?.commit ? `(${report.meta.commit})` : ''}`.trim(),
+    `BANC À VRAIE VOIX — ${report.meta?.at ?? ''} ${report.meta?.commit ? `(${report.meta.commit})` : ''}`.trim()
+      + (report.meta?.loop ? ` — boucle ${report.meta.loop}` : '') + (report.meta?.voice ? `, voix ${report.meta.voice}` : ''),
     `Porte : ${report.gate?.pass ? 'FRANCHIE' : 'NON FRANCHIE'}${report.gate?.failures?.length ? ` — ${report.gate.failures.join(' ; ')}` : ''}`,
     '',
     `Phrases entendues     : ${t.heard}/${t.phrases} (${t.heardRate ?? '—'} %)${t.lost.length ? ` — perdues : ${t.lost.join(', ')}` : ''}`,

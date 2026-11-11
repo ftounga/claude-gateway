@@ -11,6 +11,8 @@ mkdir -p ~/.local/share/claude-gateway/banc-jarvis-voix-deps && cd $_ && npm ini
 # le banc (Node 22 et Java 21 dans le PATH, kubectl sur le cluster en lecture)
 frontend/scripts/banc-jarvis-voix/lancer.sh --build                      # construit jar + page, puis joue tout
 frontend/scripts/banc-jarvis-voix/lancer.sh --scenarios conversation,ecran  # quelques scénarios
+frontend/scripts/banc-jarvis-voix/lancer.sh --boucle stream               # F-257 : la conversation en flux (jarvis-voice local)
+frontend/scripts/banc-jarvis-voix/lancer.sh --voix openai                 # voix OpenAI (défaut : ElevenLabs, comme en prod)
 node frontend/scripts/banc-jarvis-voix/chrono.mjs <rapport.json> [scénario]  # comprendre un tour
 node --test frontend/scripts/banc-jarvis-voix/mesure.test.mjs                # tests de la mesure
 ```

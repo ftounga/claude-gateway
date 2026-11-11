@@ -44,8 +44,15 @@ MIN_SPEECH_S = _env_float("JARVIS_VOICE_MIN_SPEECH_S", 0.15)
 CEILING_S = _env_float("JARVIS_VOICE_CEILING_S", 2.0)
 #: Une phrase en suspens attend autant de plus (F-239 / SF-239-10 : `SUSPENDED_EXTRA_MS` = 1 500).
 SUSPENDED_EXTRA_S = _env_float("JARVIS_VOICE_SUSPENDED_EXTRA_S", 1.5)
-#: Silence minimal avant de confirmer (la grâce F-251 : une parole qui reprend dans ce délai continue le tour).
-CONFIRM_SILENCE_S = _env_float("JARVIS_VOICE_CONFIRM_SILENCE_S", 0.7)
+#: Silence minimal avant de confirmer : une parole qui reprend dans ce délai continue le tour. 1,2 s (et non 0,7 s
+#: comme la grâce F-251) : au premier banc en flux, « Attends. — En fait, parle-moi du WAF » et « Où en est le sujet
+#: Agenor ? — Chez CAGIP » se coupaient en deux tours. Le cerveau part dès le candidat : attendre la confirmation ne
+#: retarde la voix que si son premier mot arrive avant (≈ 1,2-1,9 s après le candidat, cadrage §4.1).
+CONFIRM_SILENCE_S = _env_float("JARVIS_VOICE_CONFIRM_SILENCE_S", 1.2)
+#: Le candidat est annoncé à l'écran avec le texte FINAL du `commit` (≈ 0,2-0,3 s) : le partiel retarde souvent du
+#: dernier mot, et une réponse provisoire lancée sur un texte incomplet était jetée (9 relances sur 22 au 2ᵉ banc en
+#: flux). Au-delà de ce délai, il part avec ce qui est là.
+CANDIDATE_TEXT_WAIT_S = _env_float("JARVIS_VOICE_CANDIDATE_TEXT_WAIT_S", 0.4)
 #: Le texte final doit revenir dans ce délai après le `commit`, sinon on confirme sur ce qui est là.
 FINAL_TIMEOUT_S = _env_float("JARVIS_VOICE_FINAL_TIMEOUT_S", 1.5)
 
@@ -118,6 +125,15 @@ class _Turn:
     decided_by: str = ""
     probability: float | None = None
     announced: bool = False
+    started_at: float | None = None
+    last_speech_at: float | None = None
+    candidate_announced: bool = False
+
+    def duration_ms(self) -> int:
+        """Du premier au dernier instant de parole, pauses comprises (le débit de la porte de parole s'y mesure)."""
+        if self.started_at is None or self.last_speech_at is None:
+            return round(self.speech_s * 1000)
+        return max(round(self.speech_s * 1000), round((self.last_speech_at - self.started_at) * 1000))
 
     def last_words(self) -> str:
         return self.partial or (self.text[-1] if self.text else "")
@@ -165,16 +181,26 @@ class TurnDetector:
         """Un texte final (après `commit`, ou le commit automatique du fournisseur)."""
         turn = self._turn
         if turn is None:
-            return
+            if not text.strip():
+                return
+            # Un mot bref que ni le VAD ni un partiel n'ont signalé : le texte final ouvre le tour (comme un partiel).
+            await self.partial(text)
+            turn = self._turn
+            assert turn is not None
         if text.strip():
             turn.text.append(text.strip())
             turn.partial = ""
         if self.phase is Phase.CANDIDATE:
             turn.final_seen = True
+            await self._announce_candidate()
             await self._maybe_confirm()
 
     async def tick(self) -> None:
-        """Le temps passe : délai d'attente du texte final (appelé régulièrement par la conversation)."""
+        """Le temps passe : délais du texte du candidat et du texte final (appelé régulièrement)."""
+        turn = self._turn
+        if self.phase is Phase.CANDIDATE and turn is not None and turn.candidate_at is not None \
+                and self._clock() - turn.candidate_at >= CANDIDATE_TEXT_WAIT_S:
+            await self._announce_candidate()
         await self._maybe_confirm()
 
     # ---- interne -----------------------------------------------------------------------------------------------
@@ -184,6 +210,10 @@ class TurnDetector:
             self._turn = _Turn()
             self.counters.turns += 1
         turn = self._turn
+        now = self._clock()
+        if turn.started_at is None:
+            turn.started_at = now - seconds
+        turn.last_speech_at = now
         turn.speech_s += seconds
         turn.silence_s = 0.0
         if self.phase is Phase.CANDIDATE:
@@ -218,7 +248,7 @@ class TurnDetector:
             if turn.silence_s >= ceiling:
                 await self._candidate("plafond")
         elif self.phase is Phase.CANDIDATE:
-            await self._maybe_confirm()
+            await self.tick()
 
     async def _candidate(self, by: str) -> None:
         turn = self._turn
@@ -226,6 +256,7 @@ class TurnDetector:
         self.phase = Phase.CANDIDATE
         turn.candidate_at = self._clock()
         turn.final_seen = False
+        turn.candidate_announced = False
         turn.decided_by = by
         self.counters.candidates += 1
         if by == "modele":
@@ -233,8 +264,19 @@ class TurnDetector:
         else:
             self.counters.by_ceiling += 1
         self._commit()
-        await self._events.turn("candidate", by=by, silenceMs=round(turn.silence_s * 1000),
+
+    async def _announce_candidate(self) -> None:
+        """F-257 / SF-257-06 — le candidat et son texte (finals + partiel) : l'écran lance le cerveau rapide en
+        provisoire dessus (F-252), adopté seulement si le texte confirmé est le même. Une fois par candidat ; jamais
+        journalisé."""
+        turn = self._turn
+        if turn is None or turn.candidate_announced or turn.candidate_at is None:
+            return
+        turn.candidate_announced = True
+        heard = " ".join([*turn.text, turn.partial]).strip()
+        await self._events.turn("candidate", text=heard, by=turn.decided_by, silenceMs=round(turn.silence_s * 1000),
                                 speechMs=round(turn.speech_s * 1000),
+                                waitMs=round((self._clock() - turn.candidate_at) * 1000),
                                 probability=None if turn.probability is None else round(turn.probability, 3))
 
     async def _maybe_confirm(self) -> None:
@@ -247,13 +289,16 @@ class TurnDetector:
             return
         if turn.silence_s < CONFIRM_SILENCE_S and not timed_out:
             return
-        text = " ".join(turn.text).strip()
+        await self._announce_candidate()
+        # Sans texte final (le fournisseur a déjà tout validé, ou tarde) : la dernière hypothèse partielle tient lieu
+        # de texte — au 3ᵉ banc en flux, « Oui. » était rejeté vide alors que le partiel le portait.
+        text = " ".join([*turn.text, turn.partial if not turn.final_seen else ""]).strip()
         via = "final" if turn.final_seen else "delai"
         if text:
             self.counters.confirmed += 1
             await self._events.turn("confirmed", text=text, by=turn.decided_by, via=via,
                                     finalMs=round(waited * 1000), silenceMs=round(turn.silence_s * 1000),
-                                    speechMs=round(turn.speech_s * 1000))
+                                    speechMs=round(turn.speech_s * 1000), durationMs=turn.duration_ms())
         else:
             self.counters.rejected += 1
             await self._events.turn("rejected", reason="empty", by=turn.decided_by, via=via,
