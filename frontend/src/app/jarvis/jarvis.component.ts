@@ -924,8 +924,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
   private onStreamReady(ready: boolean, detail: string): void {
     if (ready) {
       this.trace.mark('voice_link', 'takeover');
-      // Une ancienne écoute ouverte avant que le lien soit prêt cède la place.
-      if (this.state() === 'ecoute' && !this.streamListening && !this.bargeIn.capturing) {
+      // Une ancienne écoute ouverte avant que le lien soit prêt cède la place — sauf si quelqu'un y parle déjà : la
+      // phrase en cours finit dans l'ancienne boucle, l'écoute suivante sera tenue par le service.
+      if (this.state() === 'ecoute' && !this.streamListening && !this.bargeIn.capturing && !this.heardText()
+          && (this.voicedMs ?? 0) < MIN_VOICED_MS) {
         this.cancelListening();
         void this.listen();
       }
@@ -1005,7 +1007,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
         this.dropSpeculation();
         return;
       case 'confirmed':
-        await this.acceptStreamTurn(text, speechMs, typeof event['silenceMs'] === 'number' ? event['silenceMs'] : 0);
+        await this.acceptStreamTurn(text, speechMs, typeof event['silenceMs'] === 'number' ? event['silenceMs'] : 0,
+          typeof event['durationMs'] === 'number' ? event['durationMs'] : null);
         return;
       default:
         return;
@@ -1013,12 +1016,14 @@ export class JarvisComponent implements OnInit, OnDestroy {
   }
 
   /** Le tour confirmé par le service : même mesure, même porte et même suite que l'ancienne boucle. */
-  private async acceptStreamTurn(text: string, speechMs: number | null, silenceMs: number): Promise<void> {
+  private async acceptStreamTurn(text: string, speechMs: number | null, silenceMs: number,
+                                 durationMs: number | null): Promise<void> {
     this.leaveStreamListening();
     this.state.set('reflexion');
     const now = performance.now();
-    // t0 = la fin de parole : le service confirme après `silenceMs` de silence.
-    const clock = new TurnClock(now - silenceMs, speechMs);
+    // t0 = la fin de parole : le service confirme après `silenceMs` de silence. La durée de la parole (pauses
+    // comprises) est celle de l'ancienne boucle : la porte de parole y mesure le débit ; le temps de voix est celui du VAD.
+    const clock = new TurnClock(now - silenceMs, durationMs ?? speechMs);
     this.tagTurn(clock);
     clock.loop = 'stream';
     clock.workspaceId = this.subjectId();
@@ -5012,7 +5017,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
       this.openingSince = 0;
     }
     const state = this.state();
-    const capturing = !!this.live || this.dictation.recording || this.bargeIn.capturing || this.listenOpening;
+    // F-257 / SF-257-06 — une écoute tenue par le service vocal n'est pas orpheline (aucun micro de l'écran).
+    const capturing = !!this.live || this.dictation.recording || this.bargeIn.capturing || this.listenOpening
+      || this.streamListening;
     if (state === 'ecoute' && !capturing) {
       if (++this.orphanPasses >= 2) {
         this.orphanPasses = 0;

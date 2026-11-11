@@ -77,6 +77,7 @@ async def test_finished_sentence_candidate_then_confirmed_after_grace():
     await feed(CONFIRM_SILENCE_S, False)
     assert events.states()[-1] == "confirmed"
     assert events.log[-1][1]["text"] == "Bonjour Jarvis." and events.log[-1][1]["via"] == "final"
+    assert events.log[-1][1]["durationMs"] >= 1400
     assert det.phase is Phase.IDLE and model.cleared == 1
     assert det.counters.confirmed == 1 and det.counters.by_model == 1
 

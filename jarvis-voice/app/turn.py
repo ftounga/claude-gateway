@@ -118,6 +118,14 @@ class _Turn:
     decided_by: str = ""
     probability: float | None = None
     announced: bool = False
+    started_at: float | None = None
+    last_speech_at: float | None = None
+
+    def duration_ms(self) -> int:
+        """Du premier au dernier instant de parole, pauses comprises (le débit de la porte de parole s'y mesure)."""
+        if self.started_at is None or self.last_speech_at is None:
+            return round(self.speech_s * 1000)
+        return max(round(self.speech_s * 1000), round((self.last_speech_at - self.started_at) * 1000))
 
     def last_words(self) -> str:
         return self.partial or (self.text[-1] if self.text else "")
@@ -184,6 +192,10 @@ class TurnDetector:
             self._turn = _Turn()
             self.counters.turns += 1
         turn = self._turn
+        now = self._clock()
+        if turn.started_at is None:
+            turn.started_at = now - seconds
+        turn.last_speech_at = now
         turn.speech_s += seconds
         turn.silence_s = 0.0
         if self.phase is Phase.CANDIDATE:
@@ -256,7 +268,7 @@ class TurnDetector:
             self.counters.confirmed += 1
             await self._events.turn("confirmed", text=text, by=turn.decided_by, via=via,
                                     finalMs=round(waited * 1000), silenceMs=round(turn.silence_s * 1000),
-                                    speechMs=round(turn.speech_s * 1000))
+                                    speechMs=round(turn.speech_s * 1000), durationMs=turn.duration_ms())
         else:
             self.counters.rejected += 1
             await self._events.turn("rejected", reason="empty", by=turn.decided_by, via=via,

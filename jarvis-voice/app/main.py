@@ -150,14 +150,17 @@ def create_app(gateway: GatewayClient | None = None, max_sessions: int | None = 
         downlink = _Downlink(ws)
         fanout = _SttFanout(downlink)
         stt = stt_factory(gateway, ticket, fanout) if stt_factory else None
-        detector = turn_factory(stt.commit if stt else (lambda: None), downlink) if turn_factory else None
-        fanout.detector = detector
+        detector = None
         ticker = None
         try:
             await downlink.send({"type": "ready", "sessionId": session.session_id, "serverTs": server_ts()})
             if stt:
                 stt.start()
-            if detector:
+            if turn_factory:
+                # Les modèles (≈ 0,7 s de chargement) ne retardent ni `ready` ni l'ouverture de l'écoute ; l'audio qui
+                # arrive entre-temps part déjà à la session d'écoute.
+                detector = await asyncio.to_thread(turn_factory, stt.commit if stt else (lambda: None), downlink)
+                fanout.detector = detector
                 ticker = asyncio.create_task(_tick(detector))
             while True:
                 message = await ws.receive()
