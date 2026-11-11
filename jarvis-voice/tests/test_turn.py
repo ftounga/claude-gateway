@@ -188,8 +188,9 @@ async def test_a_final_without_any_turn_opens_one():
     det, vad, model, events, commits, feed, t = harness(complete=False)
     await det.final("Oui.")
     assert events.log[0] == ("speech", {"via": "texte"})
-    await feed(CEILING_S + 0.6, False)
-    assert events.states()[-1] == "candidate" and events.log[-1][1]["text"] == "Oui."
+    assert events.log[1][0] == "candidate" and events.log[1][1]["text"] == "Oui." and events.log[1][1]["by"] == "texte"
+    await feed(CONFIRM_SILENCE_S + 0.1, False)
+    assert events.log[-1][0] == "confirmed" and events.log[-1][1]["text"] == "Oui."
 
 
 def test_is_suspended_matches_the_screen_rule():
@@ -200,3 +201,28 @@ def test_is_suspended_matches_the_screen_rule():
     assert not is_suspended("Montre-moi les clients")
     assert not is_suspended("")
     assert is_suspended("Parle-moi de l'")
+
+
+@pytest.mark.asyncio
+async def test_a_quiet_short_word_is_probed_and_becomes_a_turn():
+    """F-257 / SF-257-08 — « Oui. » bref et sourd : ni VAD ni partiel ; la sonde le fait transcrire, c'est un tour."""
+    det, vad, model, events, commits, feed, t = harness(complete=False)
+    loud = (b"\x00\x10" * 1600)  # ≈ 4 096 de RMS, mais le VAD dit « pas de parole »
+    vad.speech = False
+    await det.audio(loud)
+    await det.audio(loud)
+    assert commits == []
+    await feed(0.1, False)
+    assert len(commits) == 1 and det.counters.probes == 1
+    await det.final("Oui.")
+    assert events.states() == ["speech", "candidate"] and events.log[1][1]["by"] == "texte"
+    await feed(CONFIRM_SILENCE_S + 0.1, False)
+    assert events.log[-1][0] == "confirmed" and events.log[-1][1]["text"] == "Oui."
+    assert len(commits) == 1  # aucun second commit : le texte était déjà final
+
+
+@pytest.mark.asyncio
+async def test_background_noise_below_the_probe_level_never_commits():
+    det, vad, model, events, commits, feed, t = harness()
+    await feed(3.0, False)
+    assert commits == [] and det.counters.probes == 0
