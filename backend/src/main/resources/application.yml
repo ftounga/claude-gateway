@@ -739,6 +739,13 @@ app:
     # la voix decrite (Voice Design ElevenLabs) s'ajoute quand son identifiant est fourni.
     audition:
       designed-voice-id: ${APP_JARVIS_AUDITION_DESIGNED_VOICE_ID:}
+    # F-257 / SF-257-02 (ADR-021) : la boucle vocale en flux (service jarvis-voice). Coupe-circuit FERME par defaut :
+    # aucun ticket n'est emis, l'ecran garde l'ancienne boucle. Le ticket (portee jarvis-voice) n'ouvre qu'une liste
+    # fermee de routes (VoiceTicketScope).
+    voice-stream:
+      enabled: ${APP_JARVIS_VOICE_STREAM_ENABLED:false}
+      public-url: ${APP_JARVIS_VOICE_PUBLIC_URL:/voice/ws}
+      ticket-ttl: ${APP_JARVIS_VOICE_TICKET_TTL:PT30M}
     stt-stream:
       provider: ${APP_JARVIS_STT_STREAM_PROVIDER:elevenlabs}
       model: ${APP_JARVIS_STT_STREAM_MODEL:scribe_v2_realtime}

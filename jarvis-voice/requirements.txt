@@ -1,0 +1,6 @@
+# F-257 / SF-257-02 — dépendances épinglées du service vocal (ADR-021). Pipecat : VAD Silero et smart-turn v3 (CPU,
+# modèles ONNX livrés dans le paquet), transport WebSocket FastAPI.
+pipecat-ai[silero,local-smart-turn-v3,websocket]==1.15.0
+fastapi==0.162.4
+uvicorn==0.54.0
+httpx==0.28.1
