@@ -1,5 +1,6 @@
 import {
-  JarvisVoiceShadow, PCM_CHUNK_BYTES, PING_EVERY_MS, PcmChunker, VoiceShadowDeps, readVoiceLoop, writeVoiceLoop,
+  JarvisVoiceShadow, PCM_CHUNK_BYTES, PING_EVERY_MS, PcmChunker, VoiceShadowDeps, readVoiceLoop, serviceEventTrace,
+  writeVoiceLoop,
 } from './jarvis-voice-shadow';
 import { VoiceLink, VoiceTicket } from './jarvis-voice-link';
 
@@ -131,5 +132,17 @@ describe('JarvisVoiceShadow (F-257 / SF-257-03)', () => {
     expect(sent[1].length).toBe(10);
     chunker.flush();
     expect(sent.length).toBe(2);
+  });
+
+  it('F-257 / SF-257-05 — journalise le tour et l’écoute du service, jamais le texte', () => {
+    expect(serviceEventTrace({ type: 'turn', state: 'candidate', by: 'modele', silenceMs: 100, speechMs: 1300,
+      probability: 0.98, serverTs: 42 })).toBe('turn candidate by=modele silence=100 speech=1300 p=0.98 srv=42');
+    const confirmed = serviceEventTrace({ type: 'turn', state: 'confirmed', text: 'Montre-moi CAGIP', by: 'modele',
+      via: 'final', finalMs: 210 })!;
+    expect(confirmed).toBe('turn confirmed by=modele via=final final=210');
+    expect(confirmed).not.toContain('CAGIP');
+    expect(serviceEventTrace({ type: 'stt', state: 'reopen', detail: 'session=2' })).toBe('stt reopen session=2');
+    expect(serviceEventTrace({ type: 'transcript', final: true, text: 'secret' })).toBeNull();
+    expect(serviceEventTrace({ type: 'turn', state: 'speech', via: 'vad <script>' })).toBe('turn speech via=vadscript');
   });
 });
