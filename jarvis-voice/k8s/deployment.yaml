@@ -1,0 +1,84 @@
+# F-257 / SF-257-02 — le service vocal de Jarvis (ADR-021). PRÉPARÉ, NON DÉPLOYÉ.
+#
+# Volontairement HORS de k8s/** (partagé) : rien ici n'est appliqué par le déploiement habituel. Une réplique, sans
+# HPA : les sessions vivent en mémoire du processus (une conversation = une connexion). Mémoire sobre (cluster EKS sans
+# marge, incident du 10/10) : Silero (~2 Mo) et smart-turn v3 (~8 Mo) tournent sur CPU.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jarvis-voice
+  labels:
+    app: jarvis-voice
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: jarvis-voice
+  template:
+    metadata:
+      labels:
+        app: jarvis-voice
+    spec:
+      # R7 — un déploiement coupe les conversations en cours : on laisse le temps de finir un tour.
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: jarvis-voice
+          image: REGISTRY_PLACEHOLDER/claude-gateway-jarvis-voice:VOICE_IMAGE_TAG
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            # URL INTERNE de la passerelle (context-path /api). Aucun secret : le ticket de l'utilisateur suffit.
+            - name: JARVIS_VOICE_GATEWAY_URL
+              value: http://claude-gateway-backend:8080/api
+            - name: JARVIS_VOICE_MAX_SESSIONS
+              value: "8"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jarvis-voice
+  labels:
+    app: jarvis-voice
+spec:
+  type: ClusterIP
+  selector:
+    app: jarvis-voice
+  ports:
+    - port: 80
+      targetPort: 8080
