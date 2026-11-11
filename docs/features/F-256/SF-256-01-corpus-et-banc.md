@@ -60,8 +60,8 @@ vrais fournisseurs, et mesurer tour par tour ce qui est entendu, compris, dit et
 
 ## Impact
 Nouveaux fichiers `frontend/scripts/banc-jarvis-voix/` (`lancer.sh`, `passerelle.sh`, `amorce.sh`, `avec-cles.sh`,
-`corpus.mjs`, `phrases.json`, `micro.js`, `banc.mjs`, `mesure.mjs`, `porte.mjs`, `chrono.mjs`, `mesure.test.mjs`,
-`README.md`) ; `docs/features/F-256/` ; `docs/PRODUCT_SPEC.md`. Aucune table, aucun endpoint, aucun composant Angular.
+`corpus.mjs`, `phrases.json`, `micro.js`, `banc.mjs`, `mesure.mjs`, `porte.mjs`, `chrono.mjs`, `relire.mjs`,
+`mesure.test.mjs`, `README.md`) ; `docs/features/F-256/` ; `docs/PRODUCT_SPEC.md`. Aucune table, aucun endpoint, aucun composant Angular.
 Préoccupations transversales : aucune.
 
 ## Hors périmètre
