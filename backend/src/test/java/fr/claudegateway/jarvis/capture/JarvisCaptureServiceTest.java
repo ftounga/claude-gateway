@@ -84,6 +84,28 @@ class JarvisCaptureServiceTest {
     }
 
     @Test
+    void f255TheFallbackDictationKeepsItsWebmType() {
+        when(preferences.captureAudio(alice)).thenReturn(true);
+        service().record(alice, true, new byte[] { 7 }, new JarvisCaptureService.Incoming(null, "CONV_BATCH", null,
+                "", "Où en est la migration ?", "tour-1", "audio/webm;codecs=opus"));
+        service().record(alice, true, new byte[] { 8 }, new JarvisCaptureService.Incoming(1.0, "CONV_STREAM", null,
+                "", "", "tour-2", "audio/wav"));
+        JarvisAudioCapture webm = rows.get(0);
+        JarvisAudioCapture wav = rows.get(1);
+        assertThat(webm.getStorageKey()).endsWith(".webm");
+        assertThat(wav.getStorageKey()).endsWith(".wav");
+        when(repository.findByIdAndUserId(webm.getId(), alice)).thenReturn(Optional.of(webm));
+        when(repository.findByIdAndUserId(wav.getId(), alice)).thenReturn(Optional.of(wav));
+        assertThat(service().audioFile(alice, webm.getId()).orElseThrow().contentType()).isEqualTo("audio/webm");
+        assertThat(service().audioFile(alice, webm.getId()).orElseThrow().bytes()).isEqualTo(new byte[] { 7 });
+        assertThat(service().audioFile(alice, wav.getId()).orElseThrow().contentType()).isEqualTo("audio/wav");
+        // Isolation : l'énoncé d'Alice est introuvable pour un autre compte.
+        assertThat(service().audioFile(UUID.randomUUID(), webm.getId())).isEmpty();
+        assertThat(JarvisCaptureService.typeOf(null)).isEqualTo("audio/wav");
+        assertThat(JarvisCaptureService.typeOf("audio/ogg")).isEqualTo("audio/wav");
+    }
+
+    @Test
     void neverMoreThanTwoHundredPerAccount() {
         for (int i = 0; i < 205; i++) {
             now = now.plusSeconds(1);
