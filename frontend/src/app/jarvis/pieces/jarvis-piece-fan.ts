@@ -9,6 +9,8 @@ export const FAN_VISIBLE = 12;
 export const FAN_RADIUS_PX = 900;
 /** Profondeur alternée (une carte sur deux un peu en retrait). */
 export const FAN_DEPTH_PX = 40;
+/** F-264 — la carte choisie grandit dans l'arc (×1,25 : à ×1,6 elle chevauchait le panneau centré au-dessus). */
+export const HERO_SCALE = 1.25;
 
 export interface FanSlot {
   /** Index de la carte (1..n). */
@@ -24,7 +26,8 @@ export interface FanSlot {
   hero: boolean;
   /** Échelle appliquée. */
   scale: number;
-  /** Palier de transparence (DESIGN_SYSTEM §23) : 1 héros, 0,75 sans héros, 0,18 latent. */
+  /** Palier de transparence (DESIGN_SYSTEM §23) : 1 sans héros et pour le héros, 0,75 pour les autres (F-264 : jamais
+   * 0,18 — le PO doit les voir nettement pour dire « la troisième »). */
   alpha: number;
 }
 
@@ -54,9 +57,32 @@ export function fanLayout(count: number, selected: number | null): FanSlot[] {
       index, visible, angle: Math.round(angle * 100) / 100,
       x: Math.round(Math.sin(rad) * FAN_RADIUS_PX * 0.6),
       z: hero ? 120 : Math.round((Math.cos(rad) - 1) * FAN_RADIUS_PX * 0.4) + depth,
-      hero, scale: hero ? 1.6 : 1,
-      alpha: selected == null ? 0.75 : hero ? 1 : 0.18,
+      hero, scale: hero ? HERO_SCALE : 1,
+      alpha: selected == null || hero ? 1 : 0.75,
     });
   }
   return slots;
+}
+
+/**
+ * F-264 (cadrage F-237 §8.4, T-G5) — **l'arc tourne autour de la pièce choisie** : la carte héros revient face à la
+ * caméra (angle 0, au centre), les autres gardent leur écart sur l'arc ; une carte qui passerait derrière (au-delà de
+ * 90°) est masquée. Sans sélection, l'arc est rendu tel quel.
+ */
+export function arcAroundHero(slots: FanSlot[]): FanSlot[] {
+  const hero = slots.find((s) => s.hero && s.visible);
+  if (!hero || hero.angle === 0) {
+    return slots;
+  }
+  return slots.map((slot) => {
+    if (!slot.visible) {
+      return slot;
+    }
+    const angle = Math.round((slot.angle - hero.angle) * 100) / 100;
+    const rad = (angle * Math.PI) / 180;
+    const depth = slot.hero ? 0 : (slot.index - hero.index) % 2 === 0 ? 0 : -FAN_DEPTH_PX;
+    return { ...slot, angle, visible: Math.abs(angle) <= 90,
+      x: Math.round(Math.sin(rad) * FAN_RADIUS_PX * 0.6),
+      z: slot.hero ? 120 : Math.round((Math.cos(rad) - 1) * FAN_RADIUS_PX * 0.4) + depth };
+  });
 }

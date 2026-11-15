@@ -5,7 +5,7 @@ import { JarvisState } from '../jarvis-orb.component';
 import { JarvisPieceClient } from './jarvis-piece-client';
 import { JarvisPieceViewerComponent } from './jarvis-piece-viewer.component';
 import { JarvisPieceCompareComponent } from './jarvis-piece-compare.component';
-import { fanLayout } from './jarvis-piece-fan';
+import { arcAroundHero, fanLayout } from './jarvis-piece-fan';
 import { NavAction, NavItem } from './jarvis-piece-nav';
 import { JarvisPieceStore, PieceStoreResult } from './jarvis-piece-store';
 import { PieceCategory, PieceKind } from './jarvis-piece.models';
@@ -44,6 +44,10 @@ const WHEN = new Intl.DateTimeFormat('fr-FR', {
   weekday: 'long', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris',
 });
 
+/** F-264 (cadrage F-237 §8.4, T-G1) — les cartes jaillissent du centre : échelle de départ, écart entre cartes. */
+export const BURST_SCALE = 0.2;
+export const BURST_STAGGER_MS = 60;
+
 /** Seuil d'un balayage (px). */
 const SWIPE_PX = 60;
 
@@ -62,7 +66,8 @@ const SWIPE_PX = 60;
     @if (store.open() && !store.presentation()) {
       <section class="pg" [class.pg--fan]="layout() === 'fan'" [class.pg--grid]="layout() === 'grid'"
                [class.pg--phone]="layout() === 'phone'" [class.pg--hero]="nav().selected != null"
-               [class.pg--contact]="store.mode() === 'contact'"
+               [class.pg--contact]="store.mode() === 'contact'" [class.pg--low]="lowQuality()"
+               [class.pg--calm]="sober()"
                role="region" aria-label="Pièces montrées par Jarvis">
         <header class="pg__bar">
           <nav class="pg__crumbs" aria-label="Fil d'Ariane">{{ crumbs() }}</nav>
@@ -114,11 +119,17 @@ const SWIPE_PX = 60;
           }
         } @else if (layout() !== 'phone' || nav().selected == null) {
           <div class="pg__cards" [class.pg__cards--fan]="layout() === 'fan'">
-            @for (item of nav().items; track item.id) {
+            @if (layout() === 'fan') {
+              <!-- F-264 — le socle de lumière sous l'arc : la galerie est un hologramme projeté. -->
+              <span class="pg__floor" aria-hidden="true"></span>
+            }
+            @for (item of nav().items; track item.id; let i = $index) {
               <button type="button" class="pg__card" [attr.data-category]="category(item)"
                       [class.pg__card--hero]="nav().selected === item.index"
                       [style.transform]="layout() === 'fan' ? transform(item) : null"
                       [style.opacity]="layout() === 'fan' ? alpha(item) : null"
+                      [style.--pg-fx]="layout() === 'fan' ? burstFrom(item) : null"
+                      [style.animation-delay.ms]="i * burstStagger"
                       [style.display]="layout() === 'fan' && !visible(item) ? 'none' : null"
                       (click)="act({ type: 'select', ref: item.index })"
                       [attr.aria-label]="item.index + '. ' + item.title">
@@ -173,61 +184,141 @@ const SWIPE_PX = 60;
     }
   `,
   styles: [`
-    :host { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
+    /* F-264 — un calque plein écran AU-DESSUS de tout (cockpit z 3, étiquettes z 2), sous le plein écran d'une
+       pancarte (z 8) : la galerie n'est plus prisonnière de la colonne ni collée en bas. */
+    :host { position: fixed; inset: 0; pointer-events: none; z-index: 7; --pg-spread: 1; --pg-card-w: 220px;
+      --pg-card-h: 216px; --pg-thumb-h: 124px; }
+    @media (min-width: 1700px) { :host { --pg-spread: 1.25; --pg-card-w: 260px; --pg-card-h: 244px; --pg-thumb-h: 150px; } }
+    @media (max-width: 1199px) { :host { --pg-spread: .8; --pg-card-w: 190px; --pg-card-h: 200px; --pg-thumb-h: 108px; } }
     .pg { position: absolute; inset: 0; display: flex; flex-direction: column; pointer-events: auto;
-      background: color-mix(in srgb, var(--cg-navy, #0B1020) 72%, transparent);
+      background: color-mix(in srgb, var(--cg-navy, #0B1020) 82%, transparent);
       color: var(--cg-holo-text, #F0954F); font-family: Inter, sans-serif; }
-    .pg--fan { background: transparent; pointer-events: none; }
-    .pg--fan .pg__bar, .pg--fan .pg__cards, .pg--fan .pg__panel { pointer-events: auto; }
-    .pg__bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 16px; }
+    /* Éventail : un voile radial assombrit le fond (transcriptions, cockpit) ; le toucher le traverse. */
+    .pg--fan { pointer-events: none;
+      background: radial-gradient(ellipse 70% 62% at 50% 52%, color-mix(in srgb, var(--cg-navy, #0B1020) 80%, transparent) 0%,
+        color-mix(in srgb, var(--cg-navy, #0B1020) 62%, transparent) 62%, color-mix(in srgb, var(--cg-navy, #0B1020) 40%, transparent) 100%); }
+    .pg--fan .pg__bar, .pg--fan .pg__card, .pg--fan .pg__panel, .pg--fan .pg__more { pointer-events: auto; }
+    .pg__bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 16px;
+      flex: none; }
     .pg__crumbs { font-family: 'Space Grotesk', Inter, sans-serif; font-weight: 600; text-transform: uppercase;
-      letter-spacing: .12em; font-size: 12px; }
+      letter-spacing: .12em; font-size: 12px; text-shadow: 0 0 12px color-mix(in srgb, var(--cg-holo, #E07B39) 60%, transparent); }
     .pg__tools { display: flex; gap: 8px; }
     .pg__btn { min-width: 44px; min-height: 44px; border-radius: 4px; cursor: pointer;
       background: color-mix(in srgb, var(--cg-navy, #0B1020) 75%, transparent);
       border: 1px solid color-mix(in srgb, var(--cg-holo, #E07B39) 55%, transparent);
+      box-shadow: 0 0 12px color-mix(in srgb, var(--cg-holo, #E07B39) 30%, transparent);
       color: var(--cg-holo-text, #F0954F); font: 600 14px 'Space Grotesk', Inter, sans-serif; padding: 0 12px; }
-    .pg__cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px;
-      padding: 0 16px 16px; overflow-y: auto; }
-    .pg__cards--fan { position: relative; display: block; height: 240px; margin-top: auto; perspective: 1200px;
-      transform-style: preserve-3d; overflow: visible; }
-    .pg__cards--fan .pg__card { position: absolute; left: calc(50% - 80px); bottom: 24px; width: 160px;
-      transition: transform 500ms cubic-bezier(.65,0,.35,1), opacity 500ms cubic-bezier(.65,0,.35,1); }
-    .pg__card { display: flex; flex-direction: column; gap: 4px; align-items: stretch; text-align: left;
-      cursor: pointer; padding: 8px; border-radius: 4px; color: inherit; font: inherit;
-      background: color-mix(in srgb, var(--cg-navy, #0B1020) 75%, transparent);
-      border: 1px solid color-mix(in srgb, var(--pg-tint) 55%, transparent);
-      box-shadow: 0 0 12px color-mix(in srgb, var(--pg-tint) 18%, transparent);
-      --pg-tint: var(--cg-holo-core, #FFF3E4); }
+
+    /* La carte : verre holographique (§23) — reflet du ton, liseré lumineux, halo. Aucune couleur nouvelle. */
+    .pg__card { position: relative; display: flex; flex-direction: column; gap: 4px; align-items: stretch;
+      text-align: left; cursor: pointer; padding: 10px; border-radius: 4px; color: inherit; font: inherit;
+      overflow: hidden; box-sizing: border-box;
+      background: linear-gradient(180deg, color-mix(in srgb, var(--pg-tint) 22%, transparent), transparent 55%),
+        color-mix(in srgb, var(--cg-navy, #0B1020) 80%, transparent);
+      border: 1px solid color-mix(in srgb, var(--pg-tint) 70%, transparent);
+      box-shadow: 0 0 24px color-mix(in srgb, var(--pg-tint) 45%, transparent),
+        inset 0 0 16px color-mix(in srgb, var(--pg-tint) 16%, transparent);
+      --pg-tint: var(--cg-holo-core, #FFF3E4);
+      animation: pg-rise 420ms var(--jv-ease-sortie, cubic-bezier(.16,1,.3,1)) backwards; }
     .pg__card[data-category='PREUVE'] { --pg-tint: var(--cg-holo-green, #4CF2A0); }
     .pg__card[data-category='PRODUCTION'] { --pg-tint: var(--cg-holo, #E07B39); }
-    .pg__card--hero { border-width: 2px; }
-    .pg__index { font: 600 16px 'JetBrains Mono', monospace; color: var(--pg-tint); }
-    .pg__thumb { width: 100%; height: 88px; object-fit: cover; border-radius: 4px; }
-    .pg__glyph { height: 88px; display: grid; place-items: center; font-size: 32px; color: var(--pg-tint); }
-    .pg__title { font-size: 13px; line-height: 16px; max-height: 32px; overflow: hidden; }
-    .pg__meta { font: 12px 'JetBrains Mono', monospace; opacity: .75; }
-    .pg__more { position: absolute; right: 16px; bottom: 8px; font: 600 14px 'JetBrains Mono', monospace; }
+    .pg__card--hero { border-width: 2px; box-shadow: 0 0 40px color-mix(in srgb, var(--pg-tint) 60%, transparent),
+      inset 0 0 24px color-mix(in srgb, var(--pg-tint) 24%, transparent); }
+    .pg__index { font: 600 18px 'JetBrains Mono', monospace; color: var(--pg-tint);
+      text-shadow: 0 0 10px color-mix(in srgb, var(--pg-tint) 70%, transparent); }
+    .pg__thumb { width: 100%; height: var(--pg-thumb-h); object-fit: cover; border-radius: 4px;
+      box-shadow: 0 0 0 1px color-mix(in srgb, var(--pg-tint) 40%, transparent); }
+    .pg__glyph { height: var(--pg-thumb-h); display: grid; place-items: center; font-size: 40px; color: var(--pg-tint);
+      text-shadow: 0 0 18px color-mix(in srgb, var(--pg-tint) 70%, transparent); }
+    .pg__title { font: 600 14px/18px Inter, sans-serif; max-height: 36px; overflow: hidden;
+      color: var(--cg-holo-core, #FFF3E4); }
+    .pg__meta { font: 12px 'JetBrains Mono', monospace; opacity: .8; }
+
+    /* Éventail (3D) : l'arc au milieu de l'écran ; les cartes jaillissent du centre (T-G1). */
+    .pg__cards.pg__cards--fan { position: absolute; left: 0; right: 0; top: 52%; height: 0; perspective: 1400px;
+      display: block; width: auto; margin: 0; padding: 0; max-height: none;
+      transform-style: preserve-3d; overflow: visible; transform-origin: 50% 0;
+      transition: top 600ms var(--jv-ease-glisse, cubic-bezier(.65,0,.35,1)),
+        scale 600ms var(--jv-ease-glisse, cubic-bezier(.65,0,.35,1)); }
+    .pg__cards--fan .pg__card { position: absolute; left: calc(50% - var(--pg-card-w) / 2);
+      top: calc(var(--pg-card-h) / -2); width: var(--pg-card-w); height: var(--pg-card-h);
+      animation: pg-jaillit 700ms var(--jv-ease-rebond, cubic-bezier(.34,1.3,.64,1)) backwards;
+      transition: transform 500ms var(--jv-ease-glisse, cubic-bezier(.65,0,.35,1)),
+        opacity 500ms var(--jv-ease-glisse, cubic-bezier(.65,0,.35,1)); }
+    /* L'éclat qui balaie le verre (coupé en qualité basse, sobre, mouvement réduit). */
+    .pg__cards--fan .pg__card::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+      background: linear-gradient(105deg, transparent 38%, color-mix(in srgb, var(--cg-holo-core, #FFF3E4) 20%, transparent) 50%, transparent 62%);
+      translate: -110% 0; animation: pg-eclat 4.5s var(--jv-ease-glisse, ease-in-out) 1s infinite; }
+    .pg__floor { position: absolute; left: 50%; top: calc(var(--pg-card-h) / 2 - 24px);
+      width: calc(1180px * var(--pg-spread)); height: 120px; translate: -50% 0; pointer-events: none;
+      background: radial-gradient(ellipse 50% 50% at 50% 50%, color-mix(in srgb, var(--cg-holo, #E07B39) 38%, transparent),
+        color-mix(in srgb, var(--cg-holo, #E07B39) 10%, transparent) 55%, transparent 72%);
+      animation: pg-socle 3.2s var(--jv-ease-souffle, ease-in-out) infinite alternate; }
+    .pg__more { position: absolute; left: 50%; top: calc(var(--pg-card-h) / 2 + 24px); translate: -50% 0;
+      font: 600 16px 'JetBrains Mono', monospace; color: var(--cg-holo-core, #FFF3E4); }
+    /* Une pièce choisie : l'arc descend sous elle, réduit ; le panneau prend le centre (T-G3). */
+    .pg--fan.pg--hero .pg__cards--fan { top: calc(100% - 118px); scale: .62; }
+    /* … et le bas de l'écran s'assombrit : les transcriptions ne transparaissent plus sous l'arc. */
+    .pg--fan.pg--hero { background:
+      linear-gradient(0deg, var(--cg-navy, #0B1020) 0%, color-mix(in srgb, var(--cg-navy, #0B1020) 94%, transparent) 22%,
+        transparent 42%),
+      radial-gradient(ellipse 70% 62% at 50% 45%, color-mix(in srgb, var(--cg-navy, #0B1020) 80%, transparent) 0%,
+        color-mix(in srgb, var(--cg-navy, #0B1020) 62%, transparent) 62%, color-mix(in srgb, var(--cg-navy, #0B1020) 40%, transparent) 100%); }
+    .pg--fan .pg__panel { position: absolute; left: 50%; top: calc(56px + (100% - 56px - 236px) / 2);
+      translate: -50% -50%; margin: 0; width: min(980px, calc(100% - 64px)); max-height: calc(100% - 56px - 248px);
+      animation: pg-heros 600ms var(--jv-ease-sortie, cubic-bezier(.16,1,.3,1)) backwards; }
     .pg__panel { margin: 0 auto 16px; width: min(960px, calc(100% - 32px)); max-height: 60vh; overflow: auto;
-      padding: 16px; border-radius: 4px; background: color-mix(in srgb, var(--cg-navy, #0B1020) 75%, transparent);
-      border: 1px solid color-mix(in srgb, var(--cg-holo, #E07B39) 55%, transparent); }
-    .pg--fan .pg__panel { position: absolute; left: 50%; top: 64px; transform: translateX(-50%); }
-    .pg__panel-title { margin: 0 0 8px; font: 600 16px 'Space Grotesk', Inter, sans-serif; }
+      padding: 16px; border-radius: 4px; box-sizing: border-box;
+      background: linear-gradient(180deg, color-mix(in srgb, var(--cg-holo, #E07B39) 13%, transparent), transparent 40%),
+        color-mix(in srgb, var(--cg-navy, #0B1020) 88%, transparent);
+      border: 1px solid color-mix(in srgb, var(--cg-holo, #E07B39) 70%, transparent);
+      box-shadow: 0 0 48px color-mix(in srgb, var(--cg-holo, #E07B39) 35%, transparent),
+        inset 0 0 24px color-mix(in srgb, var(--cg-holo, #E07B39) 12%, transparent); }
+    .pg__panel-title { margin: 0 0 8px; font: 600 18px 'Space Grotesk', Inter, sans-serif;
+      color: var(--cg-holo-core, #FFF3E4); }
     .pg__caption { margin: 8px 0 0; font-size: 14px; line-height: 20px; color: var(--cg-holo-core, #FFF3E4); }
     .pg__hint { margin: 8px 0 0; font-size: 12px; opacity: .8; }
-    .pg--phone .pg__cards { grid-template-columns: repeat(2, 1fr); }
+
+    /* Grille (repli 2D, sobre, mouvement réduit) : au centre de tout l'écran. */
+    .pg__cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px;
+      width: min(1100px, calc(100% - 32px)); margin: auto; padding: 16px; box-sizing: border-box;
+      overflow-y: auto; max-height: calc(100% - 80px); }
+    /* Une pièce choisie en 2D : elle prend le centre, les autres en bande dessous (comme l'arc en 3D). */
+    .pg--grid.pg--hero .pg__cards { display: flex; flex: none; order: 2; margin: 0 auto; max-height: none;
+      overflow-x: auto; overflow-y: hidden; padding: 8px 16px 16px; }
+    .pg--grid.pg--hero .pg__panel { order: 1; }
+    .pg__cards { scrollbar-width: thin;
+      scrollbar-color: color-mix(in srgb, var(--cg-holo, #E07B39) 55%, transparent) transparent; }
+    .pg--grid.pg--hero .pg__card { flex: 0 0 160px; --pg-thumb-h: 72px; }
+    .pg--grid .pg__panel { margin: auto; width: min(1000px, calc(100% - 32px)); max-height: calc(100% - 240px); }
+    .pg--phone .pg__cards { grid-template-columns: repeat(2, 1fr); width: 100%; margin: 0; gap: 12px; }
+    .pg--phone .pg__panel { margin: 0 auto 16px; }
     .pg--contact .pg__cards { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
     .pg--contact .pg__thumb, .pg--contact .pg__glyph { height: 120px; }
     .pg--phone.pg--hero .pg__panel { flex: 1; max-height: none; margin: 0; width: 100%; border-radius: 0; }
-    @media (prefers-reduced-motion: reduce) { .pg__cards--fan .pg__card { transition: opacity 400ms linear; } }
+
+    @keyframes pg-jaillit { from { opacity: 0; translate: var(--pg-fx, 0) 0; scale: .2; } 55% { opacity: 1; }
+      to { translate: 0 0; scale: 1; } }
+    @keyframes pg-rise { from { opacity: 0; translate: 0 24px; } }
+    @keyframes pg-heros { from { opacity: 0; scale: .85; } }
+    @keyframes pg-eclat { 0% { translate: -110% 0; } 40%, 100% { translate: 110% 0; } }
+    @keyframes pg-socle { from { opacity: .7; } to { opacity: 1; } }
+    /* Qualité basse : mêmes lueurs (ombres fixes), plus aucune animation continue. Sobre : rien ne bouge. */
+    .pg--low .pg__card::after, .pg--calm .pg__card::after { display: none; }
+    .pg--low .pg__floor, .pg--calm .pg__floor { animation: none; }
+    .pg--calm .pg__card, .pg--calm .pg__panel { animation: none; }
+    @media (prefers-reduced-motion: reduce) {
+      .pg__card, .pg__panel, .pg__floor, .pg__card::after { animation: none !important; }
+      .pg__cards--fan .pg__card { transition: opacity 400ms linear; }
+    }
     /* F-248 / SF-248-04 — le jeu de pancartes (DESIGN_SYSTEM §25). */
-    .pg__deck { position: relative; margin-top: auto; padding: 0 16px 16px; pointer-events: auto; }
+    .pg__deck { position: relative; margin: auto 0; padding: 0 16px 16px; pointer-events: auto; } /* F-264 : au milieu */
     .pg__deck--center, .pg__deck--fan { height: 300px; perspective: 1200px; transform-style: preserve-3d; }
     .pg__deck--center .pg__slot, .pg__deck--fan .pg__slot { position: absolute; left: calc(50% - 120px); bottom: 24px;
       width: 240px; transition: transform 500ms cubic-bezier(.65,0,.35,1); }
     .pg__deck--center .pg__slot { left: calc(50% - 150px); width: 300px; bottom: 120px; }
     .pg__deck--wall { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;
-      width: min(960px, 100%); margin: auto auto 16px; box-sizing: border-box; }
+      width: min(960px, 100%); margin: auto; box-sizing: border-box; }
     .pg__deck--wall .pg__group { grid-column: 1 / -1; }
     .pg__deck--flat { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; max-height: calc(100dvh - 140px);
       padding: 0 8px 16px; margin-top: 0; }
@@ -273,6 +364,8 @@ export class JarvisPieceGalleryComponent implements OnDestroy {
   /** F-248 / SF-248-01 — un lien rapide ouvert (compté). */
   readonly cardLinked = output<JarvisCard>();
   readonly maxAnimated = MAX_ANIMATED;
+  /** F-264 (T-G1) — l'écart entre deux cartes qui jaillissent. */
+  readonly burstStagger = BURST_STAGGER_MS;
   readonly stagger = ENTRY_STAGGER_MS;
   /** L'heure de l'écran, pour les badges de fraîcheur (relue à chaque jeu). */
   readonly now = computed(() => {
@@ -303,7 +396,7 @@ export class JarvisPieceGalleryComponent implements OnDestroy {
   readonly nav = this.store.nav;
   readonly layout = computed(() => galleryLayout({ threeD: this.threeD(), sober: this.sober(),
     reducedMotion: this.reducedMotion(), phone: this.phone(), contact: this.store.mode() === 'contact' }));
-  private readonly slots = computed(() => fanLayout(this.nav().items.length, this.nav().selected));
+  private readonly slots = computed(() => arcAroundHero(fanLayout(this.nav().items.length, this.nav().selected)));
   readonly thumbs = signal<Record<string, string>>({});
   private loading: AbortController | null = null;
   private swipe: { x: number; y: number } | null = null;
@@ -412,7 +505,18 @@ export class JarvisPieceGalleryComponent implements OnDestroy {
 
   transform(item: NavItem): string {
     const slot = this.slots()[item.index - 1];
-    return slot ? `translate3d(${slot.x}px, 0, ${slot.z}px) rotateY(${-slot.angle}deg) scale(${slot.scale})` : '';
+    // F-264 — l'écart de l'arc suit la largeur de l'écran (`--pg-spread`, posé par la feuille de style).
+    return slot ? `translate3d(calc(${slot.x}px * var(--pg-spread, 1)), 0, ${slot.z}px) rotateY(${-slot.angle}deg) `
+      + `scale(${slot.scale})` : '';
+  }
+
+  /**
+   * F-264 (T-G1) — d'où la carte jaillit : du centre de l'arc. L'échelle de départ ({@link BURST_SCALE}) réduit aussi
+   * son décalage dans l'arc ; la translation compense le reste pour que toutes partent du même point.
+   */
+  burstFrom(item: NavItem): string {
+    const x = this.slots()[item.index - 1]?.x ?? 0;
+    return `calc(${-x * BURST_SCALE}px * var(--pg-spread, 1))`;
   }
 
   alpha(item: NavItem): number {
