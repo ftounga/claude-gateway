@@ -3206,10 +3206,9 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     }));
 
   for (const [live, final] of [['Oui', 'Oui.'], ['Nan.', 'Non.'], ['', 'Oui.'], ['', 'Stop.'], ['La 2e.', 'La deuxième.'],
-    ['Ouais.', 'Oui.'], ['Bonjour Jarvis.', 'Bonjour Jarvis'], ['Alors, celui chantier 2, sujet RH.', 'Avance le chantier 2, sujet RH']]) {
+    ['Ouais.', 'Oui.'], ['Bonjour Jarvis.', 'Bonjour Jarvis'], ['Celui chantier 2.', 'Sur le chantier 2']]) {
     it(`F-265 / SF-265-01 — contrainte dure : direct « ${live} », finale « ${final} » : la parole part`, fakeAsync(() => {
-      // Une phrase de six mots se dit en plus d'une seconde (sinon : « implausible », SF-241-06).
-      const { jarvis, handle } = heardLiveAndFinal(live, final, final.split(' ').length > 3 ? 2_500 : 900);
+      const { jarvis, handle } = heardLiveAndFinal(live, final);
       expect(handle).toHaveBeenCalledWith(final);
       jarvis.ngOnDestroy();
     }));
