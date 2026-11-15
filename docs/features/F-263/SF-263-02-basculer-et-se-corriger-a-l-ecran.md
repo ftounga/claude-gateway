@@ -10,7 +10,7 @@
 
 ## Statut
 
-`in-progress`
+`done`
 
 ## Date de création
 
@@ -49,9 +49,9 @@
 
 ## Critères d'acceptation
 
-- [ ] CA1 — `subjectSwitch('Bascule vers CAGIP sur data-platform', sujets)` → data-platform ; les cas existants inchangés ; deux sujets → `null`.
-- [ ] CA2 — `refusalPhrase` : `NOT_FOUND` avec sujet → « Pardon, je ne les trouve pas dans X. » ; `NOTHING` → « Pardon, il n'y a rien à montrer. » ; `RECENT`/`BUSY` → vide.
-- [ ] CA3 — Après une galerie entièrement `HOST_OFFLINE`, la phrase du poste éteint est dite (test du composant ou de la fonction pure).
+- [x] CA1 — `subjectSwitch('Bascule vers CAGIP sur data-platform', sujets)` → data-platform ; les cas existants inchangés ; deux sujets → `null`.
+- [x] CA2 — `refusalPhrase` : `NOT_FOUND` avec sujet → « Pardon, je ne les trouve pas dans X. » ; `NOTHING` → « Pardon, il n'y a rien à montrer. » ; `RECENT`/`BUSY` → vide.
+- [x] CA3 — Après une galerie entièrement `HOST_OFFLINE`, la phrase du poste éteint est dite (test du composant ou de la fonction pure).
 
 ---
 
