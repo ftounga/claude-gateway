@@ -211,7 +211,7 @@ const SWIPE_PX = 60;
 
     /* La carte : verre holographique (§23) — reflet du ton, liseré lumineux, halo. Aucune couleur nouvelle. */
     .pg__card { position: relative; display: flex; flex-direction: column; gap: 4px; align-items: stretch;
-      text-align: left; cursor: pointer; padding: 10px; border-radius: 4px; color: inherit; font: inherit;
+      text-align: left; cursor: pointer; padding: 12px; border-radius: 4px; color: inherit; font: inherit;
       overflow: hidden; box-sizing: border-box;
       background: linear-gradient(180deg, color-mix(in srgb, var(--pg-tint) 22%, transparent), transparent 55%),
         color-mix(in srgb, var(--cg-navy, #0B1020) 80%, transparent);
@@ -280,6 +280,8 @@ const SWIPE_PX = 60;
     .pg__hint { margin: 8px 0 0; font-size: 12px; opacity: .8; }
 
     /* Grille (repli 2D, sobre, mouvement réduit) : au centre de tout l'écran. */
+    /* Fond quasi opaque : les transcriptions et réglages de l'écran ne transparaissent plus entre les cartes. */
+    .pg--grid { background: color-mix(in srgb, var(--cg-navy, #0B1020) 94%, transparent); }
     .pg__cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px;
       width: min(1100px, calc(100% - 32px)); margin: auto; padding: 16px; box-sizing: border-box;
       overflow-y: auto; max-height: calc(100% - 80px); }
