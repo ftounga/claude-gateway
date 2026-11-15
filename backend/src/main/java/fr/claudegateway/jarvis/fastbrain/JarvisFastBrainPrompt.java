@@ -234,18 +234,6 @@ public final class JarvisFastBrainPrompt {
             chapitre en cours plus un ; « reviens à toutes les vidéos » = action retour ; « raconte-moi le chantier 3 » = action \
             raconter ; « qu'est-ce qu'on a produit aujourd'hui ? » = action planche ; avant et après = action comparer. \
             Naviguer ne se délègue jamais.
-            - Un schéma d'architecture ouvert (ligne « Architecture » du bloc « ## Écran ») se pilote aussi, la cible \
-            étant le nom tel que dit (l'écran le trouve, et demande lequel s'il y en a plusieurs) : « zoome sur la \
-            base », « montre-moi l'ALB » = action focus, cible « la base », « l'ALB » ; « d'où vient le trafic ? » = \
-            action flux, cible « entrée » ; « montre le flux sortant » = action flux, cible « sortant » ; « replie le \
-            VPC » = action replier, cible « le VPC » (vide : tout) ; « déplie la zone A » = action deplier ; « éclate » \
-            = action eclater ; « rassemble » = action rassembler ; « vue de dessus », « de face », « vue d'ensemble », \
-            « en 2D » = action vue, vue dessus, face, ensemble ou 2d.
-            - Quand tu montres d'initiative un schéma d'architecture (« comment c'est déployé ? »), cadre aussi \
-            l'entrée du trafic dans la même réponse : afficher(action flux, cible « entrée », raison appui). S'il \
-            n'y a aucun schéma d'architecture, ne montre rien et propose d'en rendre un (« Voulez-vous que je \
-            dessine l'architecture, Monsieur ? ») ; sur un « oui », appelle deleguer (rendre le schéma \
-            d'architecture du sujet avec render_diagram, puis le montrer). Sans « oui », rien.
             - Écris ta phrase, puis appelle afficher dans la même réponse. Dis la pièce montrée en une phrase, avec \
             sa description si elle existe ; sinon seulement son titre et sa date. N'invente jamais ce qu'elle \
             contient : décrire une image sans description se demande à Opus (deleguer). Une pièce rattachée au \
@@ -601,10 +589,17 @@ public final class JarvisFastBrainPrompt {
                         + "phrase."));
         return new AgentTool(SHOW_TOOL,
                 "Montre des pièces à l'écran ou y navigue, ou met une vue de l'univers au premier plan (action "
-                        + "univers : clients, sujets, postes, chantiers bloqués, étapes en cours, à envoyer). Sur un "
-                        + "schéma d'architecture ouvert : focus, flux, replier, deplier, eclater, rassembler, vue. "
-                        + "Aucun effet en base. Montre une pièce quand elle appuie ce que tu dis (au plus trois "
-                        + "d'initiative par réponse), jamais en présentation.",
+                        + "univers : clients, sujets, postes, chantiers bloqués, étapes en cours, à envoyer). Aucun "
+                        + "effet en base. Montre une pièce quand elle appuie ce que tu dis (au plus trois d'initiative "
+                        + "par réponse), jamais en présentation. Un schéma d'architecture ouvert (ligne « Architecture » "
+                        + "du bloc « ## Écran ») se pilote ainsi, cible = le nom tel que dit (l'écran le trouve et "
+                        + "demande lequel s'il y en a plusieurs) : « zoome sur la base » = focus ; « d'où vient le "
+                        + "trafic ? » = flux, cible « entrée » ; « le flux sortant » = flux, cible « sortant » ; "
+                        + "« replie le VPC » = replier (cible vide : tout) ; deplier ; eclater ; rassembler ; « vue de "
+                        + "dessus », « de face », « vue d'ensemble », « en 2D » = vue (champ vue). Quand tu montres "
+                        + "d'initiative un schéma d'architecture, cadre aussi l'entrée : flux, cible « entrée », raison "
+                        + "appui. Sans aucun schéma d'architecture, ne montre rien et propose d'en dessiner un ; sur un "
+                        + "« oui », deleguer.",
                 strict(properties));
     }
 
