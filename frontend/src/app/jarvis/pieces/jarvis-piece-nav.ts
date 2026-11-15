@@ -326,6 +326,11 @@ export function reduceNav(state: PieceNav, action: NavAction): NavResult {
       const arch = reduceArch(state.arch, op);
       // Le zoom du réducteur commun (« zoome », molette) repart de 1 quand on change de vue ou de focus.
       const reset = op.kind === 'view' || op.kind === 'focus';
+      if (op.kind === 'flat' && arch !== state.arch) {
+        // SF-238-11 (T-A10) — le SVG cadré reprend sur le même focus (cible nommée, cadrée) ; la 3D, sans cible.
+        const target = op.on ? arch.focus?.label ?? null : null;
+        return ok({ ...state, arch, target, zoom: target ? 2 : 1, pan: { x: 0, y: 0 } });
+      }
       return ok(arch === state.arch ? state : { ...state, arch, ...(reset ? { zoom: 1, pan: { x: 0, y: 0 } } : {}) });
     }
     case 'append': {

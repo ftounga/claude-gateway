@@ -67,6 +67,7 @@ const ORBIT_PER_PX = 0.006;
 @Component({
   selector: 'app-jarvis-piece-architecture',
   standalone: true,
+  host: { '[class.pa--phone]': 'phone()' },
   imports: [ArchitectureStageComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -74,7 +75,8 @@ const ORBIT_PER_PX = 0.006;
          (pointercancel)="cancel()" (pointerleave)="cancel()" (wheel)="wheel($event)" (dblclick)="double($event)">
       @if (graph(); as g) {
         <app-architecture-stage [graph]="g" [state]="state()" [contained]="true" [spoken]="spoken()"
-                                [iconFetcher]="icons" phase="entree" (failed)="fallback.emit('webgl')" />
+                                [iconFetcher]="icons" phase="entree" [presentation]="store.presentation()"
+                                (failed)="fail($event)" />
       } @else if (!loaded()) {
         <p class="pa__note">Je pose le schéma…</p>
       }
@@ -108,6 +110,10 @@ const ORBIT_PER_PX = 0.006;
     .pa__panel-title { margin: 0 0 4px; font: 600 14px 'Space Grotesk', Inter, sans-serif; letter-spacing: .04em; }
     .pa__panel-line { margin: 0; }
     .pa__tools { position: absolute; left: 16px; bottom: 16px; display: flex; gap: 8px; }
+    /* SF-238-11 — téléphone : la fiche en volet bas (4 lignes au plus), les boutons en haut. */
+    :host(.pa--phone) .pa__panel { left: 0; right: 0; top: auto; bottom: 0; width: auto; border-radius: 4px 4px 0 0;
+      padding: 8px 16px; max-height: 96px; overflow: hidden; }
+    :host(.pa--phone) .pa__tools { top: 8px; bottom: auto; left: 8px; }
     .pa__btn { min-width: 44px; min-height: 44px; padding: 0 12px; border-radius: 4px; cursor: pointer;
       color: var(--cg-holo-text, #F0954F); font: 12px Inter, sans-serif;
       background: color-mix(in srgb, var(--cg-navy, #0B1020) 70%, transparent);
@@ -115,7 +121,7 @@ const ORBIT_PER_PX = 0.006;
   `],
 })
 export class JarvisPieceArchitectureComponent implements OnDestroy {
-  private readonly store = inject(JarvisPieceStore);
+  readonly store = inject(JarvisPieceStore);
   private readonly client = inject(JarvisPieceClient);
 
   readonly piece = input.required<Piece>();
@@ -124,7 +130,7 @@ export class JarvisPieceArchitectureComponent implements OnDestroy {
   readonly spoken = input<string>('');
   readonly phone = input(false);
   /** Graphe absent ou illisible, 3D impossible : la visionneuse SVG reprend la main. */
-  readonly fallback = output<'graph' | 'webgl'>();
+  readonly fallback = output<'graph' | 'webgl' | 'perf'>();
 
   private readonly stage = viewChild(ArchitectureStageComponent);
   readonly graph = signal<ArchitectureGraph | null>(null);
@@ -165,13 +171,20 @@ export class JarvisPieceArchitectureComponent implements OnDestroy {
     const graph = readArchitectureGraph(raw);
     const layout = graph ? layoutArchitecture(graph) : null;
     if (!graph || !layout) {
-      this.fallback.emit('graph');
+      this.fail('graph');
       return;
     }
+    this.store.archScene.set(true);
     this.graph.set(graph);
     this.layout.set(layout);
     const targets = new ArchitectureTargets(layout);
     this.unbind = this.store.bindArchitecture({ pieceId: id, resolve: (request, arch) => targets.resolve(request, arch) });
+  }
+
+  /** SF-238-11 — la 3D renonce (graphe, WebGL, performance) : le SVG cadré reprend, l'univers repart. */
+  fail(reason: 'graph' | 'webgl' | 'perf'): void {
+    this.store.archScene.set(false);
+    this.fallback.emit(reason);
   }
 
   /** Une demande du toucher : la même porte que la voix et l'outil. */
@@ -277,6 +290,7 @@ export class JarvisPieceArchitectureComponent implements OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.store.archScene.set(false);
     this.loading?.abort();
     this.clearPress();
     this.unbind?.();

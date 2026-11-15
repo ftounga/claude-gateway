@@ -75,7 +75,13 @@ async function measure(page) {
       const r = e.getBoundingClientRect();
       return getComputedStyle(e).visibility !== 'hidden' && Number(e.style.opacity || 0) > 0.05 && r.width > 0;
     }).map((e) => e.textContent);
-    return { viewer: !!viewer, svg: !!document.querySelector('.pv__zoom'), canvas: canvas && { x: canvas.left,
+    const universe = document.querySelector('app-jarvis-stage-3d');
+    const uCmp = universe && window.ng?.getComponent(universe);
+    // SF-238-11 — l'emprise réelle du schéma à l'écran : les étiquettes et icônes posées (pas le canevas).
+    const zones = [...(viewer?.querySelectorAll('.jv3d-label--arch-zone') ?? [])].filter((e) =>
+      getComputedStyle(e).visibility !== 'hidden' && Number(e.style.opacity || 0) > 0.05).map((e) => e.textContent);
+    return { viewer: !!viewer, svg: !!document.querySelector('.pv__zoom'), zones,
+      universeFrames: uCmp?.engine?.frames ?? null, canvas: canvas && { x: canvas.left,
       y: canvas.top, w: canvas.width, h: canvas.height }, calls: stage?.getAttribute('data-calls') ?? null,
       lit: stage?.getAttribute('data-lit') ?? '', labels, vw: innerWidth, vh: innerHeight,
       scrollW: document.documentElement.scrollWidth, panel: document.querySelector('.pa__panel')?.textContent ?? '' };
@@ -133,6 +139,18 @@ async function run({ width, height, tag }) {
   note(/e0|e1/.test(a.lit), `${tag} premier cadrage : le flux d'entrée est allumé (${a.lit || 'rien'})`);
   note(Number(a.calls) > 0 && Number(a.calls) <= 20, `${tag} appels de dessin ${a.calls} (≤ 20)`);
 
+  // SF-238-11 — l'univers recouvert est suspendu (0 image) pendant la scène.
+  const u0 = (await measure(page)).universeFrames;
+  await sleep(1500);
+  const u1 = (await measure(page)).universeFrames;
+  note(u0 !== null && u0 === u1, `${tag} univers suspendu pendant la scène (${u0} → ${u1} images)`);
+  if (tag === 'tel') {
+    const held = ['Availability Zone A', 'Availability Zone B', 'Sous-réseau public A', 'Sous-réseau privé A',
+      'Sous-réseau public B', 'Sous-réseau privé B'];
+    const seen = held.filter((z) => a.zones.some((l) => (l ?? '').toLowerCase() === z.toLowerCase()));
+    note(seen.length === held.length, `${tag} libellés des zones porteuses visibles : ${seen.length}/${held.length} (${a.zones.join(' | ')})`);
+  }
+
   await say('Zoome sur la base');
   const b = await shot('sf10-2-focus-base', 2600);
   note(/RDS primaire/.test(b.panel), `${tag} « zoome sur la base » : fiche du service « ${b.panel.trim().slice(0, 60)} »`);
@@ -158,6 +176,11 @@ async function run({ width, height, tag }) {
   await say('En 2D');
   const f = await shot('sf10-6-en-2d', 1200);
   note(!f.viewer, `${tag} « en 2D » : la visionneuse SVG cadrée reprend (3D ${f.viewer})`);
+  await sleep(1500);
+  const u2 = (await measure(page)).universeFrames;
+  await sleep(1200);
+  const u3 = (await measure(page)).universeFrames;
+  note(u3 > u2, `${tag} l'univers reprend après la scène (${u2} → ${u3} images)`);
   note(f.scrollW <= f.vw, `${tag} pas de défilement horizontal (${f.scrollW} ≤ ${f.vw})`);
   note(errors.length === 0, `${tag} erreurs de page : ${JSON.stringify(errors.slice(0, 3))}`);
   await browser.close();

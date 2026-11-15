@@ -116,6 +116,8 @@ export class JarvisStage3dComponent implements OnDestroy {
   readonly mouth = input<((out: MouthShape) => void) | null>(null);
   /** F-250 / SF-250-07 — pancartes ou galerie ouvertes : le visage s'écarte. */
   readonly faceAside = input(false);
+  /** F-238 / SF-238-11 — une architecture en 3D est ouverte au centre : l'univers recouvert ne dessine plus. */
+  readonly held = input(false);
   /** Téléphone (lu par le cockpit : même relevé que la scène). */
   get isNarrow(): boolean {
     return this.narrow;
@@ -310,6 +312,12 @@ export class JarvisStage3dComponent implements OnDestroy {
       }
       this.checkSleep();
     });
+  });
+
+  /** F-238 / SF-238-11 — suspend l'univers pendant une scène d'architecture, le reprend après. */
+  private readonly relayHold = effect(() => {
+    const on = this.held();
+    untracked(() => this.engine?.hold?.(on));
   });
 
   /** SF-236-02 — chaque nouveau plan part au moteur (hors zone : le moteur n'écrit jamais l'inverse). */
@@ -534,6 +542,9 @@ export class JarvisStage3dComponent implements OnDestroy {
     this.level.set(level);
     this.pushInsets(untracked(() => this.insets()), true);
     this.engine.start();
+    if (this.held()) {
+      this.engine.hold?.(true);
+    }
     this.checkSleep();
   }
 
@@ -554,6 +565,9 @@ export class JarvisStage3dComponent implements OnDestroy {
     }
     this.contextSuspended.set(false);
     this.engine.start();
+    if (this.held()) {
+      this.engine.hold?.(true);
+    }
   }
 
   /** Fondu de sortie puis libération : le 2D, déjà dessous, reste seul. */

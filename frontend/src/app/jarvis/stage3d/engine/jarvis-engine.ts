@@ -335,6 +335,18 @@ class ThreeJarvisEngine implements JarvisEngine {
     }
   }
 
+  /** F-238 / SF-238-11 — l'univers recouvert par une architecture : 0 image, reprise à la fermeture. */
+  hold(on: boolean): void {
+    if (this.disposed) {
+      return;
+    }
+    if (on) {
+      this.loop.pause();
+    } else {
+      this.loop.start();
+    }
+  }
+
   resize(width: number, height: number): void {
     if (this.disposed || width <= 0 || height <= 0) {
       return;

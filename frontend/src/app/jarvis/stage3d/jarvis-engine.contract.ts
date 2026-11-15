@@ -94,6 +94,11 @@ export interface JarvisEngine {
   setFace?(on: boolean): void;
   /** F-250 / SF-250-07 — des pancartes ou une galerie sont ouvertes : le visage glisse sur le côté et les regarde. */
   setFaceAside?(on: boolean): void;
+  /**
+   * F-238 / SF-238-11 — suspend (0 image) ou reprend la boucle : une scène d'architecture ouverte au centre ne partage
+   * pas le processeur graphique avec l'univers qu'elle recouvre.
+   */
+  hold?(on: boolean): void;
   /** Libère tout (géométries, matières, rendu, contexte, écouteurs) ; idempotent. */
   dispose(): void;
 }

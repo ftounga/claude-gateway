@@ -14,6 +14,7 @@ import { EngineClock } from '../../jarvis-banc';
 import { FrameHost, FrameLoop } from '../../jarvis-frame-loop';
 import { HOLO_ALPHA, HOLO_COLORS, HoloRole, MOTION_DURATIONS, rgb } from '../../jarvis-motion';
 import { QualityLevel } from '../../jarvis-render-capability';
+import { QualityGovernor } from '../../jarvis-quality';
 import { levelBudget } from '../../hud/jarvis-device-profile';
 import { JarvisPost } from '../../engine/jarvis-post';
 import { ArchitectureIconSource } from '../architecture-icons';
@@ -928,8 +929,15 @@ export class ArchitectureSceneGraph {
         }
       });
     }
+    // SF-238-11 — le libellé d'une zone au milieu du bord le plus proche de la caméra (le schéma peut tourner d'un
+    // quart de tour au téléphone, et l'orbite le fait tourner).
+    const sa = Math.sin(plan.camera.azimuth);
+    const ca = Math.cos(plan.camera.azimuth);
+    const side = Math.abs(sa) > Math.abs(ca);
     plates.forEach((p, i) => {
-      this.placeLabel(this.plateLabels[i], p.x0 + p.w / 2, f.plateAlt[i] + 0.01, p.z0 + p.d - 0.05,
+      const lx = side ? (sa > 0 ? p.x0 + p.w - 0.05 : p.x0 + 0.05) : p.x0 + p.w / 2;
+      const lz = side ? p.z0 + p.d / 2 : ca > 0 ? p.z0 + p.d - 0.05 : p.z0 + 0.05;
+      this.placeLabel(this.plateLabels[i], lx, f.plateAlt[i] + 0.01, lz,
         plan.plateLabel[i] ? f.labels * (1 - f.plateHidden[i]) : 0, plan.plateRole[i] === 'core');
       this.placeLabel(this.capsuleLabels[i], p.x0 + p.w / 2, f.plateAlt[i] + f.float, p.z0 + p.d / 2,
         plan.capsuleText[i] ? f.labels * f.plateCapsule[i] : 0, false);
@@ -967,6 +975,9 @@ export interface ArchitectureEngineOptions extends ArchitectureSceneOptions {
   clock: EngineClock;
   frameHost: FrameHost;
   onFirstFrame?(): void;
+  /** SF-238-11 — qualité adaptative (gouverneur F-236) ; Bas trop lent ⇒ `onFallback` (le SVG cadré reprend). */
+  adaptive?: boolean;
+  onFallback?(): void;
 }
 
 /** Le moteur : rendu WebGL, lumière F-236 (bloom), étiquettes, boucle d'images (0 image onglet caché). */
@@ -996,6 +1007,9 @@ export class ArchitectureEngine {
   private scriptIndex = -1;
   fps = 0;
   private last: number | null = null;
+  /** SF-238-11 — la qualité adaptative (3 niveaux, puis repli 2D). */
+  private readonly governor: QualityGovernor | null;
+  private gaveUp = false;
   private readonly look = new Vector3();
   private cameraFor: ArchitecturePlan | null = null;
   /** SF-238-10 — le déplacement en cours (T-A3 → T-A6, T-A9) et la caméra affichée (point de départ du suivant). */
@@ -1033,6 +1047,12 @@ export class ArchitectureEngine {
     // L'horloge part de 0 à la pose : au banc (horloge figée à t), l'instant de la phase est t.
     this.setPhase(phase, 0);
     this.loop = new FrameLoop(options.frameHost, (now) => this.draw(now));
+    this.governor = options.adaptive ? new QualityGovernor(options.level, 0) : null;
+  }
+
+  /** SF-238-11 — le niveau de qualité courant. */
+  get level(): QualityLevel {
+    return this.governor?.level ?? this.options.level;
   }
 
   get frames(): number {
@@ -1156,6 +1176,26 @@ export class ArchitectureEngine {
     this.narrate(this.script[index].text, this.script[index].at);
   }
 
+  /** SF-238-11 — le gouverneur F-236 : descend (densité de pixels, lumière), remonte, ou renonce (repli 2D). */
+  private adapt(dt: number, now: number): void {
+    const verdict = this.governor?.sample(dt, now);
+    if (!verdict || verdict.kind === 'keep') {
+      return;
+    }
+    if (verdict.kind === 'fallback2d') {
+      if (!this.gaveUp) {
+        this.gaveUp = true;
+        this.options.onFallback?.();
+      }
+      return;
+    }
+    this.renderer.setPixelRatio(Math.min(this.options.pixelRatio, levelBudget(verdict.level, this.options.phone)
+      .pixelRatio));
+    this.renderer.setSize(this.width, this.height, false);
+    this.post.setLevel(verdict.level);
+    this.post.setSize(this.width, this.height);
+  }
+
   private viewport(): Viewport {
     return { width: this.width, height: this.height };
   }
@@ -1166,6 +1206,7 @@ export class ArchitectureEngine {
       const dt = now - this.last;
       if (dt > 0) {
         this.fps = this.fps === 0 ? 1000 / dt : this.fps * 0.9 + (1000 / dt) * 0.1;
+        this.adapt(dt, now);
       }
     }
     this.last = now;
