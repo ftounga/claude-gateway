@@ -1,6 +1,6 @@
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { TestBed } from '@angular/core/testing';
+import { TestBed, discardPeriodicTasks, fakeAsync, flush, tick } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
 import { NEVER, of } from 'rxjs';
@@ -20,7 +20,7 @@ describe('TerminalLanePaneComponent (F-221)', () => {
   beforeEach(async () => {
     atelier = jasmine.createSpyObj<AtelierService>('AtelierService',
       ['getHistory', 'getTurnState', 'attachTurn', 'streamChat', 'interruptChat', 'confirmChatToolUse',
-        'answerQuestion']);
+        'answerQuestion', 'followTurnInWindows']);
     atelier.getHistory.and.returnValue(of([
       { id: 'm1', role: 'USER', content: 'demande du chantier 8', createdAt: '2026-10-29T08:00:00Z' },
     ]));
@@ -28,6 +28,7 @@ describe('TerminalLanePaneComponent (F-221)', () => {
     atelier.attachTurn.and.returnValue(new AbortController());
     atelier.streamChat.and.returnValue(Promise.resolve());
     atelier.interruptChat.and.returnValue(of(undefined));
+    atelier.followTurnInWindows.and.returnValue({ stop: jasmine.createSpy('stop') });
     await TestBed.configureTestingModule({
       imports: [TerminalLanePaneComponent, NoopAnimationsModule],
       providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([]),
@@ -197,5 +198,113 @@ describe('TerminalLanePaneComponent (F-221)', () => {
       expect(pane.pendingQuestion()).toBeNull();
       expect(atelier.attachTurn).not.toHaveBeenCalled();
     });
+  });
+
+  /**
+   * F-260 / SF-260-01 — BUG du 2026-11-10 : derrière le proxy d'entreprise qui retient le flux SSE, la demande
+   * d'autorisation d'un tour du volet de droite n'arrivait jamais (voix_off refusée 4 fois « délai imparti »).
+   * Le volet suit désormais son tour par fenêtres, comme l'écran principal.
+   */
+  describe('F-260 / SF-260-01 — le volet suit son tour par fenêtres derrière un proxy', () => {
+    function lastWindowHandlers(): AtelierStreamHandlers {
+      return atelier.followTurnInWindows.calls.mostRecent().args[2];
+    }
+
+    it('flux retenu après un envoi : la carte d’autorisation arrive par fenêtre et le clic part au chantier', fakeAsync(() => {
+      atelier.getTurnState.and.returnValue(of({ live: false, turnId: null, cursor: 0, startedAt: null, pending: null }));
+      atelier.confirmChatToolUse.and.returnValue(of(undefined));
+      const fixture = create();
+      const pane = fixture.componentInstance;
+      pane.draft.set('Relance la voix off ash');
+      pane.send();
+      tick(4_000);
+      expect(atelier.followTurnInWindows).toHaveBeenCalledWith('w1', jasmine.any(Function), jasmine.any(Object),
+        jasmine.objectContaining({ chantier: 8 }));
+      lastWindowHandlers().onConfirmRequest?.({ toolUseId: 'toolu_vo', tool: 'voix_off',
+        detail: 'Produire la voix off « … » — service payant', timeoutMs: 110_000 });
+      fixture.detectChanges();
+      expect(pane.pendingConfirmation()?.toolUseId).toBe('toolu_vo');
+      expect((fixture.nativeElement as HTMLElement).querySelector('.terminal-ask')).not.toBeNull();
+      pane.answerConfirmation(true);
+      expect(atelier.confirmChatToolUse).toHaveBeenCalledWith('w1',
+        jasmine.objectContaining({ toolUseId: 'toolu_vo', decision: 'allow' }), 8);
+      flush();
+      discardPeriodicTasks();
+    }));
+
+    it('flux retenu au rebranchement : le volet passe aux fenêtres sans clore le tour', fakeAsync(() => {
+      const fixture = create();
+      const pane = fixture.componentInstance;
+      const attachHandlers = atelier.attachTurn.calls.mostRecent().args[2];
+      const controller = atelier.attachTurn.calls.mostRecent().returnValue;
+      tick(4_000);
+      expect(controller.signal.aborted).toBeTrue();
+      expect(atelier.followTurnInWindows).toHaveBeenCalledWith('w1', jasmine.any(Function), jasmine.any(Object),
+        jasmine.objectContaining({ chantier: 8 }));
+      // L'abandon du rebranchement retenu remonte un `idle` : il ne doit pas clore le tour.
+      attachHandlers.onIdle?.();
+      expect(pane.submitting()).toBeTrue();
+      flush();
+      discardPeriodicTasks();
+    }));
+
+    it('flux qui passe (started sous 4 s) : aucune fenêtre', fakeAsync(() => {
+      atelier.getTurnState.and.returnValue(of({ live: false, turnId: null, cursor: 0, startedAt: null, pending: null }));
+      const pane = create().componentInstance;
+      pane.draft.set('bonjour');
+      pane.send();
+      const handlers = atelier.streamChat.calls.mostRecent().args[2];
+      handlers.onStarted?.({ turnId: 't', startedAt: 1 });
+      tick(5_000);
+      expect(atelier.followTurnInWindows).not.toHaveBeenCalled();
+      flush();
+      discardPeriodicTasks();
+    }));
+
+    it('un même événement livré par la fenêtre puis par le flux retenu ne s’applique qu’une fois', fakeAsync(() => {
+      atelier.getTurnState.and.returnValue(of({ live: false, turnId: null, cursor: 0, startedAt: null, pending: null }));
+      const pane = create().componentInstance;
+      pane.draft.set('go');
+      pane.send();
+      tick(4_000);
+      const windows = lastWindowHandlers();
+      const stream = atelier.streamChat.calls.mostRecent().args[2];
+      expect(windows.acceptSeq?.(1)).toBeTrue();
+      windows.onSeq?.(1);
+      windows.onAction({ type: 'read', path: 'a.txt' });
+      // Le flux d'émission se vide d'un coup en fin de tour : le numéro 1 est déjà vu.
+      expect(stream.acceptSeq?.(1)).toBeFalse();
+      expect(stream.acceptSeq?.(2)).toBeTrue();
+      flush();
+      discardPeriodicTasks();
+    }));
+
+    it('fin du tour par fenêtre puis flux d’émission fermé : ni « réponse non reçue », ni relecture en boucle', fakeAsync(() => {
+      atelier.getTurnState.and.returnValue(of({ live: false, turnId: null, cursor: 0, startedAt: null, pending: null }));
+      const pane = create().componentInstance;
+      pane.draft.set('go');
+      pane.send();
+      tick(4_000);
+      const follower = atelier.followTurnInWindows.calls.mostRecent().returnValue;
+      lastWindowHandlers().onDone({ reply: 'fait', actions: [] } as unknown as AtelierStreamDone);
+      expect(follower.stop).toHaveBeenCalled();
+      expect(pane.submitting()).toBeFalse();
+      const turnStateCalls = atelier.getTurnState.calls.count();
+      atelier.streamChat.calls.mostRecent().args[2].onClosed?.();
+      expect(pane.unanswered()).toBeFalse();
+      expect(atelier.getTurnState.calls.count()).toBe(turnStateCalls);
+      flush();
+      discardPeriodicTasks();
+    }));
+
+    it('fermer le volet arrête la sonde et les fenêtres', fakeAsync(() => {
+      const fixture = create();
+      tick(4_000);
+      const follower = atelier.followTurnInWindows.calls.mostRecent().returnValue;
+      fixture.destroy();
+      expect(follower.stop).toHaveBeenCalled();
+      flush();
+      discardPeriodicTasks();
+    }));
   });
 });
