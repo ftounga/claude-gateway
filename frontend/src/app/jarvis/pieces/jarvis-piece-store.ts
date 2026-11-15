@@ -180,6 +180,10 @@ export class JarvisPieceStore {
         return null;
       }
       this.pendingArch = { action, source, at: now }; // le graphe arrive : la demande attend la visionneuse
+      if (action.request.kind === 'focus' && action.request.target.trim()) {
+        // En 2D (pas de graphe), le SVG cadré sait déjà cadrer une partie nommée : la même cible, tout de suite.
+        return this.dispatch({ type: 'zoom', target: action.request.target.trim() }, source, now);
+      }
       return { ok: true };
     }
     const resolution = binding.resolve(action.request, nav.arch);

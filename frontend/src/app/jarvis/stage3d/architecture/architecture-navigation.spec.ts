@@ -234,6 +234,12 @@ describe('Architecture — la visionneuse dans la galerie (F-238 / SF-238-10)', 
     expect(store.nav().arch?.flow).toEqual({ edges: ['e0', 'e1'], label: 'entrée' });
   });
 
+  it('sans graphe (repli 2D), « zoome sur … » cadre la partie nommée du SVG tout de suite', () => {
+    expect(store.dispatch({ type: 'arch', request: { kind: 'focus', target: 'le VPC' } }, 'ai').ok).toBeTrue();
+    expect(store.nav().target).toBe('le VPC');
+    expect(store.nav().zoom).toBe(2);
+  });
+
   it('l’état de scène et la fiche du service suivent la navigation', () => {
     store.dispatch({ type: 'arch', request: { kind: 'explode', on: true } });
     store.dispatch({ type: 'zoom', step: '+' });
