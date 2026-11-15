@@ -83,6 +83,8 @@ export const PLAY_START_LIMIT_MS = 10_000;
 export const PLAY_STALL_LIMIT_MS = 8_000;
 /** Le pas du chien de garde de lecture. */
 export const PLAY_WATCH_MS = 1_000;
+/** F-257 / SF-257-12 — au-delà, une phrase préparée n'est plus reprise (le tour est passé). */
+export const WARM_TTL_MS = 15_000;
 
 /** La part entendue d'une phrase coupée après `seconds` de lecture (mots entiers ; `duration` si connue). */
 export function heardPart(text: string, seconds: number, duration: number): string {
@@ -133,6 +135,13 @@ export class JarvisVoiceService {
   private alignedVoice = false;
   /** F-250 / SF-250-06 — les alignements des clips (fichier compagnon), par nom. */
   private readonly clipAlignments = new Map<string, Alignment>();
+  /**
+   * F-257 / SF-257-12 — **la phrase préparée** : la synthèse de la première phrase d'une réponse provisoire, demandée
+   * pendant que le service attend la confirmation du tour. Rien n'est joué : la file la reprend si la même phrase lui
+   * est confiée (réponse adoptée), sinon elle est abandonnée (réponse jetée, ou plus vieille que {@link WARM_TTL_MS}).
+   */
+  private warmed: { text: string; workspaceId: string | null; abort: AbortController; url: Promise<Fetched>;
+    at: number; firstByte: boolean } | null = null;
 
   /** F-250 — le visage est-il allumé, et les lèvres seront-elles alignées ? */
   faceStatus(): Observable<JarvisFaceStatus> {
@@ -244,11 +253,54 @@ export class JarvisVoiceService {
         this.stopCurrent();
       }
     }
-    this.queue.push({ text, workspaceId, hooks, abort: new AbortController(), url: null });
+    const warmed = this.takeWarmed(text, workspaceId, hooks);
+    this.queue.push({ text, workspaceId, hooks, abort: warmed?.abort ?? new AbortController(), url: warmed?.url ?? null });
     this.prefetch();
     if (!this.queueRunning) {
       void this.runQueue();
     }
+  }
+
+  /**
+   * F-257 / SF-257-12 — prépare la synthèse de `text` **sans la jouer** (une seule à la fois ; la précédente est
+   * abandonnée). La file la reprend telle quelle si on lui confie la même phrase dans les {@link WARM_TTL_MS}.
+   */
+  warm(text: string, workspaceId: string | null = null): void {
+    this.unwarm();
+    const abort = new AbortController();
+    const slot = { text, workspaceId, abort, url: null as unknown as Promise<Fetched>, at: Date.now(),
+      firstByte: false };
+    slot.url = this.fetchAudio(text, workspaceId, abort, { onFirstByte: () => { slot.firstByte = true; } });
+    slot.url.catch(() => undefined);
+    this.warmed = slot;
+  }
+
+  /** F-257 / SF-257-12 — abandonne la phrase préparée (réponse jetée). */
+  unwarm(): void {
+    const slot = this.warmed;
+    this.warmed = null;
+    slot?.abort.abort();
+  }
+
+  /** F-257 / SF-257-12 — la phrase préparée pour `text`, retirée de l'attente ; abandonnée si elle ne sert pas. */
+  private takeWarmed(text: string, workspaceId: string | null, hooks?: SpeakHooks):
+    { abort: AbortController; url: Promise<Fetched> } | null {
+    const slot = this.warmed;
+    if (!slot) {
+      return null;
+    }
+    this.warmed = null;
+    if (slot.text !== text || slot.workspaceId !== workspaceId || Date.now() - slot.at > WARM_TTL_MS) {
+      slot.abort.abort();
+      return null;
+    }
+    // Le premier octet déjà reçu (ou à venir) est posé sur le chronomètre du tour qui la reprend.
+    if (slot.firstByte) {
+      hooks?.onFirstByte?.();
+    } else {
+      void slot.url.then(() => hooks?.onFirstByte?.(), () => undefined);
+    }
+    return { abort: slot.abort, url: slot.url };
   }
 
   /** SF-233-03 — se résout quand la file est vide (tout dit, ou interrompu). */

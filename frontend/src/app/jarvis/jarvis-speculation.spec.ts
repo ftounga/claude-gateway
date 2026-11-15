@@ -86,6 +86,45 @@ describe('JarvisSpeculation (F-252 / SF-252-02, CA6)', () => {
   });
 });
 
+describe('JarvisSpeculation — la première phrase signalée (F-257 / SF-257-12)', () => {
+  let upstream: FastBrainHandlers;
+
+  beforeEach(() => {
+    const client = jasmine.createSpyObj<JarvisFastBrainClient>('client', ['converse', 'verdict']);
+    client.verdict.and.resolveTo();
+    client.converse.and.callFake((_b, h) => {
+      upstream = h;
+      return new Promise<FastBrainOutcome>(() => undefined);
+    });
+    signalled.length = 0;
+    spec = new JarvisSpeculation(client, { subjectId: 's1', text: 'Bonjour.', presentation: false }, 'id', false,
+      (s) => signalled.push(s));
+  });
+  const signalled: string[] = [];
+  let spec: JarvisSpeculation;
+
+  it('la première phrase retenue est signalée une seule fois, avant l’adoption', () => {
+    upstream.onText('Bonjour, Monsieur.');
+    upstream.onText('Tout va bien.');
+    expect(signalled).toEqual(['Bonjour, Monsieur.']);
+  });
+
+  it('rien n’est signalé après l’abandon, ni après l’adoption', () => {
+    spec.drop();
+    upstream.onText('Bonjour, Monsieur.');
+    expect(signalled).toEqual([]);
+  });
+
+  it('adoptée avant toute phrase : la phrase va à l’écran, rien n’est préparé à part', () => {
+    const heard: string[] = [];
+    spec.adopt('bonjour', { onText: (s) => heard.push(s), onDelegated: () => undefined,
+      onFallback: () => undefined, onDone: () => undefined });
+    upstream.onText('Bonjour, Monsieur.');
+    expect(heard).toEqual(['Bonjour, Monsieur.']);
+    expect(signalled).toEqual([]);
+  });
+});
+
 describe('AnticipationWatch (F-252 / SF-252-04, CA1, CA2)', () => {
   it('pas avant le seuil, puis une seule fois par silence', () => {
     const watch = new AnticipationWatch(0);

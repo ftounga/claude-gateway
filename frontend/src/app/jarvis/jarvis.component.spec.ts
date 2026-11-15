@@ -142,7 +142,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     dictation.transcribe.and.callFake(() => dictation.stop());
     voice = jasmine.createSpyObj<JarvisVoiceService>('JarvisVoiceService',
       ['speak', 'stop', 'unlock', 'level', 'preloadClips', 'playClip', 'hasClip', 'enqueue', 'idle', 'status',
-        'duck', 'interrupt', 'resetHeard', 'audioAllowed', 'faceStatus', 'setAligned', 'playhead', 'alignment']);
+        'duck', 'interrupt', 'resetHeard', 'audioAllowed', 'faceStatus', 'setAligned', 'playhead', 'alignment', 'warm', 'unwarm']);
     voice.interrupt.and.returnValue(null);
     // F-250 — le visage et l'alignement allumés (défauts serveur).
     voice.faceStatus.and.returnValue(of({ enabled: true, aligned: true }));
@@ -2191,11 +2191,16 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
         fast!.onText('Le chantier est prêt.');
         flushMicrotasks();
         expect(voice.enqueue).not.toHaveBeenCalled(); // rien n'est dit avant la confirmation
+        // SF-257-12 — la voix de la 1re phrase se prépare (une fois, même sujet que la file), sans être jouée.
+        expect(voice.warm).toHaveBeenCalledOnceWith('Le chantier est prêt.', jasmine.anything());
 
         turn(jarvis, { type: 'turn', state: 'confirmed', text: 'Où en est CAGIP ?', speechMs: 1300, silenceMs: 700 });
         expect(fastBrain.converse).toHaveBeenCalledTimes(1);
         expect(fastBrain.verdict).toHaveBeenCalledOnceWith(body.speculationId!, true, 'Où en est CAGIP ?');
         expect(voice.enqueue).toHaveBeenCalledTimes(1);
+        expect(voice.enqueue.calls.argsFor(0)[0]).toBe('Le chantier est prêt.');
+        expect(voice.enqueue.calls.argsFor(0)[1]).toBe(voice.warm.calls.argsFor(0)[1]); // la file reprend la préparée
+        expect(voice.unwarm).not.toHaveBeenCalled();
         fast!.onDone({ brain: 'FAST', spokenText: 'Le chantier est prêt.', firstTokenMs: 900, model: 'm' });
         fastDone!('ok');
         flushMicrotasks();
@@ -2233,7 +2238,12 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
         const { jarvis } = streaming();
         turn(jarvis, { type: 'turn', state: 'candidate', text: 'Attends.', speechMs: 400 });
         const first = fastBrain.converse.calls.mostRecent();
+        fast!.onText('Bien sûr.');
+        flushMicrotasks();
+        expect(voice.warm).toHaveBeenCalledTimes(1);
         turn(jarvis, { type: 'turn', state: 'cancelled' });
+        expect(voice.unwarm).toHaveBeenCalled(); // SF-257-12 — la voix préparée d'une réponse jetée est abandonnée
+        expect(voice.enqueue).not.toHaveBeenCalled();
         expect((first.args[2] as AbortSignal).aborted).toBeTrue();
         expect(fastBrain.verdict).toHaveBeenCalledWith(first.args[0].speculationId!, false, null);
         turn(jarvis, { type: 'turn', state: 'candidate', text: 'Attends. Parle-moi du WAF', speechMs: 1500 });

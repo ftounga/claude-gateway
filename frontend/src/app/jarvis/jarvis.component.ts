@@ -1001,7 +1001,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
         this.stopWarmingWhileSpeaking();
         this.dropSpeculation();
         if (this.speculable(text, speechMs)) {
-          this.speculation = new JarvisSpeculation(this.fastBrain, this.converseBody(text));
+          const body = this.converseBody(text);
+          // F-257 / SF-257-12 — la voix de la première phrase se prépare pendant que le service confirme le tour ;
+          // elle n'est jouée que si la réponse est adoptée (F-252 D1/D2 inchangées).
+          this.speculation = new JarvisSpeculation(this.fastBrain, body, undefined, false,
+            (sentence) => this.prepareVoice(sentence, body.subjectId ?? null));
         }
         return;
       case 'cancelled':
@@ -2621,6 +2625,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       return speculation;
     }
     speculation.drop();
+    this.voice.unwarm();
     if (clock) {
       clock.speed = { ...clock.speed, speculation: 'relancee' };
     }
@@ -2629,8 +2634,22 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   /** Jette une réponse provisoire non réclamée (parole non envoyée au cerveau, écran quitté). */
   private dropSpeculation(): void {
+    if (this.speculation) {
+      this.voice.unwarm(); // F-257 / SF-257-12 — sa voix préparée ne sera jamais jouée
+    }
     this.speculation?.drop();
     this.speculation = null;
+  }
+
+  /**
+   * F-257 / SF-257-12 — prépare la voix de la première phrase d'une réponse provisoire (même phrase et même sujet que
+   * ce que `sayNow` confiera à la file). Une ligne-marque (✦, 📌, ⤵) n'est jamais dite : rien n'est préparé.
+   */
+  private prepareVoice(sentence: string, subjectId: string | null): void {
+    if (!sentence.trim() || isPortraitMark(sentence) || isMoreMark(sentence)) {
+      return;
+    }
+    this.voice.warm(sentence, subjectId ?? '');
   }
 
   // ---- F-239 / SF-239-06 : corriger d'un toucher ou de la voix ----
