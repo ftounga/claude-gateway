@@ -91,3 +91,22 @@ Non applicable (aucune donnée nouvelle).
 
 ## Préoccupations transversales
 - Navigation / routing : non. Consigne : non. Tenant, Auth, Plans : non.
+
+## Dépendances
+SF-238-10 (visionneuse, `PieceNav.arch`) : livrée juste avant. Questions ouvertes : aucune.
+
+## Notes et décisions
+- **D-11-1 — cause racine du défaut téléphone** : les libellés de zones partageaient le plafond de création des
+  étiquettes des services (16 au téléphone) ; avec 10 services, seules les 6 premières zones (AWS Cloud, Région, VPC,
+  AZ A, AZ B, public A) avaient un libellé, les autres n'existaient pas. Toutes les zones ont désormais le leur ; le
+  plan choisit les 16 visibles (zones qui structurent d'abord).
+- **D-11-2 — schéma petit** : en portrait, la vue d'ensemble se pose **de face** (azimut 0° ou 90°, celui qui rend le
+  schéma le plus grand) et plus haute (55°) : un schéma vu en diagonale (35°) perd 30 à 40 % de largeur. Limite
+  physique : un schéma carré n'est jamais plus large que l'écran ; au-delà, « zoome » / le pincement.
+- **D-11-3** Libellés de zones courts au téléphone (« AZ A », « Privé B ») ; complets dans la fiche et le 2D.
+- **D-11-4** Au téléphone, les zones passent avant les services au dé-chevauchement (un service masqué se lit à son
+  icône et au toucher).
+- **D-11-5** Univers F-236 suspendu (0 image) pendant la scène : mesuré au banc (images figées pendant la scène,
+  reprises après).
+- **D-11-6** p50 ≥ 50 i/s au téléphone : non mesurable ici (rendu logiciel sans GPU) ; la qualité adaptative et la
+  mesure `a_2d_p` (SF-238-14) le diront à J+7 sur le téléphone du PO.
