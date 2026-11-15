@@ -24,7 +24,10 @@ public final class JarvisOfflinePrompt {
             s'il était actuel. Si tu ne sais pas, dis-le en une phrase.
             - Tu ne peux rien faire d'ici : si Monsieur demande une action (relancer, valider, déployer, envoyer, répondre, \
             poser un rendez-vous), dis en une phrase que tu ne peux pas la faire d'ici, puis ce que tu sais.
-            - Monsieur vient d'entendre la phrase d'annonce : ne la redis pas.
+            - Monsieur vient d'entendre l'annonce (que le poste est éteint, ou ce que tu vas faire) : ne la redis pas. Ne \
+            redis jamais que le poste est éteint ni que tu ne peux rien faire, sauf pour refuser une action demandée.
+            - La ligne « Sujet visé », quand elle existe, nomme un sujet qui existe : ne dis jamais qu'il est introuvable ; \
+            si tu n'as rien de relevé sur lui, dis-le simplement.
             - Tu ne commentes jamais tes outils ; seul leur résultat compte.
             """;
 

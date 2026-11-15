@@ -290,4 +290,22 @@ class JarvisOfflineTest {
         assertThat(calls).isEmpty();
         assertThat(said).isEmpty();
     }
+    @Test
+    void f262TheFullNoticeIsSaidOncePerHostThenTwoWordsAndTheTargetIsNamed() {
+        Workspace w = owned(host);
+        when(w.getName()).thenReturn("data-platform");
+        when(meter.hostOffline(alice, w)).thenReturn(true);
+        JarvisFastBrainService s = service(answering("Rien de relevé sur data-platform."));
+
+        s.offlineInstead(ask(), delegated(), sink);
+        String first = said.get(0);
+        said.clear();
+        s.offlineInstead(ask(), delegated(), sink);
+
+        assertThat(first).startsWith("Le poste est éteint ; je ne peux pas y agir");
+        assertThat(said.get(0)).isEqualTo(JarvisFastBrainService.OFFLINE_AGAIN + " ");
+        assertThat(firstUserText(calls.get(1))).contains("Sujet visé : data-platform.");
+        // Rien de volatil dans la consigne : la même aux deux appels.
+        assertThat(calls.get(1).system()).isEqualTo(calls.get(0).system());
+    }
 }

@@ -612,10 +612,14 @@ public class JarvisFastBrainService {
             log.debug("Poste non vérifié ({})", e.getClass().getSimpleName());
             return outcome;
         }
-        String notice = offlineNotice(offlineUniverseOf(request.userId()), target);
+        fr.claudegateway.jarvis.universe.JarvisUniverse universe = offlineUniverseOf(request.userId());
+        // F-262 / SF-262-02 — l'annonce complète une fois par poste et par fenêtre ; ensuite, deux mots (jamais la même
+        // longue phrase à chaque tour).
+        String notice = noticedRecently(request.userId(), target.getHostId()) ? OFFLINE_AGAIN
+                : offlineNotice(universe, target);
         sink.text(notice + " ");
         String answer = answerOffline(request, target, outcome.delegation().chantier(),
-                JarvisOfflinePrompt.SITUATION_OFFLINE);
+                JarvisOfflinePrompt.SITUATION_OFFLINE + "\n" + targetLine(universe, target));
         for (String sentence : JarvisFastGuards.split(answer + " ").sentences()) {
             sink.text(sentence + " ");
         }
@@ -645,6 +649,34 @@ public class JarvisFastBrainService {
         return new Outcome(Kind.ANSWER, (annonce.isEmpty() ? "" : annonce + " ") + answer, null, REASON_GENERAL,
                 atelierProperties.model(), outcome.firstTokenMs(), null, outcome.guards(), outcome.understood())
                 .withShows(outcome.shows());
+    }
+
+    /** F-262 / SF-262-02 — l'annonce d'un poste déjà dit éteint dans la fenêtre. */
+    static final String OFFLINE_AGAIN = "Toujours éteint.";
+    /** F-262 / SF-262-02 — la fenêtre pendant laquelle l'annonce complète n'est pas redite pour le même poste. */
+    static final java.time.Duration OFFLINE_NOTICE_WINDOW = java.time.Duration.ofMinutes(10);
+    private final java.util.concurrent.ConcurrentHashMap<String, java.time.Instant> offlineNoticed =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Vrai si l'annonce complète de ce poste a été dite dans la fenêtre ; sinon note qu'elle l'est maintenant. */
+    boolean noticedRecently(UUID userId, UUID hostId) {
+        java.time.Instant now = clock.instant();
+        offlineNoticed.values().removeIf(at -> at.isBefore(now.minus(OFFLINE_NOTICE_WINDOW)));
+        java.time.Instant before = offlineNoticed.putIfAbsent(userId + "/" + hostId, now);
+        return before != null;
+    }
+
+    /**
+     * F-262 / SF-262-02 — « Sujet visé : data-platform (poste CAGIP). » : Opus ne voit pas l'univers ; sans cette ligne il
+     * disait « aucun sujet de ce nom » d'un sujet qui existe.
+     */
+    static String targetLine(fr.claudegateway.jarvis.universe.JarvisUniverse universe, Workspace target) {
+        String client = universe == null || target == null ? null : universe.clients().stream()
+                .filter(c -> target.getHostId().equals(c.id())).map(fr.claudegateway.jarvis.universe.JarvisUniverse.Client::name)
+                .findFirst().orElse(null);
+        String name = target == null || target.getName() == null ? "" : target.getName();
+        return "Sujet visé : " + (name.isBlank() ? "(sans nom)" : name) + (client == null ? "" : " (poste " + client + ")")
+                + ".";
     }
 
     /** La phrase dite d'abord, au nom du client quand il est connu. */
