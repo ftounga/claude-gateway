@@ -84,7 +84,10 @@ public class SubjectJourneyEvent {
     /** Toutes les étapes vérifiées : clôture proposée (SF-176-05). */
     public static final String CLOSE_PROPOSED = "CLOSE_PROPOSED";
 
-    /** [Clore le sujet] (SF-176-05). */
+    /**
+     * [Clore le sujet] (SF-176-05). {@code detail} vide pour le clic ; {@code chantier N · écrit « citation »} pour
+     * l'outil {@code cloturer_chantier} (F-261 / SF-261-01).
+     */
     public static final String CLOSED = "CLOSED";
 
     /** Un chantier de plus est ouvert à côté des autres (F-206). */

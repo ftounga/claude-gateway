@@ -91,6 +91,7 @@ public class JourneyToolExecutor {
                 case JourneyToolCatalog.LAUNCH_AUTONOMOUS -> launchAutonomous(userId, workspace, input);
                 case JourneyToolCatalog.CONFIRM_DIAGNOSIS -> confirmDiagnosis(userId, workspace, input);
                 case JourneyToolCatalog.VALIDATE_PLAN -> validatePlan(userId, workspace, input, context);
+                case JourneyToolCatalog.CLOSE_CHANTIER -> closeChantier(userId, workspace, input, context);
                 default -> Outcome.error("Outil du parcours inconnu : " + tool);
             };
         } catch (InvalidJourneyException e) {
@@ -182,7 +183,8 @@ public class JourneyToolExecutor {
                     + "passe en VÉRIFICATION. Vérifie chaque étape comme le plan le dit, preuves à l'appui ; on ne "
                     + "modifie plus.");
             case ALL_VERIFIED -> Outcome.ok("Toutes les étapes sont vérifiées. L'utilisateur voit la proposition "
-                    + "de clore le sujet : résume-lui ce qui a été fait et vérifié.");
+                    + "de clore le sujet : résume-lui ce qui a été fait et vérifié. S'il demande par écrit de clore : "
+                    + "cloturer_chantier.");
             case FAILED -> Outcome.ok("Étape " + step + " en ÉCHEC. Ne force pas : si la cause est comprise, "
                     + "amende le plan (set_subject_plan) ; sinon reopen_investigation.");
             case BLOCKED -> Outcome.ok("Étape " + step + " BLOQUÉE, raison enregistrée. Arrête-toi là sur ce "
@@ -290,10 +292,60 @@ public class JourneyToolExecutor {
             return Outcome.error("Ces mots ne figurent pas dans ce que l'utilisateur a écrit pendant ce tour : cite-le "
                     + "exactement. Sans validation écrite de sa part dans ce tour, laisse le plan en attente.");
         }
-        service.validatePlan(userId, workspace.getId(), chantier, version,
-                "écrit « " + (words.length() > 120 ? words.substring(0, 120) + "…" : words) + " »");
+        service.validatePlan(userId, workspace.getId(), chantier, version, channel(words));
         return prefixed(chantier, Outcome.ok("Plan v" + version + " validé par l'utilisateur : le chantier passe en "
                 + "EXÉCUTION. Exécute ses étapes jusqu'au bout (update_plan_step après chacune)."));
+    }
+
+    /**
+     * La clôture écrite d'un chantier (F-261 / SF-261-01) : « tu peux clore » vaut le clic [Clore], aux mêmes
+     * conditions que {@code valider_plan} — chantier explicite, citation figurant dans ce que l'utilisateur a écrit
+     * pendant ce tour, jamais dans un tour sans utilisateur. Le service garde la phase (Vérification, toutes les
+     * étapes vérifiées) ; le journal garde le canal.
+     */
+    private Outcome closeChantier(UUID userId, Workspace workspace, JsonNode input, TurnContext turn) {
+        Integer chantier = chantier(input); // explicite : jamais déduit du fil
+        if (chantier == null) {
+            return Outcome.error("chantier est requis : le numéro du chantier que l'utilisateur demande de clore.");
+        }
+        String words = text(input, "user_words");
+        if (words.isEmpty()) {
+            return Outcome.error("user_words est requis : cite les mots de l'utilisateur qui demandent la clôture. "
+                    + "Sans demande de sa part, ne clos pas.");
+        }
+        String refusal = writtenRefusal(words, turn, "Une course autonome (ou une routine) ne clôt jamais un "
+                + "chantier : personne n'y écrit. Laisse-le en Vérification ; l'utilisateur le clora d'un clic ou "
+                + "par écrit.", "laisse le chantier ouvert");
+        if (refusal != null) {
+            return Outcome.error(refusal);
+        }
+        SubjectJourney focus = service.closeOnUserWords(userId, workspace.getId(), chantier, channel(words));
+        String after = focus.isGuided() && focus.getPhase() != JourneyPhase.CLOS
+                ? "Le chantier " + focus.getChantierNumber() + " est maintenant au focus."
+                : "C'était le dernier chantier ouvert : le terminal revient en Libre.";
+        return prefixed(chantier, Outcome.ok("Clos sur la demande de l'utilisateur, comme sur un clic [Clore] ; il "
+                + "reste consultable. " + after + " Dis-le-lui en une phrase."));
+    }
+
+    /**
+     * Pourquoi une citation écrite est refusée (F-222 / SF-222-04, partagé par F-261), ou {@code null} si elle vaut :
+     * jamais dans un tour sans utilisateur, et seulement si elle figure dans ce qu'il a écrit pendant ce tour.
+     */
+    public static String writtenRefusal(String words, TurnContext turn, String headlessMessage, String otherwise) {
+        TurnContext context = turn == null ? TurnContext.UNKNOWN : turn;
+        if (context.headless()) {
+            return headlessMessage;
+        }
+        if (!quoted(words, context.userWords())) {
+            return "Ces mots ne figurent pas dans ce que l'utilisateur a écrit pendant ce tour : cite-le exactement. "
+                    + "Sans demande écrite de sa part dans ce tour, " + otherwise + ".";
+        }
+        return null;
+    }
+
+    /** Le canal journalisé d'un geste écrit : {@code écrit « citation »}, tronqué à 120 caractères. */
+    public static String channel(String words) {
+        return "écrit « " + (words.length() > 120 ? words.substring(0, 120) + "…" : words) + " »";
     }
 
     /** La version donnée ({@code 3}, {@code "v3"}), ou {@code null}. */
@@ -310,7 +362,7 @@ public class JourneyToolExecutor {
      * Vrai si la citation figure, mot pour mot, dans l'un des textes de l'utilisateur — casse, accents, ponctuation
      * et espaces ignorés (F-222 / SF-222-04). Une citation sans aucun mot ne vaut rien.
      */
-    static boolean quoted(String words, java.util.List<String> userWords) {
+    public static boolean quoted(String words, java.util.List<String> userWords) {
         String needle = normalized(words);
         if (needle.isEmpty() || userWords == null) {
             return false;

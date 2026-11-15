@@ -20,6 +20,7 @@
     "exit_plan_mode": { "scene": "S9", "cible": "S9", "libelle": "Plan soumis" },
     "submit_diagnosis": { "scene": "S9", "cible": "S9", "libelle": "Diagnostic posé" },
     "confirmer_diagnostic": { "scene": "S9", "cible": "S9", "libelle": "Diagnostic confirmé" },
+    "cloturer_chantier": { "scene": "S9", "cible": "S9", "libelle": "Chantier clos" },
     "reopen_investigation": { "scene": "S9", "cible": "S9", "libelle": "Investigation rouverte" },
     "propose_guided_mode": { "scene": "S9", "cible": "S9", "libelle": "Chantier proposé" },
     "lancer_chantier_autonome": { "scene": "S9", "cible": "S9", "libelle": "Chantier lancé en autonome" },

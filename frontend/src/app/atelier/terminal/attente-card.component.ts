@@ -49,6 +49,9 @@ export function attenteHeadline(a: AtelierTerminalAttente): string {
       return 'Marqué demandé';
     case 'PROPOSED':
       return a.proposedStatus === 'ANNULE' ? 'Je pense que c\'est sans objet' : 'Je pense que c\'est réglé';
+    case 'CLOSED':
+      // F-261 / SF-261-01 : fermée sur ta demande écrite, sans proposition.
+      return a.status === 'ANNULE' ? 'Annulée sur ta demande' : 'Close sur ta demande';
     case 'ALREADY':
       if (a.status === 'DEMANDE') {
         return 'Déjà demandé';
@@ -208,6 +211,7 @@ export class AttenteCardComponent {
   readonly icon = computed(() => {
     switch (this.attente().kind) {
       case 'PROPOSED': return 'task_alt';
+      case 'CLOSED': return 'check_circle';
       case 'REQUESTED': return 'outgoing_mail';
       case 'ALREADY': return 'content_copy';
       default: return 'pending_actions';

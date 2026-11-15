@@ -1524,7 +1524,7 @@ export interface AtelierTerminalPage {
 export interface AtelierTerminalAttente {
   actionId: string;
   workspaceId: string;
-  kind: 'ADDED' | 'ALREADY' | 'REQUESTED' | 'PROPOSED' | string;
+  kind: 'ADDED' | 'ALREADY' | 'REQUESTED' | 'PROPOSED' | 'CLOSED' | string;
   /** Comment une attente déjà là a été reconnue : KEY, KEY_ON_HOST, MEANING ; NONE sinon. */
   match: string;
   description: string;

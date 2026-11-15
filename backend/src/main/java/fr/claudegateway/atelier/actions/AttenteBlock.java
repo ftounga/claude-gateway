@@ -16,7 +16,8 @@ import java.util.UUID;
  * routes déjà isolées par le serveur.</p>
  *
  * @param kind  {@code ADDED} (inscrite), {@code ALREADY} (déjà là), {@code REQUESTED} (passée à
- *              « Demandé »), {@code PROPOSED} (fermeture proposée — [Confirmer] [Pas encore])
+ *              « Demandé »), {@code PROPOSED} (fermeture proposée — [Confirmer] [Pas encore]),
+ *              {@code CLOSED} (fermée sur sa parole écrite, F-261)
  * @param match comment une attente déjà là a été reconnue : {@code KEY}, {@code KEY_ON_HOST},
  *              {@code MEANING} ; {@code NONE} sinon
  */
@@ -48,6 +49,8 @@ public record AttenteBlock(
     public static final String ALREADY = "ALREADY";
     public static final String REQUESTED = "REQUESTED";
     public static final String PROPOSED = "PROPOSED";
+    /** Fermée sur la parole écrite de l'utilisateur (F-261 / SF-261-01). */
+    public static final String CLOSED = "CLOSED";
 
     /** L'instantané d'une attente, pour une carte de ce genre. {@code null} si pas d'attente. */
     public static AttenteBlock of(TerminalAction action, String kind, String match) {

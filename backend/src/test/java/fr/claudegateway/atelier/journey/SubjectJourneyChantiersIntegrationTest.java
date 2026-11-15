@@ -339,6 +339,76 @@ class SubjectJourneyChantiersIntegrationTest {
     }
 
     @Test
+    @DisplayName("SF-261-01 : « tu peux clore » écrit clôt un chantier vérifié, sur des mots écrits, jamais en autonome")
+    void closeChantierTool() throws Exception {
+        chantierOneExecuting();
+        JourneyToolExecutor.TurnContext said = JourneyToolExecutor.TurnContext.ofUser(
+                java.util.List.of("Il a validé tu peux cloturer et fermer"));
+        // En Exécution : refusé, même avec de vrais mots — un écrit ne clôt pas un chantier inachevé.
+        assertThat(tool(JourneyToolCatalog.CLOSE_CHANTIER,
+                "{\"chantier\":1,\"user_words\":\"tu peux cloturer\"}", said).content())
+                .contains("n'est pas prêt à clore");
+        tool(JourneyToolCatalog.UPDATE_STEP, "{\"chantier\":1,\"step\":1,\"status\":\"FAIT\"}");
+        // En Vérification, étape pas encore vérifiée : refusé.
+        assertThat(tool(JourneyToolCatalog.CLOSE_CHANTIER,
+                "{\"chantier\":1,\"user_words\":\"tu peux cloturer\"}", said).content())
+                .contains("TOUTES les étapes sont vérifiées");
+        tool(JourneyToolCatalog.UPDATE_STEP,
+                "{\"chantier\":1,\"step\":1,\"status\":\"VERIFIE\",\"evidence\":\"curl 200\"}");
+        // Sans numéro, sans citation, citation inventée, tour sans utilisateur : refusé, rien ne bouge.
+        assertThat(tool(JourneyToolCatalog.CLOSE_CHANTIER, "{\"user_words\":\"tu peux cloturer\"}", said).content())
+                .contains("chantier est requis");
+        assertThat(tool(JourneyToolCatalog.CLOSE_CHANTIER, "{\"chantier\":1}", said).content())
+                .contains("user_words est requis");
+        assertThat(tool(JourneyToolCatalog.CLOSE_CHANTIER,
+                "{\"chantier\":1,\"user_words\":\"clos le chantier\"}", said).content()).contains("ne figurent pas");
+        assertThat(tool(JourneyToolCatalog.CLOSE_CHANTIER,
+                "{\"chantier\":1,\"user_words\":\"tu peux cloturer\"}").content()).contains("course autonome");
+        assertThat(tool(JourneyToolCatalog.CLOSE_CHANTIER,
+                "{\"chantier\":9,\"user_words\":\"tu peux cloturer\"}", said).content())
+                .isEqualTo("Le chantier 9 n'est pas ouvert.");
+        getJourney(aliceToken).andExpect(jsonPath("$.phase", is("VERIFICATION")));
+        // Le bon geste : clos, comme le bouton ; dernier chantier ⇒ Libre.
+        JourneyToolExecutor.Outcome ok = tool(JourneyToolCatalog.CLOSE_CHANTIER,
+                "{\"chantier\":\"1\",\"user_words\":\"Tu peux clôturer\"}", said);
+        assertThat(ok.error()).isFalse();
+        assertThat(ok.content()).startsWith("Chantier 1 : Clos sur la demande").contains("revient en Libre");
+        getJourney(aliceToken).andExpect(jsonPath("$.mode", is("LIBRE"))).andExpect(jsonPath("$.phase", is("CLOS")))
+                .andExpect(jsonPath("$.closedChantiers", is(1)));
+        // Le journal garde le canal écrit.
+        assertThat(eventRepository.findAll().stream()
+                .filter(e -> SubjectJourneyEvent.CLOSED.equals(e.getType()))
+                .map(SubjectJourneyEvent::getDetail).toList())
+                .containsExactly("chantier 1 · écrit « Tu peux clôturer »");
+        // Plus rien à clore : erreur lisible, pas d'exception.
+        assertThat(tool(JourneyToolCatalog.CLOSE_CHANTIER,
+                "{\"chantier\":1,\"user_words\":\"tu peux cloturer\"}", said).error()).isTrue();
+    }
+
+    @Test
+    @DisplayName("SF-261-01 : clore par écrit un chantier parmi plusieurs garde les autres ouverts ; le bouton journalise sans canal")
+    void closeChantierToolAmongOthers() throws Exception {
+        chantierOneExecuting();
+        tool(JourneyToolCatalog.UPDATE_STEP, "{\"chantier\":1,\"step\":1,\"status\":\"FAIT\"}");
+        tool(JourneyToolCatalog.UPDATE_STEP,
+                "{\"chantier\":1,\"step\":1,\"status\":\"VERIFIE\",\"evidence\":\"curl 200\"}");
+        post(aliceToken, "chantiers", "{\"title\":\"Migration DNS\"}");
+        JourneyToolExecutor.Outcome ok = tool(JourneyToolCatalog.CLOSE_CHANTIER,
+                "{\"chantier\":1,\"user_words\":\"go pour clore le 1\"}",
+                JourneyToolExecutor.TurnContext.ofUser(java.util.List.of("ok, go pour clore le 1")));
+        assertThat(ok.error()).isFalse();
+        assertThat(ok.content()).contains("Le chantier 2 est maintenant au focus");
+        getJourney(aliceToken).andExpect(jsonPath("$.mode", is("GUIDE")))
+                .andExpect(jsonPath("$.chantier.number", is(2)))
+                .andExpect(jsonPath("$.chantiers.length()", is(1)));
+        post(aliceToken, "chantiers/2/close", null).andExpect(status().isOk());
+        assertThat(eventRepository.findAll().stream()
+                .filter(e -> SubjectJourneyEvent.CLOSED.equals(e.getType()))
+                .map(SubjectJourneyEvent::getDetail).toList())
+                .containsExactlyInAnyOrder("chantier 1 · écrit « go pour clore le 1 »", null);
+    }
+
+    @Test
     @DisplayName("SF-222-04 : la citation est cherchée mot pour mot, casse, accents et ponctuation ignorés")
     void quotedWords() {
         java.util.List<String> said = java.util.List.of("Le plan me va. Validé, tu peux y aller !");

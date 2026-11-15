@@ -26,4 +26,16 @@ class JourneyToolCatalogGuideTest {
                 .contains("si son PREMIER argument est un verbe de lecture");
         assertThat(JourneyToolCatalog.validatePlanDefinition().inputSchema().toString()).contains("version");
     }
+
+    @Test
+    void writtenCloseOfAVerifiedChantier() {
+        // F-261 / SF-261-01 : « tu peux clore » écrit → cloturer_chantier, mots exacts, jamais d'initiative.
+        assertThat(JourneyToolCatalog.GUIDE).contains("alors cloturer_chantier avec le chantier et ses mots EXACTS de ce "
+                + "tour ; jamais de ta propre initiative ni dans une course autonome");
+        assertThat(JourneyToolCatalog.NAMES).contains(JourneyToolCatalog.CLOSE_CHANTIER);
+        assertThat(JourneyToolCatalog.closeChantierDefinition().inputSchema().toString())
+                .contains("chantier", "user_words");
+        assertThat(JourneyToolCatalog.closeChantierDefinition().inputSchema().get("required"))
+                .isEqualTo(java.util.List.of("chantier", "user_words"));
+    }
 }

@@ -163,7 +163,8 @@ public final class JourneyTurnNote {
             }
         }
         if (journey.getCloseProposedAt() != null && journey.getPhase() != JourneyPhase.CLOS) {
-            note.append("Toutes les étapes sont vérifiées : la clôture attend la confirmation de l'utilisateur.\n");
+            note.append("Toutes les étapes sont vérifiées : la clôture attend la confirmation de l'utilisateur ; "
+                    + "s'il la donne par écrit, cloturer_chantier.\n");
         }
         JourneyPlan plan = JourneyPlan.fromJson(journey.getPlanJson());
         if (plan.isEmpty()) {

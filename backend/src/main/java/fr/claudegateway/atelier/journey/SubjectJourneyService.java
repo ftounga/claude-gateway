@@ -608,6 +608,33 @@ public class SubjectJourneyService {
     public SubjectJourney close(UUID userId, UUID workspaceId, Integer chantier) {
         workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
         SubjectJourney journey = requireGuided(userId, workspaceId, chantier);
+        return doClose(journey, userId, workspaceId, null);
+    }
+
+    /**
+     * <b>La clôture écrite</b> (F-261 / SF-261-01) : l'utilisateur a demandé par écrit de clore le chantier
+     * {@code chantier} — même geste que [Clore], mais seulement sur un chantier dont la clôture serait proposée :
+     * en <b>Vérification</b>, <b>toutes</b> ses étapes vérifiées. Le canal ({@code écrit « citation »}) est
+     * journalisé dans {@link SubjectJourneyEvent#CLOSED}. Rend le focus.
+     *
+     * @throws InvalidJourneyException chantier non ouvert, pas en Vérification, ou une étape non vérifiée
+     */
+    @Transactional
+    public SubjectJourney closeOnUserWords(UUID userId, UUID workspaceId, int chantier, String channel) {
+        workspaceService.requireOwned(userId, workspaceId); // 404 — TOUJOURS en premier
+        SubjectJourney journey = requireGuided(userId, workspaceId, chantier);
+        JourneyPlan plan = JourneyPlan.fromJson(journey.getPlanJson());
+        if (journey.getPhase() != JourneyPhase.VERIFICATION || plan.isEmpty()
+                || !plan.steps().stream().allMatch(s -> s.status() == JourneyPlan.StepStatus.VERIFIE)) {
+            throw new InvalidJourneyException("Le chantier " + chantier + " n'est pas prêt à clore (phase "
+                    + (journey.getPhase() == null ? "?" : journey.getPhase().label()) + ") : seul un chantier en "
+                    + "Vérification dont TOUTES les étapes sont vérifiées se clôt par écrit. Sinon, c'est le bouton "
+                    + "[Clore] de sa carte.");
+        }
+        return doClose(journey, userId, workspaceId, "chantier " + chantier + " · " + channel);
+    }
+
+    private SubjectJourney doClose(SubjectJourney journey, UUID userId, UUID workspaceId, String detail) {
         if (journey.getPhase() == JourneyPhase.CLOS) {
             throw new InvalidJourneyException("Ce sujet n'est pas en mode guidé.");
         }
@@ -615,7 +642,7 @@ public class SubjectJourneyService {
         journey.setCloseProposedAt(null);
         journey.setDiagnosisProposedAt(null);
         moveTo(journey, JourneyPhase.CLOS, now);
-        record(journey, SubjectJourneyEvent.CLOSED, null); // journalisé en Guidé (mesure SF-176-06)
+        record(journey, SubjectJourneyEvent.CLOSED, detail); // journalisé en Guidé (mesure SF-176-06)
         archive(journey, now); // SF-176-11 : le chantier clos reste consultable
         if (journey.getParkedRow() != null) {
             return focusAfter(journey, userId, workspaceId); // F-206 : le focus n'a pas bougé
