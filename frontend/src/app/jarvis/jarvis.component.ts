@@ -2863,7 +2863,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
     if (pieceAction) {
       const done = this.pieces.dispatch(pieceAction, 'voice');
       if (!done.ok) {
-        await this.say(refusalPhrase(done.reason));
+        // F-238 / SF-238-10 — un refus précis (« Il y en a deux : … ») se dit tel quel.
+        await this.say(done.detail ?? refusalPhrase(done.reason));
       }
       return;
     }
@@ -4213,7 +4214,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     if (!done.ok) {
       this.showRefusal = done.reason ?? null;
       // F-263 / SF-263-02 — le cerveau a souvent déjà dit « Voici » : le refus se dit en correction.
-      const phrase = showCorrection(done.reason, this.subject()?.name ?? null);
+      const phrase = done.detail ?? showCorrection(done.reason, this.subject()?.name ?? null);
       if (phrase) {
         await this.say(phrase);
       }

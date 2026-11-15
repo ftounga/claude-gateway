@@ -26,7 +26,8 @@ const DEFAULT_VIEWERS: Record<PieceKind, PieceViewer> = {
   PDF: { name: 'pdf', paged: true, timed: false, zoomable: true },
   PAGE: { name: 'page', paged: true, timed: false, zoomable: false },
   SLIDES: { name: 'diapos', paged: true, timed: false, zoomable: true },
-  ARCHITECTURE: { name: 'schema-svg', paged: false, timed: false, zoomable: true },
+  // F-238 / SF-238-10 — la visionneuse 3D (repli : le SVG cadré de SF-237-07, dans la même visionneuse).
+  ARCHITECTURE: { name: 'architecture-3d', paged: false, timed: false, zoomable: true },
   DIAGRAM: { name: 'schema-svg', paged: false, timed: false, zoomable: true },
   TEXT: { name: 'texte', paged: false, timed: false, zoomable: false },
   FILE: FICHE,

@@ -121,6 +121,11 @@ export class JarvisPieceClient {
     }
   }
 
+  /** F-238 / SF-238-10 — les en-têtes d'authentification (le chargeur d'icônes de la scène d'architecture). */
+  authHeaders(): Record<string, string> {
+    return this.headers();
+  }
+
   private headers(): Record<string, string> {
     const token = this.injector.get(AuthService).token();
     return token ? { Authorization: `Bearer ${token}` } : {};

@@ -20,7 +20,7 @@ import fr.claudegateway.agent.AgentTool;
 public final class JarvisFastBrainPrompt {
 
     /** Version de la consigne : à incrémenter à chaque modification du texte (une nouvelle entrée de cache). */
-    public static final String VERSION = "21";
+    public static final String VERSION = "22";
 
     /** L'outil qui confie une demande à Opus. */
     public static final String TOOL_NAME = "deleguer";
@@ -435,10 +435,16 @@ public final class JarvisFastBrainPrompt {
                 schema);
     }
 
-    /** Les actions d'écran comprises par {@value #SHOW_TOOL} (fermées). */
+    /**
+     * Les actions d'écran comprises par {@value #SHOW_TOOL} (fermées). F-238 / SF-238-10 (D11) : la navigation d'une
+     * architecture ouverte ({@code focus} … {@code vue}), ajoutée une fois (version 22).
+     */
     public static final List<String> SHOW_ACTIONS = List.of("galerie", "piece", "suivante", "precedente",
             "selection", "retour", "remonter", "fermer", "lecture", "pause", "aller", "page", "zoom", "comparer",
-            "raconter", "planche", "univers");
+            "raconter", "planche", "univers", "focus", "flux", "replier", "deplier", "eclater", "rassembler", "vue");
+
+    /** F-238 / SF-238-10 — les vues d'une architecture ouverte (action {@code vue}). */
+    public static final List<String> ARCH_VIEWS = List.of("ensemble", "dessus", "face", "2d", "3d");
 
     /**
      * F-253 / SF-253-02 — les vues de l'univers de l'action {@code univers} (fermées, {@code ""} : aucune) : le
@@ -446,6 +452,10 @@ public final class JarvisFastBrainPrompt {
      */
     public static final List<String> UNIVERSE_FILTERS = List.of("", "clients", "sujets", "connectes", "deconnectes",
             "chantiers-bloques", "etapes-en-cours", "a-envoyer");
+
+    /** Le champ {@code vue} : les vues de l'univers (action {@code univers}) puis celles d'une architecture. */
+    static final List<String> SHOW_VIEWS = java.util.stream.Stream.concat(UNIVERSE_FILTERS.stream(),
+            ARCH_VIEWS.stream()).toList();
 
     /** Les catégories dites ({@code ""} : toutes). */
     public static final List<String> CATEGORIES = List.of("", "entrees", "preuves", "productions");
@@ -567,9 +577,11 @@ public final class JarvisFastBrainPrompt {
         properties.put("zoom", Map.of("type", "string",
                 "description", "« + », « - », « reset » ou un facteur de 1 à 8 ; vide sinon."));
         properties.put("cible", Map.of("type", "string",
-                "description", "Partie nommée d'un schéma à cadrer (« le VPC de prod ») ; vide sinon."));
-        properties.put("vue", Map.of("type", "string", "enum", UNIVERSE_FILTERS,
-                "description", "Pour l'action univers : ce que l'écran met au premier plan ; vide sinon."));
+                "description", "Partie nommée d'un schéma, telle que dite (« le VPC de prod », « la base », "
+                        + "« entrée », « sortant ») ; vide sinon."));
+        properties.put("vue", Map.of("type", "string", "enum", SHOW_VIEWS,
+                "description", "Pour l'action univers : ce que l'écran met au premier plan ; pour l'action vue : "
+                        + "ensemble, dessus, face, 2d ou 3d ; vide sinon."));
         properties.put("client", Map.of("type", "string",
                 "description", "Pour l'action univers : nom du client tel que dans le contexte ; vide pour tous."));
         properties.put("raison", Map.of("type", "string", "enum", List.of("demande", "appui"),
@@ -579,7 +591,15 @@ public final class JarvisFastBrainPrompt {
                 "Montre des pièces à l'écran ou y navigue, ou met une vue de l'univers au premier plan (action "
                         + "univers : clients, sujets, postes, chantiers bloqués, étapes en cours, à envoyer). Aucun "
                         + "effet en base. Montre une pièce quand elle appuie ce que tu dis (au plus trois d'initiative "
-                        + "par réponse), jamais en présentation.",
+                        + "par réponse), jamais en présentation. Un schéma d'architecture ouvert (ligne « Architecture » "
+                        + "du bloc « ## Écran ») se pilote ainsi, cible = le nom tel que dit (l'écran le trouve et "
+                        + "demande lequel s'il y en a plusieurs) : « zoome sur la base » = focus ; « d'où vient le "
+                        + "trafic ? » = flux, cible « entrée » ; « le flux sortant » = flux, cible « sortant » ; "
+                        + "« replie le VPC » = replier (cible vide : tout) ; deplier ; eclater ; rassembler ; « vue de "
+                        + "dessus », « de face », « vue d'ensemble », « en 2D » = vue (champ vue). Quand tu montres "
+                        + "d'initiative un schéma d'architecture, cadre aussi l'entrée : flux, cible « entrée », raison "
+                        + "appui. Sans aucun schéma d'architecture, ne montre rien et propose d'en dessiner un ; sur un "
+                        + "« oui », deleguer.",
                 strict(properties));
     }
 

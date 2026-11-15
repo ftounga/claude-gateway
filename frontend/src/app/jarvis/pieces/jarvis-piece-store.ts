@@ -8,6 +8,7 @@ import {
 } from './jarvis-piece-measure';
 import { versionPiece } from './jarvis-piece-versions';
 import { NavAction, NavOrigin, NavReason, NavScope, PieceNav, initialNav, reduceNav, selectedItem } from './jarvis-piece-nav';
+import { ArchNav, ArchOp, ArchRequest, trivialArchOp } from './jarvis-piece-arch';
 import { Piece } from './jarvis-piece.models';
 import { JarvisCard } from '../cards/jarvis-card.models';
 import { LINGER_MS, cardPiece, cardsScope, orderCards, sizeKey, wallPage } from '../cards/jarvis-card-deck';
@@ -21,7 +22,21 @@ export type PieceStoreReason = NavReason | 'PRESENTATION' | 'UNAVAILABLE' | Excl
 export interface PieceStoreResult {
   ok: boolean;
   reason?: PieceStoreReason;
+  /** F-238 / SF-238-10 — la phrase d'un refus précis (« Il y en a deux : RDS primaire et RDS secours. »). */
+  detail?: string;
 }
+
+/** F-238 / SF-238-10 — une demande d'architecture résolue contre le graphe, ou refusée (et pourquoi). */
+export type ArchResolution = { op: ArchOp } | { refusal: 'NOT_FOUND' | 'AMBIGUOUS'; detail?: string };
+
+/** F-238 / SF-238-10 — la visionneuse 3D d'une pièce `ARCHITECTURE` ouverte : elle sait lire son graphe. */
+export interface ArchBinding {
+  pieceId: string;
+  resolve(request: ArchRequest, arch: ArchNav): ArchResolution;
+}
+
+/** Une demande d'architecture arrivée avant le graphe (premier cadrage du cerveau rapide) attend au plus 10 s. */
+export const ARCH_PENDING_MS = 10_000;
 
 /**
  * F-237 / SF-237-05 — **l'état des pièces à l'écran** : l'état de navigation (réducteur pur SF-237-04) et les pièces
@@ -104,6 +119,13 @@ export class JarvisPieceStore {
     if (this.presentation() && action.type !== 'close') {
       return { ok: false, reason: 'PRESENTATION' };
     }
+    if (action.type === 'arch' && !action.op) {
+      // F-238 / SF-238-10 — la cible (« la base », « le VPC ») se résout contre le graphe de la pièce ouverte.
+      const resolved = this.resolveArch(action, source, now);
+      if (resolved) {
+        return resolved;
+      }
+    }
     const before = this.nav();
     const result = reduceNav(before, action);
     if (result.ok) {
@@ -114,6 +136,61 @@ export class JarvisPieceStore {
       }
     }
     return result.ok ? { ok: true } : { ok: false, reason: result.reason };
+  }
+
+  /** F-238 / SF-238-10 — la visionneuse 3D liée à la pièce ouverte, et la demande arrivée avant elle. */
+  private archBinding: ArchBinding | null = null;
+  private pendingArch: { action: Extract<NavAction, { type: 'arch' }>; source?: 'voice' | 'touch' | 'ai'; at: number }
+    | null = null;
+
+  /**
+   * F-238 / SF-238-10 — la visionneuse 3D se lie à sa pièce : les demandes d'architecture se résolvent contre son
+   * graphe ; une demande arrivée juste avant (≤ 10 s, même pièce) s'applique maintenant. Rend la fonction qui délie.
+   */
+  bindArchitecture(binding: ArchBinding, now = Date.now()): () => void {
+    this.archBinding = binding;
+    const pending = this.pendingArch;
+    this.pendingArch = null;
+    if (pending && now - pending.at <= ARCH_PENDING_MS && selectedItem(this.nav())?.id === binding.pieceId) {
+      this.dispatch(pending.action, pending.source, now);
+    }
+    return () => {
+      if (this.archBinding === binding) {
+        this.archBinding = null;
+      }
+    };
+  }
+
+  /** `null` : l'action continue vers le réducteur telle quelle (demande triviale) ; sinon le résultat. */
+  private resolveArch(action: Extract<NavAction, { type: 'arch' }>, source: 'voice' | 'touch' | 'ai' | undefined,
+    now: number): PieceStoreResult | null {
+    const nav = this.nav();
+    const item = selectedItem(nav);
+    if (!item || item.kind !== 'ARCHITECTURE' || !nav.arch) {
+      if (this.loading) {
+        // Le schéma est en train de s'ouvrir (le cerveau envoie « pièce » puis « flux » d'un seul souffle).
+        this.pendingArch = { action, source, at: now };
+        return { ok: true };
+      }
+      return { ok: false, reason: 'NOT_APPLICABLE' };
+    }
+    const binding = this.archBinding;
+    if (!binding || binding.pieceId !== item.id) {
+      if (trivialArchOp(action.request)) {
+        return null;
+      }
+      this.pendingArch = { action, source, at: now }; // le graphe arrive : la demande attend la visionneuse
+      if (action.request.kind === 'focus' && action.request.target.trim()) {
+        // En 2D (pas de graphe), le SVG cadré sait déjà cadrer une partie nommée : la même cible, tout de suite.
+        return this.dispatch({ type: 'zoom', target: action.request.target.trim() }, source, now);
+      }
+      return { ok: true };
+    }
+    const resolution = binding.resolve(action.request, nav.arch);
+    if ('refusal' in resolution) {
+      return { ok: false, reason: resolution.refusal, detail: resolution.detail };
+    }
+    return this.dispatch({ ...action, op: resolution.op }, source, now);
   }
 
   /** F-237 / SF-237-14 — ce que l'action change, compté (ordres, pièces ouvertes, pages, fermetures rapides). */
@@ -436,6 +513,8 @@ export function refusalPhrase(reason: PieceStoreReason | undefined): string {
       return 'Aucune galerie n’est ouverte.';
     case 'NOT_FOUND':
       return 'Je ne la trouve pas.';
+    case 'AMBIGUOUS':
+      return 'Il y en a plusieurs ; lequel voulez-vous ?';
     case 'PRESENTATION':
       return 'Pas de pièce en mode présentation.';
     case 'NOT_IN_SCOPE':

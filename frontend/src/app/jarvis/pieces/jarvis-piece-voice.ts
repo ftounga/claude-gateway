@@ -1,5 +1,6 @@
 import { normalize } from '../jarvis-oral';
-import { NavAction, PieceNav } from './jarvis-piece-nav';
+import { archVoiceRequest } from './jarvis-piece-arch';
+import { NavAction, PieceNav, selectedItem } from './jarvis-piece-nav';
 
 /**
  * F-237 / SF-237-04 — les **ordres triviaux reconnus sur l'appareil, sans IA** (cadrage §5.3) : < 100 ms, 0 €, 0 jeton.
@@ -51,6 +52,14 @@ export function pieceVoiceCommand(said: string | null | undefined, nav: PieceNav
   const words = normalize(said ?? '').replace(/^jarvis\s+/, '').trim();
   if (!words) {
     return null;
+  }
+  // F-238 / SF-238-10 — une architecture ouverte : ses ordres exacts d'abord (« vue d'ensemble » y est une vue du
+  // schéma, pas la remontée au chantier).
+  if (selectedItem(nav)?.kind === 'ARCHITECTURE' && nav.arch) {
+    const request = archVoiceRequest(words);
+    if (request) {
+      return { type: 'arch', request };
+    }
   }
   if (NEXT.test(words)) {
     return { type: 'next' };
