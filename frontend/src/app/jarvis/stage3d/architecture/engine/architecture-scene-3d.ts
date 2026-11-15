@@ -17,6 +17,7 @@ import { QualityLevel } from '../../jarvis-render-capability';
 import { levelBudget } from '../../hud/jarvis-device-profile';
 import { JarvisPost } from '../../engine/jarvis-post';
 import { ArchitectureIconSource } from '../architecture-icons';
+import { LabelRect, declutter } from '../architecture-labels';
 import {
   ArchLayout, ICON_SIZE, pathPoints, writeEdgePath, writeParticles,
 } from '../architecture-layout-3d';
@@ -123,8 +124,10 @@ attribute float aCell;
 attribute float aAlpha;
 uniform vec2 uGrid;
 varying vec2 vUv;
+varying vec2 vLocal;
 varying float vAlpha;
 void main() {
+  vLocal = uv;
   mat4 m = modelMatrix * instanceMatrix;
   vec4 center = viewMatrix * m * vec4(0.0, 0.0, 0.0, 1.0);
   float s = length(m[0].xyz);
@@ -138,12 +141,20 @@ void main() {
 
 const ICON_FRAGMENT = /* glsl */ `
 uniform sampler2D uMap;
+uniform vec3 uCard;
 varying vec2 vUv;
+varying vec2 vLocal;
 varying float vAlpha;
 void main() {
   vec4 t = texture2D(uMap, vUv);
-  if (t.a * vAlpha < 0.02) discard;
-  gl_FragColor = vec4(t.rgb, t.a * vAlpha);
+  // Une carte claire sous l'icône (comme le fond blanc du 2D) : les icônes au trait restent lisibles sur le navy.
+  // L'icône elle-même n'est jamais recolorée (licence) : elle est posée telle quelle par-dessus.
+  vec2 q = abs(vLocal - 0.5) - 0.38;
+  float card = 1.0 - smoothstep(0.0, 0.03, length(max(q, 0.0)) - 0.06);
+  vec3 color = mix(uCard, t.rgb, t.a);
+  float a = max(card * 0.92, t.a) * vAlpha;
+  if (a < 0.02) discard;
+  gl_FragColor = vec4(color * (0.82 + 0.18 * t.a), a);
 }`;
 
 const SPARK_VERTEX = /* glsl */ `
@@ -247,6 +258,9 @@ export interface ArchitectureSceneOptions {
 interface Label {
   object: CSS2DObject;
   element: HTMLElement;
+  /** Priorité de base (plus petit = d'abord) : services avant zones, zones les plus précises d'abord. */
+  priority: number;
+  masked: boolean;
   /** Opacité affichée (quantifiée au vingtième : le DOM n'est touché qu'au changement). */
   shown: number;
   lit: boolean;
@@ -259,6 +273,12 @@ interface Label {
 export class ArchitectureSceneGraph {
   readonly scene = new Scene();
   readonly world = new Group();
+  /**
+   * Les icônes sont dessinées APRÈS la lumière (une scène à part, même caméra) : le bloom fait briller liserés,
+   * filaments et particules, jamais le contenu — une icône (et sa carte claire) resterait sinon noyée de blanc.
+   */
+  readonly iconScene = new Scene();
+  private readonly iconWorld = new Group();
   readonly director: ArchitectureStageDirector;
   private readonly palette = new Map<HoloRole, [number, number, number]>();
   private readonly plates: InstancedMesh;
@@ -274,7 +294,7 @@ export class ArchitectureSceneGraph {
   readonly lineMaterials: LineMaterial[] = [];
   private readonly sparkMaterial: ShaderMaterial;
   private readonly iconAlpha: InstancedBufferAttribute;
-  private readonly texture: CanvasTexture;
+  private texture: CanvasTexture;
   /** Chemins 3D des liaisons (un tampon par liaison, écrit en place) et longueurs. */
   private readonly paths: Float32Array[];
   private readonly lengths: Float32Array;
@@ -366,18 +386,21 @@ export class ArchitectureSceneGraph {
     this.iconAlpha.setUsage(DynamicDrawUsage);
     iconGeometry.setAttribute('aAlpha', this.iconAlpha);
     this.icons = new InstancedMesh(iconGeometry, new ShaderMaterial({
-      vertexShader: ICON_VERTEX, fragmentShader: ICON_FRAGMENT, transparent: true, depthWrite: false,
-      uniforms: { uMap: { value: this.texture }, uGrid: { value: [icons.columns, icons.rows] } },
+      vertexShader: ICON_VERTEX, fragmentShader: ICON_FRAGMENT, transparent: true, depthWrite: false, depthTest: false,
+      uniforms: { uMap: { value: this.texture }, uGrid: { value: [icons.columns, icons.rows] },
+        uCard: { value: rgb(HOLO_COLORS.core) } },
     }), n);
     this.icons.frustumCulled = false;
     this.icons.renderOrder = 5;
-    this.world.add(this.icons);
+    this.iconScene.add(this.iconWorld);
+    this.iconWorld.add(this.icons);
 
     // Liserés des plateaux (continus / pointillés selon le `kind`) + colonnes lumineuses socle → icône.
     this.solidPlates = layout.plates.filter((p) => !p.dashed).map((p) => p.index);
     this.dashedPlates = layout.plates.filter((p) => p.dashed).map((p) => p.index);
     const lineWidth = options.phone ? 1.6 : 1.4;
-    this.lines = this.buildLines(this.solidPlates.length * 4 + n, { linewidth: lineWidth });
+    // Liserés continus, colonnes socle → icône, puis 4 piliers d'angle par plateau (les terrasses se lisent).
+    this.lines = this.buildLines(this.solidPlates.length * 4 + n + layout.plates.length * 4, { linewidth: lineWidth });
     this.dashes = this.buildLines(this.dashedPlates.length * 4, {
       linewidth: lineWidth, dashed: true, dashSize: 0.12, gapSize: 0.08,
     });
@@ -415,16 +438,42 @@ export class ArchitectureSceneGraph {
     // Étiquettes (DOM, `textContent`, jamais `innerHTML`).
     const cap = options.phone ? LABELS_PHONE : LABELS_PC;
     // Les services d'abord (le contenu), puis les zones dans la limite du budget.
+    const maxArea = Math.max(1e-6, ...layout.plates.map((p) => p.w * p.d));
     this.nodeLabels = layout.nodes.map((node) => (this.labels.length < cap
-      ? this.makeLabel(node.label, 'service', node.x, node.z + ICON_SIZE / 2 + 0.04) : null));
+      ? this.makeLabel(node.label, 'service', node.x, node.z + ICON_SIZE / 2 + 0.04, 1) : null));
+    // Zone : au milieu de son bord avant (le plus proche de la caméra), à l'intérieur ; les plateaux emboîtés y
+    // sont décalés en plan ET en altitude, leurs libellés ne s'empilent plus dans un même coin.
     this.plateLabels = layout.plates.map((p) => (this.labels.length < cap
-      ? this.makeLabel(p.label, 'zone', p.x0 + 0.06, p.z0 + 0.04) : null));
+      ? this.makeLabel(p.label, 'zone', p.x0 + p.w / 2, p.z0 + p.d - 0.05, 2 + (p.w * p.d) / maxArea) : null));
+  }
+
+  /**
+   * Change de source d'icônes (l'atlas des icônes officielles de SF-238-08, chargé après la pose) : même quad, même
+   * appel de dessin ; seules la texture et les cellules changent.
+   */
+  setIcons(icons: ArchitectureIconSource): void {
+    const previous = this.texture;
+    this.texture = new CanvasTexture(icons.image);
+    this.texture.minFilter = LinearFilter;
+    this.texture.generateMipmaps = false;
+    const material = this.icons.material as ShaderMaterial;
+    material.uniforms['uMap'].value = this.texture;
+    material.uniforms['uGrid'].value = [icons.columns, icons.rows];
+    const cells = this.icons.geometry.getAttribute('aCell') as InstancedBufferAttribute;
+    this.options.layout.nodes.forEach((node, i) => cells.setX(i, icons.cellOf(node)));
+    cells.needsUpdate = true;
+    previous.dispose();
+  }
+
+  /** La cellule d'atlas de chaque service (lue par les tests). */
+  get iconCells(): ArrayLike<number> {
+    return (this.icons.geometry.getAttribute('aCell') as InstancedBufferAttribute).array as Float32Array;
   }
 
   /** Nombre d'objets dessinés à l'image (un appel chacun : aucune matière multiple). */
   drawables(): number {
     let count = 0;
-    this.scene.traverseVisible((o: Object3D) => {
+    const visit = (o: Object3D): void => {
       const m = o as Mesh;
       if ((m as unknown as { isMesh?: boolean }).isMesh || (o as Points).isPoints
           || (o as LineSegments).isLine || (o as LineSegments2).isLineSegments2) {
@@ -432,7 +481,9 @@ export class ArchitectureSceneGraph {
           count++;
         }
       }
-    });
+    };
+    this.scene.traverseVisible(visit);
+    this.iconScene.traverseVisible(visit);
     return count;
   }
 
@@ -475,6 +526,7 @@ export class ArchitectureSceneGraph {
       this.stand.setFromRotationMatrix(this.basis);
     }
     this.world.quaternion.slerpQuaternions(this.stand, this.flat, f.lay);
+    this.iconWorld.quaternion.copy(this.world.quaternion);
 
     const normal = this.palette.get('normal') as number[];
     for (const p of layout.plates) {
@@ -547,6 +599,11 @@ export class ArchitectureSceneGraph {
   }
 
   dispose(): void {
+    this.iconWorld.traverse((o) => {
+      const m = o as Mesh;
+      m.geometry?.dispose();
+      (m.material as { dispose?: () => void } | undefined)?.dispose?.();
+    });
     this.scene.traverse((o) => {
       const m = o as Mesh;
       if (m.geometry) {
@@ -668,7 +725,7 @@ export class ArchitectureSceneGraph {
     this.world.add(floor);
   }
 
-  private makeLabel(text: string, kind: 'zone' | 'service', x: number, z: number): Label | null {
+  private makeLabel(text: string, kind: 'zone' | 'service', x: number, z: number, priority: number): Label | null {
     if (!this.options.labelHost) {
       return null;
     }
@@ -677,12 +734,32 @@ export class ArchitectureSceneGraph {
     element.textContent = text;
     element.style.opacity = '0';
     const object = new CSS2DObject(element);
-    object.center.set(kind === 'zone' ? 0 : 0.5, 0);
+    object.center.set(0.5, kind === 'zone' ? 1 : 0);
     object.position.set(x, 0, z);
     this.world.add(object);
-    const label = { object, element, shown: 0, lit: false };
+    const label = { object, element, shown: 0, lit: false, priority, masked: false };
     this.labels.push(label);
     return label;
+  }
+
+  /**
+   * Zéro chevauchement : lit le cadre affiché des étiquettes visibles et masque celles qui en touchent une plus
+   * prioritaire. Appelé au changement de plan et pendant les transitions (pas à chaque image : lecture du DOM).
+   */
+  declutterLabels(): void {
+    const live = this.labels.filter((l) => l.shown > 0 && l.object.visible);
+    const rects: LabelRect[] = live.map((l) => {
+      const r = l.element.getBoundingClientRect();
+      return { x: r.left, y: r.top, w: r.width, h: r.height, priority: l.lit ? 0 : l.priority };
+    });
+    const keep = declutter(rects);
+    live.forEach((l, i) => {
+      const masked = !keep[i];
+      if (masked !== l.masked) {
+        l.masked = masked;
+        l.element.classList.toggle('is-masked', masked);
+      }
+    });
   }
 
   // ------------------------------------------------------------------------------------------------ écritures
@@ -744,6 +821,21 @@ export class ArchitectureSceneGraph {
     };
     write(this.lines, this.solidPlates);
     write(this.dashes, this.dashedPlates);
+    // Piliers d'angle : du plateau parent (ou du sol) jusqu'au plateau, aux quatre coins.
+    const { p, c } = this.lineArrays(this.lines);
+    let k = this.solidPlates.length * 4 + this.options.layout.nodes.length;
+    const col = this.palette.get('normal') as number[];
+    for (const plate of plates) {
+      const top = f.plateAlt[plate.index];
+      const bottom = plate.parent < 0 ? 0 : f.plateAlt[plate.parent];
+      const a = f.plateLine[plate.index] * 0.7;
+      const x1 = plate.x0 + plate.w;
+      const z1 = plate.z0 + plate.d;
+      this.segment(p, c, k++, plate.x0, bottom, plate.z0, plate.x0, top, plate.z0, col[0] * a, col[1] * a, col[2] * a);
+      this.segment(p, c, k++, x1, bottom, plate.z0, x1, top, plate.z0, col[0] * a, col[1] * a, col[2] * a);
+      this.segment(p, c, k++, x1, bottom, z1, x1, top, z1, col[0] * a, col[1] * a, col[2] * a);
+      this.segment(p, c, k++, plate.x0, bottom, z1, plate.x0, top, z1, col[0] * a, col[1] * a, col[2] * a);
+    }
   }
 
   /** Colonnes lumineuses socle → icône (dans le même objet que les liserés continus). */
@@ -801,7 +893,8 @@ export class ArchitectureSceneGraph {
 
   private writeLabels(plan: ArchitecturePlan, f: ArchFrame): void {
     const { plates, nodes } = this.options.layout;
-    plates.forEach((p, i) => this.placeLabel(this.plateLabels[i], p.x0 + 0.06, f.plateAlt[i] + 0.01, p.z0 + 0.04,
+    plates.forEach((p, i) => this.placeLabel(this.plateLabels[i], p.x0 + p.w / 2, f.plateAlt[i] + 0.01,
+      p.z0 + p.d - 0.05,
       plan.plateLabel[i] ? f.labels : 0, plan.plateRole[i] === 'core'));
     nodes.forEach((n, i) => {
       const alt = n.plate < 0 ? 0 : f.plateAlt[n.plate];
@@ -853,6 +946,10 @@ export class ArchitectureEngine {
   private firstFrame = false;
   /** Appels de dessin de la dernière image (hors post-traitement), et i/s lissés. */
   calls = 0;
+  /** Appels de la passe des icônes (dessinée après la lumière). */
+  iconCalls = 0;
+  private sceneCalls = 0;
+  private declutterDue = true;
   fps = 0;
   private last: number | null = null;
   private readonly look = new Vector3();
@@ -872,7 +969,7 @@ export class ArchitectureEngine {
     this.renderer.info.autoReset = false;
     // Appels de dessin de la scène seule : lus à la fin de son rendu, avant les passes de lumière (hors budget §14).
     this.graph.scene.onAfterRender = () => {
-      this.calls = this.renderer.info.render.calls;
+      this.sceneCalls = this.renderer.info.render.calls;
     };
     this.camera = new PerspectiveCamera(40, options.width / Math.max(1, options.height), 0.05, 400);
     this.post = new JarvisPost(this.renderer, this.graph.scene, this.camera, options.width, options.height,
@@ -894,9 +991,15 @@ export class ArchitectureEngine {
     this.loop.start();
   }
 
+  /** L'atlas des icônes officielles est prêt (SF-238-08) : il remplace les boîtes neutres. */
+  setIcons(icons: ArchitectureIconSource): void {
+    this.graph.setIcons(icons);
+  }
+
   /** Nouvel état (alloué au changement seulement). */
   setState(state: ArchState): void {
     this.plan = this.graph.director.plan(state, this.viewport());
+    this.declutterDue = true;
   }
 
   setPhase(phase: ArchPhaseKind, start = this.options.clock()): void {
@@ -913,6 +1016,7 @@ export class ArchitectureEngine {
     this.labels?.setSize(width, height);
     this.graph.setResolution(width, height);
     this.plan = this.graph.director.plan(this.plan.state, this.viewport());
+    this.declutterDue = true;
   }
 
   dispose(): void {
@@ -951,7 +1055,22 @@ export class ArchitectureEngine {
     }
     this.renderer.info.reset();
     this.post.render(BLOOM_STRENGTH, t);
+    // Les icônes par-dessus la lumière (hors bloom), comptées dans le budget d'appels.
+    const before = this.renderer.info.render.calls;
+    this.renderer.autoClear = false;
+    // La dernière passe plein écran a écrit la profondeur : on la vide pour que les icônes ne soient pas masquées.
+    this.renderer.setRenderTarget(null);
+    this.renderer.clearDepth();
+    this.renderer.render(this.graph.iconScene, this.camera);
+    this.renderer.autoClear = true;
+    this.iconCalls = this.renderer.info.render.calls - before;
+    this.calls = this.sceneCalls + this.iconCalls;
     this.labels?.render(this.graph.scene, this.camera);
+    // Chevauchements : à l'image qui suit un changement de plan, puis toutes les 15 images tant que ça bouge.
+    if (this.labels && (this.declutterDue || (this.phase !== 'repos' && this.loop.frames % 15 === 0))) {
+      this.declutterDue = false;
+      this.graph.declutterLabels();
+    }
     if (!this.firstFrame) {
       this.firstFrame = true;
       this.options.onFirstFrame?.();

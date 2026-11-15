@@ -12,8 +12,11 @@ import { ARCH_ICON_PX, ArchPoint, ArchitectureGraph, ArchitectureZoneKind, DASHE
 
 /** Échelle du plan : un pixel du SVG = 0,01 unité. */
 export const ARCH_PX = 0.01;
-/** Δ compact (terrasses légères), éclaté (plateaux empilés), éclaté au téléphone (cadrage §14). */
-export const STEP_COMPACT = 0.25;
+/**
+ * Δ compact (terrasses), éclaté (plateaux empilés), éclaté au téléphone (cadrage §14). Compact relevé de 0,25 à 0,6
+ * (retour orchestrateur 2026-11-15) : à 0,25 les terrasses ne se lisaient pas à l'angle par défaut.
+ */
+export const STEP_COMPACT = 0.6;
 export const STEP_EXPLODED = 2.2;
 export const STEP_EXPLODED_PHONE = 1.4;
 /** Hauteur de vol d'un service au-dessus de son plateau. */

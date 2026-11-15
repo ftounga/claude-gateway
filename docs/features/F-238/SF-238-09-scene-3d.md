@@ -7,7 +7,7 @@ SF-238-09
 F-238 — Architecture en 3D, itération 1 « L'architecture en 3D » (cadrage §5.1, §6, §8.1, §9, §10, §14, §17)
 
 ## Statut
-in-progress
+done
 
 ## Date de création
 2026-11-15
@@ -46,8 +46,9 @@ sortie T-A2 et la vue de dessus qui coïncide avec le schéma 2D cadré, jouable
    `textContent` (Space Grotesk capitales pour les zones, Inter pour les services). Couleurs **uniquement** de
    `HOLO_COLORS` / `HOLO_ALPHA` / `MOTION_CURVES` (`jarvis-motion.ts`) ; zones toutes en orange (Q1), nature lue par
    trait, libellé, altitude.
-5. **Icônes** : tant que l'atlas de SF-238-08 n'est pas livré, une **boîte neutre** par icône (jamais une icône
-   approchante) via une interface `ArchitectureIconSource` que SF-238-08 remplira.
+5. **Icônes** : l'atlas des icônes officielles de SF-238-08 (`loadIconAtlas`, livré en parallèle) est **branché** :
+   la scène se pose avec des boîtes neutres puis l'atlas les remplace (même appel de dessin). Au banc,
+   `&icones=1` lit les icônes par le proxy ; sans ce paramètre, aucun réseau.
 6. **T-A1 (2,2 s)** et **T-A2 (0,6 s)** selon le tableau §10.1 (durées ajoutées à `MOTION_DURATIONS`), courbes
    `glisse`/`sortie`/`rebond`/`entree` ; le directeur calcule chaque instant (déterministe, banc `&t=`).
 7. **Banc** : scènes `architecture` (3-tiers, entrée T-A1 à l'instant `t`), `architecture-dessus` (vue de dessus +
@@ -134,3 +135,11 @@ Sans objet (aucune entité).
 - **D-09-2** Moteur de scène **séparé** de l'univers F-236 (même contrat de matières, post-traitement, courbes,
   couleurs, boucle d'images) : l'univers et l'architecture ne coexistent pas à l'écran ; SF-238-10 l'inscrira
   comme visionneuse.
+- **D-09-3** (retour orchestrateur 2026-11-15) Δ compact relevé de **0,25 à 0,6** + **piliers d'angle** par
+  plateau : à 0,25 les terrasses ne se lisaient pas à l'angle par défaut. Écart signalé au cadrage §8.1.
+- **D-09-4** Icônes dessinées **après la lumière** (scène à part, même caméra) sur une **carte crème** (`--cg-holo-core`,
+  icône non recolorée) : sous le bloom, les icônes au trait (ALB, NAT, utilisateurs) disparaissaient ou blanchissaient.
+- **D-09-5** **Zéro chevauchement d'étiquettes** : libellé de zone au milieu du bord avant du plateau, verre navy sous
+  chaque libellé (une liaison dessous ne le rend jamais illisible), et `declutter` glouton par priorité (dont Jarvis
+  parle > services > zones les plus précises) qui masque le reste ; recalculé au changement de plan et pendant les
+  transitions, jamais à chaque image.

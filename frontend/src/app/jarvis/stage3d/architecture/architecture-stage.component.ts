@@ -8,6 +8,7 @@ import { browserFrameHost } from '../jarvis-frame-loop';
 import { QualityLevel } from '../jarvis-render-capability';
 import { ArchitectureGraph, ARCH_ICON_PX } from './architecture-graph';
 import { neutralIconSource } from './architecture-icons';
+import { IconFetcher, loadIconAtlas } from './architecture-icon-atlas';
 import { layoutArchitecture } from './architecture-layout-3d';
 import { ArchPhaseKind, ArchState, svgFit } from './architecture-stage-director';
 import type { ArchitectureEngine } from './engine/architecture-scene-3d';
@@ -50,7 +51,11 @@ import type { ArchitectureEngine } from './engine/architecture-scene-3d';
       stroke-width: 1.5; opacity: 0.5; z-index: 3; }
     .arch__fallback { position: absolute; inset: auto 0 50% 0; text-align: center; font-family: var(--cg-font-body);
       color: var(--cg-holo-text, #F0954F); }
-    :host ::ng-deep .jv3d-label--arch-zone { font-size: 10px; letter-spacing: 0.12em; opacity: 0.9; }
+    /* Verre navy sous chaque libellé : une liaison qui passe dessous ne le rend jamais illisible (≥ 5,8:1). */
+    :host ::ng-deep [class*='jv3d-label--arch-'] { padding: 1px 6px; border-radius: 2px; text-shadow: none;
+      background: color-mix(in srgb, var(--cg-navy, #0B1020) 78%, transparent); }
+    :host ::ng-deep .jv3d-label.is-masked { visibility: hidden; }
+    :host ::ng-deep .jv3d-label--arch-zone { font-size: 10px; letter-spacing: 0.12em; }
     :host ::ng-deep .jv3d-label--arch-service { font-family: var(--cg-font-body); font-weight: 500;
       text-transform: none; letter-spacing: 0; font-size: 12px; color: var(--cg-holo-core, #FFF3E4); }
   `],
@@ -65,6 +70,11 @@ export class ArchitectureStageComponent {
   readonly level = input<QualityLevel>('high');
   /** Banc : superposer le 2D cadré (vue de dessus). */
   readonly showOverlay = input(false);
+  /**
+   * Le chargeur des icônes officielles (SF-238-08, proxy sous JWT) ; `null` = boîtes neutres. La scène se pose tout
+   * de suite, l'atlas la rejoint quand il est prêt (même appel de dessin).
+   */
+  readonly iconFetcher = input<IconFetcher | null>(null);
 
   protected readonly icon = ARCH_ICON_PX;
   protected readonly unavailable = signal(false);
@@ -128,6 +138,11 @@ export class ArchitectureStageComponent {
         random: seededRandom(238), clock: this.clock() ?? realClock(), frameHost: browserFrameHost(),
       }, this.state(), this.phase());
       this.engine.start();
+      const fetcher = this.iconFetcher();
+      if (fetcher) {
+        const atlas = await loadIconAtlas(this.graph().nodes, fetcher);
+        this.engine?.setIcons(atlas);
+      }
     } catch {
       this.unavailable.set(true);
     }
@@ -140,6 +155,7 @@ export class ArchitectureStageComponent {
       return;
     }
     el.dataset['calls'] = String(engine.calls);
+    el.dataset['iconCalls'] = String(engine.iconCalls);
     el.dataset['fps'] = engine.fps.toFixed(1);
     el.dataset['particles'] = String(engine.graph.particleCount);
     el.dataset['frames'] = String(engine.frames);

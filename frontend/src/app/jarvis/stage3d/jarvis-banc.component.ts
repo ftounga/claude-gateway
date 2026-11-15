@@ -26,6 +26,7 @@ import { EDENRED_ALIGNMENT } from '../face/jarvis-face-fixture';
 import type { MouthShape } from '../face/jarvis-visemes';
 import { ArchitectureStageComponent } from './architecture/architecture-stage.component';
 import { bancArchitecture } from './architecture/architecture-banc';
+import { httpIconFetcher } from './architecture/architecture-icon-atlas';
 import { frozenClock } from './jarvis-banc';
 
 /**
@@ -43,7 +44,7 @@ import { frozenClock } from './jarvis-banc';
     @if (architecture; as a) {
       <!-- F-238 / SF-238-09 — l'architecture en 3D seule (fixtures du renderer, aucun réseau). -->
       <app-architecture-stage [graph]="a.graph" [state]="a.state" [phase]="a.phase" [clock]="frozen"
-                              [level]="level" [showOverlay]="a.overlay" />
+                              [level]="level" [showOverlay]="a.overlay" [iconFetcher]="iconFetcher" />
     } @else {
       <app-jarvis-stage-3d #stage [withCore]="true" [planOverride]="staged.plan" [voiceLevel]="voice"
                            [face]="face" [mouth]="mouth"
@@ -95,6 +96,12 @@ export class JarvisBancComponent {
     ? bancArchitecture(this.scene, typeof matchMedia === 'function' && matchMedia('(max-width: 767px)').matches)
     : null;
   protected readonly frozen = frozenClock(this.t);
+  /**
+   * F-238 / SF-238-09 — `&icones=1` : les icônes officielles par le proxy de la passerelle (SF-238-08) ; sans ce
+   * paramètre, le banc ne lit pas le réseau (boîtes neutres).
+   */
+  protected readonly iconFetcher = this.architecture && typeof location !== 'undefined'
+    && new URLSearchParams(location.search).get('icones') === '1' ? httpIconFetcher(() => ({})) : null;
   protected readonly level = inject(JARVIS_BANC)?.level ?? (typeof matchMedia === 'function'
     && matchMedia('(max-width: 767px)').matches ? 'medium' : 'high');
   protected readonly vars = holoCssVars();

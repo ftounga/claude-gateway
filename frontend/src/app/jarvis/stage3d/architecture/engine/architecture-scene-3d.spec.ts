@@ -1,5 +1,6 @@
 import { TROIS_TIERS_GRAPH, sixtyNodesGraph } from '../architecture-graph.fixture';
 import { neutralIconSource } from '../architecture-icons';
+import { composeIconAtlas, planIconAtlas } from '../architecture-icon-atlas';
 import { ArchLayout, layoutArchitecture } from '../architecture-layout-3d';
 import { DEFAULT_ARCH_STATE } from '../architecture-stage-director';
 import { seededRandom } from '../../jarvis-banc';
@@ -75,6 +76,24 @@ describe('F-238 / SF-238-09 — la scène 3D (sans rendu)', () => {
     expect(hostile).toBeTruthy();
     expect(hostile.querySelector('img')).toBeNull();
     expect(labels.some((l) => l.textContent === 'VPC 10.0.0.0/16')).toBeTrue();
+    scene.dispose();
+  });
+
+  it('l\'atlas des icônes officielles (SF-238-08) remplace les boîtes neutres, même appel de dessin', () => {
+    const layout = layoutArchitecture(TROIS_TIERS_GRAPH) as ArchLayout;
+    const scene = build(layout);
+    expect(Array.from(scene.iconCells).every((c) => c === 0)).toBeTrue();
+    const before = scene.drawables();
+    const plan = planIconAtlas(layout.nodes);
+    const icon = document.createElement('canvas');
+    icon.width = 64;
+    icon.height = 64;
+    const atlas = composeIconAtlas(plan, new Map(plan.icons.map((name) => [name, icon])));
+    scene.setIcons(atlas);
+    const rds = layout.nodeById.get('rdsa') as number;
+    expect(scene.iconCells[rds]).toBe(atlas.cellOf(layout.nodes[rds]));
+    expect(scene.iconCells[rds]).toBeGreaterThan(1);
+    expect(scene.drawables()).toBe(before);
     scene.dispose();
   });
 });
