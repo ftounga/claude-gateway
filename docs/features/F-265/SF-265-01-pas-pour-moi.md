@@ -7,7 +7,7 @@
 `F-265` — Pas pour moi : Jarvis ne répond plus à une autre personne
 
 ## Statut
-`in-progress`
+`done`
 
 ## Date de création
 2026-11-15
