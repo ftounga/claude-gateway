@@ -2749,13 +2749,21 @@ public class AtelierChatService implements RelayInterruptTarget {
         // F-222 / SF-222-04 : un tour dont la notification de fin est tue est une course autonome ou une routine —
         // personne n'y écrit, aucune validation écrite n'y est possible. Sinon, ce que l'utilisateur a écrit pendant
         // ce tour (message et précisions) sert à vérifier la citation d'un « go ».
+        fr.claudegateway.atelier.journey.JourneyToolExecutor.Outcome outcome = journeyToolExecutor.execute(userId,
+                workspace, call.name(), call.input(), turnContext(userId, workspace, userWordsOfTurn));
+        return outcome.error() ? ToolOutcome.error(outcome.content()) : ToolOutcome.info(outcome.content());
+    }
+
+    /**
+     * Ce que le tour sait de son utilisateur (F-222 / SF-222-04, partagé par F-261) : un tour dont la notification de
+     * fin est tue est une course autonome ou une routine — personne n'y écrit. Sinon, ses textes écrits du tour.
+     */
+    private fr.claudegateway.atelier.journey.JourneyToolExecutor.TurnContext turnContext(UUID userId,
+            Workspace workspace, List<String> userWordsOfTurn) {
         boolean headless = mutedOutcomeTurns.contains(turnKey(userId, workspace.getId(), workspace.getTurnChantier()));
-        fr.claudegateway.atelier.journey.JourneyToolExecutor.TurnContext context = headless
+        return headless
                 ? fr.claudegateway.atelier.journey.JourneyToolExecutor.TurnContext.UNKNOWN
                 : fr.claudegateway.atelier.journey.JourneyToolExecutor.TurnContext.ofUser(userWordsOfTurn);
-        fr.claudegateway.atelier.journey.JourneyToolExecutor.Outcome outcome =
-                journeyToolExecutor.execute(userId, workspace, call.name(), call.input(), context);
-        return outcome.error() ? ToolOutcome.error(outcome.content()) : ToolOutcome.info(outcome.content());
     }
 
     /**
@@ -4627,7 +4635,8 @@ public class AtelierChatService implements RelayInterruptTarget {
                 } else if (fr.claudegateway.atelier.actions.TerminalActionToolCatalog
                         .isTerminalActionTool(call.name())) {
                     // F-154 / SF-154-02 : l'action à faire est inscrite par la gateway, dans le terminal.
-                    outcome = applyRecordBlocker(userId, workspace, callId, call, listener, attentesOfTurn);
+                    outcome = applyRecordBlocker(userId, workspace, callId, call, listener, attentesOfTurn,
+                            requestsOfTurn);
                 } else if (OPEN_SUBJECT_TOOL_NAME.equals(call.name())) {
                     // F-179 / SF-179-01 : la passation vers un sujet, résolue par la gateway (user_id + poste).
                     outcome = applyOpenSubject(userId, workspace, callId, call, listener, handoffsOfTurn);
@@ -6787,7 +6796,8 @@ public class AtelierChatService implements RelayInterruptTarget {
 
     private ToolOutcome applyRecordBlocker(UUID userId, Workspace workspace, String callId, AgentToolCall call,
             AtelierProgressListener listener,
-            java.util.Map<String, fr.claudegateway.atelier.actions.AttenteBlock> attentesOfTurn) {
+            java.util.Map<String, fr.claudegateway.atelier.actions.AttenteBlock> attentesOfTurn,
+            List<String> userWordsOfTurn) {
         if (terminalActionToolExecutor == null
                 || !terminalActionToolCatalog.isOpenFor(userId, workspace)) {
             return ToolOutcome.error("Les actions à faire ne sont pas ouvertes dans ce terminal : "
@@ -6800,7 +6810,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         // passer À faire ↔ Demandé.
         fr.claudegateway.atelier.actions.TerminalActionToolExecutor.Outcome outcome = switch (call.name()) {
             case fr.claudegateway.atelier.actions.TerminalActionToolCatalog.CLOSE ->
-                    terminalActionToolExecutor.close(userId, workspace, call.input());
+                    terminalActionToolExecutor.close(userId, workspace, call.input(),
+                            turnContext(userId, workspace, userWordsOfTurn)); // F-261 : user_words cités
             case fr.claudegateway.atelier.actions.TerminalActionToolCatalog.UPDATE ->
                     terminalActionToolExecutor.update(userId, workspace, call.input());
             default -> terminalActionToolExecutor.execute(userId, workspace, call.input());

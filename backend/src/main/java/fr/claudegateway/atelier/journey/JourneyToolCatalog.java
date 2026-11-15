@@ -53,9 +53,12 @@ public class JourneyToolCatalog {
     /** Valider un plan quand l'utilisateur le dit par écrit — un « go » (F-222 / SF-222-01). */
     public static final String VALIDATE_PLAN = "valider_plan";
 
+    /** Clore un chantier vérifié quand l'utilisateur le demande par écrit (F-261 / SF-261-01). */
+    public static final String CLOSE_CHANTIER = "cloturer_chantier";
+
     /** Tous les noms d'outils du parcours. */
     public static final Set<String> NAMES = Set.of(PROPOSE_GUIDED, SET_PLAN, SUBMIT_DIAGNOSIS, UPDATE_STEP, REOPEN,
-            UPDATE_SUB_STEPS, LAUNCH_AUTONOMOUS, CONFIRM_DIAGNOSIS, VALIDATE_PLAN);
+            UPDATE_SUB_STEPS, LAUNCH_AUTONOMOUS, CONFIRM_DIAGNOSIS, VALIDATE_PLAN, CLOSE_CHANTIER);
 
     /** Le guide ajouté à la consigne système quand les outils sont donnés (stable). */
     public static final String GUIDE = "--- Parcours du sujet (Libre / Guidé) ---\n"
@@ -129,7 +132,9 @@ public class JourneyToolCatalog {
             + "status=VERIFIE ou ECHEC avec evidence = ce que tu as observé (commande et résultat). Jamais "
             + "VERIFIE sans preuve. Une vérification rouge, ou une découverte qui contredit le "
             + "diagnostic : reopen_investigation (le plan est gardé) ou un amendement. Toutes vertes : "
-            + "l'utilisateur voit la proposition de clore. Un VRAI blocage (information manquante, échec "
+            + "l'utilisateur voit la proposition de clore ; il clôt d'un clic [Clore], ou en te le disant (« tu peux "
+            + "clore », « clos le chantier 7 ») — alors cloturer_chantier avec le chantier et ses mots EXACTS de ce "
+            + "tour ; jamais de ta propre initiative ni dans une course autonome. Un VRAI blocage (information manquante, échec "
             + "sans remède) : update_plan_step status=BLOQUE avec la raison, et arrête-toi sur ce chantier.\n"
             + "EN SOMMEIL : un chantier en Exécution sans aucun geste depuis 3 jours, et qui n'attend pas un tiers "
             + "(un chantier qui attend quelqu'un attend, il ne dort pas). N'y touche pas sans demande ; si "
@@ -204,6 +209,7 @@ public class JourneyToolCatalog {
         tools.add(launchAutonomousDefinition());
         tools.add(confirmDiagnosisDefinition());
         tools.add(validatePlanDefinition());
+        tools.add(closeChantierDefinition());
         return tools;
     }
 
@@ -264,6 +270,23 @@ public class JourneyToolCatalog {
                                         "description", "Les mots EXACTS de l'utilisateur qui valident, cités tels "
                                                 + "qu'il les a écrits dans ce tour.")),
                         "required", List.of("chantier", "version", "user_words")));
+    }
+
+    static AgentTool closeChantierDefinition() {
+        return new AgentTool(CLOSE_CHANTIER,
+                "Clôt un chantier en Vérification dont toutes les étapes sont vérifiées quand l'utilisateur te le "
+                        + "demande explicitement dans son message (« tu peux clore », « clos le chantier 7 », « c'est "
+                        + "validé, ferme-le ») : le chantier passe à Clos, comme sur un clic [Clore]. Jamais de ta "
+                        + "propre initiative, ni sur un accord d'un tour passé, ni dans une course autonome ou une "
+                        + "routine.",
+                Map.of("type", "object",
+                        "properties", Map.of(
+                                "chantier", Map.of("type", "integer",
+                                        "description", "Le numéro du chantier à clore."),
+                                "user_words", Map.of("type", "string",
+                                        "description", "Les mots EXACTS de l'utilisateur qui demandent la clôture, "
+                                                + "cités tels qu'il les a écrits dans ce tour.")),
+                        "required", List.of("chantier", "user_words")));
     }
 
     static AgentTool submitDiagnosisDefinition() {

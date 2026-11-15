@@ -41,6 +41,9 @@ describe('Les cartes d’attente du fil (F-175 / SF-175-05)', () => {
         .toBe('Une attente dit déjà la même chose');
       expect(attenteHeadline(attente({ kind: 'PROPOSED', proposedStatus: 'FAIT' }))).toBe('Je pense que c\'est réglé');
       expect(attenteHeadline(attente({ kind: 'REQUESTED', status: 'DEMANDE' }))).toBe('Marqué demandé');
+      // F-261 / SF-261-01 : fermée sur la demande écrite de l'utilisateur.
+      expect(attenteHeadline(attente({ kind: 'CLOSED', status: 'FAIT' }))).toBe('Close sur ta demande');
+      expect(attenteHeadline(attente({ kind: 'CLOSED', status: 'ANNULE' }))).toBe('Annulée sur ta demande');
     });
 
     it('détaillent à qui, quand et par où la demande est partie', () => {

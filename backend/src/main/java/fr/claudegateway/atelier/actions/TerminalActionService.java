@@ -1091,6 +1091,35 @@ public class TerminalActionService {
         return new AgentChange(repository.save(action), AgentChangeOutcome.PROPOSED);
     }
 
+    /**
+     * <b>L'agent ferme une attente sur la parole écrite de l'utilisateur</b> (F-261 / SF-261-01) : la citation a déjà
+     * été vérifiée dans ce qu'il a écrit pendant le tour (par l'appelant). L'attente prend l'état Fait (ou Annulée),
+     * la raison est sa parole ; une proposition en cours est effacée. Même résolution que {@link #proposeClose} :
+     * ce terminal ou son poste, jamais ailleurs.
+     */
+    @Transactional
+    public AgentChange closeOnUserWords(UUID userId, Workspace workspace, String key, String id,
+                                        String reason, boolean cancelled) {
+        String cleanReason = optional(reason, MAX_REASON,
+                "La raison tient en " + MAX_REASON + " caractères.");
+        var found = resolveForAgent(userId, workspace, key, id);
+        if (found.isEmpty()) {
+            return new AgentChange(null, AgentChangeOutcome.UNKNOWN);
+        }
+        TerminalAction action = found.get();
+        if (!action.isOpen()) {
+            return new AgentChange(action, AgentChangeOutcome.ALREADY_CLOSED);
+        }
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        action.setStatus(cancelled ? TerminalActionStatus.ANNULE : TerminalActionStatus.FAIT);
+        action.setClosedReason(cleanReason);
+        action.setClosedAt(now);
+        action.clearProposal();
+        gesture(action, now);
+        action.setReviewPending(false);
+        return new AgentChange(repository.save(action), AgentChangeOutcome.CLOSED);
+    }
+
     /** Ce qu'un geste de l'agent sur la liste a donné, et l'attente concernée ({@code null} si inconnue). */
     public record AgentChange(TerminalAction action, AgentChangeOutcome outcome) {
     }
@@ -1104,7 +1133,9 @@ public class TerminalActionService {
         /** Aucune attente de ce terminal ou de son poste ne répond à cette clé / cet identifiant. */
         UNKNOWN,
         /** Elle est déjà fermée — rien changé. */
-        ALREADY_CLOSED
+        ALREADY_CLOSED,
+        /** Fermée sur la parole écrite de l'utilisateur (F-261 / SF-261-01). */
+        CLOSED
     }
 
     /**

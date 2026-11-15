@@ -57,6 +57,16 @@ public class TerminalActionToolExecutor {
      * [Pas encore]. Rien ne sort de sa liste sans son geste.</p>
      */
     public Outcome close(UUID userId, Workspace workspace, JsonNode input) {
+        return close(userId, workspace, input, fr.claudegateway.atelier.journey.JourneyToolExecutor.TurnContext.UNKNOWN);
+    }
+
+    /**
+     * Même chose, avec ce que le tour sait de l'utilisateur (F-261 / SF-261-01) : avec {@code user_words} cités et
+     * vérifiés dans ce qu'il a écrit pendant ce tour, l'attente est <b>fermée</b> (comme [Clore]) ; sans, la
+     * fermeture est <b>proposée</b> comme avant. Une citation qui ne vaut pas est refusée : rien ne change.
+     */
+    public Outcome close(UUID userId, Workspace workspace, JsonNode input,
+                         fr.claudegateway.atelier.journey.JourneyToolExecutor.TurnContext turn) {
         String key = text(input, "key");
         String id = text(input, "id");
         if (key.isEmpty() && id.isEmpty()) {
@@ -64,6 +74,10 @@ public class TerminalActionToolExecutor {
         }
         boolean cancelled = input != null && input.hasNonNull("cancelled")
                 && input.get("cancelled").asBoolean(false);
+        String words = text(input, "user_words");
+        if (!words.isEmpty()) {
+            return closeOnUserWords(userId, workspace, key, id, words, text(input, "reason"), cancelled, turn);
+        }
         try {
             TerminalActionService.AgentChange change = service.proposeClose(
                     userId, workspace, key, id, text(input, "reason"), cancelled);
@@ -76,6 +90,39 @@ public class TerminalActionToolExecutor {
             log.warn("Proposition de fermeture d'une attente impossible", e);
             return Outcome.error("La fermeture n'a pas pu être proposée. Dis-le à l'utilisateur dans ta "
                     + "réponse plutôt que de réessayer.");
+        }
+    }
+
+    private Outcome closeOnUserWords(UUID userId, Workspace workspace, String key, String id, String words,
+                                     String reason, boolean cancelled,
+                                     fr.claudegateway.atelier.journey.JourneyToolExecutor.TurnContext turn) {
+        String refusal = fr.claudegateway.atelier.journey.JourneyToolExecutor.writtenRefusal(words, turn,
+                "Une course autonome (ou une routine) ne ferme jamais une attente : personne n'y écrit. Propose la "
+                        + "fermeture sans user_words ; l'utilisateur confirmera.",
+                "propose la fermeture sans user_words");
+        if (refusal != null) {
+            return Outcome.error(refusal);
+        }
+        try {
+            TerminalActionService.AgentChange change = service.closeOnUserWords(userId, workspace, key, id,
+                    reason.isEmpty() ? words : reason, cancelled);
+            String ref = key.isEmpty() ? id : key;
+            return switch (change.outcome()) {
+                case CLOSED -> new Outcome("Attente " + (cancelled ? "ANNULÉE" : "FERMÉE")
+                        + " sur la demande écrite de l'utilisateur : « " + change.action().getDescription() + " ». "
+                        + "C'est fait, comme sur un clic [Clore] ; dis-le-lui en une phrase.", false, change.action(),
+                        AttenteBlock.of(change.action(), AttenteBlock.CLOSED, null));
+                case ALREADY_CLOSED -> new Outcome("Cette attente était déjà fermée : « "
+                        + change.action().getDescription() + " ». Rien n'a changé.", false, change.action());
+                case UNKNOWN -> new Outcome(unknown(ref), false, null);
+                default -> new Outcome("Rien n'a changé.", false, change.action());
+            };
+        } catch (InvalidTerminalActionException e) {
+            return Outcome.error(e.getMessage());
+        } catch (RuntimeException e) {
+            log.warn("Fermeture écrite d'une attente impossible", e);
+            return Outcome.error("L'attente n'a pas pu être fermée. Dis-le à l'utilisateur dans ta réponse plutôt "
+                    + "que de réessayer.");
         }
     }
 
@@ -131,7 +178,7 @@ public class TerminalActionToolExecutor {
             case ALREADY_CLOSED -> "Cette attente était déjà fermée : « "
                     + change.action().getDescription() + " ». Rien n'a changé.";
             case UNKNOWN -> unknown(ref);
-            case CHANGED -> "Rien n'a changé.";
+            case CHANGED, CLOSED -> "Rien n'a changé.";
         };
     }
 
@@ -145,7 +192,7 @@ public class TerminalActionToolExecutor {
             case ALREADY_CLOSED -> "Cette attente est fermée : « " + change.action().getDescription()
                     + " ». Rien n'a changé ; si le blocage revient, dis-le à l'utilisateur.";
             case UNKNOWN -> unknown(ref);
-            case PROPOSED -> "Rien n'a changé.";
+            case PROPOSED, CLOSED -> "Rien n'a changé.";
         };
     }
 

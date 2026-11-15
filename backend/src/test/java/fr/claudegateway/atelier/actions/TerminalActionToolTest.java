@@ -153,6 +153,59 @@ class TerminalActionToolTest {
     }
 
     @Test
+    @DisplayName("SF-261-01 : close_blocker avec les mots écrits de l'utilisateur FERME l'attente, sans proposition")
+    void closeOnUserWordsClosesTheAction() {
+        TerminalAction open = existing(TerminalActionStatus.DEMANDE, "acces-vpn-karim");
+        open.setProposedStatus(TerminalActionStatus.FAIT);
+        open.setProposedReason("ancienne");
+        when(repository.findByUserIdAndWorkspaceIdAndDedupKey(userId, workspaceId, "acces-vpn-karim"))
+                .thenReturn(Optional.of(open));
+        var said = fr.claudegateway.atelier.journey.JourneyToolExecutor.TurnContext.ofUser(
+                java.util.List.of("Je t'ai donné le go pour les 2, ferme-la"));
+
+        TerminalActionToolExecutor.Outcome outcome = executor.close(userId, workspace, input("""
+                {"key":"acces-vpn-karim","user_words":"je t'ai donné le go"}"""), said);
+
+        assertThat(outcome.error()).isFalse();
+        assertThat(open.getStatus()).isEqualTo(TerminalActionStatus.FAIT);
+        assertThat(open.getClosedReason()).isEqualTo("je t'ai donné le go");
+        assertThat(open.hasProposal()).isFalse();
+        assertThat(outcome.card().kind()).isEqualTo(AttenteBlock.CLOSED);
+        assertThat(outcome.content()).contains("FERMÉE sur la demande écrite");
+    }
+
+    @Test
+    @DisplayName("SF-261-01 : citation inventée ou tour sans utilisateur — refus, l'attente reste telle quelle")
+    void closeOnUserWordsRefusesWithoutRealWords() {
+        TerminalAction open = existing(TerminalActionStatus.A_FAIRE, "acces-vpn-karim");
+        when(repository.findByUserIdAndWorkspaceIdAndDedupKey(userId, workspaceId, "acces-vpn-karim"))
+                .thenReturn(Optional.of(open));
+        var said = fr.claudegateway.atelier.journey.JourneyToolExecutor.TurnContext.ofUser(
+                java.util.List.of("on en est où ?"));
+
+        TerminalActionToolExecutor.Outcome invented = executor.close(userId, workspace, input("""
+                {"key":"acces-vpn-karim","reason":"c'est fait","user_words":"tu peux fermer"}"""), said);
+        TerminalActionToolExecutor.Outcome headless = executor.close(userId, workspace, input("""
+                {"key":"acces-vpn-karim","user_words":"on en est"}"""));
+
+        assertThat(invented.error()).isTrue();
+        assertThat(invented.content()).contains("ne figurent pas");
+        assertThat(headless.error()).isTrue();
+        assertThat(headless.content()).contains("course autonome");
+        assertThat(open.getStatus()).isEqualTo(TerminalActionStatus.A_FAIRE);
+        assertThat(open.hasProposal()).isFalse();
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("SF-261-01 : le guide et la définition disent quand close_blocker ferme sur les mots de l'utilisateur")
+    void theGuideSaysWhenUserWordsClose() {
+        assertThat(TerminalActionToolCatalog.GUIDE).contains("SAUF S'IL TE DEMANDE EXPLICITEMENT DE LA FERMER")
+                .contains("user_words = ses mots EXACTS de ce tour").contains("Jamais de ta propre initiative");
+        assertThat(TerminalActionToolCatalog.closeDefinition().inputSchema().toString()).contains("user_words");
+    }
+
+    @Test
     @DisplayName("SF-175-02 : [Confirmer] applique la proposition ; [Pas encore] l'écarte")
     void confirmAndDismiss() {
         TerminalAction open = existing(TerminalActionStatus.DEMANDE, "acces-vpn-karim");

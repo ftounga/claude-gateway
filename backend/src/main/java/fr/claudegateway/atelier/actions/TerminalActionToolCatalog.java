@@ -71,6 +71,9 @@ public class TerminalActionToolCatalog {
             + "QUAND L'UTILISATEUR RÉPOND : s'il te dit que c'est fait, ou s'il te donne "
             + "l'information que l'attente demandait, appelle close_blocker. Tu ne fermes pas : tu "
             + "PROPOSES, et l'utilisateur confirme d'un geste. Ne dis jamais qu'elle est fermée.\n"
+            + "SAUF S'IL TE DEMANDE EXPLICITEMENT DE LA FERMER dans son message (« tu peux la clore », « ferme "
+            + "l'attente VPN ») : passe alors user_words = ses mots EXACTS de ce tour, et close_blocker la ferme "
+            + "directement, comme son clic. Jamais de ta propre initiative, ni sur un accord d'un tour passé.\n"
             + "LA RAISON, C'EST SA PAROLE, pas ton résumé : recopie ce qu'il a dit (« Karim a ouvert "
             + "l'accès ce matin »). Une attente fermée sur un résumé approximatif fait croire à un "
             + "fait qui n'a pas été dit.\n"
@@ -180,7 +183,8 @@ public class TerminalActionToolCatalog {
                 "PROPOSE de fermer une attente quand L'UTILISATEUR A RÉPONDU : il dit que c'est fait, "
                         + "ou il donne l'information demandée. L'attente reste ouverte jusqu'à ce qu'il "
                         + "confirme d'un geste. Désigne-la par sa key (ou son id), et recopie SA parole "
-                        + "dans reason. Ne propose jamais sur une supposition.",
+                        + "dans reason. Ne propose jamais sur une supposition. S'il te demande explicitement de "
+                        + "la fermer, user_words = ses mots exacts : elle est fermée directement.",
                 Map.of("type", "object",
                         "properties", Map.of(
                                 "key", Map.of("type", "string",
@@ -193,7 +197,11 @@ public class TerminalActionToolCatalog {
                                                 + "(300 caractères au plus)."),
                                 "cancelled", Map.of("type", "boolean",
                                         "description", "Vrai s'il a dit que l'attente n'avait pas lieu d'être — "
-                                                + "ce n'est pas « c'est fait ».")),
+                                                + "ce n'est pas « c'est fait »."),
+                                "user_words", Map.of("type", "string",
+                                        "description", "Seulement s'il te DEMANDE de la fermer : ses mots EXACTS, "
+                                                + "cités tels qu'il les a écrits dans ce tour. L'attente est alors "
+                                                + "fermée, sans proposition.")),
                         "required", List.of()));
     }
 
