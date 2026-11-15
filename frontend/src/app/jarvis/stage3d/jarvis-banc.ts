@@ -73,7 +73,9 @@ export const BANC_SCENES = [
   'architecture', 'architecture-dessus', 'architecture-eclate', 'architecture-sortie', 'architecture-tout',
   'architecture-60', 'architecture-allume',
   // SF-238-12 — la narration synchronisée (quatre phrases, `&t=` dans la séquence).
-  'architecture-narration'] as const;
+  'architecture-narration',
+  // F-238 / SF-238-10 — navigation : zone repliée (capsule), focus sur un service (T-A6), vue de face.
+  'architecture-replie', 'architecture-focus', 'architecture-face'] as const;
 
 const SCENE_NAME = /^[a-z0-9-]{1,40}$/;
 

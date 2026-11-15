@@ -1,4 +1,5 @@
 import { normalize } from '../jarvis-oral';
+import { ArchNav, ArchOp, ArchRequest, defaultArchNav, reduceArch, trivialArchOp } from './jarvis-piece-arch';
 import { Piece, PieceCategory, PieceChapter, PieceKind } from './jarvis-piece.models';
 import { viewerFor } from './jarvis-piece-viewers';
 
@@ -12,7 +13,9 @@ export type NavLevel = 'UNIVERS' | 'CHANTIER' | 'GALERIE' | 'PIECE' | 'PAGE' | '
 
 export type NavOrigin = 'ASKED' | 'PROACTIVE';
 
-export type NavReason = 'OUT_OF_RANGE' | 'NOT_APPLICABLE' | 'NO_GALLERY' | 'NOT_FOUND';
+export type NavReason = 'OUT_OF_RANGE' | 'NOT_APPLICABLE' | 'NO_GALLERY' | 'NOT_FOUND'
+  /** F-238 / SF-238-10 — une cible d'architecture qui désigne plusieurs éléments (« la base » avec deux bases). */
+  | 'AMBIGUOUS';
 
 /** Cartes chargées au plus ; au-delà, « +n ». */
 export const MAX_NAV_ITEMS = 24;
@@ -63,6 +66,8 @@ export interface PieceNav {
   origin: NavOrigin;
   /** Niveaux précédents (fil d'Ariane), ≤ 8. */
   history: NavLevel[];
+  /** F-238 / SF-238-10 — le sous-état d'une pièce `ARCHITECTURE` ouverte (focus, repliés, éclaté, vue, flux). */
+  arch?: ArchNav | null;
 }
 
 export type NavAction =
@@ -81,7 +86,12 @@ export type NavAction =
   | { type: 'pan'; dx: number; dy: number }
   | { type: 'fullscreen' }
   /** F-237 / SF-237-09 — des cartes rejoignent la galerie ouverte (preuve produite en direct, T-G7). */
-  | { type: 'append'; pieces: readonly Piece[] };
+  | { type: 'append'; pieces: readonly Piece[] }
+  /**
+   * F-238 / SF-238-10 — une demande d'architecture : `op` est la demande résolue contre le graphe par la visionneuse
+   * 3D (le store la pose) ; sans `op`, seules les demandes qui n'ont pas besoin du graphe passent.
+   */
+  | { type: 'arch'; request: ArchRequest; op?: ArchOp };
 
 export interface NavResult {
   state: PieceNav;
@@ -142,6 +152,7 @@ function openItem(state: PieceNav, index: number): NavResult {
   return ok(go(state, {
     level: 'PIECE', selected: index, page: viewer.paged ? 1 : null, time: viewer.timed ? 0 : null,
     playing: viewer.timed, chapter: null, zoom: 1, pan: { x: 0, y: 0 }, target: null,
+    arch: state.items[index - 1].kind === 'ARCHITECTURE' ? defaultArchNav() : null,
   }));
 }
 
@@ -180,7 +191,7 @@ export function reduceNav(state: PieceNav, action: NavAction): NavResult {
       return ok(go(state, {
         level: 'GALERIE', scope: action.scope, items: pieces.map((p, i) => toNavItem(p, i + 1)),
         more: Math.max(0, action.pieces.length - MAX_NAV_ITEMS), selected: null, page: null, time: null,
-        playing: false, chapter: null, zoom: 1, pan: { x: 0, y: 0 }, target: null,
+        playing: false, chapter: null, zoom: 1, pan: { x: 0, y: 0 }, target: null, arch: null,
         origin: action.origin ?? 'ASKED',
       }));
     }
@@ -212,7 +223,7 @@ export function reduceNav(state: PieceNav, action: NavAction): NavResult {
         case 'PIECE':
           return ok(go(state, {
             level: 'GALERIE', selected: null, page: null, time: null, playing: false, chapter: null, zoom: 1,
-            pan: { x: 0, y: 0 }, target: null, fullscreen: false,
+            pan: { x: 0, y: 0 }, target: null, fullscreen: false, arch: null,
           }));
         case 'GALERIE':
           return reduceNav(state, { type: 'up' });
@@ -229,7 +240,7 @@ export function reduceNav(state: PieceNav, action: NavAction): NavResult {
       const toChantier = state.scope?.chantier != null && state.level !== 'CHANTIER';
       return ok(go(state, {
         level: toChantier ? 'CHANTIER' : 'UNIVERS', items: [], more: 0, selected: null, page: null, time: null,
-        playing: false, chapter: null, zoom: 1, pan: { x: 0, y: 0 }, target: null, fullscreen: false,
+        playing: false, chapter: null, zoom: 1, pan: { x: 0, y: 0 }, target: null, fullscreen: false, arch: null,
         scope: toChantier ? state.scope : null,
       }));
     }
@@ -304,6 +315,19 @@ export function reduceNav(state: PieceNav, action: NavAction): NavResult {
         return refuse(state, 'NOT_APPLICABLE');
       }
       return ok({ ...state, fullscreen: !state.fullscreen });
+    case 'arch': {
+      if (!item || item.kind !== 'ARCHITECTURE' || !state.arch) {
+        return refuse(state, 'NOT_APPLICABLE');
+      }
+      const op = action.op ?? trivialArchOp(action.request);
+      if (!op) {
+        return refuse(state, 'NOT_FOUND');
+      }
+      const arch = reduceArch(state.arch, op);
+      // Le zoom du réducteur commun (« zoome », molette) repart de 1 quand on change de vue ou de focus.
+      const reset = op.kind === 'view' || op.kind === 'focus';
+      return ok(arch === state.arch ? state : { ...state, arch, ...(reset ? { zoom: 1, pan: { x: 0, y: 0 } } : {}) });
+    }
     case 'append': {
       if (!state.scope || state.level === 'UNIVERS' || state.level === 'CHANTIER') {
         return refuse(state, 'NO_GALLERY');

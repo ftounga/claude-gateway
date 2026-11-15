@@ -20,7 +20,8 @@ import com.fasterxml.jackson.databind.JsonNode;
  * @param scope   la portée d'une galerie ({@code null} si vide)
  * @param reason  {@code demande} ou {@code appui}
  * @param view    F-253 / SF-253-02 — la vue de l'univers de l'action {@code univers} (une des
- *                {@link JarvisFastBrainPrompt#UNIVERSE_FILTERS}), sinon {@code null}
+ *                {@link JarvisFastBrainPrompt#UNIVERSE_FILTERS}) ; F-238 / SF-238-10 — celle d'une architecture de
+ *                l'action {@code vue} (une des {@link JarvisFastBrainPrompt#ARCH_VIEWS}) ; sinon {@code null}
  * @param client  F-253 / SF-253-02 — le client qui restreint la vue, nom tel que dans l'univers du compte
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -103,6 +104,14 @@ public record JarvisShowCommand(String action, List<String> pieces, Scope scope,
             return new Parsed(new JarvisShowCommand(action, List.of(), null, null, null, null, null, null, null,
                     "demande", view, blankToNull(text(input, "client"))), null, 0, 0);
         }
+        String archView = null;
+        if ("vue".equals(action)) {
+            // F-238 / SF-238-10 — la vue d'une architecture ouverte : fermée (ensemble, dessus, face, 2d, 3d).
+            archView = text(input, "vue").toLowerCase(Locale.ROOT);
+            if (!JarvisFastBrainPrompt.ARCH_VIEWS.contains(archView)) {
+                return new Parsed(null, NO_VIEW, 0, 0);
+            }
+        }
         List<String> ids = new ArrayList<>();
         int dropped = 0;
         JsonNode list = input == null ? null : input.get("pieces");
@@ -139,7 +148,7 @@ public record JarvisShowCommand(String action, List<String> pieces, Scope scope,
         JarvisShowCommand command = new JarvisShowCommand(action, List.copyOf(ids),
                 scope == null || scope.isEmpty() ? null : scope, integer(input, "index"), integer(input, "temps"),
                 blankToNull(text(input, "chapitre")), integer(input, "page"),
-                ZOOM.matcher(zoom).matches() ? zoom : null, blankToNull(text(input, "cible")), reason, null, null);
+                ZOOM.matcher(zoom).matches() ? zoom : null, blankToNull(text(input, "cible")), reason, archView, null);
         return new Parsed(command, null, dropped, appuiUsed);
     }
 

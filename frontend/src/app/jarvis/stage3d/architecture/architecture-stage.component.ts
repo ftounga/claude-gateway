@@ -1,6 +1,6 @@
 import {
-  ChangeDetectionStrategy, Component, DestroyRef, ElementRef, afterNextRender, computed, inject, input, signal,
-  viewChild,
+  ChangeDetectionStrategy, Component, DestroyRef, ElementRef, afterNextRender, computed, effect, inject, input, signal,
+  output, untracked, viewChild,
 } from '@angular/core';
 
 import { EngineClock, realClock, seededRandom } from '../jarvis-banc';
@@ -22,6 +22,7 @@ import type { ArchitectureEngine } from './engine/architecture-scene-3d';
  */
 @Component({
   selector: 'app-architecture-stage',
+  host: { '[class.arch--contained]': 'contained()' },
   template: `
     <canvas #canvas class="arch__canvas" aria-hidden="true"></canvas>
     <div #labels class="jv3d-labels arch__labels"></div>
@@ -46,6 +47,11 @@ import type { ArchitectureEngine } from './engine/architecture-scene-3d';
   styleUrls: ['../jarvis-labels.scss'],
   styles: [`
     :host { position: fixed; inset: 0; display: block; background: var(--cg-navy, #0B1020); }
+    /* SF-238-10 — dans la visionneuse d'une pièce : le cadre de la pièce, pas l'écran entier. */
+    :host(.arch--contained) { position: absolute; overflow: hidden; background: transparent; }
+    :host(.arch--contained) .arch__labels { position: absolute; }
+    :host ::ng-deep .jv3d-label--arch-capsule { font-family: var(--cg-font-body); font-size: 12px; letter-spacing: 0;
+      text-transform: none; color: var(--cg-holo-core, #FFF3E4); border: 1px solid var(--cg-holo, #E07B39); }
     .arch__canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
     .arch__overlay { position: absolute; pointer-events: none; fill: none; stroke: var(--cg-holo-core, #FFF3E4);
       stroke-width: 1.5; opacity: 0.5; z-index: 3; }
@@ -77,6 +83,14 @@ export class ArchitectureStageComponent {
   readonly iconFetcher = input<IconFetcher | null>(null);
   /** SF-238-12 — banc : une narration rejouée (phrases et instants de début, ms). */
   readonly script = input<readonly { at: number; text: string }[]>([]);
+  /** SF-238-10 — posée dans la visionneuse d'une pièce : la taille est celle de son cadre (pas de la fenêtre). */
+  readonly contained = input(false);
+  /**
+   * SF-238-10 — la phrase de Jarvis **entendue** (début de lecture, `onPlaying`) : ce qu'elle nomme s'allume (SF-238-12).
+   */
+  readonly spoken = input<string>('');
+  /** SF-238-10 — la 3D n'a pas pu se poser (graphe illisible, WebGL absent) : l'hôte prend le repli 2D. */
+  readonly failed = output<void>();
 
   protected readonly icon = ARCH_ICON_PX;
   protected readonly unavailable = signal(false);
@@ -101,20 +115,60 @@ export class ArchitectureStageComponent {
     };
   });
 
+  /** SF-238-10 — la navigation change l'état : la scène y va par sa transition (après la pose seulement). */
+  private readonly followState = effect(() => {
+    const state = this.state();
+    untracked(() => this.engine?.setNavState(state));
+  });
+
+  /** SF-238-10 — une phrase entendue : la narration locale (SF-238-12) allume ce qu'elle nomme. */
+  private readonly followVoice = effect(() => {
+    const phrase = this.spoken();
+    if (phrase) {
+      untracked(() => this.engine?.narrate(phrase));
+    }
+  });
+
+  /** SF-238-10 — l'élément sous un point de la fenêtre (toucher), ou `null`. */
+  pick(clientX: number, clientY: number): { kind: 'node' | 'plate'; id: string } | null {
+    const el = this.host.nativeElement;
+    const rect = el.getBoundingClientRect();
+    const kx = rect.width > 0 ? el.offsetWidth / rect.width : 1;
+    const ky = rect.height > 0 ? el.offsetHeight / rect.height : 1;
+    return this.engine?.pick((clientX - rect.left) * kx, (clientY - rect.top) * ky) ?? null;
+  }
+
+  private box(): { width: number; height: number } {
+    if (!this.contained()) {
+      return { width: innerWidth, height: innerHeight };
+    }
+    // La taille de mise en page (sans transformation) : le panneau de la galerie entre par une mise à l'échelle CSS,
+    // un cadre mesuré pendant l'animation serait trop petit (étiquettes décalées vers le coin).
+    const el = this.host.nativeElement;
+    return { width: Math.max(1, el.offsetWidth), height: Math.max(1, el.offsetHeight) };
+  }
+
   constructor() {
     const destroy = inject(DestroyRef);
     let timer: ReturnType<typeof setInterval> | null = null;
+    let observer: ResizeObserver | null = null;
     const onResize = (): void => {
-      this.size.set({ width: innerWidth, height: innerHeight });
-      this.engine?.resize(innerWidth, innerHeight);
+      const { width, height } = this.box();
+      this.size.set({ width, height });
+      this.engine?.resize(width, height);
     };
     afterNextRender(() => {
-      this.size.set({ width: innerWidth, height: innerHeight });
+      this.size.set(this.box());
       addEventListener('resize', onResize);
+      if (this.contained() && typeof ResizeObserver !== 'undefined') {
+        observer = new ResizeObserver(() => onResize());
+        observer.observe(this.host.nativeElement);
+      }
       void this.boot();
       timer = setInterval(() => this.measure(), 250);
     });
     destroy.onDestroy(() => {
+      observer?.disconnect();
       removeEventListener('resize', onResize);
       if (timer !== null) {
         clearInterval(timer);
@@ -129,6 +183,7 @@ export class ArchitectureStageComponent {
     const canvas = this.canvas().nativeElement;
     if (!layout || !canvas.getContext) {
       this.unavailable.set(true);
+      this.failed.emit();
       return;
     }
     try {
@@ -150,6 +205,7 @@ export class ArchitectureStageComponent {
       }
     } catch {
       this.unavailable.set(true);
+      this.failed.emit();
     }
   }
 

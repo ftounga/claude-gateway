@@ -8,7 +8,8 @@ import { ArchPhaseKind, ArchState, DEFAULT_ARCH_STATE } from './architecture-sta
  */
 export const ARCHITECTURE_BANC_SCENES = [
   'architecture', 'architecture-dessus', 'architecture-eclate', 'architecture-sortie', 'architecture-tout',
-  'architecture-60', 'architecture-allume', 'architecture-narration',
+  'architecture-60', 'architecture-allume', 'architecture-narration', 'architecture-replie', 'architecture-focus',
+  'architecture-face',
 ] as const;
 
 /**
@@ -47,6 +48,16 @@ export function bancArchitecture(scene: string, phone: boolean): ArchitectureBan
     case 'architecture-allume':
       // Jarvis parle de l'ALB et du flux Utilisateurs → ALB : héros en blanc chaud, le reste en contexte.
       return banc({ graph: TROIS_TIERS_GRAPH, state: { ...base, focus: 'alb', lit: ['alb', 'e1'] }, phase: 'repos',
+        overlay: false });
+    case 'architecture-replie':
+      // SF-238-10 — la zone B repliée en capsule (« ⌬ 3 services ») et le sous-réseau public A : rien ne saute.
+      return banc({ graph: TROIS_TIERS_GRAPH, state: { ...base, folded: ['azb', 'puba'] }, phase: 'repos',
+        overlay: false });
+    case 'architecture-focus':
+      // SF-238-10 — T-A6 : la caméra cadre RDS primaire et ses voisins.
+      return banc({ graph: TROIS_TIERS_GRAPH, state: { ...base, focus: 'rdsa' }, phase: 'repos', overlay: false });
+    case 'architecture-face':
+      return banc({ graph: TROIS_TIERS_GRAPH, state: { ...base, view: 'face', exploded: true }, phase: 'repos',
         overlay: false });
     case 'architecture-narration':
       return { graph: TROIS_TIERS_GRAPH, state: base, phase: 'repos', overlay: false, script: BANC_NARRATION };

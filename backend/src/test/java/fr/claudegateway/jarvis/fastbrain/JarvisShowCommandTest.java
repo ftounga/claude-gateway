@@ -72,4 +72,36 @@ class JarvisShowCommandTest {
                 {"action":"suivante","portee":{"sujet":"","chantier":null,"categorie":"","type":"","serie":"",
                  "depuis":""}}"""), 3).command().scope()).isNull();
     }
+
+    @Test
+    void architectureNavigationIsAClosedExtensionOfTheEnum() throws Exception {
+        // F-238 / SF-238-10 (D11) — les verbes d'architecture sont des actions, la cible reste le nom dit.
+        for (String action : java.util.List.of("focus", "flux", "replier", "deplier", "eclater", "rassembler")) {
+            JarvisShowCommand.Parsed parsed = JarvisShowCommand.parse(json(
+                    "{\"action\":\"" + action + "\",\"cible\":\"la base\",\"raison\":\"demande\"}"), 3);
+            assertThat(parsed.command()).as(action).isNotNull();
+            assertThat(parsed.command().action()).isEqualTo(action);
+            assertThat(parsed.command().target()).isEqualTo("la base");
+            assertThat(parsed.command().view()).isNull();
+        }
+        JarvisShowCommand.Parsed top = JarvisShowCommand.parse(json(
+                "{\"action\":\"vue\",\"vue\":\"dessus\",\"raison\":\"demande\"}"), 3);
+        assertThat(top.command().view()).isEqualTo("dessus");
+        // Une vue d'architecture inconnue, ou une vue de l'univers donnée à l'action vue : refusées, rien relayé.
+        assertThat(JarvisShowCommand.parse(json("{\"action\":\"vue\",\"vue\":\"clients\"}"), 3).command()).isNull();
+        assertThat(JarvisShowCommand.parse(json("{\"action\":\"vue\",\"vue\":\"\"}"), 3).refusal())
+                .isEqualTo(JarvisShowCommand.NO_VIEW);
+        // Et l'inverse : l'action univers ne prend pas une vue d'architecture.
+        assertThat(JarvisShowCommand.parse(json("{\"action\":\"univers\",\"vue\":\"dessus\"}"), 3).command())
+                .isNull();
+    }
+
+    @Test
+    void theToolSchemaListsTheArchitectureViewsOnce() {
+        assertThat(JarvisFastBrainPrompt.SHOW_ACTIONS).doesNotHaveDuplicates()
+                .contains("focus", "flux", "replier", "deplier", "eclater", "rassembler", "vue");
+        assertThat(JarvisFastBrainPrompt.SHOW_VIEWS).doesNotHaveDuplicates()
+                .containsAll(JarvisFastBrainPrompt.UNIVERSE_FILTERS).containsAll(JarvisFastBrainPrompt.ARCH_VIEWS);
+        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("22");
+    }
 }

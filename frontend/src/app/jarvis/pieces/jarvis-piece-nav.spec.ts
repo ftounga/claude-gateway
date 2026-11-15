@@ -223,10 +223,11 @@ describe('Jarvis — registre des visionneuses (F-237 / SF-237-04)', () => {
 
   it('point d’extension : la visionneuse d’architecture se remplace sans toucher au reste', () => {
     const before = PIECE_VIEWERS.IMAGE;
-    const previous = registerViewer('ARCHITECTURE', { name: 'architecture-3d', paged: false, timed: false,
+    // F-238 / SF-238-10 — la visionneuse 3D est désormais celle par défaut ; elle reste remplaçable.
+    const previous = registerViewer('ARCHITECTURE', { name: 'autre-3d', paged: false, timed: false,
       zoomable: true });
-    expect(previous.name).toBe('schema-svg');
-    expect(viewerFor('ARCHITECTURE').name).toBe('architecture-3d');
+    expect(previous.name).toBe('architecture-3d');
+    expect(viewerFor('ARCHITECTURE').name).toBe('autre-3d');
     expect(PIECE_VIEWERS.IMAGE).toBe(before);
     expect(viewerFor('DIAGRAM').name).toBe('schema-svg');
   });

@@ -1159,6 +1159,24 @@ class JarvisFastBrainServiceTest {
     }
 
     @Test
+    void f238TheArchitectureLineGoesInTheMessageNeverInTheSystemPrompt() throws Exception {
+        // F-238 / SF-238-10 — l'état de navigation d'une architecture ouverte : dans le message (bloc « ## Écran »),
+        // jamais dans la consigne ; consigne et outils identiques d'un état à l'autre.
+        JarvisFastBrainService service = service(answering("Voici la base."), null, null);
+        String screen1 = "## Écran\nGalerie : Productions (1 pièce) ; sélection : 1\nArchitecture « 3-tiers » ; focus : "
+                + "RDS primaire ; repliées : aucune ; éclaté : non ; vue : ensemble ; flux : aucun";
+        String screen2 = screen1.replace("éclaté : non", "éclaté : oui").replace("RDS primaire", "ALB public");
+        service.converse(new JarvisFastBrainService.Request(alice, workspace, 3, "Zoome sur la base", null, screen1),
+                null);
+        service.converse(new JarvisFastBrainService.Request(alice, workspace, 3, "Éclate", null, screen2), null);
+        assertThat(JSON.writeValueAsString(calls.get(0).messages())).contains("Architecture « 3-tiers »")
+                .contains("RDS primaire");
+        assertThat(calls.get(0).system()).doesNotContain("Architecture « 3-tiers »").doesNotContain("RDS primaire");
+        assertThat(calls.get(0).system()).isEqualTo(calls.get(1).system());
+        assertThat(JSON.writeValueAsString(calls.get(0).tools())).isEqualTo(JSON.writeValueAsString(calls.get(1).tools()));
+    }
+
+    @Test
     void threeFixedToolsIdenticalByteForByteAcrossCallsAndWarmUp() throws Exception {
         JarvisFastBrainService service = service(answering("Oui."), null, null);
         service.warm(alice, workspace);
@@ -1170,7 +1188,7 @@ class JarvisFastBrainServiceTest {
         assertThat(JSON.writeValueAsString(calls.get(1).tools())).isEqualTo(first);
         assertThat(JSON.writeValueAsString(calls.get(2).tools())).isEqualTo(first);
         assertThat(calls.get(0).system()).isEqualTo(calls.get(2).system());
-        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("21");
+        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("22");
         assertThat(first).doesNotContain("Kestrel").doesNotContain(subject.toString());
     }
 

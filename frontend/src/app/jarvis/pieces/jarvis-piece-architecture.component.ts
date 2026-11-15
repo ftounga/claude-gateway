@@ -1,0 +1,284 @@
+import {
+  ChangeDetectionStrategy, Component, OnDestroy, computed, effect, inject, input, output, signal, untracked, viewChild,
+} from '@angular/core';
+
+import { ArchitectureGraph, readArchitectureGraph } from '../stage3d/architecture/architecture-graph';
+import { httpIconFetcher } from '../stage3d/architecture/architecture-icon-atlas';
+import { ArchLayout, layoutArchitecture } from '../stage3d/architecture/architecture-layout-3d';
+import { ArchState } from '../stage3d/architecture/architecture-stage-director';
+import { ArchitectureStageComponent } from '../stage3d/architecture/architecture-stage.component';
+import { ArchitectureTargets } from '../stage3d/architecture/architecture-targets';
+import { JarvisPieceClient } from './jarvis-piece-client';
+import { PieceNav } from './jarvis-piece-nav';
+import { ArchRequest, defaultArchNav } from './jarvis-piece-arch';
+import { JarvisPieceStore } from './jarvis-piece-store';
+import { Piece } from './jarvis-piece.models';
+
+/** Le chemin du graphe conservé d'un schéma (SF-238-07), sous JWT, filtré `user_id` par la passerelle. */
+export function graphPath(pieceId: string): string {
+  return `/jarvis/pieces/${encodeURIComponent(pieceId)}/graph`;
+}
+
+/** L'état de scène que montre une navigation (pur, exporté pour les tests). */
+export function archStateOf(nav: PieceNav, phone: boolean): ArchState {
+  const arch = nav.arch ?? defaultArchNav();
+  return {
+    view: arch.view, exploded: arch.exploded, focus: arch.focus?.id ?? null, lit: [], flow: arch.flow?.edges ?? [],
+    folded: arch.folded.map((r) => r.id), zoom: nav.zoom, orbit: arch.orbit, phone,
+  };
+}
+
+/** La fiche holographique d'un service (cadrage §9.1) : type, libellé, zone, liens entrants et sortants. */
+export interface ServicePanel {
+  label: string;
+  type: string;
+  zone: string;
+  inbound: string[];
+  outbound: string[];
+}
+
+export function servicePanel(layout: ArchLayout, id: string | null): ServicePanel | null {
+  const index = id === null ? undefined : layout.nodeById.get(id);
+  if (index === undefined) {
+    return null;
+  }
+  const node = layout.nodes[index];
+  const names = (ids: number[]): string[] => [...new Set(ids.map((i) => layout.nodes[i].label))].slice(0, 4);
+  return {
+    label: node.label,
+    type: node.type.replace(/^aws\./, '').toUpperCase(),
+    zone: node.plate >= 0 ? layout.plates[node.plate].label : 'hors AWS',
+    inbound: names(layout.edges.filter((e) => e.to === index).map((e) => e.from)),
+    outbound: names(layout.edges.filter((e) => e.from === index).map((e) => e.to)),
+  };
+}
+
+/** Gestes (cadrage §12) : glisser = orbite, toucher long = replier / déplier, double toucher sur le vide = éclater. */
+const LONG_PRESS_MS = 600;
+const DRAG_PX = 6;
+const ORBIT_PER_PX = 0.006;
+
+/**
+ * F-238 / SF-238-10 — **la visionneuse 3D d'une pièce `ARCHITECTURE`** (cadrage §7, §12) : lit le graphe conservé,
+ * pose la scène au centre de la pièce, la lie au store (les cibles dites se résolvent contre ce graphe) et traduit
+ * les gestes en demandes — les mêmes que la voix et l'outil `afficher`. Graphe absent ou 3D impossible ⇒ `fallback`
+ * (la visionneuse SVG cadrée de F-237 reprend la main).
+ */
+@Component({
+  selector: 'app-jarvis-piece-architecture',
+  standalone: true,
+  imports: [ArchitectureStageComponent],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <div class="pa" (pointerdown)="down($event)" (pointermove)="move($event)" (pointerup)="up($event)"
+         (pointercancel)="cancel()" (pointerleave)="cancel()" (wheel)="wheel($event)" (dblclick)="double($event)">
+      @if (graph(); as g) {
+        <app-architecture-stage [graph]="g" [state]="state()" [contained]="true" [spoken]="spoken()"
+                                [iconFetcher]="icons" phase="entree" (failed)="fallback.emit('webgl')" />
+      } @else if (!loaded()) {
+        <p class="pa__note">Je pose le schéma…</p>
+      }
+    </div>
+    @if (panel(); as p) {
+      <aside class="pa__panel" aria-live="polite">
+        <h3 class="pa__panel-title">{{ p.label }}</h3>
+        <p class="pa__panel-line">{{ p.type }} · {{ p.zone }}</p>
+        @if (p.inbound.length) { <p class="pa__panel-line">Reçoit de : {{ p.inbound.join(', ') }}</p> }
+        @if (p.outbound.length) { <p class="pa__panel-line">Envoie vers : {{ p.outbound.join(', ') }}</p> }
+      </aside>
+    }
+    @if (graph()) {
+      <div class="pa__tools" aria-label="Vue du schéma">
+        <button type="button" class="pa__btn" (click)="ask({ kind: 'explode', on: !nav().arch?.exploded })">
+          {{ nav().arch?.exploded ? 'Rassembler' : 'Éclater' }}</button>
+        <button type="button" class="pa__btn" (click)="ask({ kind: 'view', view: nav().arch?.view === 'dessus' ? 'ensemble' : 'dessus' })">
+          {{ nav().arch?.view === 'dessus' ? 'Ensemble' : 'Dessus' }}</button>
+        <button type="button" class="pa__btn" (click)="ask({ kind: 'view', view: '2d' })">2D</button>
+      </div>
+    }
+  `,
+  styles: [`
+    :host { display: block; position: relative; height: 100%; min-height: 0; }
+    .pa { position: absolute; inset: 0; touch-action: none; cursor: grab; }
+    .pa__note { position: absolute; inset: auto 0 50% 0; margin: 0; text-align: center; font-size: 13px; opacity: .8; }
+    .pa__panel { position: absolute; right: 16px; top: 16px; width: 240px; padding: 12px 16px; border-radius: 4px;
+      pointer-events: none; color: var(--cg-holo-core, #FFF3E4); font: 13px/20px Inter, sans-serif;
+      background: color-mix(in srgb, var(--cg-navy, #0B1020) 78%, transparent);
+      border: 1px solid color-mix(in srgb, var(--cg-holo, #E07B39) 60%, transparent); }
+    .pa__panel-title { margin: 0 0 4px; font: 600 14px 'Space Grotesk', Inter, sans-serif; letter-spacing: .04em; }
+    .pa__panel-line { margin: 0; }
+    .pa__tools { position: absolute; left: 16px; bottom: 16px; display: flex; gap: 8px; }
+    .pa__btn { min-width: 44px; min-height: 44px; padding: 0 12px; border-radius: 4px; cursor: pointer;
+      color: var(--cg-holo-text, #F0954F); font: 12px Inter, sans-serif;
+      background: color-mix(in srgb, var(--cg-navy, #0B1020) 70%, transparent);
+      border: 1px solid color-mix(in srgb, var(--cg-holo, #E07B39) 55%, transparent); }
+  `],
+})
+export class JarvisPieceArchitectureComponent implements OnDestroy {
+  private readonly store = inject(JarvisPieceStore);
+  private readonly client = inject(JarvisPieceClient);
+
+  readonly piece = input.required<Piece>();
+  readonly nav = input.required<PieceNav>();
+  /** La phrase de Jarvis entendue (début de lecture) : la narration SF-238-12. */
+  readonly spoken = input<string>('');
+  readonly phone = input(false);
+  /** Graphe absent ou illisible, 3D impossible : la visionneuse SVG reprend la main. */
+  readonly fallback = output<'graph' | 'webgl'>();
+
+  private readonly stage = viewChild(ArchitectureStageComponent);
+  readonly graph = signal<ArchitectureGraph | null>(null);
+  readonly loaded = signal(false);
+  private readonly layout = signal<ArchLayout | null>(null);
+  readonly state = computed(() => archStateOf(this.nav(), this.phone()));
+  readonly panel = computed(() => {
+    const layout = this.layout();
+    return layout ? servicePanel(layout, this.nav().arch?.focus?.id ?? null) : null;
+  });
+  readonly icons = httpIconFetcher(() => this.client.authHeaders());
+
+  private unbind: (() => void) | null = null;
+  private loading: AbortController | null = null;
+  private press: { x: number; y: number; at: number; dragged: boolean; long: boolean } | null = null;
+  private pressTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private readonly pieceKey = computed(() => this.piece().id);
+  private readonly loadGraph = effect(() => {
+    const id = this.pieceKey();
+    untracked(() => void this.load(id));
+  });
+
+  private async load(id: string): Promise<void> {
+    this.loading?.abort();
+    this.unbind?.();
+    this.unbind = null;
+    this.graph.set(null);
+    this.layout.set(null);
+    this.loaded.set(false);
+    const controller = new AbortController();
+    this.loading = controller;
+    const raw = await this.client.json<unknown>(graphPath(id), controller.signal);
+    if (controller.signal.aborted) {
+      return;
+    }
+    this.loaded.set(true);
+    const graph = readArchitectureGraph(raw);
+    const layout = graph ? layoutArchitecture(graph) : null;
+    if (!graph || !layout) {
+      this.fallback.emit('graph');
+      return;
+    }
+    this.graph.set(graph);
+    this.layout.set(layout);
+    const targets = new ArchitectureTargets(layout);
+    this.unbind = this.store.bindArchitecture({ pieceId: id, resolve: (request, arch) => targets.resolve(request, arch) });
+  }
+
+  /** Une demande du toucher : la même porte que la voix et l'outil. */
+  ask(request: ArchRequest): void {
+    this.store.dispatch({ type: 'arch', request }, 'touch');
+  }
+
+  down(event: PointerEvent): void {
+    if ((event.target as HTMLElement | null)?.closest?.('button')) {
+      return;
+    }
+    event.stopPropagation(); // le glisser tourne le schéma : il ne feuillette pas la galerie
+    this.press = { x: event.clientX, y: event.clientY, at: Date.now(), dragged: false, long: false };
+    this.clearPress();
+    this.pressTimer = setTimeout(() => this.longPress(), LONG_PRESS_MS);
+  }
+
+  move(event: PointerEvent): void {
+    const press = this.press;
+    if (!press) {
+      return;
+    }
+    const dx = event.clientX - press.x;
+    const dy = event.clientY - press.y;
+    if (!press.dragged && Math.abs(dx) + Math.abs(dy) < DRAG_PX) {
+      return;
+    }
+    if (!press.dragged) {
+      press.dragged = true;
+      this.clearPress();
+      if (this.nav().arch?.view === 'dessus') {
+        this.ask({ kind: 'view', view: 'ensemble' }); // tourner autour quitte la vue de dessus
+      }
+    }
+    press.x = event.clientX;
+    press.y = event.clientY;
+    this.ask({ kind: 'orbit', dAz: -dx * ORBIT_PER_PX, dEl: dy * ORBIT_PER_PX });
+  }
+
+  up(event: PointerEvent): void {
+    if (this.press) {
+      event.stopPropagation();
+    }
+    const press = this.press;
+    this.press = null;
+    this.clearPress();
+    if (!press || press.dragged || press.long) {
+      return;
+    }
+    const hit = this.stage()?.pick(event.clientX, event.clientY) ?? null;
+    if (!hit) {
+      return;
+    }
+    // Toucher un service : T-A6 + sa fiche ; le retoucher rend la vue d'ensemble.
+    const current = this.nav().arch?.focus?.id ?? null;
+    this.ask({ kind: 'focus', target: current === hit.id ? '' : hit.id });
+  }
+
+  cancel(): void {
+    this.press = null;
+    this.clearPress();
+  }
+
+  double(event: MouseEvent): void {
+    if (this.stage()?.pick(event.clientX, event.clientY)) {
+      return;
+    }
+    this.ask({ kind: 'explode', on: !this.nav().arch?.exploded });
+  }
+
+  wheel(event: WheelEvent): void {
+    event.preventDefault();
+    this.store.dispatch({ type: 'zoom', step: event.deltaY < 0 ? '+' : '-' }, 'touch');
+  }
+
+  private longPress(): void {
+    const press = this.press;
+    this.pressTimer = null;
+    if (!press || press.dragged) {
+      return;
+    }
+    press.long = true;
+    const hit = this.stage()?.pick(press.x, press.y) ?? null;
+    if (!hit) {
+      return;
+    }
+    const layout = this.layout();
+    const node = hit.kind === 'node' && layout ? layout.nodeById.get(hit.id) : undefined;
+    const zone = node !== undefined && layout ? layout.plates[layout.nodes[node].plate]?.id ?? null
+      : hit.kind === 'plate' ? hit.id : null;
+    if (!zone) {
+      return;
+    }
+    const folded = (this.nav().arch?.folded ?? []).some((r) => r.id === zone);
+    this.ask({ kind: folded ? 'unfold' : 'fold', target: zone });
+  }
+
+  private clearPress(): void {
+    if (this.pressTimer) {
+      clearTimeout(this.pressTimer);
+      this.pressTimer = null;
+    }
+  }
+
+  ngOnDestroy(): void {
+    this.loading?.abort();
+    this.clearPress();
+    this.unbind?.();
+  }
+}

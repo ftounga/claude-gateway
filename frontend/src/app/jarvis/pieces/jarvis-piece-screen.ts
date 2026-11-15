@@ -1,4 +1,5 @@
-import { NavItem, PieceNav } from './jarvis-piece-nav';
+import { archScreenLine } from './jarvis-piece-arch';
+import { NavItem, PieceNav, selectedItem } from './jarvis-piece-nav';
 import { PieceKind } from './jarvis-piece.models';
 
 /**
@@ -79,6 +80,11 @@ export function screenBlock(nav: PieceNav, presentation = false): string {
   const head = `## Écran\nGalerie : ${clip(nav.scope.label, 80)} (${count} pièce${count > 1 ? 's' : ''})`
     + ` ; sélection : ${nav.selected ?? 'aucune'}`;
   let out = head;
+  // F-238 / SF-238-10 — l'architecture ouverte : sa ligne d'état, juste après l'en-tête (jamais tronquée).
+  const selected = selectedItem(nav);
+  if (selected?.kind === 'ARCHITECTURE' && nav.arch) {
+    out = `${out}\n${archScreenLine(selected.title, nav.arch)}`;
+  }
   for (const item of nav.items) {
     const next = `${out}\n${line(item, nav)}`;
     if (next.length > SCREEN_MAX_CHARS - 2) {

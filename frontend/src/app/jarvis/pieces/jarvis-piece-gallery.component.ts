@@ -168,10 +168,12 @@ const SWIPE_PX = 60;
           </article>
         } @else if (store.selected()) {
           @let piece = store.selected()!;
-          <article class="pg__panel" (pointerdown)="swipeStart($event)" (pointerup)="swipeEnd($event)">
+          <article class="pg__panel" [class.pg__panel--arch]="piece.kind === 'ARCHITECTURE' && arch3d()"
+                   (pointerdown)="swipeStart($event)" (pointerup)="swipeEnd($event)">
             <h2 class="pg__panel-title">{{ nav().selected }}. {{ piece.title }}</h2>
-            <!-- SF-237-06 — le contenu réel, par la visionneuse de son type. -->
-            <app-jarvis-piece-viewer [piece]="piece" [nav]="nav()" [jarvisState]="jarvisState()" />
+            <!-- SF-237-06 — le contenu réel, par la visionneuse de son type ; F-238 / SF-238-10 : l'architecture en 3D. -->
+            <app-jarvis-piece-viewer [piece]="piece" [nav]="nav()" [jarvisState]="jarvisState()" [allow3d]="arch3d()"
+                                     [spoken]="spoken()" [phone]="phone()" />
             @if (piece.caption && piece.kind !== 'TEXT') {
               <p class="pg__caption">{{ piece.caption }}</p>
             }
@@ -267,6 +269,12 @@ const SWIPE_PX = 60;
     .pg--fan .pg__panel { position: absolute; left: 50%; top: calc(56px + (100% - 56px - 236px) / 2);
       translate: -50% -50%; margin: 0; width: min(980px, calc(100% - 64px)); max-height: calc(100% - 56px - 248px);
       animation: pg-heros 600ms var(--jv-ease-sortie, cubic-bezier(.16,1,.3,1)) backwards; }
+    /* F-238 / SF-238-10 — l'architecture en 3D : grande, au centre ; la visionneuse remplit le panneau. */
+    .pg .pg__panel.pg__panel--arch { display: flex; flex-direction: column; overflow: hidden;
+      width: min(1600px, calc(100% - 64px)); height: calc(100% - 56px - 200px); max-height: none; }
+    .pg--fan.pg--hero .pg__panel.pg__panel--arch { top: calc(56px + (100% - 56px - 188px) / 2); }
+    .pg__panel--arch app-jarvis-piece-viewer { position: relative; flex: 1; min-height: 360px; }
+    .pg.pg--phone .pg__panel.pg__panel--arch { width: 100%; height: auto; flex: 1; }
     .pg__panel { margin: 0 auto 16px; width: min(960px, calc(100% - 32px)); max-height: 60vh; overflow: auto;
       padding: 16px; border-radius: 4px; box-sizing: border-box;
       background: linear-gradient(180deg, color-mix(in srgb, var(--cg-holo, #E07B39) 13%, transparent), transparent 40%),
@@ -359,6 +367,8 @@ export class JarvisPieceGalleryComponent implements OnDestroy {
   readonly lowQuality = input(false);
   /** F-248 / SF-248-05 — les pancartes citées à l'instant (la phrase qui les nomme est jouée). */
   readonly litIds = input<readonly string[]>([]);
+  /** F-238 / SF-238-10 — la phrase de Jarvis en train d'être jouée (narration d'une architecture ouverte). */
+  readonly spoken = input<string>('');
   /** F-248 / SF-248-04 — la pastille « N pancartes » touchée. */
   readonly cardsWanted = output<void>();
   /** F-248 / SF-248-06 — une pancarte à ouvrir en plein écran (détail). */
@@ -391,11 +401,13 @@ export class JarvisPieceGalleryComponent implements OnDestroy {
   private readonly deckSlotList = computed(() => this.deckKind() === 'wall' || this.flat() ? []
     : deckSlots(this.deckCards().length));
 
-  private readonly phone = signal(typeof matchMedia === 'function' && matchMedia('(max-width: 767px)').matches);
+  readonly phone = signal(typeof matchMedia === 'function' && matchMedia('(max-width: 767px)').matches);
   private readonly reducedMotion = signal(typeof matchMedia === 'function'
     && matchMedia('(prefers-reduced-motion: reduce)').matches);
 
   readonly nav = this.store.nav;
+  /** F-238 / SF-238-10 — l'architecture s'ouvre en 3D : rendu 3D actif, ni sobre ni mouvement réduit. */
+  readonly arch3d = computed(() => this.threeD() && !this.sober() && !this.reducedMotion());
   readonly layout = computed(() => galleryLayout({ threeD: this.threeD(), sober: this.sober(),
     reducedMotion: this.reducedMotion(), phone: this.phone(), contact: this.store.mode() === 'contact' }));
   private readonly slots = computed(() => arcAroundHero(fanLayout(this.nav().items.length, this.nav().selected)));

@@ -1,6 +1,6 @@
-import { HOLO_ALPHA, HoloRole, MOTION_DURATIONS, ease } from '../jarvis-motion';
+import { CAMERA_SPRING_OMEGA, HOLO_ALPHA, HoloRole, MOTION_DURATIONS, MotionCurve, ease } from '../jarvis-motion';
 import {
-  ArchLayout, NODE_FLOAT, STEP_COMPACT, STEP_EXPLODED, STEP_EXPLODED_PHONE, pathPoints,
+  ArchLayout, ICON_SIZE, NODE_FLOAT, STEP_COMPACT, STEP_EXPLODED, STEP_EXPLODED_PHONE, pathPoints,
 } from './architecture-layout-3d';
 
 /**
@@ -29,7 +29,14 @@ export const LABEL_ALL_UNDER = 24;
 export const LABEL_NEIGHBOURS_UNDER = 40;
 export const PHONE_LABELS = 16;
 
-export type ArchView = 'ensemble' | 'dessus';
+export type ArchView = 'ensemble' | 'dessus' | 'face';
+/** SF-238-10 — vue de face : élévation 10° (le bas de l'orbite bornée), azimut 0. */
+export const FACE_ELEVATION = (10 * Math.PI) / 180;
+/** SF-238-10 — orbite bornée (cadrage §12) : élévation de 10° à 90°. */
+export const MIN_ELEVATION = (10 * Math.PI) / 180;
+export const MAX_ELEVATION = Math.PI / 2;
+/** SF-238-10 (§8.2) — au-delà de 40 services, les AZ jumelles se replient en une seule « AZ × n ». */
+export const TWINS_OVER = 40;
 export type ArchPhaseKind = 'entree' | 'repos' | 'sortie';
 
 export interface ArchState {
@@ -42,6 +49,12 @@ export interface ArchState {
   /** SF-238-12 — les liaisons des flux allumés par la narration (T-A7). */
   flow?: readonly string[];
   phone: boolean;
+  /** SF-238-10 — zones repliées en capsule (ids). */
+  folded?: readonly string[];
+  /** SF-238-10 — zoom du réducteur commun (×1 à ×8) : la caméra se rapproche d'autant. */
+  zoom?: number;
+  /** SF-238-10 — décalage d'orbite (radians), posé au toucher ou par « tourne ». */
+  orbit?: { az: number; el: number };
 }
 
 export const DEFAULT_ARCH_STATE: ArchState = { view: 'ensemble', exploded: false, focus: null, lit: [], phone: false };
@@ -84,6 +97,28 @@ export interface ArchitecturePlan {
   plateLabel: boolean[];
   /** Le héros (règle F-236 §7.3-6) : ce dont Jarvis parle, sinon le focus. */
   hero: string | null;
+  /** SF-238-10 — 1 : service rentré dans une capsule (zone repliée ou AZ jumelle fusionnée). */
+  nodeFold: Float32Array;
+  /** SF-238-10 — la capsule qui l'a rentré (indice de plateau), `-1` sinon. */
+  nodeHome: Int16Array;
+  /** SF-238-10 — 1 : plateau dans une zone repliée (ni fond, ni liseré, ni libellé). */
+  plateHidden: Float32Array;
+  /** SF-238-10 — 1 : plateau replié en capsule ; texte de sa capsule (« 7 services ») ; badge (« × 3 »). */
+  plateCapsule: Float32Array;
+  capsuleText: string[];
+  plateBadge: string[];
+}
+
+/** SF-238-10 — un déplacement en cours (caméra, altitudes, capsules) : repart de la valeur affichée (règle 2). */
+export interface ArchMove {
+  at: number;
+  ms: number;
+  curve: MotionCurve | 'ressort';
+  fromCamera: ArchCamera;
+  fromAlt: Float32Array;
+  fromFold: Float32Array;
+  fromHidden: Float32Array;
+  fromCapsule: Float32Array;
 }
 
 /** L'image à l'instant : tampons écrits en place par {@link ArchitectureStageDirector.frame}. */
@@ -107,6 +142,12 @@ export interface ArchFrame {
   edgeTravel: Float32Array;
   particles: number;
   labels: number;
+  /** SF-238-10 — repli à l'instant : part rentrée de chaque service (0-1), sa position, plateaux masqués, capsules. */
+  nodeFold: Float32Array;
+  nodeX: Float32Array;
+  nodeZ: Float32Array;
+  plateHidden: Float32Array;
+  plateCapsule: Float32Array;
 }
 
 /** T-A1 : jalons (ms) du tableau §10.1. */
@@ -188,23 +229,37 @@ export function stepOf(state: ArchState): number {
   return state.exploded ? (state.phone ? STEP_EXPLODED_PHONE : STEP_EXPLODED) : STEP_COMPACT;
 }
 
-/** La caméra d'une vue (T-A9). */
-export function cameraFor(layout: ArchLayout, state: ArchState, viewport: Viewport): ArchCamera {
-  if (state.view === 'dessus') {
+/** SF-238-10 — l'emprise cadrée (plan, unités) : tout le schéma, ou le focus et ses voisins (T-A6). */
+export interface ArchExtent {
+  x0: number;
+  x1: number;
+  z0: number;
+  z1: number;
+}
+
+/** La caméra d'une vue (T-A9), cadrée sur l'emprise (tout le schéma, ou le focus : T-A6), zoom et orbite compris. */
+export function cameraFor(layout: ArchLayout, state: ArchState, viewport: Viewport, extent: ArchExtent | null = null):
+    ArchCamera {
+  const zoom = Math.max(1, state.zoom ?? 1);
+  if (state.view === 'dessus' && !extent) {
     const tan = Math.tan((ARCH_FOV * Math.PI) / 360);
     // Zénith : la largeur visible au sol est exactement celle du 2D cadré.
     const fit = svgFit(layout.graph.bounds, viewport);
     const distance = (viewport.height * 0.01) / (2 * fit.scale * tan);
-    return { target: [0, 0, 0], azimuth: 0, elevation: Math.PI / 2, distance, fov: ARCH_FOV };
+    return { target: [0, 0, 0], azimuth: 0, elevation: Math.PI / 2, distance: distance / zoom, fov: ARCH_FOV };
   }
-  const height = layout.maxLevel * stepOf(state) + NODE_FLOAT;
+  const height = (state.view === 'dessus' ? 0 : layout.maxLevel * stepOf(state)) + NODE_FLOAT;
+  const orbit = state.view === 'dessus' ? { az: 0, el: 0 } : state.orbit ?? { az: 0, el: 0 };
+  const baseEl = state.view === 'dessus' ? MAX_ELEVATION : state.view === 'face' ? FACE_ELEVATION : ENSEMBLE_ELEVATION;
+  const baseAz = state.view === 'ensemble' ? ENSEMBLE_AZIMUTH : 0;
   let camera: ArchCamera = {
-    target: [0, height / 2, 0], azimuth: ENSEMBLE_AZIMUTH, elevation: ENSEMBLE_ELEVATION, distance: 1, fov: ARCH_FOV,
+    target: [0, height / 2, 0], azimuth: baseAz + orbit.az,
+    elevation: Math.min(MAX_ELEVATION, Math.max(MIN_ELEVATION, baseEl + orbit.el)), distance: 1, fov: ARCH_FOV,
   };
-  const hw = layout.width / 2;
-  const hd = layout.depth / 2;
-  const corners = [[-hw, 0, -hd], [hw, 0, -hd], [-hw, 0, hd], [hw, 0, hd], [-hw, height, -hd], [hw, height, -hd],
-    [-hw, height, hd], [hw, height, hd]];
+  const e = extent ?? { x0: -layout.width / 2, x1: layout.width / 2, z0: -layout.depth / 2, z1: layout.depth / 2 };
+  camera = { ...camera, target: [(e.x0 + e.x1) / 2, height / 2, (e.z0 + e.z1) / 2] };
+  const corners = [[e.x0, 0, e.z0], [e.x1, 0, e.z0], [e.x0, 0, e.z1], [e.x1, 0, e.z1], [e.x0, height, e.z0],
+    [e.x1, height, e.z0], [e.x0, height, e.z1], [e.x1, height, e.z1]];
   const box = (c: ArchCamera): { x0: number; x1: number; y0: number; y1: number } => {
     let x0 = Infinity;
     let x1 = -Infinity;
@@ -249,8 +304,131 @@ export function cameraFor(layout: ArchLayout, state: ArchState, viewport: Viewpo
         camera.target[2] + basis.right[2] * sx + basis.up[2] * sy],
     };
   }
-  // Éclaté : le volume plus haut est recadré (la caméra recule d'elle-même, T-A3).
-  return camera;
+  // Éclaté : le volume plus haut est recadré (la caméra recule d'elle-même, T-A3). Zoom : elle se rapproche.
+  return zoom > 1 ? { ...camera, distance: camera.distance / zoom } : camera;
+}
+
+/** SF-238-10 — la caméra entre deux plans (cible et distance linéaires, azimut par le plus court chemin). */
+export function blendCamera(a: ArchCamera, b: ArchCamera, p: number, out?: ArchCamera): ArchCamera {
+  let da = b.azimuth - a.azimuth;
+  da = Math.atan2(Math.sin(da), Math.cos(da));
+  const o = out ?? { target: [0, 0, 0], azimuth: 0, elevation: 0, distance: 1, fov: ARCH_FOV };
+  o.target[0] = a.target[0] + (b.target[0] - a.target[0]) * p;
+  o.target[1] = a.target[1] + (b.target[1] - a.target[1]) * p;
+  o.target[2] = a.target[2] + (b.target[2] - a.target[2]) * p;
+  o.azimuth = a.azimuth + da * p;
+  o.elevation = a.elevation + (b.elevation - a.elevation) * p;
+  o.distance = a.distance * Math.pow(b.distance / Math.max(1e-6, a.distance), p);
+  o.fov = a.fov + (b.fov - a.fov) * p;
+  return o;
+}
+
+/** SF-238-10 — le ressort de caméra (amorti critique, sans dépassement) ramené à [0, 1] sur la durée. */
+export function springProgress(u: number, durationMs: number): number {
+  if (u <= 0) {
+    return 0;
+  }
+  if (u >= 1) {
+    return 1;
+  }
+  const k = (CAMERA_SPRING_OMEGA * durationMs) / 1000;
+  const f = (x: number): number => 1 - (1 + k * x) * Math.exp(-k * x);
+  return f(u) / f(1);
+}
+
+/** SF-238-10 — l'avancement d'un déplacement à l'instant `now` (0-1). */
+export function moveProgress(move: ArchMove | null, now: number): number {
+  if (!move || move.ms <= 0) {
+    return 1;
+  }
+  const u = span(now, move.at, move.at + move.ms);
+  return move.curve === 'ressort' ? springProgress(u, move.ms) : ease(move.curve, u);
+}
+
+/** SF-238-10 — rayon de toucher d'un service (px écran) : au-delà, on touche la zone. */
+export const PICK_RADIUS_PX = 40;
+
+/**
+ * SF-238-10 — l'élément sous un point de l'écran, à l'image affichée : le service le plus proche (≤ 40 px du centre
+ * de son icône, capsules exclues), sinon la zone la plus profonde dont l'emprise projetée contient le point.
+ */
+export function pickAt(layout: ArchLayout, frame: ArchFrame, camera: ArchCamera, viewport: Viewport, x: number,
+    y: number): { kind: 'node' | 'plate'; id: string } | null {
+  let best: { id: string; d: number } | null = null;
+  for (const n of layout.nodes) {
+    if (frame.nodeFold[n.index] > 0.5) {
+      continue;
+    }
+    const alt = n.plate < 0 ? 0 : frame.plateAlt[n.plate];
+    const q = projectToScreen(camera, viewport, frame.nodeX[n.index], alt + frame.float, frame.nodeZ[n.index]);
+    const d = Math.hypot(q.x - x, q.y - y);
+    if (d <= PICK_RADIUS_PX && (!best || d < best.d)) {
+      best = { id: n.id, d };
+    }
+  }
+  if (best) {
+    return { kind: 'node', id: best.id };
+  }
+  let plate: { id: string; level: number } | null = null;
+  for (const p of layout.plates) {
+    if (frame.plateHidden[p.index] > 0.5) {
+      continue;
+    }
+    const alt = frame.plateAlt[p.index];
+    const corners = [[p.x0, p.z0], [p.x0 + p.w, p.z0], [p.x0 + p.w, p.z0 + p.d], [p.x0, p.z0 + p.d]]
+      .map(([cx, cz]) => projectToScreen(camera, viewport, cx, alt, cz));
+    // Le point dans le quadrilatère projeté (convexe) : même côté de chaque arête.
+    let sign = 0;
+    let inside = true;
+    for (let i = 0; i < 4 && inside; i++) {
+      const a = corners[i];
+      const b = corners[(i + 1) % 4];
+      const cross = (b.x - a.x) * (y - a.y) - (b.y - a.y) * (x - a.x);
+      if (cross !== 0) {
+        if (sign === 0) {
+          sign = Math.sign(cross);
+        } else if (Math.sign(cross) !== sign) {
+          inside = false;
+        }
+      }
+    }
+    if (inside && (!plate || p.level > plate.level)) {
+      plate = { id: p.id, level: p.level };
+    }
+  }
+  return plate ? { kind: 'plate', id: plate.id } : null;
+}
+
+/** SF-238-10 — durées des transitions de navigation (cadrage §10.1). */
+export const NAV_MOVES = {
+  view: 1600, focus: 1400, explode: 1200, fold: 700, unfold: 800, zoom: 600, orbit: 160,
+} as const;
+
+/** SF-238-10 — la transition d'un changement d'état (T-A3 → T-A6, T-A9) ; 0 ms : seule la lumière change. */
+export function moveFor(prev: ArchState, next: ArchState): { ms: number; curve: MotionCurve | 'ressort' } {
+  const folded = (s: ArchState): string => [...(s.folded ?? [])].sort().join();
+  if (prev.view !== next.view) {
+    return { ms: NAV_MOVES.view, curve: 'ressort' };
+  }
+  if (prev.focus !== next.focus) {
+    return { ms: NAV_MOVES.focus, curve: 'ressort' };
+  }
+  if (prev.exploded !== next.exploded) {
+    return { ms: NAV_MOVES.explode, curve: 'glisse' };
+  }
+  if (folded(prev) !== folded(next)) {
+    return (next.folded ?? []).length >= (prev.folded ?? []).length ? { ms: NAV_MOVES.fold, curve: 'entree' }
+      : { ms: NAV_MOVES.unfold, curve: 'sortie' };
+  }
+  if ((prev.zoom ?? 1) !== (next.zoom ?? 1)) {
+    return { ms: NAV_MOVES.zoom, curve: 'glisse' };
+  }
+  const po = prev.orbit ?? { az: 0, el: 0 };
+  const no = next.orbit ?? { az: 0, el: 0 };
+  if (po.az !== no.az || po.el !== no.el) {
+    return { ms: NAV_MOVES.orbit, curve: 'glisse' };
+  }
+  return { ms: 0, curve: 'glisse' };
 }
 
 /** SF-238-12 — la phrase en cours : ce qui était allumé avant, et quand la phrase a commencé (ms). */
@@ -278,6 +456,56 @@ export class ArchitectureStageDirector {
     this.trace = cascade(layout.edges.length, ENTRY.traceEnd - ENTRY.traceStart, ENTRY.traceStagger);
     this.sweepMs = Float32Array.from(layout.edges.map((e) => Math.min(NARRATION.sweepMaxMs,
       NARRATION.segmentMs * (pathPoints(e) - 1))));
+    this.twins = this.computeTwins();
+  }
+
+  /**
+   * SF-238-10 (§8.2) — les AZ jumelles : sœurs de même gabarit (mêmes types de services, par nature de sous-réseau).
+   * Rend, pour chaque jumelle fusionnée, l'indice de celle qui reste (la première) ; vide sous {@link TWINS_OVER}.
+   */
+  readonly twins: ReadonlyMap<number, number>;
+
+  private computeTwins(): Map<number, number> {
+    const { plates, nodes } = this.layout;
+    const out = new Map<number, number>();
+    if (nodes.length <= TWINS_OVER) {
+      return out;
+    }
+    const inside = (p: number, root: number): boolean => {
+      for (let q = p, g = 0; q >= 0 && g < 64; q = plates[q].parent, g++) {
+        if (q === root) {
+          return true;
+        }
+      }
+      return false;
+    };
+    const signature = (az: number): string => {
+      const parts: string[] = [];
+      for (const n of nodes) {
+        if (n.plate >= 0 && inside(n.plate, az)) {
+          parts.push(`${n.plate === az ? 'az' : plates[n.plate].kind}:${n.type}`);
+        }
+      }
+      return parts.sort().join('|');
+    };
+    const byParent = new Map<number, number[]>();
+    plates.filter((p) => p.kind === 'az').forEach((p) => byParent.set(p.parent, [...(byParent.get(p.parent) ?? []), p.index]));
+    for (const siblings of byParent.values()) {
+      const seen = new Map<string, number>();
+      for (const az of siblings) {
+        const sig = signature(az);
+        if (!sig) {
+          continue;
+        }
+        const first = seen.get(sig);
+        if (first === undefined) {
+          seen.set(sig, az);
+        } else {
+          out.set(az, first);
+        }
+      }
+    }
+    return out;
   }
 
   /** Le plan d'un état : alloué au changement d'état seulement, jamais par image. */
@@ -381,9 +609,89 @@ export class ArchitectureStageDirector {
     const zoneBudget = state.phone ? Math.max(0, PHONE_LABELS - nodeLabel.filter(Boolean).length) : Infinity;
     const plateLabel = plates.map((p) => lit.has(p.id) || p.id === focus || p.riseRank < zoneBudget);
 
+    // SF-238-10 (§8.3) — replis : une zone repliée rentre ses services en capsule au centre de son plateau (le
+    // plateau garde son emprise : rien ne saute) ; ses plateaux intérieurs s'effacent. Au-delà de 40 services, les
+    // AZ jumelles fusionnent dans la première (§8.2), sauf celle qui porte le focus.
+    const ancestorOf = (p: number, root: number): boolean => {
+      for (let q = p, g = 0; q >= 0 && g < 64; q = plates[q].parent, g++) {
+        if (q === root) {
+          return true;
+        }
+      }
+      return false;
+    };
+    const capsules = new Map<number, string>();
+    for (const id of state.folded ?? []) {
+      const p = this.layout.plateById.get(id);
+      if (p !== undefined) {
+        capsules.set(p, '');
+      }
+    }
+    const focusPlate = focus === null ? -1 : this.layout.plateById.get(focus)
+      ?? (this.layout.nodeById.has(focus) ? nodes[this.layout.nodeById.get(focus) as number].plate : -1);
+    const badges = new Map<number, number>();
+    this.twins.forEach((first, twin) => {
+      if (focusPlate >= 0 && ancestorOf(focusPlate, twin)) {
+        return;
+      }
+      capsules.set(twin, `= ${plates[first].label}`);
+      badges.set(first, (badges.get(first) ?? 1) + 1);
+    });
+    // Un plateau replié dans un autre replié : seule la capsule extérieure compte.
+    const outer = [...capsules.keys()].filter((p) => ![...capsules.keys()].some((q) => q !== p && ancestorOf(p, q)));
+    const nodeFold = new Float32Array(nodes.length);
+    const nodeHome = new Int16Array(nodes.length).fill(-1);
+    const plateHidden = new Float32Array(plates.length);
+    const plateCapsule = new Float32Array(plates.length);
+    const capsuleText = plates.map(() => '');
+    for (const c of outer) {
+      plateCapsule[c] = 1;
+      let count = 0;
+      nodes.forEach((n) => {
+        if (n.plate >= 0 && ancestorOf(n.plate, c)) {
+          nodeFold[n.index] = 1;
+          nodeHome[n.index] = c;
+          nodeLabel[n.index] = false;
+          count++;
+        }
+      });
+      plates.forEach((p) => {
+        if (p.index !== c && ancestorOf(p.index, c)) {
+          plateHidden[p.index] = 1;
+          plateLabel[p.index] = false;
+        }
+      });
+      capsuleText[c] = capsules.get(c) || `⌬ ${count} service${count > 1 ? 's' : ''}`;
+    }
+    // Une liaison vers une capsule s'éteint (latente, sans particules) : elle ne pointe plus vers un service visible.
+    edges.forEach((e, i) => {
+      if (nodeFold[e.from] || nodeFold[e.to]) {
+        edgeAlpha[i] = Math.min(edgeAlpha[i], HOLO_ALPHA.latent);
+        edgeFlow[i] = 0;
+      }
+    });
+    const plateBadge = plates.map((p) => (badges.has(p.index) ? `× ${badges.get(p.index)}` : ''));
+
+    // T-A6 : le focus cadre ses voisins (service) ou sa zone ; sinon tout le schéma.
+    let extent: ArchExtent | null = null;
+    if (inFocus !== null) {
+      const node = this.layout.nodeById.get(focus as string);
+      const plate = this.layout.plateById.get(focus as string);
+      if (plate !== undefined) {
+        const q = plates[plate];
+        extent = { x0: q.x0, x1: q.x0 + q.w, z0: q.z0, z1: q.z0 + q.d };
+      } else if (node !== undefined) {
+        const keep = nodes.filter((n) => inFocus?.('node', n.index));
+        const pad = ICON_SIZE;
+        extent = { x0: Math.min(...keep.map((n) => n.x)) - pad, x1: Math.max(...keep.map((n) => n.x)) + pad,
+          z0: Math.min(...keep.map((n) => n.z)) - pad, z1: Math.max(...keep.map((n) => n.z)) + pad };
+      }
+    }
+
     return {
       state,
-      camera: cameraFor(this.layout, state, viewport),
+      nodeFold, nodeHome, plateHidden, plateCapsule, capsuleText, plateBadge,
+      camera: cameraFor(this.layout, state, viewport, extent),
       step: stepOf(state),
       lift: state.view === 'dessus' ? 0 : 1,
       plateFill, plateLine, plateRole, nodeAlpha, nodeRole, edgeAlpha, edgeRole, edgeFlow, nodeLabel, plateLabel,
@@ -401,6 +709,29 @@ export class ArchitectureStageDirector {
       nodeAlpha: new Float32Array(nodes.length), edgeTrace: new Float32Array(edges.length),
       edgeAlpha: new Float32Array(edges.length), edgeSweep: new Float32Array(edges.length),
       edgeTravel: new Float32Array(edges.length), particles: 1, labels: 1,
+      nodeFold: new Float32Array(nodes.length), nodeX: Float32Array.from(nodes.map((n) => n.x)),
+      nodeZ: Float32Array.from(nodes.map((n) => n.z)), plateHidden: new Float32Array(plates.length),
+      plateCapsule: new Float32Array(plates.length),
+    };
+  }
+
+  /**
+   * SF-238-10 — ce qui est affiché maintenant, en point de départ d'une nouvelle transition (règle 2 : une
+   * transition interrompue repart de la valeur courante). Alloué au changement d'état seulement.
+   */
+  snapshot(plan: ArchitecturePlan, frame: ArchFrame): ArchitecturePlan {
+    return {
+      ...plan, plateFill: frame.plateFill.slice(), plateLine: frame.plateLine.slice(),
+      nodeAlpha: frame.nodeAlpha.slice(), edgeAlpha: frame.edgeAlpha.slice(),
+    };
+  }
+
+  /** SF-238-10 — le déplacement qui part de l'image affichée vers le plan suivant. */
+  startMove(frame: ArchFrame, camera: ArchCamera, at: number, ms: number, curve: MotionCurve | 'ressort'): ArchMove {
+    return {
+      at, ms, curve, fromCamera: { ...camera, target: [...camera.target] as [number, number, number] },
+      fromAlt: frame.plateAlt.slice(), fromFold: frame.nodeFold.slice(), fromHidden: frame.plateHidden.slice(),
+      fromCapsule: frame.plateCapsule.slice(),
     };
   }
 
@@ -409,7 +740,7 @@ export class ArchitectureStageDirector {
    * l'état final pour `repos`. Écrit dans `out`, <b>n'alloue rien</b>.
    */
   frame(plan: ArchitecturePlan, phase: ArchPhaseKind, t: number, out: ArchFrame, now = t,
-      transition: ArchTransition | null = null): ArchFrame {
+      transition: ArchTransition | null = null, move: ArchMove | null = null): ArchFrame {
     const { plates, nodes, edges } = this.layout;
     const h = plan.step * plan.lift;
     const seconds = now / 1000;
@@ -441,6 +772,7 @@ export class ArchitectureStageDirector {
       out.particles = spark;
       out.labels = spark;
       out.float = NODE_FLOAT * plan.lift;
+      this.fold(plan, out, null, now, false);
       return out;
     }
     if (phase === 'sortie') {
@@ -465,6 +797,7 @@ export class ArchitectureStageDirector {
       out.particles = spark;
       out.labels = spark;
       out.float = NODE_FLOAT * plan.lift * down;
+      this.fold(plan, out, null, now, false);
       return out;
     }
     out.lay = 1;
@@ -487,7 +820,55 @@ export class ArchitectureStageDirector {
     if (transition) {
       this.narrate(plan, transition, now, out);
     }
+    this.fold(plan, out, move, now);
     return out;
+  }
+
+  /**
+   * SF-238-10 — T-A3 (altitudes), T-A4 / T-A5 (capsules), et le reste des déplacements : chaque valeur part de celle
+   * affichée au début du déplacement et rejoint le plan. <b>N'alloue rien.</b>
+   */
+  private fold(plan: ArchitecturePlan, out: ArchFrame, move: ArchMove | null, now: number, alt = true): void {
+    const { plates, nodes } = this.layout;
+    const p = moveProgress(move, now);
+    const h = plan.step * plan.lift;
+    for (let i = 0; i < plates.length; i++) {
+      if (alt) {
+        const to = plates[i].level * h;
+        const from = move ? move.fromAlt[i] : to;
+        out.plateAlt[i] = from + (to - from) * p;
+      }
+      const hf = move ? move.fromHidden[i] : plan.plateHidden[i];
+      out.plateHidden[i] = hf + (plan.plateHidden[i] - hf) * p;
+      const cf = move ? move.fromCapsule[i] : plan.plateCapsule[i];
+      out.plateCapsule[i] = cf + (plan.plateCapsule[i] - cf) * p;
+    }
+    for (let i = 0; i < nodes.length; i++) {
+      const ff = move ? move.fromFold[i] : plan.nodeFold[i];
+      const fold = ff + (plan.nodeFold[i] - ff) * p;
+      out.nodeFold[i] = fold;
+      // La capsule : le centre du plateau qui rentre le service (celui du plan, ou celui qu'il quitte).
+      const home = plan.nodeHome[i];
+      const n = nodes[i];
+      if (home >= 0) {
+        const c = plates[home];
+        out.nodeX[i] = n.x + (c.x0 + c.w / 2 - n.x) * fold;
+        out.nodeZ[i] = n.z + (c.z0 + c.d / 2 - n.z) * fold;
+      } else if (fold > 0 && n.plate >= 0) {
+        // Dépli : le service ressort du centre de son plateau porteur le plus extérieur replié auparavant.
+        let c = n.plate;
+        for (let q = n.plate, g = 0; q >= 0 && g < 64; q = plates[q].parent, g++) {
+          if (move && move.fromCapsule[q] > 0) {
+            c = q;
+          }
+        }
+        out.nodeX[i] = n.x + (plates[c].x0 + plates[c].w / 2 - n.x) * fold;
+        out.nodeZ[i] = n.z + (plates[c].z0 + plates[c].d / 2 - n.z) * fold;
+      } else {
+        out.nodeX[i] = n.x;
+        out.nodeZ[i] = n.z;
+      }
+    }
   }
 
   /**

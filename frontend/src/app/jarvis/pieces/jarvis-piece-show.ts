@@ -1,4 +1,5 @@
 import { PieceQuery } from './jarvis-piece-client';
+import { ArchRequest, ArchViewName } from './jarvis-piece-arch';
 import { NavAction, NavOrigin, NavScope, PieceNav } from './jarvis-piece-nav';
 import { PieceCategory, PieceKind } from './jarvis-piece.models';
 
@@ -12,7 +13,14 @@ import { PieceCategory, PieceKind } from './jarvis-piece.models';
 export type ShowAction = 'galerie' | 'piece' | 'suivante' | 'precedente' | 'selection' | 'retour' | 'remonter'
   | 'fermer' | 'lecture' | 'pause' | 'aller' | 'page' | 'zoom' | 'comparer' | 'raconter' | 'planche'
   /** F-253 / SF-253-02 — une vue de l'univers : appliquée par le « Montrer » F-234, jamais par la galerie. */
-  | 'univers';
+  | 'univers'
+  /** F-238 / SF-238-10 (D11) — la navigation d'une architecture ouverte (cible résolue sur l'appareil). */
+  | 'focus' | 'flux' | 'replier' | 'deplier' | 'eclater' | 'rassembler' | 'vue';
+
+/** F-238 / SF-238-10 — les vues d'une architecture (champ `vue` de l'action `vue`). */
+const ARCH_VIEWS: Record<string, ArchViewName | '2d' | '3d'> = {
+  ensemble: 'ensemble', dessus: 'dessus', face: 'face', '2d': '2d', '3d': '3d',
+};
 
 export interface ShowScope {
   subjectId?: string | null;
@@ -147,8 +155,46 @@ export function showPlan(cmd: ShowCommand, ctx: ShowContext): ShowPlan {
       const step = z === '-' ? '-' : z === 'reset' ? 'reset' : '+';
       return { kind: 'nav', action: { type: 'zoom', step, target: cmd.target ?? undefined }, origin };
     }
+    case 'focus':
+    case 'flux':
+    case 'replier':
+    case 'deplier':
+    case 'eclater':
+    case 'rassembler':
+    case 'vue': {
+      if (origin === 'PROACTIVE' && ctx.sober && cmd.action !== 'flux') {
+        return { kind: 'refuse', reason: 'NOTHING' }; // mode sobre : aucun mouvement de caméra d'initiative (§7)
+      }
+      const request = archRequest(cmd);
+      return request ? { kind: 'nav', action: { type: 'arch', request }, origin } : { kind: 'refuse', reason: 'NOTHING' };
+    }
   }
   return { kind: 'refuse', reason: 'NOTHING' };
+}
+
+/** F-238 / SF-238-10 — l'ordre d'architecture en demande (la cible reste un texte, résolu contre le graphe). */
+function archRequest(cmd: ShowCommand): ArchRequest | null {
+  const target = (cmd.target ?? '').trim();
+  switch (cmd.action) {
+    case 'focus':
+      return { kind: 'focus', target };
+    case 'flux':
+      return { kind: 'flow', target };
+    case 'replier':
+      return { kind: 'fold', target };
+    case 'deplier':
+      return { kind: 'unfold', target };
+    case 'eclater':
+      return { kind: 'explode', on: true };
+    case 'rassembler':
+      return { kind: 'explode', on: false };
+    case 'vue': {
+      const view = ARCH_VIEWS[(cmd.view ?? '').trim().toLowerCase()];
+      return view ? { kind: 'view', view } : null;
+    }
+    default:
+      return null;
+  }
 }
 
 function galleryPlan(cmd: ShowCommand, ctx: ShowContext, origin: NavOrigin): ShowPlan {

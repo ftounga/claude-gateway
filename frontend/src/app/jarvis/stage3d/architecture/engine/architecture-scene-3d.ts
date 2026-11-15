@@ -12,7 +12,7 @@ import type { InterleavedBufferAttribute } from 'three';
 
 import { EngineClock } from '../../jarvis-banc';
 import { FrameHost, FrameLoop } from '../../jarvis-frame-loop';
-import { HOLO_ALPHA, HOLO_COLORS, HoloRole, rgb } from '../../jarvis-motion';
+import { HOLO_ALPHA, HOLO_COLORS, HoloRole, MOTION_DURATIONS, rgb } from '../../jarvis-motion';
 import { QualityLevel } from '../../jarvis-render-capability';
 import { levelBudget } from '../../hud/jarvis-device-profile';
 import { JarvisPost } from '../../engine/jarvis-post';
@@ -22,8 +22,8 @@ import {
   ArchLayout, ICON_SIZE, pathPoints, writeEdgePath, writeParticles,
 } from '../architecture-layout-3d';
 import {
-  ArchFrame, ArchPhaseKind, ArchState, ArchTransition, ArchitecturePlan, ArchitectureStageDirector, Viewport,
-  cameraBasis,
+  ArchCamera, ArchFrame, ArchMove, ArchPhaseKind, ArchState, ArchTransition, ArchitecturePlan,
+  ArchitectureStageDirector, Viewport, blendCamera, cameraBasis, moveFor, moveProgress, pickAt,
 } from '../architecture-stage-director';
 import { ArchitectureNarrator } from '../architecture-narration';
 
@@ -310,6 +310,9 @@ export class ArchitectureSceneGraph {
   private readonly labels: Label[] = [];
   private readonly nodeLabels: (Label | null)[];
   private readonly plateLabels: (Label | null)[];
+  /** SF-238-10 — la capsule d'une zone repliée (« ⌬ 7 services »), une par plateau, hors budget d'étiquettes. */
+  private readonly capsuleLabels: (Label | null)[];
+  private labelsFor: ArchitecturePlan | null = null;
   private readonly solidPlates: number[];
   private readonly dashedPlates: number[];
   private sparkCount = 0;
@@ -447,6 +450,7 @@ export class ArchitectureSceneGraph {
     // sont décalés en plan ET en altitude, leurs libellés ne s'empilent plus dans un même coin.
     this.plateLabels = layout.plates.map((p) => (this.labels.length < cap
       ? this.makeLabel(p.label, 'zone', p.x0 + p.w / 2, p.z0 + p.d - 0.05, 2 + (p.w * p.d) / maxArea) : null));
+    this.capsuleLabels = layout.plates.map((p) => this.makeLabel('', 'capsule', p.x0 + p.w / 2, p.z0 + p.d / 2, 0.5));
   }
 
   /**
@@ -511,8 +515,8 @@ export class ArchitectureSceneGraph {
 
   /** Recopie l'image (plan, phase, instant en ms) dans les tampons de la scène. N'alloue rien. */
   update(plan: ArchitecturePlan, phase: ArchPhaseKind, phaseMs: number, seconds: number, aspect: number,
-      transition: ArchTransition | null = null): void {
-    const f = this.director.frame(plan, phase, phaseMs, this.frame, seconds * 1000, transition);
+      transition: ArchTransition | null = null, move: ArchMove | null = null): void {
+    const f = this.director.frame(plan, phase, phaseMs, this.frame, seconds * 1000, transition, move);
     const { layout } = this.options;
     this.backdrop.uniforms['uTime'].value = seconds * 1000;
     this.backdrop.uniforms['uAspect'].value = aspect;
@@ -537,7 +541,7 @@ export class ArchitectureSceneGraph {
       this.matrix.makeScale(p.w, PLATE_THICKNESS, p.d);
       this.matrix.setPosition(p.x0 + p.w / 2, alt - PLATE_THICKNESS / 2, p.z0 + p.d / 2);
       this.plates.setMatrixAt(p.index, this.matrix);
-      const k = f.plateFill[p.index];
+      const k = f.plateFill[p.index] * (1 - f.plateHidden[p.index]);
       this.plates.setColorAt(p.index, this.color(normal[0] * k, normal[1] * k, normal[2] * k));
     }
     this.plates.instanceMatrix.needsUpdate = true;
@@ -551,17 +555,20 @@ export class ArchitectureSceneGraph {
     for (const node of layout.nodes) {
       const i = node.index;
       const alt = node.plate < 0 ? 0 : f.plateAlt[node.plate];
-      const s = Math.max(0, f.nodeScale[i]);
+      // SF-238-10 — un service rentré dans une capsule se rapproche de son centre en rapetissant (T-A4 / T-A5).
+      const s = Math.max(0, f.nodeScale[i] * (1 - f.nodeFold[i]));
       const a = f.nodeAlpha[i];
+      const x = f.nodeX[i];
+      const z = f.nodeZ[i];
       const role = this.palette.get(plan.nodeRole[i]) as number[];
-      this.disc(i * 3, node.x, alt + 0.001, node.z, HALO_RADIUS * 0.8 * s, a, 0, 0);
-      this.disc(i * 3 + 1, node.x, alt + 0.002, node.z, HALO_RADIUS * s, normal[0] * a, normal[1] * a,
+      this.disc(i * 3, x, alt + 0.001, z, HALO_RADIUS * 0.8 * s, a, 0, 0);
+      this.disc(i * 3 + 1, x, alt + 0.002, z, HALO_RADIUS * s, normal[0] * a, normal[1] * a,
         normal[2] * a);
       const k = 0.4 + 0.6 * a;
-      this.disc(i * 3 + 2, node.x, alt + 0.003, node.z, SOCKET_RADIUS * s, role[0] * k, role[1] * k, role[2] * k);
+      this.disc(i * 3 + 2, x, alt + 0.003, z, SOCKET_RADIUS * s, role[0] * k, role[1] * k, role[2] * k);
       const size = ICON_SIZE * s;
       this.matrix.makeScale(size, size, size);
-      this.matrix.setPosition(node.x, alt + f.float, node.z);
+      this.matrix.setPosition(x, alt + f.float, z);
       this.icons.setMatrixAt(i, this.matrix);
       icon[i] = Math.min(1, s) * (a >= 0.45 ? 1 : 0.55);
     }
@@ -730,7 +737,8 @@ export class ArchitectureSceneGraph {
     this.world.add(floor);
   }
 
-  private makeLabel(text: string, kind: 'zone' | 'service', x: number, z: number, priority: number): Label | null {
+  private makeLabel(text: string, kind: 'zone' | 'service' | 'capsule', x: number, z: number, priority: number):
+      Label | null {
     if (!this.options.labelHost) {
       return null;
     }
@@ -739,7 +747,7 @@ export class ArchitectureSceneGraph {
     element.textContent = text;
     element.style.opacity = '0';
     const object = new CSS2DObject(element);
-    object.center.set(0.5, kind === 'zone' ? 1 : 0);
+    object.center.set(0.5, kind === 'zone' ? 1 : kind === 'capsule' ? 0.5 : 0);
     object.position.set(x, 0, z);
     this.world.add(object);
     const label = { object, element, shown: 0, lit: false, priority, masked: false };
@@ -809,7 +817,8 @@ export class ArchitectureSceneGraph {
         const plate = plates[i];
         const y = f.plateAlt[i] + 0.001;
         const col = this.palette.get('normal') as number[];
-        const a = f.plateLine[i];
+        // Capsule : son liseré s'allume (actif au moins) ; un plateau dans une zone repliée s'efface.
+        const a = Math.max(f.plateLine[i], HOLO_ALPHA.active * f.plateCapsule[i]) * (1 - f.plateHidden[i]);
         const r = col[0] * a;
         const g = col[1] * a;
         const b = col[2] * a;
@@ -833,7 +842,7 @@ export class ArchitectureSceneGraph {
     for (const plate of plates) {
       const top = f.plateAlt[plate.index];
       const bottom = plate.parent < 0 ? 0 : f.plateAlt[plate.parent];
-      const a = f.plateLine[plate.index] * 0.7;
+      const a = f.plateLine[plate.index] * 0.7 * (1 - f.plateHidden[plate.index]);
       const x1 = plate.x0 + plate.w;
       const z1 = plate.z0 + plate.d;
       this.segment(p, c, k++, plate.x0, bottom, plate.z0, plate.x0, top, plate.z0, col[0] * a, col[1] * a, col[2] * a);
@@ -849,10 +858,11 @@ export class ArchitectureSceneGraph {
     const base = this.solidPlates.length * 4;
     const col = this.palette.get('normal') as number[];
     for (const node of this.options.layout.nodes) {
+      const i = node.index;
       const alt = node.plate < 0 ? 0 : f.plateAlt[node.plate];
-      const a = f.nodeAlpha[node.index] * Math.min(1, Math.max(0, f.nodeScale[node.index])) * 0.6;
+      const a = f.nodeAlpha[i] * Math.min(1, Math.max(0, f.nodeScale[i] * (1 - f.nodeFold[i]))) * 0.6;
       const top = alt + Math.max(0, f.float - ICON_SIZE / 2);
-      this.segment(p, c, base + node.index, node.x, alt + 0.004, node.z, node.x, top, node.z, col[0] * a,
+      this.segment(p, c, base + i, f.nodeX[i], alt + 0.004, f.nodeZ[i], f.nodeX[i], top, f.nodeZ[i], col[0] * a,
         col[1] * a, col[2] * a);
     }
     this.touch(this.lines);
@@ -903,13 +913,32 @@ export class ArchitectureSceneGraph {
 
   private writeLabels(plan: ArchitecturePlan, f: ArchFrame): void {
     const { plates, nodes } = this.options.layout;
-    plates.forEach((p, i) => this.placeLabel(this.plateLabels[i], p.x0 + p.w / 2, f.plateAlt[i] + 0.01,
-      p.z0 + p.d - 0.05,
-      plan.plateLabel[i] ? f.labels : 0, plan.plateRole[i] === 'core'));
+    if (this.labelsFor !== plan) {
+      // SF-238-10 — textes recalculés au changement de plan seulement : capsule (« ⌬ 7 services »), badge « × 3 ».
+      this.labelsFor = plan;
+      plates.forEach((p, i) => {
+        const capsule = this.capsuleLabels[i];
+        if (capsule && capsule.element.textContent !== plan.capsuleText[i]) {
+          capsule.element.textContent = plan.capsuleText[i];
+        }
+        const zone = this.plateLabels[i];
+        const text = plan.plateBadge[i] ? `${p.label} ${plan.plateBadge[i]}` : p.label;
+        if (zone && zone.element.textContent !== text) {
+          zone.element.textContent = text;
+        }
+      });
+    }
+    plates.forEach((p, i) => {
+      this.placeLabel(this.plateLabels[i], p.x0 + p.w / 2, f.plateAlt[i] + 0.01, p.z0 + p.d - 0.05,
+        plan.plateLabel[i] ? f.labels * (1 - f.plateHidden[i]) : 0, plan.plateRole[i] === 'core');
+      this.placeLabel(this.capsuleLabels[i], p.x0 + p.w / 2, f.plateAlt[i] + f.float, p.z0 + p.d / 2,
+        plan.capsuleText[i] ? f.labels * f.plateCapsule[i] : 0, false);
+    });
     nodes.forEach((n, i) => {
       const alt = n.plate < 0 ? 0 : f.plateAlt[n.plate];
-      this.placeLabel(this.nodeLabels[i], n.x, alt + f.float, n.z + ICON_SIZE / 2 + 0.04,
-        plan.nodeLabel[i] ? f.labels * Math.min(1, Math.max(0, f.nodeScale[i])) : 0, plan.nodeRole[i] === 'core');
+      this.placeLabel(this.nodeLabels[i], f.nodeX[i], alt + f.float, f.nodeZ[i] + ICON_SIZE / 2 + 0.04,
+        plan.nodeLabel[i] ? f.labels * Math.min(1, Math.max(0, f.nodeScale[i] * (1 - f.nodeFold[i]))) : 0,
+        plan.nodeRole[i] === 'core');
     });
   }
 
@@ -969,6 +998,12 @@ export class ArchitectureEngine {
   private last: number | null = null;
   private readonly look = new Vector3();
   private cameraFor: ArchitecturePlan | null = null;
+  /** SF-238-10 — le déplacement en cours (T-A3 → T-A6, T-A9) et la caméra affichée (point de départ du suivant). */
+  private move: ArchMove | null = null;
+  private readonly cameraNow: ArchCamera;
+  /** SF-238-10 — l'état venu de la navigation, et ce que la narration y allume. */
+  private base: ArchState;
+  private narrated: { lit: readonly string[]; flow: readonly string[] } = { lit: [], flow: [] };
 
   constructor(private readonly options: ArchitectureEngineOptions, state: ArchState, phase: ArchPhaseKind) {
     ColorManagement.enabled = false;
@@ -992,7 +1027,9 @@ export class ArchitectureEngine {
     this.labels = options.labelHost ? new CSS2DRenderer({ element: options.labelHost }) : null;
     this.labels?.setSize(options.width, options.height);
     this.graph.setResolution(options.width, options.height);
+    this.base = state;
     this.plan = this.graph.director.plan(state, this.viewport());
+    this.cameraNow = { ...this.plan.camera, target: [...this.plan.camera.target] as [number, number, number] };
     // L'horloge part de 0 à la pose : au banc (horloge figée à t), l'instant de la phase est t.
     this.setPhase(phase, 0);
     this.loop = new FrameLoop(options.frameHost, (now) => this.draw(now));
@@ -1017,11 +1054,29 @@ export class ArchitectureEngine {
    */
   narrate(phrase: string, at = this.options.clock()): { lit: string[]; flow: string[] } {
     this.narrator ??= new ArchitectureNarrator(this.options.layout);
-    const result = this.narrator.read(phrase, this.plan.state.focus);
-    const from = this.plan;
-    this.setState({ ...this.plan.state, lit: result.lit, flow: result.flow });
-    this.transition = { from, at };
+    const result = this.narrator.read(phrase, this.base.focus);
+    this.narrated = { lit: result.lit, flow: result.flow };
+    this.setState(this.compose(), at);
     return result;
+  }
+
+  /**
+   * SF-238-10 — l'état de la navigation change (toucher, voix, outil `afficher`) : la scène y va par la transition
+   * nommée (T-A3 → T-A6, T-A9), sans saut ; ce que la narration allume est gardé.
+   */
+  setNavState(state: ArchState, at = this.options.clock()): void {
+    this.base = state;
+    this.setState(this.compose(), at);
+  }
+
+  private compose(): ArchState {
+    const flow = [...new Set([...(this.base.flow ?? []), ...this.narrated.flow])];
+    return { ...this.base, lit: [...this.narrated.lit], flow };
+  }
+
+  /** SF-238-10 — l'élément sous un point de l'écran (toucher) : service d'abord, sinon la zone la plus précise. */
+  pick(x: number, y: number): { kind: 'node' | 'plate'; id: string } | null {
+    return pickAt(this.options.layout, this.graph.frame, this.cameraNow, this.viewport(), x, y);
   }
 
   /** Banc — une narration rejouée : chaque phrase commence à son instant (ms), horloge figée comprise. */
@@ -1036,10 +1091,26 @@ export class ArchitectureEngine {
     return [...state.lit, ...(state.flow ?? [])].join(' ');
   }
 
-  /** Nouvel état (alloué au changement seulement). */
-  setState(state: ArchState): void {
-    this.plan = this.graph.director.plan(state, this.viewport());
+  /**
+   * Nouvel état (alloué au changement seulement). La lumière part de ce qui est affiché (narration, T-A8) ; un
+   * changement de vue, de focus, d'éclatement, de repli, de zoom ou d'orbite démarre un déplacement depuis l'image
+   * affichée (règle 2 : une transition interrompue repart de la valeur courante).
+   */
+  setState(state: ArchState, at = this.options.clock()): void {
+    const director = this.graph.director;
+    const previous = this.plan;
+    const { ms, curve } = moveFor(previous.state, state);
+    if (ms > 0) {
+      this.move = director.startMove(this.graph.frame, this.cameraNow, at, ms, curve);
+    }
+    this.transition = { from: director.snapshot(previous, this.graph.frame), at };
+    this.plan = director.plan(state, this.viewport());
     this.declutterDue = true;
+  }
+
+  /** La caméra affichée (banc, tests). */
+  get shownCamera(): ArchCamera {
+    return this.cameraNow;
   }
 
   setPhase(phase: ArchPhaseKind, start = this.options.clock()): void {
@@ -1099,12 +1170,21 @@ export class ArchitectureEngine {
     }
     this.last = now;
     this.followScript(t);
+    if (this.phase === 'entree' && t - this.phaseStart >= MOTION_DURATIONS.archEntry) {
+      this.phase = 'repos'; // T-A1 finie : l'image est la même, les transitions de navigation peuvent jouer
+    }
     this.graph.update(this.plan, this.phase, t - this.phaseStart, t / 1000, this.width / Math.max(1, this.height),
-      this.transition);
-    if (this.cameraFor !== this.plan) {
-      // La caméra suit le plan (SF-238-10 y mettra le ressort T-A9) ; recalculée au changement seulement.
+      this.transition, this.move);
+    const moving = this.move !== null;
+    const p = moveProgress(this.move, t);
+    if (moving || this.cameraFor !== this.plan) {
+      // La caméra suit le plan par la transition nommée (ressort T-A6 / T-A9, glisse T-A3) ; sinon, immobile.
       this.cameraFor = this.plan;
-      const cam = this.plan.camera;
+      const cam = moving && p < 1 ? blendCamera((this.move as ArchMove).fromCamera, this.plan.camera, p,
+        this.cameraNow) : blendCamera(this.plan.camera, this.plan.camera, 1, this.cameraNow);
+      if (p >= 1) {
+        this.move = null;
+      }
       const b = cameraBasis(cam);
       this.camera.fov = cam.fov;
       this.camera.aspect = this.width / Math.max(1, this.height);

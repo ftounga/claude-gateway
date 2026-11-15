@@ -71,7 +71,9 @@ describe('F-238 / SF-238-09 — la scène 3D (sans rendu)', () => {
     const host = document.createElement('div');
     const scene = build(layoutArchitecture(graph) as ArchLayout, false, host);
     const labels = scene.labelElements;
-    expect(labels.length).toBe(graph.zones.length + graph.nodes.length);
+    // Zones et services, plus une capsule de repli (vide tant que rien n'est replié) par zone (SF-238-10).
+    expect(labels.length).toBe(graph.zones.length * 2 + graph.nodes.length);
+    expect(labels.filter((l) => l.className.includes('arch-capsule')).every((l) => l.textContent === '')).toBeTrue();
     const hostile = labels.find((l) => l.textContent === '<img src=x onerror=alert(1)>') as HTMLElement;
     expect(hostile).toBeTruthy();
     expect(hostile.querySelector('img')).toBeNull();

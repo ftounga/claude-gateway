@@ -382,6 +382,7 @@
                           [subjectLabel]="subject()?.name ?? null" [jarvisState]="state()"
                           [canPin]="cockpitListening()" (pin)="pinToCockpit()"
                           [lowQuality]="stage3d.level() === 'low'" [litIds]="litCards()"
+                          [spoken]="agendaSentence()"
                           (cardsWanted)="showPendingCards()" (cardLinked)="pieces.count('c_link')"
                           (cardOpened)="openCardDetail($event)" />
 <!-- F-236 / SF-236-22 — replay d'un tour (NF-9) et « Pendant votre absence » (NF-10) : lecteur privé, 3D et 2D. -->

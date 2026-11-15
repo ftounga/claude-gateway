@@ -16,6 +16,7 @@ import { SvgBox, SvgTarget, findTarget, svgTargets, viewOf } from './jarvis-piec
 import { JarvisPieceStore } from './jarvis-piece-store';
 import { viewerFor } from './jarvis-piece-viewers';
 import { Piece, PieceChapter } from './jarvis-piece.models';
+import { JarvisPieceArchitectureComponent } from './jarvis-piece-architecture.component';
 
 /** Fiche de lecture d'une vidéo (sous-ensemble de `VideoResponse`). */
 interface VideoInfo {
@@ -40,7 +41,7 @@ interface PageInfo {
 @Component({
   selector: 'app-jarvis-piece-viewer',
   standalone: true,
-  imports: [NgTemplateOutlet, PageFrameComponent],
+  imports: [NgTemplateOutlet, PageFrameComponent, JarvisPieceArchitectureComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (piece(); as p) {
@@ -49,24 +50,20 @@ interface PageInfo {
       } @else {
         @switch (viewer().name) {
           @case ('image') { <ng-container [ngTemplateOutlet]="zoomable" /> }
-          @case ('schema-svg') {
-            <ng-container [ngTemplateOutlet]="zoomable" />
-            @if (nav().target && !targetView()) {
-              <p class="pv__note">Je ne trouve pas « {{ nav().target }} » sur ce schéma.</p>
-            }
-            @if (svgZones().length) {
-              <div class="pv__zones" aria-label="Zones du schéma">
-                @for (zone of svgZones(); track zone.label) {
-                  <button type="button" class="pv__zone" [class.pv__zone--on]="nav().target === zone.label"
-                          (click)="store.dispatch({ type: 'zoom', target: zone.label })">{{ zone.label }}</button>
-                }
-                @if (nav().zoom > 1 || nav().target) {
-                  <button type="button" class="pv__zone" (click)="store.dispatch({ type: 'zoom', step: 'reset' })">
-                    Tout le schéma</button>
-                }
-              </div>
+          @case ('architecture-3d') {
+            @if (show3d()) {
+              <!-- F-238 / SF-238-10 — l'architecture en 3D, au centre ; le SVG cadré reste son repli. -->
+              <app-jarvis-piece-architecture class="pv__arch" [piece]="p" [nav]="nav()" [spoken]="spoken()"
+                                             [phone]="phone()" (fallback)="archFailed.set(true)" />
+            } @else {
+              <ng-container [ngTemplateOutlet]="svgSchema" />
+              @if (allow3d() && !archFailed()) {
+                <button type="button" class="pv__zone" (click)="store.dispatch({ type: 'arch', request: { kind: 'view', view: '3d' } }, 'touch')">
+                  Voir en 3D</button>
+              }
             }
           }
+          @case ('schema-svg') { <ng-container [ngTemplateOutlet]="svgSchema" /> }
           @case ('video') {
             @if (mediaUrl()) {
               <video #media class="pv__video" [src]="mediaUrl()" [attr.poster]="posterUrl()" controls playsinline
@@ -118,6 +115,24 @@ interface PageInfo {
         }
       }
     }
+    <ng-template #svgSchema>
+      <ng-container [ngTemplateOutlet]="zoomable" />
+      @if (nav().target && !targetView()) {
+        <p class="pv__note">Je ne trouve pas « {{ nav().target }} » sur ce schéma.</p>
+      }
+      @if (svgZones().length) {
+        <div class="pv__zones" aria-label="Zones du schéma">
+          @for (zone of svgZones(); track zone.label) {
+            <button type="button" class="pv__zone" [class.pv__zone--on]="nav().target === zone.label"
+                    (click)="store.dispatch({ type: 'zoom', target: zone.label })">{{ zone.label }}</button>
+          }
+          @if (nav().zoom > 1 || nav().target) {
+            <button type="button" class="pv__zone" (click)="store.dispatch({ type: 'zoom', step: 'reset' })">
+              Tout le schéma</button>
+          }
+        </div>
+      }
+    </ng-template>
     <ng-template #zoomable>
       <div class="pv__zoom" (wheel)="onWheel($event)" (pointerdown)="dragStart($event)" (pointermove)="dragMove($event)"
            (pointerup)="dragEnd()" (pointerleave)="dragEnd()" (dblclick)="store.dispatch({ type: 'zoom', step: 'reset' })">
@@ -151,6 +166,7 @@ interface PageInfo {
       font: 12px Inter, sans-serif; background: transparent;
       border: 1px solid color-mix(in srgb, var(--cg-holo, #E07B39) 55%, transparent); }
     .pv__zone--on { border-color: var(--cg-holo-green, #4CF2A0); }
+    .pv__arch { position: absolute; inset: 0; }
     @media (prefers-reduced-motion: reduce) { .pv__image, .pv__slide { transition: none; } }
   `],
 })
@@ -163,6 +179,15 @@ export class JarvisPieceViewerComponent implements OnDestroy {
   readonly nav = input.required<PieceNav>();
   /** L'état de Jarvis : `parole` baisse le son, `ecoute` met en pause (D10). */
   readonly jarvisState = input<JarvisState>('repos');
+  /** F-238 / SF-238-10 — la 3D est possible (rendu 3D actif, mode non sobre) : l'architecture s'y ouvre. */
+  readonly allow3d = input(false);
+  /** F-238 / SF-238-10 — la phrase de Jarvis entendue (narration de l'architecture). */
+  readonly spoken = input<string>('');
+  /** F-238 / SF-238-10 — téléphone : plateaux éclatés plus bas, étiquettes du focus (cadrage §14). */
+  readonly phone = input(false);
+  /** F-238 / SF-238-10 — la 3D n'a pas pu se poser pour cette pièce (graphe absent, WebGL) : le SVG reprend. */
+  readonly archFailed = signal(false);
+  readonly show3d = computed(() => this.allow3d() && !this.archFailed() && !this.nav().arch?.flat);
 
   private readonly media = viewChild<ElementRef<HTMLMediaElement>>('media');
 
@@ -271,6 +296,7 @@ export class JarvisPieceViewerComponent implements OnDestroy {
     this.failed.set(false);
     this.videoChapters.set([]);
     this.svg.set({ frame: null, targets: [] });
+    this.archFailed.set(false);
     const piece = this.piece();
     if (!piece || piece.available === 'HOST_OFFLINE') {
       return;
@@ -281,6 +307,7 @@ export class JarvisPieceViewerComponent implements OnDestroy {
       case 'image':
         await this.loadImage(piece.open ?? piece.thumb ?? null, controller);
         break;
+      case 'architecture-3d':
       case 'schema-svg': {
         await this.loadImage(piece.open ?? piece.thumb ?? null, controller);
         const text = await this.client.text(piece.open, controller.signal);
