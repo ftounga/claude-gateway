@@ -102,6 +102,15 @@ public class AnthropicAgentProvider implements AiAgentProvider {
      */
     private static final java.util.Set<String> BETWEEN_TOOLS_MODELS = java.util.Set.of("claude-sonnet-5-5");
     /**
+     * Modèles dont la réflexion <b>ne s'éteint pas</b> (F-262 / SF-262-01) : {@code disabled} comme {@code between_tools}
+     * y rendent un 400 à tout niveau d'effort (« "thinking.type.disabled" is not supported for this model. Use
+     * "thinking.type.adaptive" and "output_config.effort" »). « Éteint » s'y traduit par <b>aucun</b> champ
+     * {@code thinking} (réflexion adaptative implicite) et l'effort demandé, qui la borne.
+     */
+    private static final java.util.Set<String> ALWAYS_THINKING_MODELS = java.util.Set.of("claude-opus-5-5",
+            "claude-fable-5", "claude-fable-5-1", "claude-fable-5-2", "claude-mythos-5", "claude-mythos-5-1",
+            "claude-mythos-5-2");
+    /**
      * Types MIME qu'Anthropic « voit » nativement (F-121 / SF-121-15) : les quatre formats d'image
      * de l'API {@code /v1/messages} et le PDF. Provider-First : c'est le fournisseur qui déclare ce
      * qu'il sait voir, la gateway ne pose un bloc média que pour ces types.
@@ -482,8 +491,12 @@ public class AnthropicAgentProvider implements AiAgentProvider {
             // F-235 / SF-235-01 (D2) : raisonnement éteint — un appel court où chaque dixième de seconde compte.
             // Aucune des capacités ci-dessous (repli serveur, notes de progression, liaison du raisonnement,
             // effort implicite) ne s'applique : elles supposent un raisonnement actif.
-            body.put("thinking", Map.of("type", BETWEEN_TOOLS_MODELS.contains(request.model())
-                    ? "between_tools" : "disabled"));
+            // F-262 / SF-262-01 : la forme d'extinction dépend du modèle ; sur ceux qui n'en acceptent aucune, rien.
+            if (BETWEEN_TOOLS_MODELS.contains(request.model())) {
+                body.put("thinking", Map.of("type", "between_tools"));
+            } else if (!ALWAYS_THINKING_MODELS.contains(request.model())) {
+                body.put("thinking", Map.of("type", "disabled"));
+            }
             boolean contextEditingOff = applyContextPolicy(body, request.contextPolicy());
             return new Prepared(apiKey, body, contextEditingOff, false, List.of(), request.model(), false,
                     shape.maxTokens() != null ? shape.maxTokens() : streamedMaxTokens(request), false);
@@ -1274,8 +1287,30 @@ public class AnthropicAgentProvider implements AiAgentProvider {
 
     /** Message neutre : ni la clé ni la réponse brute du fournisseur ne remontent au client. */
     private AIProviderException providerFailure(String model, RestClientException ex) {
-        log.warn("Appel agent au fournisseur IA en échec (modèle={})", model);
+        // F-262 / SF-262-01 : le motif du refus (statut, type, message du fournisseur) — sans lui, une requête que le
+        // modèle refuse toujours passait pour une panne. Ni la clé ni le contenu de la requête ne sont journalisés.
+        log.warn("Appel agent au fournisseur IA en échec (modèle={}){}", model, refusalMotive(ex));
         return new AIProviderException("Échec de l'appel au fournisseur IA.", ex);
+    }
+
+    /**
+     * F-262 / SF-262-01 — « statut=400 type=invalid_request_error message=… » pour une réponse d'erreur du fournisseur,
+     * la classe de l'erreur sinon. Le message est celui de l'API (il décrit la requête refusée, jamais la clé), borné
+     * à 300 caractères, sur une ligne.
+     */
+    static String refusalMotive(RestClientException ex) {
+        if (!(ex instanceof RestClientResponseException response)) {
+            return ex == null ? "" : " cause=" + ex.getClass().getSimpleName();
+        }
+        String type;
+        try {
+            type = MAPPER.readTree(response.getResponseBodyAsString()).path("error").path("type").asText("");
+        } catch (com.fasterxml.jackson.core.JsonProcessingException | IllegalArgumentException e) {
+            type = "";
+        }
+        String message = providerErrorMessage(response).replaceAll("[\\r\\n]+", " ").strip();
+        return " statut=" + response.getStatusCode().value() + (type.isEmpty() ? "" : " type=" + type)
+                + (message.isEmpty() ? "" : " message=" + message);
     }
 
     /**

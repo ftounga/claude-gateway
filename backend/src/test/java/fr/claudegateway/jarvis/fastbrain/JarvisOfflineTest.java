@@ -54,9 +54,18 @@ class JarvisOfflineTest {
         return s;
     }
 
+    /**
+     * F-262 / SF-262-01 — un faux fournisseur <b>fidèle à l'API</b> : Opus 5.5 refuse toute réflexion éteinte (400 réel
+     * « "thinking.type.disabled" is not supported for this model »), comme le fait le fournisseur.
+     */
     private AiAgentProvider answering(String text) {
         return request -> {
             calls.add(request);
+            if ("claude-opus-5-5".equals(request.model()) && request.reasoning() != null
+                    && request.reasoning().disabled()) {
+                throw new fr.claudegateway.ai.AIProviderException("Échec de l'appel au fournisseur IA.",
+                        new IllegalStateException("400 \"thinking.type.disabled\" is not supported for this model"));
+            }
             AgentTurn turn = mock(AgentTurn.class);
             when(turn.text()).thenReturn(text);
             when(turn.toolCalls()).thenReturn(List.of());
@@ -89,11 +98,85 @@ class JarvisOfflineTest {
                 delegated(), sink);
         assertThat(out.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
         assertThat(out.reason()).isEqualTo(JarvisFastBrainService.REASON_OFFLINE);
-        assertThat(said.get(0)).startsWith("Le poste est éteint");
+        assertThat(said.get(0)).startsWith("Le poste est éteint ; je ne peux pas y agir");
         assertThat(String.join("", said)).contains("Le chantier 3 avance");
         assertThat(calls).hasSize(1);
         assertThat(calls.get(0).tools()).extracting(AgentTool::name)
                 .containsExactlyInAnyOrder("pieces", "agenda", "etat", "conversations");
+        // F-262 / SF-262-01 — Opus 5.5 n'accepte aucune extinction : adaptative, effort du cerveau rapide, place de
+        // réflexion dans le plafond.
+        assertThat(calls.get(0).reasoning().disabled()).isFalse();
+        assertThat(calls.get(0).reasoning().adaptive()).isTrue();
+        assertThat(calls.get(0).reasoning().effort()).isEqualTo("low");
+        assertThat(calls.get(0).shape().maxTokens()).isEqualTo(600 + JarvisFastBrainService.THINKING_ROOM_TOKENS);
+    }
+
+    @Test
+    void theToolLoopReplaysItsReasoningAndReadsTheTargetHostState() {
+        Workspace w = owned(host);
+        when(meter.hostOffline(alice, w)).thenReturn(true);
+        fr.claudegateway.jarvis.state.JarvisStateTool state = mock(fr.claudegateway.jarvis.state.JarvisStateTool.class);
+        when(state.read(eq(alice), eq(host), any(), eq(false)))
+                .thenReturn(new fr.claudegateway.jarvis.state.JarvisStateTool.Read("<etat>PROJ-1 en revue</etat>", List.of()));
+        fr.claudegateway.agent.AgentContentBlock thought = new fr.claudegateway.agent.AgentContentBlock.Reasoning("", "sig");
+        AiAgentProvider twice = request -> {
+            calls.add(request);
+            AgentTurn turn = mock(AgentTurn.class);
+            if (calls.size() == 1) {
+                when(turn.toolCalls()).thenReturn(List.of(new fr.claudegateway.agent.AgentToolCall("t1", "etat",
+                        com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode())));
+                when(turn.reasoning()).thenReturn(List.of(thought));
+            } else {
+                when(turn.text()).thenReturn("PROJ-1 était en revue, relevé hier.");
+                when(turn.toolCalls()).thenReturn(List.of());
+            }
+            return turn;
+        };
+        JarvisFastBrainService s = service(twice);
+        s.setState(null, state);
+
+        JarvisFastBrainService.Outcome out = s.offlineInstead(ask(), delegated(), sink);
+
+        assertThat(out.spokenText()).contains("PROJ-1 était en revue");
+        assertThat(calls).hasSize(2);
+        fr.claudegateway.agent.AgentMessage assistant = calls.get(1).messages().get(1);
+        assertThat(assistant.content().get(0)).isSameAs(thought);
+        assertThat(assistant.content().get(1)).isInstanceOf(fr.claudegateway.agent.AgentContentBlock.ToolUse.class);
+    }
+
+    @Test
+    void aFailingModelSaysTheTargetHostsRecordedFacts() {
+        Workspace w = owned(host);
+        when(meter.hostOffline(alice, w)).thenReturn(true);
+        fr.claudegateway.jarvis.state.JarvisStateTool state = mock(fr.claudegateway.jarvis.state.JarvisStateTool.class);
+        List<fr.claudegateway.jarvis.state.JarvisStateBlock.Line> lines = List.of(
+                new fr.claudegateway.jarvis.state.JarvisStateBlock.Line(host, null, "PROJ-1", "PROJ-1",
+                        "- PROJ-1 : statut en revue (vu hier à 17 h 42, Jira)", null, false, false),
+                new fr.claudegateway.jarvis.state.JarvisStateBlock.Line(host, null, "mr!4", "MR 4",
+                        "- MR 4 : fusionnée (vu hier à 18 h, GitLab)", null, false, false),
+                new fr.claudegateway.jarvis.state.JarvisStateBlock.Line(host, null, "x", "x", "- x", null, false, false));
+        when(state.read(eq(alice), eq(host), any(), eq(false)))
+                .thenReturn(new fr.claudegateway.jarvis.state.JarvisStateTool.Read("", lines));
+        AiAgentProvider failing = request -> {
+            throw new IllegalStateException("panne");
+        };
+        JarvisFastBrainService s = service(failing);
+        s.setState(null, state);
+
+        JarvisFastBrainService.Outcome out = s.offlineInstead(ask(), delegated(), sink);
+
+        assertThat(out.spokenText()).contains("Dernier relevé : PROJ-1 : statut en revue (vu hier à 17 h 42, Jira) ; "
+                + "MR 4 : fusionnée (vu hier à 18 h, GitLab).").doesNotContain("- x");
+    }
+
+    @Test
+    void aSubjectlessDelegationIsNeverDivertedSoTheSubjectIsAsked() {
+        JarvisFastBrainService.Outcome outcome = new JarvisFastBrainService.Outcome(JarvisFastBrainService.Kind.DELEGATE,
+                "", new JarvisFastBrainService.Delegation(UUID.randomUUID(), "demande", "", "annonce", null, null, false,
+                        null), null, "m", 100L, null, JarvisFastBrainService.Guards.NONE, null);
+        when(meter.hostOffline(eq(alice), any())).thenReturn(true);
+        assertThat(service(answering("x")).offlineInstead(ask(), outcome, sink)).isSameAs(outcome);
+        assertThat(calls).isEmpty();
     }
 
     @Test
