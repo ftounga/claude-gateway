@@ -103,7 +103,7 @@ import {
 } from './jarvis-conversation';
 import { ExchangeFiller, FORMULA_CLIPS, FormulaPicker, LINKED_FILLER_DELAY_MS, linkedFiller } from './jarvis-phrases';
 import { MAX_LISTEN_MS, MIN_VOICED_MS, NoiseFloor, SpeechRejection, speechGate } from './jarvis-speech-gate';
-import { isClarification, mayHushPardon } from './jarvis-addressed';
+import { isClarification, isNotForMe, mayHushPardon } from './jarvis-addressed';
 import { JARVIS_GRACE_MS, STREAM_FALLBACK_MS, SUSPENDED_EXTRA_MS, isSuspended } from './jarvis-turn-end';
 import { AnticipationWatch, JarvisSpeculation, sameUtterance } from './jarvis-speculation';
 import { CORRECTION_WINDOW_MS as VOICE_CORRECTION_WINDOW_MS, applyCorrection, parseVoiceCorrection } from './jarvis-correction';
@@ -3024,9 +3024,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const speculation = this.claimSpeculation(text, body, clock);
     const handlers: FastBrainHandlers = {
       onText: (sentence) => this.zone.run(() => {
-        // F-265 / SF-265-01 — la réponse commence par « je n'ai pas compris » sur une phrase qui ne lui était pas
-        // adressée : Jarvis se tait (toute la réponse), rien n'est dit ni affiché.
-        if (hush && !hushed && said === '' && isClarification(sentence)) {
+        // F-265 / SF-265-01 — la réponse commence par « je n'ai pas compris » (ou « cela ne s'adresse pas à moi ») sur
+        // une phrase qui ne lui était pas adressée : Jarvis se tait (toute la réponse), rien n'est dit ni affiché.
+        if (hush && !hushed && said === '' && (isClarification(sentence) || isNotForMe(sentence))) {
           hushed = true;
           this.trace.mark('pardon_hushed', `chars=${text.length}`);
         }

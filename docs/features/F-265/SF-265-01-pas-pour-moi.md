@@ -30,6 +30,8 @@ sans jamais perdre une vraie réponse brève du PO.
 - Phrase courte acceptée (ex. « Ah bah, c'est pas dit non », direct vide), après « Voici la galerie des vidéos » (pas
   une question), sans « Jarvis », hors réveil : le cerveau répond « Pardon, Monsieur, je n'ai pas bien saisi… » → rien
   n'est dit ni affiché, l'écran garde la réponse précédente, trace `pardon_hushed`, `falseTriggers` +1.
+- Idem quand le cerveau répond d'abord que la phrase « ne s'adresse pas à lui » (banc, voix tierce « Tu viens manger ? » →
+  « je crains que cette invitation ne s'adresse pas à moi ») : tu.
 - Même phrase après une vraie question de Jarvis (« Par quel sujet commençons-nous ? ») → le « je n'ai pas compris »
   est dit comme avant.
 - Phrase courte **comprise** → sa réponse est dite comme avant.

@@ -3241,6 +3241,20 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       jarvis.ngOnDestroy();
     }));
 
+  it('F-265 / SF-265-01 — banc F-256, voix tierce « Tu viens manger ? » : « ne s’adresse pas à moi » est tu aussi',
+    fakeAsync(() => {
+      const jarvis = conversing(true);
+      heardAfter(jarvis, 'Voici les sujets d’EDENRED, Monsieur : le waf.', 'Tu viens manger ?');
+      const aside = 'Pardon, Monsieur, je crains que cette invitation ne s\'adresse pas à moi.';
+      fast!.onText(aside);
+      fast!.onDone({ brain: 'FAST', spokenText: aside, firstTokenMs: 300, model: 'm' });
+      fastDone!('ok');
+      flushMicrotasks();
+      expect(voice.enqueue).not.toHaveBeenCalled();
+      expect(traceEvents().some((e) => e.ev === 'pardon_hushed')).toBeTrue();
+      jarvis.ngOnDestroy();
+    }));
+
   it('F-265 / SF-265-01 — après une vraie question de Jarvis, « je n’ai pas compris » reste dit', fakeAsync(() => {
     const jarvis = conversing(true);
     heardAfter(jarvis, 'Le WAF est à jour. Par quel sujet commençons-nous ?', 'Ah bah, c’est pas dit non.');

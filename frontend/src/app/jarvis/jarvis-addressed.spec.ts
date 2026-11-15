@@ -1,4 +1,4 @@
-import { awaitsAnswer, isBriefReply, isClarification, liveFinalDiscord, mayHushPardon } from './jarvis-addressed';
+import { awaitsAnswer, isBriefReply, isClarification, isNotForMe, liveFinalDiscord, mayHushPardon } from './jarvis-addressed';
 import { speechGate } from './jarvis-speech-gate';
 
 /** **« Pas pour moi »** (F-265 / SF-265-01) — cas réels tirés de `jarvis_audio_captures` et `atelier_messages`. */
@@ -70,6 +70,17 @@ describe('« Pas pour moi » (F-265 / SF-265-01)', () => {
       'Voici la galerie des vidéos, Monsieur.', 'La deuxième quoi, Monsieur ?',
       'Pardon, Monsieur, je me suis arrêté avant de les montrer.']) {
       expect(isClarification(answer)).withContext(answer).toBeFalse();
+    }
+  });
+
+  it('« ne s’adresse pas à moi » reconnu (banc F-256, voix tierce « Tu viens manger ? ») ; une vraie réponse non', () => {
+    for (const aside of ['Pardon, Monsieur, je crains que cette invitation ne s\'adresse pas à moi.',
+      'Cette question ne m\'est sans doute pas adressée, Monsieur.', 'Je crois que cela ne m\'était pas destiné.']) {
+      expect(isNotForMe(aside)).withContext(aside).toBeTrue();
+    }
+    for (const answer of ['Voici la galerie des vidéos, Monsieur.', 'Pardon, Monsieur, que souhaitez-vous que je montre?',
+      'Ce message s\'adresse à l\'équipe RH, Monsieur.', 'Vos deux clients, CAGIP et EDENRED.']) {
+      expect(isNotForMe(answer)).withContext(answer).toBeFalse();
     }
   });
 

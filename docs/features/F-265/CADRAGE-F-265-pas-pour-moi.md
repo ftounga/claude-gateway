@@ -31,7 +31,8 @@ lointaine, la première a deviné « Lui-même ? », la seconde rien.
 - **D2 — se taire plutôt que « je n'ai pas compris »** : sur une phrase courte qui ne nomme ni Jarvis, ni un sujet,
   ni un client, sans mot du travail (chantier, galerie, montre…), hors réveil
   (« Jarvis… ») et hors d'une question que Jarvis vient de poser (sa dernière phrase finit par « ? » et n'est pas
-  elle-même une demande de répéter), si le cerveau répond **d'abord** qu'il n'a pas compris, toute la réponse est tue.
+  elle-même une demande de répéter), si le cerveau répond **d'abord** qu'il n'a pas compris (ou que la phrase « ne s'adresse pas à lui »), toute la
+  réponse est tue.
   Une phrase comprise reçoit sa réponse comme avant. Les deux boucles (ancienne et F-257) passent par ce chemin.
 - **D3 — contrainte dure** : une **réponse brève** (tous ses mots dans le vocabulaire oui/non/stop/choix/relance, ≤ 5
   mots : « Oui. », « Non merci », « La deuxième », « Stop », « Vas-y ») n'est jamais refusée par D1 ni tue par D2.

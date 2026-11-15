@@ -123,6 +123,17 @@ export function isClarification(sentence: string | null | undefined): boolean {
     || /^pardon( monsieur)?$/.test(p);
 }
 
+/**
+ * Une phrase de Jarvis qui constate que la parole **ne lui était pas adressée** (« Pardon, Monsieur, je crains que
+ * cette invitation ne s'adresse pas à moi. » — banc F-256, voix tierce « Tu viens manger ? ») : même silence qu'un
+ * « je n'ai pas compris ».
+ */
+export function isNotForMe(sentence: string | null | undefined): boolean {
+  const p = plain(sentence);
+  return /\bne (s adresse|s adressait|m est|m etait) (pas|sans doute pas|probablement pas) (a moi|adresse|adressee|destine|destinee)\b/
+    .test(p) || /\b(ne m etait|n etait) (pas|sans doute pas) (adresse|adressee|destine|destinee)\b/.test(p);
+}
+
 /** Jarvis attend une réponse : sa dernière phrase est une question, et pas une demande de répéter. */
 export function awaitsAnswer(lastSaid: string | null | undefined): boolean {
   const said = (lastSaid ?? '').trim();
