@@ -69,6 +69,26 @@ public class DiagramRender {
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
+    /**
+     * F-238 / SF-238-07 : le graphe d'architecture ({@code ArchitectureGraph} v1, JSON compact) — structure et mise en
+     * page cadrée, pour la scène 3D. {@code null} pour Mermaid et pour une ligne dont le graphe n'a pas encore été
+     * calculé.
+     */
+    @Column(name = "graph_json", columnDefinition = "text")
+    private String graphJson;
+
+    @Column(name = "graph_version")
+    private Short graphVersion;
+
+    @Column(name = "node_count")
+    private Integer nodeCount;
+
+    @Column(name = "zone_count")
+    private Integer zoneCount;
+
+    @Column(name = "edge_count")
+    private Integer edgeCount;
+
     /** Architecture (icônes cloud, draw.io) ou simple diagramme (Mermaid). */
     public boolean isArchitecture() {
         return !"mermaid".equalsIgnoreCase(engine);

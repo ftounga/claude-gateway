@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-238 / SF-238-07 - LE GRAPHE CONSERVE.
+
+      diagram_renders (F-237) + le graphe d'architecture (ArchitectureGraph v1, cadrage F-238 5.1) rendu par le
+      moteur cadre : structure ET mise en page, pour la scene 3D. Ecrit avec la ligne (apres un depot reussi), ou
+      calcule UNE fois a la premiere lecture pour une ligne plus ancienne. null pour Mermaid. Les compteurs servent
+      les listes sans charger le JSON. Colonnes additives et nullables. Rollback : les colonnes se retirent.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="238-diagram-renders-graph-postgresql" author="claude-gateway" dbms="postgresql">
+        <addColumn tableName="diagram_renders">
+            <column name="graph_json" type="text"/>
+            <column name="graph_version" type="smallint"/>
+            <column name="node_count" type="int"/>
+            <column name="zone_count" type="int"/>
+            <column name="edge_count" type="int"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="diagram_renders" columnName="edge_count"/>
+            <dropColumn tableName="diagram_renders" columnName="zone_count"/>
+            <dropColumn tableName="diagram_renders" columnName="node_count"/>
+            <dropColumn tableName="diagram_renders" columnName="graph_version"/>
+            <dropColumn tableName="diagram_renders" columnName="graph_json"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <!-- H2 mappe `text` sur CLOB, que la validation de schema refuse : varchar(1000000), comme 237. -->
+    <changeSet id="238-diagram-renders-graph-h2" author="claude-gateway" dbms="h2">
+        <addColumn tableName="diagram_renders">
+            <column name="graph_json" type="varchar(1000000)"/>
+            <column name="graph_version" type="smallint"/>
+            <column name="node_count" type="int"/>
+            <column name="zone_count" type="int"/>
+            <column name="edge_count" type="int"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="diagram_renders" columnName="edge_count"/>
+            <dropColumn tableName="diagram_renders" columnName="zone_count"/>
+            <dropColumn tableName="diagram_renders" columnName="node_count"/>
+            <dropColumn tableName="diagram_renders" columnName="graph_version"/>
+            <dropColumn tableName="diagram_renders" columnName="graph_json"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

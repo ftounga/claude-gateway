@@ -50,14 +50,19 @@ public interface DiagramRenderer {
      * officielle</b> (F-142 / SF-142-09). Ce dernier point doit remonter jusqu'à l'agent : un composant
      * dessiné en boîte neutre se dit, il ne se devine pas.
      */
-    record Rendered(byte[] bytes, Format format, String unknownTypes, String notice) {
+    record Rendered(byte[] bytes, Format format, String unknownTypes, String notice,
+            com.fasterxml.jackson.databind.JsonNode graph) {
 
         public Rendered(byte[] bytes, Format format) {
-            this(bytes, format, "", "");
+            this(bytes, format, "", "", null);
         }
 
         public Rendered(byte[] bytes, Format format, String unknownTypes) {
-            this(bytes, format, unknownTypes, "");
+            this(bytes, format, unknownTypes, "", null);
+        }
+
+        public Rendered(byte[] bytes, Format format, String unknownTypes, String notice) {
+            this(bytes, format, unknownTypes, notice, null);
         }
 
         public boolean hasUnknownTypes() {
@@ -99,7 +104,11 @@ public interface DiagramRenderer {
      * l'image se refait, le schéma perdu se refait à la main. Un aperçu en échec ne fait donc pas échouer
      * le tout : il est <b>dit</b> ({@code previewError}), et le fichier part quand même.</p>
      */
-    record Editable(byte[] drawio, byte[] png, String previewError) {
+    record Editable(byte[] drawio, byte[] png, String previewError, com.fasterxml.jackson.databind.JsonNode graph) {
+
+        public Editable(byte[] drawio, byte[] png, String previewError) {
+            this(drawio, png, previewError, null);
+        }
 
         public boolean hasPreview() {
             return png != null && png.length > 0;
@@ -112,6 +121,21 @@ public interface DiagramRenderer {
      * pas un second vocabulaire à apprendre.
      */
     Editable renderEditable(com.fasterxml.jackson.databind.JsonNode spec);
+
+    /**
+     * Le <b>graphe d'architecture</b> ({@code ArchitectureGraph} v1, F-238 / SF-238-07) d'une description déjà
+     * conservée, calculé par le moteur cadré — le même appel qu'un rendu neuf, donc le même graphe. Sert une seule
+     * fois par schéma, pour une ligne rangée avant que le graphe ne soit conservé.
+     *
+     * @param engine {@code cloud} ou {@code drawio}
+     * @return le graphe, ou vide si le moteur n'en produit pas
+     * @throws DiagramRejectedException            la description est refusée
+     * @throws DiagramRendererUnavailableException le service n'a pas répondu
+     */
+    default java.util.Optional<com.fasterxml.jackson.databind.JsonNode> computeGraph(String engine,
+            com.fasterxml.jackson.databind.JsonNode spec) {
+        return java.util.Optional.empty();
+    }
 
     /** Vrai si un moteur est configuré : sans lui, l'outil n'est pas proposé plutôt que de promettre. */
     boolean isAvailable();

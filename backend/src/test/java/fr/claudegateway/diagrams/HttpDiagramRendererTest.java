@@ -306,4 +306,83 @@ class HttpDiagramRendererTest {
         assertThatThrownBy(() -> renderer.renderEditable(spec))
                 .isInstanceOf(DiagramRendererUnavailableException.class);
     }
+
+    // --- F-238 / SF-238-07 — le graphe conservé ---
+
+    private static com.fasterxml.jackson.databind.node.ObjectNode s3Spec() {
+        com.fasterxml.jackson.databind.node.ObjectNode spec = new ObjectMapper().createObjectNode();
+        spec.putArray("nodes").addObject().put("id", "a").put("type", "aws.s3").put("label", "Bucket");
+        return spec;
+    }
+
+    @Test
+    @DisplayName("SF-238-07 : cloud cadré ⇒ graph:true posté ; {svg, graph} décodé, le SVG suit le chemin d'avant")
+    void cloudCadreReturnsTheGraph() {
+        serve(200, "application/json; charset=utf-8", ("{\"svg\":\"" + base64("<svg/>")
+                + "\",\"graph\":{\"version\":1,\"nodes\":[{\"id\":\"a\"}]}}").getBytes(StandardCharsets.UTF_8));
+        properties.setCloudLayout("elk");
+
+        DiagramRenderer.Rendered rendered = renderer.renderCloud(s3Spec());
+
+        assertThat(new String(rendered.bytes(), StandardCharsets.UTF_8)).isEqualTo("<svg/>");
+        assertThat(rendered.format()).isEqualTo(Format.SVG);
+        assertThat(rendered.graph().path("nodes").get(0).path("id").asText()).isEqualTo("a");
+        assertThat(lastBody.get()).contains("\"layout\":\"elk\"").contains("\"graph\":true");
+    }
+
+    @Test
+    @DisplayName("SF-238-07 : renderer ancien (SVG brut malgré graph:true) ⇒ rendu inchangé, graphe absent")
+    void anOlderRendererStillWorks() {
+        serve(200, "image/svg+xml", "<svg/>".getBytes(StandardCharsets.UTF_8));
+        properties.setCloudLayout("elk");
+
+        DiagramRenderer.Rendered rendered = renderer.renderCloud(s3Spec());
+
+        assertThat(new String(rendered.bytes(), StandardCharsets.UTF_8)).isEqualTo("<svg/>");
+        assertThat(rendered.graph()).isNull();
+    }
+
+    @Test
+    @DisplayName("SF-238-07 : graphviz (retour arrière) ⇒ ni layout ni graph posté")
+    void graphvizAsksNoGraph() {
+        serve(200, "image/svg+xml", "<svg/>".getBytes(StandardCharsets.UTF_8));
+        properties.setCloudLayout("graphviz");
+
+        assertThat(renderer.renderCloud(s3Spec()).graph()).isNull();
+        assertThat(lastBody.get()).doesNotContain("\"graph\"");
+    }
+
+    @Test
+    @DisplayName("SF-238-07 : drawio ⇒ le graphe de la réponse est lu")
+    void editableCarriesTheGraph() {
+        serve(200, "application/json", ("{\"drawio\":\"" + base64("<mxfile/>") + "\",\"png\":\"\","
+                + "\"graph\":{\"version\":1,\"nodes\":[]}}").getBytes(StandardCharsets.UTF_8));
+
+        assertThat(renderer.renderEditable(s3Spec()).graph().path("version").asInt()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("SF-238-07 : computeGraph cloud ⇒ même corps qu'un rendu cadré (elk + graph:true), graphe rendu")
+    void computeGraphCloud() {
+        serve(200, "application/json", ("{\"svg\":\"" + base64("<svg/>")
+                + "\",\"graph\":{\"version\":1,\"nodes\":[]}}").getBytes(StandardCharsets.UTF_8));
+        properties.setCloudLayout("graphviz"); // même en retour arrière, le graphe se calcule cadré
+
+        assertThat(renderer.computeGraph("cloud", s3Spec())).get()
+                .satisfies(g -> assertThat(g.path("version").asInt()).isEqualTo(1));
+        assertThat(lastBody.get()).contains("\"engine\":\"cloud\"").contains("\"layout\":\"elk\"")
+                .contains("\"graph\":true");
+    }
+
+    @Test
+    @DisplayName("SF-238-07 : computeGraph drawio ⇒ moteur drawio cadré ; mermaid ⇒ vide sans appel ; refus nommé")
+    void computeGraphDrawioMermaidAndRefusal() {
+        serve(422, "application/json", "{\"error\":\"AZ hors VPC\"}".getBytes(StandardCharsets.UTF_8));
+
+        assertThat(renderer.computeGraph("mermaid", s3Spec())).isEmpty();
+        assertThat(lastBody.get()).isEmpty();
+        assertThatThrownBy(() -> renderer.computeGraph("drawio", s3Spec()))
+                .isInstanceOf(DiagramRejectedException.class).hasMessageContaining("AZ hors VPC");
+        assertThat(lastBody.get()).contains("\"engine\":\"drawio\"").contains("\"layout\":\"elk\"");
+    }
 }

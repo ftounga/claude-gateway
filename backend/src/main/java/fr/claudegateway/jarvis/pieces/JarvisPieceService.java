@@ -523,6 +523,15 @@ public class JarvisPieceService {
             if (d.getSpecJson() != null) {
                 meta.put("spec", "/jarvis/pieces/" + pieceId + "/spec");
             }
+            if (d.isArchitecture() && (d.getGraphJson() != null || d.getSpecJson() != null)) {
+                // F-238 / SF-238-07 : le graphe (rangé, ou calculé une fois à la première lecture) et ses compteurs.
+                meta.put("graph", "/jarvis/pieces/" + pieceId + "/graph");
+                if (d.getNodeCount() != null) {
+                    meta.put("nodes", d.getNodeCount());
+                    meta.put("zones", d.getZoneCount());
+                    meta.put("edges", d.getEdgeCount());
+                }
+            }
             String image = d.getSvgKey() != null || d.getPngKey() != null ? "/jarvis/pieces/" + pieceId + "/image"
                     : null;
             out.add(new Piece(pieceId, Piece.Category.PRODUCTION,

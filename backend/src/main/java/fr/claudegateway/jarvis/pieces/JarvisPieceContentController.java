@@ -84,6 +84,17 @@ public class JarvisPieceContentController {
                 .body(service.diagramSpec(currentUser.requireId(), pieceId));
     }
 
+    /** F-238 / SF-238-07 — le graphe d'architecture (structure + mise en page cadrée) d'un schéma du compte. */
+    @GetMapping("/jarvis/pieces/{pieceId}/graph")
+    public ResponseEntity<String> diagramGraph(@PathVariable String pieceId) {
+        atelierAccess.requireAccess();
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("X-Content-Type-Options", "nosniff")
+                .cacheControl(CacheControl.noCache().cachePrivate())
+                .body(service.diagramGraph(currentUser.requireId(), pieceId));
+    }
+
     @GetMapping("/jarvis/pieces/{pieceId}/attachments/{position}")
     public ResponseEntity<byte[]> attachment(@PathVariable String pieceId, @PathVariable int position) {
         atelierAccess.requireAccess();
