@@ -53,6 +53,26 @@
     { "id": "A02", "category": "NAVIGATE", "screen": "archScreen", "text": "Montre-moi le flux sortant de l'ALB.", "expect": { "show": true, "action": ["flux"] } },
     { "id": "A03", "category": "NAVIGATE", "screen": "archScreen", "text": "Replie le VPC.", "expect": { "show": true, "action": ["replier"] } },
     { "id": "A04", "category": "NAVIGATE", "screen": "archScreen", "text": "Passe en vue de dessus, s'il te plaît.", "expect": { "show": true, "action": ["vue"], "vue": "dessus" } },
-    { "id": "A05", "category": "NAVIGATE", "screen": "archScreen", "text": "D'où vient le trafic ?", "expect": { "show": true, "action": ["flux"] } }
+    { "id": "A05", "category": "NAVIGATE", "screen": "archScreen", "text": "D'où vient le trafic ?", "expect": { "show": true, "action": ["flux"] } },
+    { "id": "I01", "category": "ARCHI", "text": "Comment c'est déployé chez Edenred ?", "expect": { "show": true, "type": "architecture" } },
+    { "id": "I02", "category": "ARCHI", "text": "Montre-moi l'architecture AWS qui est en place sur le portail.", "expect": { "show": true, "type": "architecture" } },
+    { "id": "I03", "category": "ARCHI", "text": "Je t'ai demandé de me montrer les schémas AWS du portail.", "expect": { "show": true, "type": "architecture" } },
+    { "id": "I04", "category": "ARCHI", "text": "Explique-moi comment fonctionne le réseau sur l'architecture du portail.", "expect": { "show": true, "type": "architecture" } },
+    { "id": "I05", "category": "ARCHI", "text": "Est-ce que tu as un schéma d'architecture à me montrer à l'écran ?", "expect": { "show": true, "type": "architecture" } },
+    { "id": "I06", "category": "ARCHI", "text": "Du coup l'EKS du portail, il tourne dans quel VPC ? Je suis perdu.", "expect": { "show": true, "type": "architecture" } },
+    { "id": "I07", "category": "ARCHI", "text": "Rappelle-moi comment est montée l'infra AWS du portail.", "expect": { "show": true, "type": "architecture" } },
+    { "id": "I08", "category": "ARCHI", "text": "Par où entre le trafic sur le portail Edenred ?", "expect": { "show": true, "type": "architecture" } },
+    { "id": "I09", "category": "ARCHI", "text": "Affiche-moi le schéma d'infra du portail en 3D.", "expect": { "show": true, "type": "architecture" } },
+    { "id": "I10", "category": "ARCHI", "text": "Où est la base de données dans l'architecture du portail ?", "expect": { "show": true, "type": "architecture" } },
+    { "id": "J01", "category": "ARCHI_NEUTRAL", "text": "J'ai un problème sur mon Mac, je n'arrive pas à partager l'écran.", "expect": { } },
+    { "id": "J02", "category": "ARCHI_NEUTRAL", "text": "Prépare un message pour Othmane pour lui expliquer le bug.", "expect": { } },
+    { "id": "J03", "category": "ARCHI_NEUTRAL", "text": "Bonjour Jarvis.", "expect": { } },
+    { "id": "J04", "category": "ARCHI_NEUTRAL", "text": "Qu'est-ce que j'ai à l'agenda cet après-midi ?", "expect": { } },
+    { "id": "J05", "category": "ARCHI_NEUTRAL", "text": "Merci Jarvis, ce sera tout pour le moment.", "expect": { } },
+    { "id": "J06", "category": "ARCHI_NEUTRAL", "text": "Combien de chantiers sont encore ouverts sur Orion ?", "expect": { } },
+    { "id": "J07", "category": "ARCHI_NEUTRAL", "text": "Qui a relu la dernière merge request ?", "expect": { } },
+    { "id": "J08", "category": "ARCHI_NEUTRAL", "text": "Quoi de neuf dans mes mails ?", "expect": { } },
+    { "id": "J09", "category": "ARCHI_NEUTRAL", "text": "Rappelle-moi le nom du tech lead chez CAGIP.", "expect": { } },
+    { "id": "J10", "category": "ARCHI_NEUTRAL", "text": "Tu peux me résumer la réunion d'hier ?", "expect": { } }
   ]
 }

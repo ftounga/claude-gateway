@@ -114,4 +114,17 @@ describe('Jarvis — navigation d’une architecture (F-238 / SF-238-10)', () =>
     expect(showPlan({ action: 'focus', target: 'ALB', reason: 'appui' }, { ...ctx, sober: true }))
       .toEqual({ kind: 'refuse', reason: 'NOTHING' });
   });
+
+  it('SF-238-13 — une galerie d’architecture montrée d’initiative s’ouvre sur la plus récente (en 3D)', () => {
+    const ctx = { subjectId: 's', subjectName: null, presentation: false, sober: false, nav: initialNav(),
+      recent: new Map<string, number>(), now: 0 };
+    const proactive = showPlan({ action: 'galerie', scope: { type: 'architecture' }, reason: 'appui' }, ctx);
+    expect(proactive.kind === 'gallery' && proactive.select).toBe(1);
+    // Demandée (« la galerie des schémas »), elle reste une galerie à choisir.
+    const asked = showPlan({ action: 'galerie', scope: { type: 'architecture' }, reason: 'demande' }, ctx);
+    expect(asked.kind === 'gallery' && asked.select).toBeNull();
+    // Une galerie d'initiative d'un autre type n'ouvre rien d'office.
+    const proofs = showPlan({ action: 'galerie', scope: { category: 'preuves' }, reason: 'appui' }, ctx);
+    expect(proofs.kind === 'gallery' && proofs.select).toBeNull();
+  });
 });

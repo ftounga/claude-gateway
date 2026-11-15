@@ -230,6 +230,9 @@ function galleryPlan(cmd: ShowCommand, ctx: ShowContext, origin: NavOrigin): Sho
     subjectId: subjectId ?? null, chantier: scope?.chantier ?? null, category: query.category ?? null,
     kind: query.kind ?? null, series: scope?.series ?? null, label: scopeLabel(scope, ctx.subjectName, mode),
   };
-  const select = cmd.action === 'piece' && ids.length === 1 ? 1 : cmd.index ?? null;
+  // F-238 / SF-238-13 — une galerie d'architecture montrée d'initiative s'ouvre sur la plus récente, en 3D (T-A1) :
+  // « comment c'est déployé ? » montre le schéma, pas une planche de vignettes.
+  const proactiveArchitecture = origin === 'PROACTIVE' && query.kind === 'ARCHITECTURE' && mode === 'fan';
+  const select = cmd.action === 'piece' && ids.length === 1 ? 1 : cmd.index ?? (proactiveArchitecture ? 1 : null);
   return { kind: 'gallery', scope: navScope, query, ids, select, origin, mode };
 }

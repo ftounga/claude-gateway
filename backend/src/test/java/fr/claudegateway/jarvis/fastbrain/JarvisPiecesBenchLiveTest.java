@@ -70,7 +70,7 @@ class JarvisPiecesBenchLiveTest {
             Files.writeString(out.resolve("run-" + i + ".json"), json.writeValueAsString(report));
             StringBuilder line = new StringBuilder("passage " + i + " : porte " + report.gatePassed() + " ; accord "
                     + report.routeAgreement() + " ; échecs " + report.gateFailures());
-            for (String category : List.of("SHOW", "NAVIGATE", "PROOF", "NEUTRAL")) {
+            for (String category : List.of("SHOW", "NAVIGATE", "PROOF", "NEUTRAL", "UNIVERS", "ARCHI", "ARCHI_NEUTRAL")) {
                 List<JarvisFastBrainBenchService.Verdict> of = report.verdicts().stream()
                         .filter(v -> category.equals(v.category())).toList();
                 long ok = of.stream().filter(JarvisFastBrainBenchService.Verdict::routeAgreed).count();
