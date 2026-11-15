@@ -28,6 +28,7 @@ import { RemoveApiKeyDialogComponent } from './remove-api-key-dialog/remove-api-
 import { RemoveGitTokenDialogComponent } from './remove-git-token-dialog/remove-git-token-dialog.component';
 import { NotificationsSettingsComponent } from './notifications-settings/notifications-settings.component';
 import { VideoVoiceSettingsComponent } from './video-voice-settings/video-voice-settings.component';
+import { DiscreetVeilSettingsComponent } from './discreet-veil-settings/discreet-veil-settings.component';
 
 /**
  * Écran « Paramètres du compte » : récapitulatif du compte, gestion RGPD des données (F-11),
@@ -56,6 +57,7 @@ import { VideoVoiceSettingsComponent } from './video-voice-settings/video-voice-
     MatSlideToggleModule,
     NotificationsSettingsComponent,
     VideoVoiceSettingsComponent,
+    DiscreetVeilSettingsComponent,
   ],
   templateUrl: './settings.component.html',
   styleUrl: './settings.component.scss',

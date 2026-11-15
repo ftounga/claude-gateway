@@ -12,7 +12,7 @@ import {
 } from '@angular/core';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
-import { AtelierService } from '../../core/services/atelier.service';
+import { AtelierService, TURN_STREAM_PROBE_MS } from '../../core/services/atelier.service';
 import {
   AtelierAnswerRequest,
   AtelierConfirmRequest,
@@ -22,6 +22,7 @@ import {
   AtelierStreamDone,
   AtelierStreamHandlers,
   AtelierTerminalBlock,
+  AtelierTurnFollower,
   RunnerStatus,
   WorkspaceExecutionTarget,
 } from '../../core/models/atelier.models';
@@ -156,6 +157,17 @@ export class TerminalLanePaneComponent implements OnChanges, OnDestroy {
   /** Numéro du flux courant : un flux d'un fil quitté n'écrit plus rien. */
   private generation = 0;
 
+  /**
+   * F-260 / SF-260-01 — **le direct traverse le proxy**, comme à l'écran principal (F-84 / SF-84-04). Derrière le
+   * proxy d'entreprise qui retient un flux SSE jusqu'à sa fin, l'autorisation d'un tour du volet n'arrivait jamais :
+   * `voix_off` refusée quatre fois « délai imparti » le 2026-11-10. Sans nouvelle du flux sous
+   * {@link TURN_STREAM_PROBE_MS}, le volet suit son tour par fenêtres ; un événement ne s'applique qu'une fois.
+   */
+  private cursor = 0;
+  private heard = false;
+  private probe: ReturnType<typeof setTimeout> | null = null;
+  private windows: AtelierTurnFollower | null = null;
+
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['projectId'] || changes['chantier']) {
       this.open();
@@ -180,7 +192,7 @@ export class TerminalLanePaneComponent implements OnChanges, OnDestroy {
     if (!this.projectId || !this.chantier) {
       return;
     }
-    this.generation += 1;
+    this.openGate();
     this.detach();
     this.resetTurn();
     // F-246 : le fil du chantier quitté ne reste jamais affiché sous l'en-tête du nouveau.
@@ -206,7 +218,18 @@ export class TerminalLanePaneComponent implements OnChanges, OnDestroy {
         if (question && question.remainingMs > 0 && Array.isArray(question.questions) && question.questions.length > 0) {
           this.showQuestion({ callId: question.callId, questions: question.questions, timeoutMs: question.remainingMs });
         }
-        this.attach = this.atelier.attachTurn(id, 0, this.handlers(generation, false), this.chantier);
+        const handlers = this.handlers(generation, false);
+        const attach = this.atelier.attachTurn(id, 0, {
+          ...handlers,
+          // L'abandon d'un rebranchement retenu (sonde) remonte un `idle` : il ne clôt pas le tour.
+          onIdle: () => {
+            if (this.attach === attach) {
+              handlers.onIdle?.();
+            }
+          },
+        }, this.chantier);
+        this.attach = attach;
+        this.armProbe(generation, handlers);
       },
       error: () => undefined,
     });
@@ -243,11 +266,13 @@ export class TerminalLanePaneComponent implements OnChanges, OnDestroy {
     this.unanswered.set(false);
     this.messages.update((current) => [...current,
       { id: `pane-${Date.now()}`, role: 'USER', content, actions: [] }]);
-    this.generation += 1;
+    const generation = this.openGate();
     this.detach();
     this.beginTurn();
-    void this.atelier.streamChat(this.projectId, content, this.handlers(this.generation, true), 'ACT', false,
-      [], this.chantier, true);
+    const handlers = this.handlers(generation, true);
+    void this.atelier.streamChat(this.projectId, content, handlers, 'ACT', false, [], this.chantier, true);
+    // Le flux d'émission reste ouvert (il porte la fin du tour) ; s'il est retenu, les fenêtres prennent le relais.
+    this.armProbe(generation, handlers);
   }
 
   /**
@@ -328,7 +353,18 @@ export class TerminalLanePaneComponent implements OnChanges, OnDestroy {
       }
     });
     return {
-      onStarted: () => live(() => this.streaming.update((s) => (s ? { ...s, accepted: true } : s))),
+      // F-260 : deux sources peuvent livrer le même tour (flux et fenêtres) — un événement ne s'applique qu'une fois.
+      acceptSeq: (seq) => generation === this.generation && seq > this.cursor,
+      onSeq: (seq) => {
+        if (generation === this.generation) {
+          this.cursor = seq;
+        }
+      },
+      onAttached: () => this.markHeard(generation),
+      onStarted: () => live(() => {
+        this.markHeard(generation);
+        this.streaming.update((s) => (s ? { ...s, accepted: true } : s));
+      }),
       onAction: (action) => live(() => {
         this.steps = [...this.steps, action];
         this.refreshBlocks();
@@ -362,10 +398,12 @@ export class TerminalLanePaneComponent implements OnChanges, OnDestroy {
         if (done.followUp === true) {
           return;
         }
+        this.stopWindows();
         this.endTurn();
         this.loadHistory();
       }),
       onError: (code) => live(() => {
+        this.stopWindows();
         this.endTurn();
         this.loadHistory();
         if (code !== 'interrupted') {
@@ -374,10 +412,17 @@ export class TerminalLanePaneComponent implements OnChanges, OnDestroy {
         }
       }),
       onIdle: () => live(() => {
+        this.markHeard(generation);
+        this.stopWindows();
         this.endTurn();
         this.loadHistory();
       }),
       onClosed: () => live(() => {
+        // F-260 : le tour s'est déjà conclu par les fenêtres (le flux retenu s'est vidé, tout déjà vu), ou les
+        // fenêtres portent encore sa fin — rien à rattraper.
+        if (!this.submitting() || this.windows !== null) {
+          return;
+        }
         // Flux tombé sans fin de tour : on relit le fil ; s'il tourne encore, on s'y rebranche.
         this.endTurn();
         if (sent) {
@@ -464,7 +509,60 @@ export class TerminalLanePaneComponent implements OnChanges, OnDestroy {
   }
 
   private detach(): void {
-    this.attach?.abort();
+    this.stopWindows();
+    const attach = this.attach;
     this.attach = null;
+    attach?.abort();
+  }
+
+  /** Ouvre la numérotation d'une nouvelle lecture du fil, et rend sa génération (F-260). */
+  private openGate(): number {
+    this.generation += 1;
+    this.cursor = 0;
+    this.heard = false;
+    return this.generation;
+  }
+
+  /** Le flux prouve qu'il passe : la sonde se tait (F-260). */
+  private markHeard(generation: number): void {
+    if (generation === this.generation) {
+      this.heard = true;
+      this.clearProbe();
+    }
+  }
+
+  /**
+   * Arme la sonde (F-260) : sans nouvelle du flux sous {@link TURN_STREAM_PROBE_MS}, le volet suit le tour de SON
+   * chantier par fenêtres. Un rebranchement retenu est abandonné — il rejouerait tout d'un bloc en fin de tour ; le
+   * flux d'émission, lui, reste ouvert.
+   */
+  private armProbe(generation: number, handlers: AtelierStreamHandlers): void {
+    this.clearProbe();
+    this.probe = setTimeout(() => {
+      this.probe = null;
+      if (this.heard || generation !== this.generation) {
+        return;
+      }
+      const attach = this.attach;
+      this.attach = null;
+      attach?.abort();
+      this.windows?.stop();
+      this.windows = this.atelier.followTurnInWindows(this.projectId, () => this.cursor, handlers,
+        { chantier: this.chantier });
+    }, TURN_STREAM_PROBE_MS);
+  }
+
+  private clearProbe(): void {
+    if (this.probe !== null) {
+      clearTimeout(this.probe);
+      this.probe = null;
+    }
+  }
+
+  /** Arrête la sonde et les fenêtres ; idempotent (F-260). */
+  private stopWindows(): void {
+    this.clearProbe();
+    this.windows?.stop();
+    this.windows = null;
   }
 }

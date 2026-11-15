@@ -165,6 +165,7 @@ import {
   JarvisFastBrainClient,
   announcementText, isCorrection, isRepeatCommand,
 } from './jarvis-fast-brain';
+import { DiscreetVeilComponent } from '../layout/discreet-veil/discreet-veil.component';
 
 /** Le sujet retenu sur cet appareil, d'une ouverture de Jarvis à l'autre. */
 export const JARVIS_SUBJECT_KEY = 'cg.jarvis.subject';
@@ -210,7 +211,7 @@ export function companionOffer(version: JarvisCompanionVersion, installed: numbe
  */
 @Component({
   selector: 'app-jarvis',
-  imports: [JarvisPieceGalleryComponent, JarvisCockpitComponent, JarvisCompanionsComponent, JarvisCostPanelComponent, JarvisPortraitComponent, JarvisMailboxesComponent, JarvisCalendarsComponent, JarvisClientMailComponent, JarvisStatePanelComponent, JarvisAgendaComponent, JarvisThreadPanelComponent, JarvisMailCardComponent, JarvisCardDetailComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatMenuModule],
+  imports: [DiscreetVeilComponent, JarvisPieceGalleryComponent, JarvisCockpitComponent, JarvisCompanionsComponent, JarvisCostPanelComponent, JarvisPortraitComponent, JarvisMailboxesComponent, JarvisCalendarsComponent, JarvisClientMailComponent, JarvisStatePanelComponent, JarvisAgendaComponent, JarvisThreadPanelComponent, JarvisMailCardComponent, JarvisCardDetailComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatMenuModule],
   templateUrl: './jarvis.component.html',
   styleUrl: './jarvis.component.scss',
   providers: [JarvisAppUpdate],
@@ -968,6 +969,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   private leaveStreamListening(): void {
     this.streamListening = false;
+    this.stopWarmingWhileSpeaking();
     if (this.streamIdleTimer !== null) {
       clearInterval(this.streamIdleTimer);
       this.streamIdleTimer = null;
@@ -993,8 +995,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
         this.conversation.touch();
         this.trace.newTurn();
         this.listenStartedAt = performance.now();
+        this.warmWhileSpeaking();
         return;
       case 'candidate':
+        this.stopWarmingWhileSpeaking();
         this.dropSpeculation();
         if (this.speculable(text, speechMs)) {
           this.speculation = new JarvisSpeculation(this.fastBrain, this.converseBody(text));
@@ -1002,8 +1006,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
         return;
       case 'cancelled':
         this.dropAnticipationOrSpeculation();
+        this.warmWhileSpeaking(); // la parole reprend : le préfixe reste chaud jusqu'au prochain candidat
         return;
       case 'rejected':
+        this.stopWarmingWhileSpeaking();
         this.dropSpeculation();
         return;
       case 'confirmed':
@@ -1014,6 +1020,38 @@ export class JarvisComponent implements OnInit, OnDestroy {
         return;
     }
   }
+
+  /**
+   * F-257 / SF-257-13 — **le préfixe du cerveau chauffé pendant la parole** : au début de la parole, puis toutes les
+   * {@link WARM_WHILE_SPEAKING_MS} tant qu'elle dure (l'effet se perd après ≈ 4 s), jusqu'au candidat de fin de tour.
+   * Le cerveau, sa consigne et sa réponse ne changent pas : seul son premier jeton arrive plus tôt.
+   */
+  private warmWhileSpeaking(): void {
+    this.stopWarmingWhileSpeaking();
+    if (!this.fastBrainOn()) {
+      return;
+    }
+    const warm = () => this.fastBrain.warmTurn(this.subjectId(), this.presentation());
+    warm();
+    this.speakingWarmTimer = setInterval(() => {
+      if (!this.streamListening || this.state() !== 'ecoute') {
+        this.stopWarmingWhileSpeaking();
+        return;
+      }
+      warm();
+    }, JarvisComponent.WARM_WHILE_SPEAKING_MS);
+  }
+
+  private stopWarmingWhileSpeaking(): void {
+    if (this.speakingWarmTimer !== null) {
+      clearInterval(this.speakingWarmTimer);
+      this.speakingWarmTimer = null;
+    }
+  }
+
+  private speakingWarmTimer: ReturnType<typeof setInterval> | null = null;
+  /** F-257 / SF-257-13 — cadence du pré-chauffage pendant une parole longue (mesuré : chaud de 0,6 à 4 s). */
+  static readonly WARM_WHILE_SPEAKING_MS = 3_000;
 
   /** Le tour confirmé par le service : même mesure, même porte et même suite que l'ancienne boucle. */
   private async acceptStreamTurn(text: string, speechMs: number | null, silenceMs: number,

@@ -99,7 +99,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     handlers = null;
     fast = null;
     // F-235 / SF-235-05 — par défaut, le cerveau rapide est éteint (503) : l'écran garde le mode actuel.
-    fastBrain = jasmine.createSpyObj<JarvisFastBrainClient>('JarvisFastBrainClient', ['warm', 'converse', 'verdict']);
+    fastBrain = jasmine.createSpyObj<JarvisFastBrainClient>('JarvisFastBrainClient', ['warm', 'warmTurn', 'converse', 'verdict']);
     fastBrain.verdict.and.resolveTo();
     // F-241 / SF-241-02 — l'entretien : par défaut, aucune proposition (la cadence est tenue par la passerelle).
     interviewClient = jasmine.createSpyObj<JarvisInterviewClient>('JarvisInterviewClient', ['offer', 'offered', 'draft']);
@@ -2206,6 +2206,26 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
         expect(report.listenMode).toBe('STREAM');
         expect(report.speechMs).toBe(1300);
       }));
+
+    it('SF-257-13 : la parole chauffe le préfixe du cerveau, puis toutes les 3 s, jusqu’au candidat', fakeAsync(() => {
+      fastBrain.warm.and.resolveTo(true);
+      const { jarvis } = streaming();
+      jarvis.presentation.set(false);
+      turn(jarvis, { type: 'turn', state: 'speech' });
+      expect(fastBrain.warmTurn).toHaveBeenCalledTimes(1);
+      tick(3_000);
+      expect(fastBrain.warmTurn).toHaveBeenCalledTimes(2);
+      turn(jarvis, { type: 'turn', state: 'candidate', text: 'Où en est CAGIP ?', speechMs: 1300, by: 'modele' });
+      tick(9_000);
+      expect(fastBrain.warmTurn).toHaveBeenCalledTimes(2);
+      turn(jarvis, { type: 'turn', state: 'cancelled' });
+      expect(fastBrain.warmTurn).toHaveBeenCalledTimes(3);
+      turn(jarvis, { type: 'turn', state: 'rejected' });
+      tick(6_000);
+      expect(fastBrain.warmTurn).toHaveBeenCalledTimes(3);
+      jarvis.ngOnDestroy();
+      discardPeriodicTasks();
+    }));
 
     it('parole reprise : la provisoire est jetée ; texte final différent : appel normal sur le texte confirmé',
       fakeAsync(() => {
