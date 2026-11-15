@@ -10,7 +10,7 @@
 
 ## Statut
 
-`in-progress`
+`done`
 
 ## Date de création
 
@@ -51,10 +51,10 @@ Un tour du cerveau rapide qui finit sur des appels d'outils sans rien dire ni ri
 
 ## Critères d'acceptation
 
-- [ ] CA1 — Annonce + lecture, puis outils sans texte ni écran, puis une phrase : 3 appels, la phrase est dite (rouge sur `main` : 2 appels).
-- [ ] CA2 — Même scénario où le 3e appel ne dit toujours rien : l'aveu « Je n'ai rien pu vous afficher, Monsieur. » est dit et figure dans le texte de l'issue.
-- [ ] CA3 — Un `afficher` refusé laisse une ligne de journal avec action et motif.
-- [ ] CA4 — Non-régression : réponse simple, montrer puis phrase, délégation (suite `JarvisFastBrainServiceTest`, tests des pièces).
+- [x] CA1 — Annonce + lecture, puis outils sans texte ni écran, puis une phrase : 3 appels, la phrase est dite (rouge sur `main` : 2 appels).
+- [x] CA2 — Même scénario où le 3e appel ne dit toujours rien : l'aveu « Je n'ai rien pu vous afficher, Monsieur. » est dit et figure dans le texte de l'issue.
+- [x] CA3 — Un `afficher` refusé laisse une ligne de journal avec action et motif.
+- [x] CA4 — Non-régression : réponse simple, montrer puis phrase, délégation (suite `JarvisFastBrainServiceTest`, tests des pièces).
 
 ---
 
