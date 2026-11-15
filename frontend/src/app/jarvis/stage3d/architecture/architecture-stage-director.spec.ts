@@ -3,7 +3,7 @@ import { ARCH_ICON_PX, ArchitectureGraph } from './architecture-graph';
 import { TOUT_GRAPH, TROIS_TIERS_GRAPH, sixtyNodesGraph } from './architecture-graph.fixture';
 import { ArchLayout, layoutArchitecture } from './architecture-layout-3d';
 import {
-  ArchState, ArchitectureStageDirector, DEFAULT_ARCH_STATE, ENTRY, MAX_LIT, Viewport, projectToScreen, svgToScreen,
+  ArchState, ArchitectureStageDirector, DEFAULT_ARCH_STATE, ENTRY, NARRATION, Viewport, projectToScreen, svgToScreen,
 } from './architecture-stage-director';
 
 const PC: Viewport = { width: 1920, height: 1080 };
@@ -126,22 +126,22 @@ describe('F-238 / SF-238-09 — le directeur de la scène d\'architecture', () =
     expect(MOTION_DURATIONS.archExit).toBe(600);
   });
 
-  it('paliers de transparence F-236 seulement ; un focus met le reste en contexte ; ≤ 3 allumés en blanc chaud', () => {
+  it('paliers de transparence F-236 seulement ; un focus met le reste en contexte ; allumés en blanc chaud', () => {
     const d = director(TROIS_TIERS_GRAPH);
     const allowed = Object.values(HOLO_ALPHA) as number[];
-    const plan = d.plan({ ...DEFAULT_ARCH_STATE, focus: 'alb', lit: ['alb', 'e1', 's3', 'rdsa'] }, PC);
+    const plan = d.plan({ ...DEFAULT_ARCH_STATE, focus: 'alb', lit: ['alb', 'e1'] }, PC);
     for (const v of [...plan.plateFill, ...plan.plateLine, ...plan.nodeAlpha, ...plan.edgeAlpha]) {
       expect(allowed.some((a) => Math.abs(a - v) < 1e-6)).withContext(String(v)).toBeTrue();
     }
     const at = (id: string): number => d.layout.nodeById.get(id) as number;
     expect(plan.nodeAlpha[at('alb')]).toBe(HOLO_ALPHA.lit);
     expect(plan.nodeRole[at('alb')]).toBe('core');
-    expect(plan.nodeAlpha[at('rdsa')]).toBeCloseTo(HOLO_ALPHA.context, 6); // 4e allumé ignoré, hors focus
+    expect(plan.nodeAlpha[at('rdsa')]).toBeCloseTo(HOLO_ALPHA.context, 6); // hors focus
     expect(plan.nodeAlpha[at('ec2a')]).toBeCloseTo(HOLO_ALPHA.active, 6); // voisin de l'ALB
     expect(plan.nodeRole.filter((r) => r === 'core').length + plan.edgeRole.filter((r) => r === 'core').length)
-      .toBeLessThanOrEqual(MAX_LIT);
+      .toBe(2);
     const e1 = d.layout.edges.find((e) => e.id === 'e1')?.index as number;
-    expect(plan.edgeFlow[e1]).toBe(2);
+    expect(plan.edgeInFlow[e1]).toBe(1);
     expect(plan.hero).toBe('alb');
   });
 
@@ -166,5 +166,49 @@ describe('F-238 / SF-238-09 — le directeur de la scène d\'architecture', () =
     expect(b).toBe(out);
     expect(b.plateAlt).toBe(out.plateAlt);
     expect([Array.from(b.plateAlt), Array.from(b.nodeScale), Array.from(b.edgeTrace)]).toEqual(snapshot);
+  });
+
+  describe('SF-238-12 — T-A7 et T-A8 (la phrase entendue)', () => {
+    const d = director(TROIS_TIERS_GRAPH);
+    const before = d.plan(DEFAULT_ARCH_STATE, PC);
+    const after = d.plan({ ...DEFAULT_ARCH_STATE, lit: ['alb'], flow: ['e1'] }, PC);
+    const at = 10_000;
+    const alb = d.layout.nodeById.get('alb') as number;
+    const e1 = d.layout.edges.find((e) => e.id === 'e1')?.index as number;
+    const f = (now: number) => d.frame(after, 'repos', now, d.newFrame(), now, { from: before, at });
+
+    it('T-A8 : le halo monte dès la première image (≤ 100 ms), atteint « allumé » à 350 ms, le socle pulse une fois', () => {
+      const first = f(at + 16);
+      expect(first.nodeAlpha[alb]).toBeGreaterThan(before.nodeAlpha[alb]);
+      expect(first.nodeScale[alb]).toBeGreaterThan(1);
+      expect(f(at + NARRATION.lightMs).nodeAlpha[alb]).toBeCloseTo(HOLO_ALPHA.lit, 6);
+      expect(f(at + NARRATION.lightMs).nodeScale[alb]).toBeCloseTo(1, 6);
+    });
+
+    it('extinction en 0,9 s (souffle) quand la phrase suivante ne le cite plus', () => {
+      const off = (now: number) => d.frame(before, 'repos', now, d.newFrame(), now, { from: after, at });
+      expect(off(at + 450).nodeAlpha[alb]).toBeGreaterThan(before.nodeAlpha[alb]);
+      expect(off(at + 450).nodeAlpha[alb]).toBeLessThan(HOLO_ALPHA.lit);
+      expect(off(at + NARRATION.fadeMs).nodeAlpha[alb]).toBeCloseTo(before.nodeAlpha[alb], 6);
+    });
+
+    it('T-A7 : tracé segment par segment (150 ms/segment, ≤ 0,9 s), puis particules ×2 pendant 2 s, sans saut', () => {
+      expect(f(at).edgeSweep[e1]).toBe(0);
+      expect(f(at + 100).edgeSweep[e1]).toBeGreaterThan(0);
+      expect(f(at + NARRATION.sweepMaxMs).edgeSweep[e1]).toBe(1);
+      // Parcours : continu à chaque instant, pente 2 pendant la fenêtre accélérée, puis 1.
+      let last = f(at).edgeTravel[e1];
+      for (let now = at + 50; now <= at + 4000; now += 50) {
+        const travel = f(now).edgeTravel[e1];
+        expect(travel - last).toBeGreaterThan(0);
+        expect(travel - last).toBeLessThanOrEqual(0.1 + 1e-6);
+        last = travel;
+      }
+      const sweep = Math.min(NARRATION.sweepMaxMs, NARRATION.segmentMs * 4);
+      const slope = (f(at + sweep + 1100).edgeTravel[e1] - f(at + sweep + 100).edgeTravel[e1]);
+      expect(slope).toBeCloseTo(2, 3);
+      const after2s = (f(at + sweep + 3100).edgeTravel[e1] - f(at + sweep + 2100).edgeTravel[e1]);
+      expect(after2s).toBeCloseTo(1, 3);
+    });
   });
 });

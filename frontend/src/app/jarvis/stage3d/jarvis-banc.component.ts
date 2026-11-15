@@ -44,7 +44,8 @@ import { frozenClock } from './jarvis-banc';
     @if (architecture; as a) {
       <!-- F-238 / SF-238-09 — l'architecture en 3D seule (fixtures du renderer, aucun réseau). -->
       <app-architecture-stage [graph]="a.graph" [state]="a.state" [phase]="a.phase" [clock]="frozen"
-                              [level]="level" [showOverlay]="a.overlay" [iconFetcher]="iconFetcher" />
+                              [level]="level" [showOverlay]="a.overlay" [iconFetcher]="iconFetcher"
+                              [script]="a.script" />
     } @else {
       <app-jarvis-stage-3d #stage [withCore]="true" [planOverride]="staged.plan" [voiceLevel]="voice"
                            [face]="face" [mouth]="mouth"

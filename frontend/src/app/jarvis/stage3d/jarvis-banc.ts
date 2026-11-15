@@ -71,7 +71,9 @@ export const BANC_SCENES = [
   // F-238 / SF-238-09 — l'architecture en 3D : entrée T-A1, vue de dessus (superposée au 2D cadré), éclaté,
   // sortie T-A2, schéma « tout », 60 services, héros allumé.
   'architecture', 'architecture-dessus', 'architecture-eclate', 'architecture-sortie', 'architecture-tout',
-  'architecture-60', 'architecture-allume'] as const;
+  'architecture-60', 'architecture-allume',
+  // SF-238-12 — la narration synchronisée (quatre phrases, `&t=` dans la séquence).
+  'architecture-narration'] as const;
 
 const SCENE_NAME = /^[a-z0-9-]{1,40}$/;
 
