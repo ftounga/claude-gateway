@@ -63,7 +63,8 @@ describe('« Pas pour moi » (F-265 / SF-265-01)', () => {
     for (const pardon of ['Pardon, Monsieur, je n\'ai pas bien compris : pouvez-vous répéter?',
       'Pardon, Monsieur, je n\'ai pas bien saisi : à quoi faites-vous référence?',
       'Pardon, Monsieur, je n\'ai pas saisi la fin.', 'Je n\'ai pas bien compris, pouvez-vous répéter ?',
-      'Pardon, Monsieur ?', '🎙 Pardon, Monsieur, je n’ai pas compris.']) {
+      'Pardon, Monsieur ?', '🎙 Pardon, Monsieur, je n’ai pas compris.',
+      'Pardon, Monsieur, je ne suis pas certain de vous suivre.']) {
       expect(isClarification(pardon)).withContext(pardon).toBeTrue();
     }
     for (const answer of ['Pardon, Monsieur, à quel sujet répondez-vous : agenor, data-platform ou le WAF?',

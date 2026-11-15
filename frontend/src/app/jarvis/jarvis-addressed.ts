@@ -120,6 +120,7 @@ export function isClarification(sentence: string | null | undefined): boolean {
   const p = plain(sentence);
   return /\bpas (bien |tout a fait |tres bien )?(compris|saisi|entendu|suivi|capte)\b/.test(p)
     || /\b(pouvez vous|peux tu|pourriez vous|voudriez vous) (me )?(le |la )?(repeter|redire|reformuler)\b/.test(p)
+    || /\b(pas|guere) (certain|sur|sure) de (bien )?(vous )?(suivre|comprendre)\b/.test(p)
     || /^pardon( monsieur)?$/.test(p);
 }
 

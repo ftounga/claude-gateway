@@ -128,6 +128,7 @@ test('F-265 — isPardon : « je n’ai pas compris » reconnu, une question de 
   assert.equal(isPardon('Pardon, Monsieur, je n\'ai pas bien compris : pouvez-vous répéter?'), true);
   assert.equal(isPardon('Pardon, Monsieur, je n\'ai pas bien saisi : à quoi faites-vous référence?'), true);
   assert.equal(isPardon('Pardon, Monsieur ?'), true);
+  assert.equal(isPardon('Pardon, Monsieur, je ne suis pas certain de vous suivre.'), true);
   assert.equal(isPardon('Pardon, Monsieur, à quel sujet répondez-vous : agenor, data-platform ou le WAF?'), false);
   assert.equal(isPardon('Voici la galerie des vidéos, Monsieur.'), false);
 });
