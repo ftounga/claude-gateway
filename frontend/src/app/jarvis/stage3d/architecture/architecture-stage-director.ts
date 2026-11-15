@@ -1,5 +1,7 @@
 import { HOLO_ALPHA, HoloRole, MOTION_DURATIONS, ease } from '../jarvis-motion';
-import { ArchLayout, NODE_FLOAT, STEP_COMPACT, STEP_EXPLODED, STEP_EXPLODED_PHONE } from './architecture-layout-3d';
+import {
+  ArchLayout, NODE_FLOAT, STEP_COMPACT, STEP_EXPLODED, STEP_EXPLODED_PHONE, pathPoints,
+} from './architecture-layout-3d';
 
 /**
  * F-238 / SF-238-09 — **le directeur de la scène d'architecture** (cadrage §6) : fichier <b>pur</b>, aucun `three`.
@@ -37,6 +39,8 @@ export interface ArchState {
   focus: string | null;
   /** Ce dont Jarvis parle (ids de services, zones ou liaisons) : au plus {@link MAX_LIT}. */
   lit: readonly string[];
+  /** SF-238-12 — les liaisons des flux allumés par la narration (T-A7). */
+  flow?: readonly string[];
   phone: boolean;
 }
 
@@ -71,6 +75,9 @@ export interface ArchitecturePlan {
   nodeRole: HoloRole[];
   edgeAlpha: Float32Array;
   edgeRole: HoloRole[];
+  /** SF-238-12 — 1 si la liaison est dans un flux allumé (T-A7), 1 si le service est allumé (T-A8). */
+  edgeInFlow: Uint8Array;
+  nodeLit: Uint8Array;
   /** Vitesse des particules par liaison (× {@link FLOW_SPEED} ; 0 = pas de flux). */
   edgeFlow: Float32Array;
   nodeLabel: boolean[];
@@ -94,6 +101,10 @@ export interface ArchFrame {
   /** Part tracée de chaque filament (0-1, de `from` vers `to`). */
   edgeTrace: Float32Array;
   edgeAlpha: Float32Array;
+  /** SF-238-12 — T-A7 : part balayée du chemin d'un flux allumé (0-1, segment par segment). */
+  edgeSweep: Float32Array;
+  /** Parcours des particules (en secondes de flux) : continu, accéléré ×2 pendant 2 s après T-A7, sans saut. */
+  edgeTravel: Float32Array;
   particles: number;
   labels: number;
 }
@@ -242,7 +253,20 @@ export function cameraFor(layout: ArchLayout, state: ArchState, viewport: Viewpo
   return camera;
 }
 
+/** SF-238-12 — la phrase en cours : ce qui était allumé avant, et quand la phrase a commencé (ms). */
+export interface ArchTransition {
+  from: ArchitecturePlan;
+  at: number;
+}
+
+/** T-A7 / T-A8 (cadrage §10.1). */
+export const NARRATION = {
+  lightMs: 350, fadeMs: 900, segmentMs: 150, sweepMaxMs: 900, boostMs: 2000, pulse: 0.15,
+} as const;
+
 export class ArchitectureStageDirector {
+  /** T-A7 : durée du tracé de chaque liaison (150 ms par segment, borné à 0,9 s). */
+  private readonly sweepMs: Float32Array;
   /** Cascades de T-A1, calculées une fois (le chemin d'image n'alloue rien). */
   private readonly rise: { gap: number; dur: number };
   private readonly pose: { gap: number; dur: number };
@@ -252,12 +276,16 @@ export class ArchitectureStageDirector {
     this.rise = cascade(layout.plates.length, ENTRY.riseEnd - ENTRY.riseStart, ENTRY.riseStagger);
     this.pose = cascade(layout.nodes.length, ENTRY.poseEnd - ENTRY.poseStart, ENTRY.poseStagger);
     this.trace = cascade(layout.edges.length, ENTRY.traceEnd - ENTRY.traceStart, ENTRY.traceStagger);
+    this.sweepMs = Float32Array.from(layout.edges.map((e) => Math.min(NARRATION.sweepMaxMs,
+      NARRATION.segmentMs * (pathPoints(e) - 1))));
   }
 
   /** Le plan d'un état : alloué au changement d'état seulement, jamais par image. */
   plan(state: ArchState, viewport: Viewport): ArchitecturePlan {
     const { plates, nodes, edges } = this.layout;
-    const lit = new Set(state.lit.slice(0, MAX_LIT));
+    // Au plus 3 GROUPES allumés : la narration (SF-238-12) l'assure ; un type (« les instances ») en compte un seul.
+    const lit = new Set(state.lit);
+    const flowSet = new Set(state.flow ?? []);
     const focus = state.focus;
 
     // Le focus : un service (lui, ses voisins, leurs plateaux) ou une zone (elle, ses descendants, leurs services).
@@ -325,13 +353,16 @@ export class ArchitectureStageDirector {
     const edgeAlpha = new Float32Array(edges.length);
     const edgeRole: HoloRole[] = [];
     const edgeFlow = new Float32Array(edges.length);
+    const edgeInFlow = new Uint8Array(edges.length);
     edges.forEach((e, i) => {
-      const on = lit.has(e.id);
+      const on = lit.has(e.id) || flowSet.has(e.id);
+      edgeInFlow[i] = on ? 1 : 0;
       edgeAlpha[i] = on ? HOLO_ALPHA.lit : rest('edge', i) ? HOLO_ALPHA.active : HOLO_ALPHA.context;
       edgeRole.push(on ? 'core' : 'normal');
-      // T-A7 : un flux allumé court deux fois plus vite ; hors focus, plus de particules.
-      edgeFlow[i] = on ? 2 : rest('edge', i) ? 1 : 0;
+      // Hors focus, plus de particules ; l'accélération ×2 d'un flux allumé est calculée par image (T-A7).
+      edgeFlow[i] = on || rest('edge', i) ? 1 : 0;
     });
+    const nodeLit = Uint8Array.from(nodes.map((n) => (lit.has(n.id) ? 1 : 0)));
 
     // Étiquettes (§8.2, §14) : toutes jusqu'à 24 services ; au-delà, le focus et ses voisins ; > 40, le focus seul.
     const count = nodes.length;
@@ -356,7 +387,8 @@ export class ArchitectureStageDirector {
       step: stepOf(state),
       lift: state.view === 'dessus' ? 0 : 1,
       plateFill, plateLine, plateRole, nodeAlpha, nodeRole, edgeAlpha, edgeRole, edgeFlow, nodeLabel, plateLabel,
-      hero: state.lit[0] ?? focus,
+      edgeInFlow, nodeLit,
+      hero: state.lit[0] ?? state.flow?.[0] ?? focus,
     };
   }
 
@@ -367,7 +399,8 @@ export class ArchitectureStageDirector {
       lay: 1, plateAlt: new Float32Array(plates.length), plateFill: new Float32Array(plates.length),
       plateLine: new Float32Array(plates.length), float: NODE_FLOAT, nodeScale: new Float32Array(nodes.length),
       nodeAlpha: new Float32Array(nodes.length), edgeTrace: new Float32Array(edges.length),
-      edgeAlpha: new Float32Array(edges.length), particles: 1, labels: 1,
+      edgeAlpha: new Float32Array(edges.length), edgeSweep: new Float32Array(edges.length),
+      edgeTravel: new Float32Array(edges.length), particles: 1, labels: 1,
     };
   }
 
@@ -375,9 +408,15 @@ export class ArchitectureStageDirector {
    * L'image de `plan` à l'instant `t` (ms depuis le début de la phase) : T-A1 pour `entree`, T-A2 pour `sortie`,
    * l'état final pour `repos`. Écrit dans `out`, <b>n'alloue rien</b>.
    */
-  frame(plan: ArchitecturePlan, phase: ArchPhaseKind, t: number, out: ArchFrame): ArchFrame {
+  frame(plan: ArchitecturePlan, phase: ArchPhaseKind, t: number, out: ArchFrame, now = t,
+      transition: ArchTransition | null = null): ArchFrame {
     const { plates, nodes, edges } = this.layout;
     const h = plan.step * plan.lift;
+    const seconds = now / 1000;
+    for (let i = 0; i < edges.length; i++) {
+      out.edgeSweep[i] = plan.edgeInFlow[i];
+      out.edgeTravel[i] = seconds;
+    }
     if (phase === 'entree') {
       const { rise, pose, trace } = this;
       out.lay = ease('glisse', span(t, 0, ENTRY.layEnd));
@@ -445,6 +484,45 @@ export class ArchitectureStageDirector {
     out.particles = 1;
     out.labels = 1;
     out.float = NODE_FLOAT * plan.lift;
+    if (transition) {
+      this.narrate(plan, transition, now, out);
+    }
     return out;
+  }
+
+  /**
+   * SF-238-12 — la phrase entendue change ce qui est allumé (plan `transition.from` ⇒ `plan` à `transition.at`) :
+   * T-A8 (0,35 s, `sortie`) pour ce qui s'allume, halo et socle qui pulse une fois ; extinction en 0,9 s
+   * (`souffle`) ; T-A7 pour un flux qui s'allume : tracé de la source à la cible segment par segment (150 ms par
+   * segment, borné à 0,9 s, `sortie`), puis particules ×2 pendant 2 s — le parcours est intégré, jamais de saut.
+   */
+  private narrate(plan: ArchitecturePlan, transition: ArchTransition, now: number, out: ArchFrame): void {
+    const from = transition.from;
+    const dt = Math.max(0, now - transition.at);
+    const up = ease('sortie', span(dt, 0, NARRATION.lightMs));
+    const down = ease('souffle', span(dt, 0, NARRATION.fadeMs));
+    const mix = (a: number, b: number): number => a + (b - a) * (b >= a ? up : down);
+    for (let i = 0; i < out.plateFill.length; i++) {
+      out.plateFill[i] = mix(from.plateFill[i], plan.plateFill[i]);
+      out.plateLine[i] = mix(from.plateLine[i], plan.plateLine[i]);
+    }
+    const pulse = Math.sin(Math.PI * span(dt, 0, NARRATION.lightMs));
+    for (let i = 0; i < out.nodeAlpha.length; i++) {
+      out.nodeAlpha[i] = mix(from.nodeAlpha[i], plan.nodeAlpha[i]);
+      if (plan.nodeLit[i] && !from.nodeLit[i]) {
+        out.nodeScale[i] = 1 + NARRATION.pulse * pulse;
+      }
+    }
+    for (let i = 0; i < out.edgeAlpha.length; i++) {
+      out.edgeAlpha[i] = mix(from.edgeAlpha[i], plan.edgeAlpha[i]);
+      if (plan.edgeInFlow[i] && !from.edgeInFlow[i]) {
+        const sweep = this.sweepMs[i];
+        out.edgeSweep[i] = ease('sortie', span(dt, 0, sweep));
+        // ×2 pendant 2 s après le tracé : le parcours gagne la durée accélérée écoulée (continu).
+        out.edgeTravel[i] += Math.max(0, Math.min(dt - sweep, NARRATION.boostMs)) / 1000;
+      } else if (!plan.edgeInFlow[i] && from.edgeInFlow[i]) {
+        out.edgeSweep[i] = 1 - down;
+      }
+    }
   }
 }

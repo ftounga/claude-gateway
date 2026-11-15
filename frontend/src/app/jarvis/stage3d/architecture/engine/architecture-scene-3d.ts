@@ -12,7 +12,7 @@ import type { InterleavedBufferAttribute } from 'three';
 
 import { EngineClock } from '../../jarvis-banc';
 import { FrameHost, FrameLoop } from '../../jarvis-frame-loop';
-import { HOLO_COLORS, HoloRole, rgb } from '../../jarvis-motion';
+import { HOLO_ALPHA, HOLO_COLORS, HoloRole, rgb } from '../../jarvis-motion';
 import { QualityLevel } from '../../jarvis-render-capability';
 import { levelBudget } from '../../hud/jarvis-device-profile';
 import { JarvisPost } from '../../engine/jarvis-post';
@@ -22,8 +22,10 @@ import {
   ArchLayout, ICON_SIZE, pathPoints, writeEdgePath, writeParticles,
 } from '../architecture-layout-3d';
 import {
-  ArchFrame, ArchPhaseKind, ArchState, ArchitecturePlan, ArchitectureStageDirector, Viewport, cameraBasis,
+  ArchFrame, ArchPhaseKind, ArchState, ArchTransition, ArchitecturePlan, ArchitectureStageDirector, Viewport,
+  cameraBasis,
 } from '../architecture-stage-director';
+import { ArchitectureNarrator } from '../architecture-narration';
 
 /**
  * F-238 / SF-238-09 — **la scène d'architecture en 3D** (cadrage §9, §10, §14). Seul fichier `three` de la SF,
@@ -508,8 +510,9 @@ export class ArchitectureSceneGraph {
   }
 
   /** Recopie l'image (plan, phase, instant en ms) dans les tampons de la scène. N'alloue rien. */
-  update(plan: ArchitecturePlan, phase: ArchPhaseKind, phaseMs: number, seconds: number, aspect: number): void {
-    const f = this.director.frame(plan, phase, phaseMs, this.frame);
+  update(plan: ArchitecturePlan, phase: ArchPhaseKind, phaseMs: number, seconds: number, aspect: number,
+      transition: ArchTransition | null = null): void {
+    const f = this.director.frame(plan, phase, phaseMs, this.frame, seconds * 1000, transition);
     const { layout } = this.options;
     this.backdrop.uniforms['uTime'].value = seconds * 1000;
     this.backdrop.uniforms['uAspect'].value = aspect;
@@ -577,8 +580,10 @@ export class ArchitectureSceneGraph {
       for (const e of layout.edges) {
         const trace = f.edgeTrace[e.index];
         if (trace >= 1) {
+          // Parcours intégré par le directeur (×2 pendant 2 s après T-A7, sans saut de position).
           count = writeParticles(this.paths[e.index], 0, pathPoints(e), this.lengths[e.index], e.bidirectional,
-            seconds, plan.edgeFlow[e.index], this.sparkPositions, this.sparkGlow, count, this.maxSparks);
+            f.edgeTravel[e.index], plan.edgeFlow[e.index], this.sparkPositions, this.sparkGlow, count,
+            this.maxSparks);
         }
       }
     }
@@ -865,7 +870,10 @@ export class ArchitectureSceneGraph {
       this.lengths[e.index] = length;
       const count = pathPoints(e);
       const a = f.edgeAlpha[e.index];
-      const role = plan.edgeRole[e.index] === 'core' ? this.palette.get('core') as number[] : cream;
+      const white = this.palette.get('core') as number[];
+      const lit = plan.edgeRole[e.index] === 'core';
+      // T-A7 : les segments déjà balayés prennent le blanc chaud ; les suivants restent au palier actif.
+      const swept = f.edgeSweep[e.index] * (count - 1);
       const traced = f.edgeTrace[e.index] * length;
       let walked = 0;
       for (let s = 1; s < count; s++) {
@@ -875,7 +883,9 @@ export class ArchitectureSceneGraph {
           + Math.abs(path[o1 + 2] - path[o0 + 2]);
         // Le tracé avance segment par segment de `from` vers `to` ; au-delà, le segment se réduit à son départ.
         const u = len > 0 ? Math.max(0, Math.min(1, (traced - walked) / len)) : (traced > walked ? 1 : 0);
-        const vis = traced > walked ? a : 0;
+        const hot = lit && s - 1 < swept;
+        const role = hot ? white : cream;
+        const vis = traced > walked ? (hot || !lit ? a : Math.min(a, HOLO_ALPHA.active)) : 0;
         const x1 = path[o0] + (path[o1] - path[o0]) * u;
         const y1 = path[o0 + 1] + (path[o1 + 1] - path[o0 + 1]) * u;
         const z1 = path[o0 + 2] + (path[o1 + 2] - path[o0 + 2]) * u;
@@ -950,6 +960,11 @@ export class ArchitectureEngine {
   iconCalls = 0;
   private sceneCalls = 0;
   private declutterDue = true;
+  /** SF-238-12 — la phrase en cours (ce qui était allumé avant, et quand elle a commencé). */
+  private transition: ArchTransition | null = null;
+  private narrator: ArchitectureNarrator | null = null;
+  private script: readonly { at: number; text: string }[] = [];
+  private scriptIndex = -1;
   fps = 0;
   private last: number | null = null;
   private readonly look = new Vector3();
@@ -996,6 +1011,31 @@ export class ArchitectureEngine {
     this.graph.setIcons(icons);
   }
 
+  /**
+   * SF-238-12 — une phrase de Jarvis commence (signal `spoken`) : ce qu'elle nomme s'allume tout de suite (T-A8 /
+   * T-A7), ce qui ne l'est plus s'éteint. Rapprochement local, aucun réseau. Renvoie ce qui a été allumé.
+   */
+  narrate(phrase: string, at = this.options.clock()): { lit: string[]; flow: string[] } {
+    this.narrator ??= new ArchitectureNarrator(this.options.layout);
+    const result = this.narrator.read(phrase, this.plan.state.focus);
+    const from = this.plan;
+    this.setState({ ...this.plan.state, lit: result.lit, flow: result.flow });
+    this.transition = { from, at };
+    return result;
+  }
+
+  /** Banc — une narration rejouée : chaque phrase commence à son instant (ms), horloge figée comprise. */
+  playScript(script: readonly { at: number; text: string }[]): void {
+    this.script = script;
+    this.scriptIndex = -1;
+  }
+
+  /** Ce qui est allumé (banc, mesure) : services et zones, puis liaisons des flux. */
+  get lit(): string {
+    const state = this.plan.state;
+    return [...state.lit, ...(state.flow ?? [])].join(' ');
+  }
+
   /** Nouvel état (alloué au changement seulement). */
   setState(state: ArchState): void {
     this.plan = this.graph.director.plan(state, this.viewport());
@@ -1026,6 +1066,25 @@ export class ArchitectureEngine {
     this.renderer.dispose();
   }
 
+  /** Pose la phrase du script en cours à l'instant `t` (la précédente donne l'état d'avant). */
+  private followScript(t: number): void {
+    if (this.script.length === 0) {
+      return;
+    }
+    let index = -1;
+    for (let i = 0; i < this.script.length && this.script[i].at <= t; i++) {
+      index = i;
+    }
+    if (index === this.scriptIndex || index < 0) {
+      return;
+    }
+    if (this.scriptIndex < 0 && index > 0) {
+      this.narrate(this.script[index - 1].text, this.script[index - 1].at);
+    }
+    this.scriptIndex = index;
+    this.narrate(this.script[index].text, this.script[index].at);
+  }
+
   private viewport(): Viewport {
     return { width: this.width, height: this.height };
   }
@@ -1039,7 +1098,9 @@ export class ArchitectureEngine {
       }
     }
     this.last = now;
-    this.graph.update(this.plan, this.phase, t - this.phaseStart, t / 1000, this.width / Math.max(1, this.height));
+    this.followScript(t);
+    this.graph.update(this.plan, this.phase, t - this.phaseStart, t / 1000, this.width / Math.max(1, this.height),
+      this.transition);
     if (this.cameraFor !== this.plan) {
       // La caméra suit le plan (SF-238-10 y mettra le ressort T-A9) ; recalculée au changement seulement.
       this.cameraFor = this.plan;

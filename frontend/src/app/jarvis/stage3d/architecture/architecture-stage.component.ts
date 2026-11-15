@@ -75,6 +75,8 @@ export class ArchitectureStageComponent {
    * de suite, l'atlas la rejoint quand il est prêt (même appel de dessin).
    */
   readonly iconFetcher = input<IconFetcher | null>(null);
+  /** SF-238-12 — banc : une narration rejouée (phrases et instants de début, ms). */
+  readonly script = input<readonly { at: number; text: string }[]>([]);
 
   protected readonly icon = ARCH_ICON_PX;
   protected readonly unavailable = signal(false);
@@ -137,6 +139,9 @@ export class ArchitectureStageComponent {
         icons: neutralIconSource(), labelHost: this.labels().nativeElement, phone: this.state().phone,
         random: seededRandom(238), clock: this.clock() ?? realClock(), frameHost: browserFrameHost(),
       }, this.state(), this.phase());
+      if (this.script().length > 0) {
+        this.engine.playScript(this.script());
+      }
       this.engine.start();
       const fetcher = this.iconFetcher();
       if (fetcher) {
@@ -156,6 +161,7 @@ export class ArchitectureStageComponent {
     }
     el.dataset['calls'] = String(engine.calls);
     el.dataset['iconCalls'] = String(engine.iconCalls);
+    el.dataset['lit'] = engine.lit;
     el.dataset['fps'] = engine.fps.toFixed(1);
     el.dataset['particles'] = String(engine.graph.particleCount);
     el.dataset['frames'] = String(engine.frames);
