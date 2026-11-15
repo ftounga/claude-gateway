@@ -448,3 +448,37 @@ export function refusalPhrase(reason: PieceStoreReason | undefined): string {
       return 'Je n’arrive pas à lire les pièces pour le moment.';
   }
 }
+
+/**
+ * F-263 / SF-263-02 — la correction dite quand l'écran refuse un ordre du cerveau rapide, qui a souvent déjà dit
+ * « Voici » : elle commence par « Pardon, » ; une pièce introuvable nomme le sujet en vue (un mauvais sujet se
+ * remarque). Refus silencieux (déjà montrée, occupé) : vide.
+ */
+export function showCorrection(reason: PieceStoreReason | undefined, subjectName: string | null): string {
+  switch (reason) {
+    case 'RECENT':
+    case 'BUSY':
+      return '';
+    case 'NOTHING':
+      return 'Pardon, il n’y a rien à montrer.';
+    case 'NOT_FOUND':
+      return subjectName ? `Pardon, je ne les trouve pas dans ${subjectName}.` : 'Pardon, je ne les trouve pas.';
+    default: {
+      const phrase = refusalPhrase(reason);
+      return phrase ? `Pardon, ${phrase.charAt(0).toLowerCase()}${phrase.slice(1)}` : '';
+    }
+  }
+}
+
+/**
+ * F-263 / SF-263-02 — des pièces montrées qui sont **toutes** sur un poste éteint : la phrase qui le dit (le « Voilà »
+ * du cerveau ne doit pas laisser croire qu'elles s'ouvrent). Vide si une pièce au moins est en ligne, ou s'il n'y en a
+ * aucune.
+ */
+export function offlinePiecesPhrase(pieces: readonly Piece[], hostName: string | null): string {
+  if (!pieces.length || pieces.some((p) => p.available !== 'HOST_OFFLINE')) {
+    return '';
+  }
+  return hostName ? `Elles sont sur le poste ${hostName}, éteint : je ne peux pas les ouvrir.`
+    : 'Elles sont sur un poste éteint : je ne peux pas les ouvrir.';
+}

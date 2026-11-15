@@ -236,7 +236,29 @@ export function subjectSwitch<T extends { id: string; name: string }>(said: stri
     return exact[0];
   }
   const partial = subjects.filter((s) => normalize(s.name).includes(wanted));
-  return partial.length === 1 ? partial[0] : null;
+  if (partial.length === 1) {
+    return partial[0];
+  }
+  return subjectNamedIn(wanted, subjects);
+}
+
+/**
+ * F-263 / SF-263-02 — « bascule vers CAGIP sur data-platform » : la suite de la phrase n'est pas un nom de sujet, mais
+ * elle en contient un, en mots entiers. Un seul sujet nommé (ou un nom qui contient tous les autres trouvés) → lui ;
+ * deux sujets distincts → `null` (jamais au hasard). Les noms de moins de 3 lettres ne comptent pas.
+ */
+function subjectNamedIn<T extends { id: string; name: string }>(wanted: string, subjects: readonly T[]): T | null {
+  const padded = ` ${wanted} `;
+  const named = subjects.filter((s) => {
+    const name = normalize(s.name);
+    return name.length >= 3 && padded.includes(` ${name} `);
+  });
+  if (named.length === 0) {
+    return null;
+  }
+  const longest = named.reduce((a, b) => (normalize(b.name).length > normalize(a.name).length ? b : a));
+  const longestName = ` ${normalize(longest.name)} `;
+  return named.every((s) => longestName.includes(` ${normalize(s.name)} `)) ? longest : null;
 }
 
 /** F-233 / SF-233-03 — au plus autant de phrases dites par ligne 🎙 (la consigne en demande deux au plus). */

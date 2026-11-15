@@ -1,5 +1,5 @@
 import { JarvisPieceGalleryComponent } from './pieces/jarvis-piece-gallery.component';
-import { JarvisPieceStore, refusalPhrase } from './pieces/jarvis-piece-store';
+import { JarvisPieceStore, offlinePiecesPhrase, refusalPhrase, showCorrection } from './pieces/jarvis-piece-store';
 import { cardsAllowedOnDevice, setCardsAllowedOnDevice } from './cards/jarvis-card-deck';
 import { LipSync } from './face/jarvis-lip-sync';
 import { faceOnDevice, setFaceOnDevice } from './face/jarvis-face-stage';
@@ -4134,6 +4134,15 @@ export class JarvisComponent implements OnInit, OnDestroy {
     return shown;
   }
 
+  /** F-263 / SF-263-02 — la phrase « sur le poste éteint » des pièces de la galerie affichée, ou vide. */
+  private offlineShownPhrase(): string {
+    const map = this.pieces.pieces();
+    const shown = this.pieces.nav().items.map((i) => map.get(i.id)).filter((p): p is Piece => p != null);
+    const subjectId = shown.find((p) => p.subjectId)?.subjectId ?? null;
+    const host = subjectId ? this.subjects().find((s) => s.id === subjectId)?.hostName ?? null : null;
+    return offlinePiecesPhrase(shown, host);
+  }
+
   /** F-253 / SF-253-06 — la raison du dernier refus du réducteur des pièces. */
   private showRefusal: string | null = null;
 
@@ -4164,11 +4173,17 @@ export class JarvisComponent implements OnInit, OnDestroy {
     });
     if (!done.ok) {
       this.showRefusal = done.reason ?? null;
-      const phrase = refusalPhrase(done.reason);
+      // F-263 / SF-263-02 — le cerveau a souvent déjà dit « Voici » : le refus se dit en correction.
+      const phrase = showCorrection(done.reason, this.subject()?.name ?? null);
       if (phrase) {
         await this.say(phrase);
       }
       return false;
+    }
+    // F-263 / SF-263-02 — des pièces toutes sur un poste éteint ne s'ouvrent pas : Jarvis le dit.
+    const offline = command.action === 'galerie' || command.action === 'piece' ? this.offlineShownPhrase() : '';
+    if (offline) {
+      await this.say(offline);
     }
     if (command.action === 'raconter' && this.pieces.mode() === 'story') {
       void this.startStory();
