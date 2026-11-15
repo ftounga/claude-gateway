@@ -455,3 +455,6 @@
 @if (night()) {
   <app-jarvis-night [ambient]="ambientNow()" (exit)="night.set(false)" />
 }
+
+<!-- F-259 / SF-259-01 — le voile discret couvre aussi Jarvis (canvas 3D compris) ; la voix continue. -->
+<app-discreet-veil />
