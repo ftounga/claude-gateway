@@ -24,6 +24,9 @@ import { bancCardDetail, stageBancCards } from '../cards/jarvis-card-banc';
 import { LipSync } from '../face/jarvis-lip-sync';
 import { EDENRED_ALIGNMENT } from '../face/jarvis-face-fixture';
 import type { MouthShape } from '../face/jarvis-visemes';
+import { ArchitectureStageComponent } from './architecture/architecture-stage.component';
+import { bancArchitecture } from './architecture/architecture-banc';
+import { frozenClock } from './jarvis-banc';
 
 /**
  * F-236 / SF-236-01 — **la page du banc de captures** (`/jarvis-banc?banc=<scène>&t=<ms>`), <b>développement
@@ -35,32 +38,38 @@ import type { MouthShape } from '../face/jarvis-visemes';
 @Component({
   selector: 'app-jarvis-banc',
   imports: [JarvisStage3dComponent, JarvisCockpitComponent, JarvisReplayComponent, JarvisNightComponent,
-    JarvisPieceGalleryComponent, JarvisCardDetailComponent],
+    JarvisPieceGalleryComponent, JarvisCardDetailComponent, ArchitectureStageComponent],
   template: `
-    <app-jarvis-stage-3d #stage [withCore]="true" [planOverride]="staged.plan" [voiceLevel]="voice"
-                         [face]="face" [mouth]="mouth"
-                         [labelLayer]="labels" [insets]="cockpit ? cockpitRef()?.insets() ?? noInsets : noInsets" />
-    <div #labels class="jv3d-labels"></div>
-    @if (cockpit) {
-      <app-jarvis-cockpit #cockpitRef [stage]="stage" [signals]="screen" [shownFilter]="shownFilter" />
-    }
-    @if (scene === 'veilleur') {
-      <app-jarvis-night [ambient]="nightAmbient" />
-    }
-    @if (pieces) {
-      <!-- F-237 / SF-237-14 — les pièces du banc : galerie, héros, avant / après, planche (aucun réseau). -->
-      <app-jarvis-piece-gallery [threeD]="scene === 'pieces-galerie' || scene === 'pieces-proactif'"
-                                [subjectLabel]="'Edenred'" />
-    }
-    @if (cards) {
-      <!-- F-248 / SF-248-10 — les pancartes du banc : bloc, éventail, mur, plein écran, comparaison (aucun réseau). -->
-      <app-jarvis-piece-gallery [threeD]="!flatCards" [subjectLabel]="null" />
-      @if (cardDetail; as d) {
-        <app-jarvis-card-detail [card]="d.card" [detail]="d.detail" [other]="d.other" />
+    @if (architecture; as a) {
+      <!-- F-238 / SF-238-09 — l'architecture en 3D seule (fixtures du renderer, aucun réseau). -->
+      <app-architecture-stage [graph]="a.graph" [state]="a.state" [phase]="a.phase" [clock]="frozen"
+                              [level]="level" [showOverlay]="a.overlay" />
+    } @else {
+      <app-jarvis-stage-3d #stage [withCore]="true" [planOverride]="staged.plan" [voiceLevel]="voice"
+                           [face]="face" [mouth]="mouth"
+                           [labelLayer]="labels" [insets]="cockpit ? cockpitRef()?.insets() ?? noInsets : noInsets" />
+      <div #labels class="jv3d-labels"></div>
+      @if (cockpit) {
+        <app-jarvis-cockpit #cockpitRef [stage]="stage" [signals]="screen" [shownFilter]="shownFilter" />
       }
-    }
-    @if (scene === 'cockpit-replay') {
-      <app-jarvis-replay #replayRef />
+      @if (scene === 'veilleur') {
+        <app-jarvis-night [ambient]="nightAmbient" />
+      }
+      @if (pieces) {
+        <!-- F-237 / SF-237-14 — les pièces du banc : galerie, héros, avant / après, planche (aucun réseau). -->
+        <app-jarvis-piece-gallery [threeD]="scene === 'pieces-galerie' || scene === 'pieces-proactif'"
+                                  [subjectLabel]="'Edenred'" />
+      }
+      @if (cards) {
+        <!-- F-248 / SF-248-10 — les pancartes du banc : bloc, éventail, mur, plein écran, comparaison (aucun réseau). -->
+        <app-jarvis-piece-gallery [threeD]="!flatCards" [subjectLabel]="null" />
+        @if (cardDetail; as d) {
+          <app-jarvis-card-detail [card]="d.card" [detail]="d.detail" [other]="d.other" />
+        }
+      }
+      @if (scene === 'cockpit-replay') {
+        <app-jarvis-replay #replayRef />
+      }
     }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -81,6 +90,13 @@ import type { MouthShape } from '../face/jarvis-visemes';
 export class JarvisBancComponent {
   protected readonly scene = inject(JARVIS_BANC)?.scene ?? 'coeur';
   private readonly t = inject(JARVIS_BANC)?.t ?? 0;
+  /** F-238 / SF-238-09 — les scènes `architecture*` posent la scène d'architecture à la place de l'univers. */
+  protected readonly architecture = this.scene.startsWith('architecture')
+    ? bancArchitecture(this.scene, typeof matchMedia === 'function' && matchMedia('(max-width: 767px)').matches)
+    : null;
+  protected readonly frozen = frozenClock(this.t);
+  protected readonly level = inject(JARVIS_BANC)?.level ?? (typeof matchMedia === 'function'
+    && matchMedia('(max-width: 767px)').matches ? 'medium' : 'high');
   protected readonly vars = holoCssVars();
   protected readonly staged = bancPlan(this.scene,
     typeof matchMedia === 'function' && matchMedia('(max-width: 767px)').matches);
