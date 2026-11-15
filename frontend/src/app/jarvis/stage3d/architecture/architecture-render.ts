@@ -71,3 +71,16 @@ export function maskGraph(graph: ArchitectureGraph): ArchitectureGraph {
     edges: graph.edges.map((e) => ({ ...e, label: maskSensitive(e.label) })),
   };
 }
+
+/**
+ * Téléphone : le libellé d'une zone en court (« Availability Zone A » ⇒ « AZ A », « Sous-réseau privé A » ⇒
+ * « Privé A ») — même sens, deux fois moins de largeur ; le libellé complet reste dans la fiche et le 2D.
+ */
+export function phoneZoneLabel(label: string): string {
+  const short = label
+    .replace(/^availability zone\s+/i, 'AZ ')
+    .replace(/^sous-r[ée]seau\s+(public|priv[ée])\s*/i, (_m, kind: string) => `${kind.charAt(0).toUpperCase()}${kind.slice(1)} `)
+    .replace(/^(public|private)\s+subnet\s*/i, (_m, kind: string) => `${kind.charAt(0).toUpperCase()}${kind.slice(1)} `)
+    .trim();
+  return short || label;
+}

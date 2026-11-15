@@ -27,6 +27,7 @@ import {
   ArchitectureStageDirector, Viewport, blendCamera, cameraBasis, moveFor, moveProgress, pickAt,
 } from '../architecture-stage-director';
 import { ArchitectureNarrator } from '../architecture-narration';
+import { phoneZoneLabel } from '../architecture-render';
 
 /**
  * F-238 / SF-238-09 — **la scène d'architecture en 3D** (cadrage §9, §10, §14). Seul fichier `three` de la SF,
@@ -449,8 +450,13 @@ export class ArchitectureSceneGraph {
       ? this.makeLabel(node.label, 'service', node.x, node.z + ICON_SIZE / 2 + 0.04, 1) : null));
     // Zone : au milieu de son bord avant (le plus proche de la caméra), à l'intérieur ; les plateaux emboîtés y
     // sont décalés en plan ET en altitude, leurs libellés ne s'empilent plus dans un même coin.
-    this.plateLabels = layout.plates.map((p) => (this.labels.length < cap
-      ? this.makeLabel(p.label, 'zone', p.x0 + p.w / 2, p.z0 + p.d - 0.05, 2 + (p.w * p.d) / maxArea) : null));
+    // SF-238-11 — cause du défaut téléphone : les zones partageaient le plafond des services (16) et seules les 6
+    // premières avaient un libellé. Toutes les zones (≤ 24) ont désormais le leur ; le plan décide lesquels se voient.
+    this.plateLabels = layout.plates.map((p) => (this.options.labelHost
+      ? this.makeLabel(options.phone ? phoneZoneLabel(p.label) : p.label, 'zone', p.x0 + p.w / 2, p.z0 + p.d - 0.05,
+        // SF-238-11 — au téléphone, les zones (courtes) passent avant les services au dé-chevauchement : le PO doit
+        // lire la structure ; un service masqué se lit à son icône et au toucher.
+        options.phone ? 0.5 + (p.w * p.d) / maxArea / 10 : 2 + (p.w * p.d) / maxArea) : null));
     this.capsuleLabels = layout.plates.map((p) => this.makeLabel('', 'capsule', p.x0 + p.w / 2, p.z0 + p.d / 2, 0.5));
   }
 
@@ -748,7 +754,7 @@ export class ArchitectureSceneGraph {
     element.textContent = text;
     element.style.opacity = '0';
     const object = new CSS2DObject(element);
-    object.center.set(0.5, kind === 'zone' ? 1 : kind === 'capsule' ? 0.5 : 0);
+    object.center.set(kind === 'zone' && this.options.phone ? 0 : 0.5, kind === 'zone' ? 1 : kind === 'capsule' ? 0.5 : 0);
     object.position.set(x, 0, z);
     this.world.add(object);
     const label = { object, element, shown: 0, lit: false, priority, masked: false };
@@ -923,7 +929,8 @@ export class ArchitectureSceneGraph {
           capsule.element.textContent = plan.capsuleText[i];
         }
         const zone = this.plateLabels[i];
-        const text = plan.plateBadge[i] ? `${p.label} ${plan.plateBadge[i]}` : p.label;
+        const name = this.options.phone ? phoneZoneLabel(p.label) : p.label;
+        const text = plan.plateBadge[i] ? `${name} ${plan.plateBadge[i]}` : name;
         if (zone && zone.element.textContent !== text) {
           zone.element.textContent = text;
         }
@@ -934,9 +941,22 @@ export class ArchitectureSceneGraph {
     const sa = Math.sin(plan.camera.azimuth);
     const ca = Math.cos(plan.camera.azimuth);
     const side = Math.abs(sa) > Math.abs(ca);
+    // Téléphone : au coin gauche de ce bord (vu de la caméra), aligné à gauche — deux zones voisines ne posent plus
+    // leurs libellés au même endroit (convention AWS : le libellé en haut à gauche).
+    const left = this.options.phone;
+    const rx = ca;
+    const rz = -sa;
     plates.forEach((p, i) => {
-      const lx = side ? (sa > 0 ? p.x0 + p.w - 0.05 : p.x0 + 0.05) : p.x0 + p.w / 2;
-      const lz = side ? p.z0 + p.d / 2 : ca > 0 ? p.z0 + p.d - 0.05 : p.z0 + 0.05;
+      let lx = side ? (sa > 0 ? p.x0 + p.w - 0.05 : p.x0 + 0.05) : p.x0 + p.w / 2;
+      let lz = side ? p.z0 + p.d / 2 : ca > 0 ? p.z0 + p.d - 0.05 : p.z0 + 0.05;
+      if (left) {
+        // Le bout du bord le plus à gauche à l'écran (droite de la caméra = (cos a, 0, −sin a)), un peu en dedans.
+        if (side) {
+          lz = rz * 1 < 0 ? p.z0 + p.d - 0.08 : p.z0 + 0.08;
+        } else {
+          lx = rx < 0 ? p.x0 + p.w - 0.08 : p.x0 + 0.08;
+        }
+      }
       this.placeLabel(this.plateLabels[i], lx, f.plateAlt[i] + 0.01, lz,
         plan.plateLabel[i] ? f.labels * (1 - f.plateHidden[i]) : 0, plan.plateRole[i] === 'core');
       this.placeLabel(this.capsuleLabels[i], p.x0 + p.w / 2, f.plateAlt[i] + f.float, p.z0 + p.d / 2,

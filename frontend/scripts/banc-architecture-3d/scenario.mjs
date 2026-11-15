@@ -145,8 +145,7 @@ async function run({ width, height, tag }) {
   const u1 = (await measure(page)).universeFrames;
   note(u0 !== null && u0 === u1, `${tag} univers suspendu pendant la scène (${u0} → ${u1} images)`);
   if (tag === 'tel') {
-    const held = ['Availability Zone A', 'Availability Zone B', 'Sous-réseau public A', 'Sous-réseau privé A',
-      'Sous-réseau public B', 'Sous-réseau privé B'];
+    const held = ['AZ A', 'AZ B', 'Public A', 'Privé A', 'Public B', 'Privé B'];
     const seen = held.filter((z) => a.zones.some((l) => (l ?? '').toLowerCase() === z.toLowerCase()));
     note(seen.length === held.length, `${tag} libellés des zones porteuses visibles : ${seen.length}/${held.length} (${a.zones.join(' | ')})`);
   }

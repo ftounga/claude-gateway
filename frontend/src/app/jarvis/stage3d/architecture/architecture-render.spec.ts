@@ -1,6 +1,6 @@
 import { TROIS_TIERS_GRAPH, sixtyNodesGraph } from './architecture-graph.fixture';
 import { ArchLayout, layoutArchitecture } from './architecture-layout-3d';
-import { ArchRenderContext, archRender, maskGraph, maskSensitive } from './architecture-render';
+import { ArchRenderContext, archRender, maskGraph, maskSensitive, phoneZoneLabel } from './architecture-render';
 import {
   ArchitectureStageDirector, DEFAULT_ARCH_STATE, PHONE_LABELS, projectToScreen,
 } from './architecture-stage-director';
@@ -63,5 +63,12 @@ describe('Architecture — repli 2D, téléphone, présentation (F-238 / SF-238-
     const big = layoutArchitecture(sixtyNodesGraph()) as ArchLayout;
     const p60 = new ArchitectureStageDirector(big).plan({ ...DEFAULT_ARCH_STATE, phone: true }, { width: 390, height: 844 });
     expect(p60.plateLabel.filter(Boolean).length + p60.nodeLabel.filter(Boolean).length).toBeLessThanOrEqual(PHONE_LABELS);
+  });
+
+  it('téléphone : libellés de zones courts, même sens', () => {
+    expect(phoneZoneLabel('Availability Zone A')).toBe('AZ A');
+    expect(phoneZoneLabel('Sous-réseau privé B')).toBe('Privé B');
+    expect(phoneZoneLabel('Sous-réseau public A')).toBe('Public A');
+    expect(phoneZoneLabel('VPC 10.0.0.0/16')).toBe('VPC 10.0.0.0/16');
   });
 });

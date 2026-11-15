@@ -19,7 +19,7 @@ export const ARCH_FOV = 40;
 export const ENSEMBLE_ELEVATION = (32 * Math.PI) / 180;
 export const ENSEMBLE_AZIMUTH = (35 * Math.PI) / 180;
 /** SF-238-11 — vue d'ensemble en portrait (téléphone) : plus haute, le schéma tient en grand. */
-export const PORTRAIT_ELEVATION = (48 * Math.PI) / 180;
+export const PORTRAIT_ELEVATION = (55 * Math.PI) / 180;
 /** Le 2D cadré : contenu `contain`, centré, marge de 5 % de chaque côté. */
 export const SVG_FIT = 0.9;
 /** Vue d'ensemble : marge minimale au bord du cadre (le schéma occupe le centre, en grand). */
@@ -256,7 +256,7 @@ export function cameraFor(layout: ArchLayout, state: ArchState, viewport: Viewpo
   }
   const height = (state.view === 'dessus' ? 0 : layout.maxLevel * stepOf(state)) + NODE_FLOAT;
   const orbit = state.view === 'dessus' ? { az: 0, el: 0 } : state.orbit ?? { az: 0, el: 0 };
-  // SF-238-11 — en portrait, la vue d'ensemble se lève (48°) : la profondeur du schéma occupe la hauteur de l'écran.
+  // SF-238-11 — en portrait, la vue d'ensemble se lève (55°) : la profondeur du schéma occupe la hauteur de l'écran.
   const baseEl = state.view === 'dessus' ? MAX_ELEVATION : state.view === 'face' ? FACE_ELEVATION
     : viewport.height > viewport.width ? PORTRAIT_ELEVATION : ENSEMBLE_ELEVATION;
   const baseAz = state.view === 'ensemble' ? ENSEMBLE_AZIMUTH : 0;
@@ -268,7 +268,9 @@ export function cameraFor(layout: ArchLayout, state: ArchState, viewport: Viewpo
   // SF-238-11 — écran en portrait (téléphone) : le schéma se tourne d'un quart de tour si sa longueur tient mieux
   // dans la hauteur de l'écran ; on garde l'orientation qui le rend le plus grand (la plus petite distance).
   const portrait = state.view !== 'dessus' && viewport.height > viewport.width;
-  const bases = portrait ? [baseAz, baseAz + Math.PI / 2] : [baseAz];
+  // De face (azimut 0 ou 90°), un schéma ne s'étale pas en diagonale : 30 à 40 % plus grand dans la largeur.
+  const bases = portrait && state.view === 'ensemble' ? [0, Math.PI / 2] : portrait ? [baseAz, baseAz + Math.PI / 2]
+    : [baseAz];
   let best: ArchCamera | null = null;
   for (const az of bases) {
     const fitted = fitCamera(start(az), e, height, viewport);
