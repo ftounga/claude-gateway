@@ -211,9 +211,9 @@ async function pageState(page) {
 }
 
 /** Joue une phrase ; `null` si la page s'est rechargée pendant ce temps. */
-async function say(page, url, id) {
+async function say(page, url, id, gain = 1) {
   try {
-    return await page.evaluate((u, i) => window.__banc.play(u, 1, i), url, id);
+    return await page.evaluate((u, i, g) => window.__banc.play(u, g, i), url, id, gain);
   } catch {
     return null;
   }
@@ -263,13 +263,21 @@ function recordings(scenario) {
   if (scenario.captures) {
     // Les captures à texte d'abord, les vides ensuite : sept captures presque muettes à la suite font 60 s sans parole,
     // et la conversation s'arrête d'elle-même (SF-233-11) — la phrase suivante ne serait plus écoutée.
-    return Object.entries(index.captures)
+    // F-265 / SF-265-01 — les captures d'une voix tierce sont jouées par leur scénario (`voix-tierce`), pas ici.
+    return Object.entries(index.captures).filter(([, e]) => !e.tiers)
       .sort((a, b) => Number(!a[1].expected) - Number(!b[1].expected) || a[1].at.localeCompare(b[1].at))
       .map(([id, e]) => ({ step: { say: id }, id, ...e }));
   }
   return scenario.steps.map((step) => {
-    const e = index.synthetic[`${scenario.voice}/${step.say}`];
-    if (!e) throw new Error(`phrase absente du corpus : ${scenario.voice}/${step.say} (lancer corpus.mjs)`);
+    // F-265 / SF-265-01 — une étape peut jouer une vraie capture (`capture`) ou une phrase d'une autre voix (`voice`).
+    if (step.capture) {
+      const c = index.captures[step.capture];
+      if (!c) throw new Error(`capture absente du corpus : ${step.capture}`);
+      return { step, id: step.capture.slice(0, 8), ...c };
+    }
+    const voice = step.voice ?? scenario.voice;
+    const e = index.synthetic[`${voice}/${step.say}`];
+    if (!e) throw new Error(`phrase absente du corpus : ${voice}/${step.say} (lancer corpus.mjs)`);
     return { step, id: step.say, ...e };
   });
 }
@@ -345,12 +353,13 @@ async function runScenario(scenario) {
       if (!ok) turns.push({ id: rec.id, note: 'jarvis_n_ecoutait_pas' });
     }
     const url = `/__banc/audio?f=${encodeURIComponent(rec.file)}`;
-    const played = await say(page, url, rec.id);
+    const played = await say(page, url, rec.id, rec.step.gain ?? 1);
     if (!played) {
       turns.push({ id: rec.id, note: 'page_rechargee' });
       continue;
     }
     turns.push({ id: rec.id, kind: rec.kind, expected: rec.expected, stream: rec.stream ?? null, show: !!rec.show,
+      tiers: !!rec.tiers,
       after: after ?? 'ecoute', start: played.start, end: played.end,
       speechEnd: rec.speechEndMs === null ? null : played.start + rec.speechEndMs, activeMs: rec.activeMs });
     // Le tour doit pouvoir commencer : on attend que Jarvis QUITTE l'écoute (il a pris la phrase), au plus 8 s ; sinon

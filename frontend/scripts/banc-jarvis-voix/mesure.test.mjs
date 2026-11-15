@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { activity, pcmOf, wav } from './corpus.mjs';
-import { analyse, analyseTurn, percentile, summary, traceEvents, wer, words } from './mesure.mjs';
+import { analyse, analyseTurn, isPardon, percentile, summary, traceEvents, wer, words } from './mesure.mjs';
 import { gate } from './porte.mjs';
 
 test('words : sans accents, ponctuation ni hésitations', () => {
@@ -122,4 +122,35 @@ test('porte : franchie quand tout est au vert', () => {
   const totals = { heardRate: 100, firstSoundMedianMs: 1500, repeated: [], voiciWithoutShow: [], fallbacks: 0,
     fallbackKinds: {} };
   assert.deepEqual(gate({ totals }).failures, []);
+});
+
+test('F-265 — isPardon : « je n’ai pas compris » reconnu, une question de précision non', () => {
+  assert.equal(isPardon('Pardon, Monsieur, je n\'ai pas bien compris : pouvez-vous répéter?'), true);
+  assert.equal(isPardon('Pardon, Monsieur, je n\'ai pas bien saisi : à quoi faites-vous référence?'), true);
+  assert.equal(isPardon('Pardon, Monsieur ?'), true);
+  assert.equal(isPardon('Pardon, Monsieur, à quel sujet répondez-vous : agenor, data-platform ou le WAF?'), false);
+  assert.equal(isPardon('Voici la galerie des vidéos, Monsieur.'), false);
+});
+
+test('F-265 — voix tierce : répondue seulement si une voix a été JOUÉE ; « pardon » dit compté', () => {
+  const turn = { id: 't01', kind: 'tiers', tiers: true, after: 'ecoute', expected: null, start: 1000, end: 2000,
+    speechEnd: 1800 };
+  const converse = { t: 2100, method: 'POST', path: '/api/jarvis/converse', body: { text: 'Maman ? Maman ?' },
+    sse: sse([['text', { delta: 'Pardon, Monsieur, je n\'ai pas compris.' }]]) };
+  const speech = { t: 2300, method: 'POST', path: '/api/jarvis/speech', body: { text: 'Pardon, Monsieur, je n\'ai pas compris.' }, sse: [] };
+  const ctx = { traces: [], next: 9000, spokenBefore: new Set() };
+  // Voix préparée mais jamais jouée (tue) : pas répondu.
+  const quiet = analyseTurn(turn, { ...ctx, api: [converse, speech], probes: [] });
+  assert.equal(quiet.spokeAloud, false);
+  assert.equal(quiet.pardonAloud, false);
+  const loud = analyseTurn(turn, { ...ctx, api: [converse, speech], probes: [{ t: 2600, kind: 'sound_start', what: 'voix' }] });
+  assert.equal(loud.spokeAloud, true);
+  assert.equal(loud.pardonAloud, true);
+  const report = analyse([{ id: 'voix-tierce', label: 'v', ready: true, pageErrors: [], turns: [turn], api: [converse, speech],
+    probes: [{ t: 2600, kind: 'sound_start', what: 'voix' }], ended: 9000 }]);
+  assert.equal(report.totals.tiersPlayed, 1);
+  assert.equal(report.totals.tiersAnswered.length, 1);
+  assert.deepEqual(report.totals.pardonsAloud, ['voix-tierce/t01']);
+  assert.equal(report.totals.emptyCaptures, 0);
+  assert.match(summary({ ...report, meta: {}, gate: { pass: false, failures: [] } }), /Voix tierces {10}: 1 jouées, 1 ont reçu/);
 });

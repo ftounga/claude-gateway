@@ -259,9 +259,16 @@ class JarvisLatencyApiIntegrationTest {
                 + "\"rejectedChars\":49}").andExpect(status().isNoContent());
         report(adminToken, "{\"listenMode\":\"CONV_STREAM\",\"rejectedChars\":12}").andExpect(status().isNoContent());
         report(adminToken, "{\"rejectedKind\":\"bavardage\"}").andExpect(status().isBadRequest());
+        // F-265 / SF-265-01 — direct et finale sans rien de commun (une autre voix de la pièce).
+        report(adminToken, "{\"listenMode\":\"CONV_STREAM\",\"falseTriggers\":1,\"rejectedKind\":\"discordant\","
+                + "\"rejectedChars\":15}").andExpect(status().isNoContent());
 
         var rows = timings.findByUserIdAndCreatedAtGreaterThanEqual(admin.getId(), OffsetDateTime.now().minusDays(1));
-        assertThat(rows).hasSize(2);
+        assertThat(rows).hasSize(3);
+        assertThat(rows).anySatisfy(r -> {
+            assertThat(r.getRejectedKind()).isEqualTo("discordant");
+            assertThat(r.getRejectedChars()).isEqualTo(15);
+        });
         assertThat(rows).anySatisfy(r -> {
             assertThat(r.getRejectedKind()).isEqualTo("hallucination");
             assertThat(r.getRejectedChars()).isEqualTo(49);

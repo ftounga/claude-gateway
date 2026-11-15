@@ -314,7 +314,8 @@ public class JarvisLatencyService {
     /** F-235 / SF-235-07 — les cerveaux d'un tour vocal (liste fermée). */
     static final List<String> BRAINS = List.of("FAST", "FAST_DELEGATED", "OPUS");
     /** F-239 / SF-239-02 — les raisons d'un refus de parole (liste fermée de la porte de l'écran). */
-    static final List<String> REJECTIONS = List.of("empty", "noise", "hallucination", "no_voice", "implausible");
+    static final List<String> REJECTIONS = List.of("empty", "noise", "hallucination", "no_voice", "implausible",
+            "discordant");
     /**
      * F-233 / SF-233-13 — pourquoi l'écoute n'a pas été faite en flux (liste fermée) : le jeton de session (refusé,
      * indisponible, en échec), le micro, l'ouverture chez le fournisseur (délai, refus, réseau, fermeture), la capture

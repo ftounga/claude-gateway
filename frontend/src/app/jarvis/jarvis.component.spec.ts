@@ -3171,6 +3171,119 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     jarvis.ngOnDestroy();
   }));
 
+  // ---------------------------------------------------------------- F-265 / SF-265-01 : « pas pour moi »
+
+  /** Une écoute en flux : le direct entend `live`, la retranscription finale rend `final`. */
+  function heardLiveAndFinal(live: string, final: string, voicedMs = 900): { jarvis: JarvisComponent; handle: jasmine.Spy } {
+    const ready = streamWithAudio();
+    jarvisApi.utterance.and.returnValue(of({ text: final, provider: 'elevenlabs-batch', ms: 300 }));
+    const handle = spyOn(JarvisComponent.prototype, 'handle').and.resolveTo();
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    const jarvis = fixture.componentInstance;
+    void jarvis.talk();
+    flushMicrotasks();
+    jarvis['voicedMs'] = voicedMs;
+    if (live) {
+      ready.stt().onCommitted(live);
+    } else {
+      void jarvis.finishListening();
+    }
+    tick(2_000);
+    flushMicrotasks();
+    return { jarvis, handle };
+  }
+
+  it('F-265 / SF-265-01 — séance du 15/11 : direct « Lui-même ? », finale « Maman ? Maman ? » : ni tour ni « Pardon »',
+    fakeAsync(() => {
+      const { jarvis, handle } = heardLiveAndFinal('Lui-même ?', 'Maman ? Maman ?', 787);
+      expect(handle).not.toHaveBeenCalled();
+      expect(pardons()).toBe(0);
+      expect(traceEvents().some((e) => e.ev === 'speech_rejected' && e.d === 'discordant chars=15 voiced=787'))
+        .toBeTrue();
+      expect(jarvisApi.timings.calls.mostRecent()?.args[0].rejectedKind).toBe('discordant');
+      jarvis.ngOnDestroy();
+    }));
+
+  for (const [live, final] of [['Oui', 'Oui.'], ['Nan.', 'Non.'], ['', 'Oui.'], ['', 'Stop.'], ['La 2e.', 'La deuxième.'],
+    ['Ouais.', 'Oui.'], ['Bonjour Jarvis.', 'Bonjour Jarvis'], ['Alors, celui chantier 2, sujet RH.', 'Avance le chantier 2, sujet RH']]) {
+    it(`F-265 / SF-265-01 — contrainte dure : direct « ${live} », finale « ${final} » : la parole part`, fakeAsync(() => {
+      // Une phrase de six mots se dit en plus d'une seconde (sinon : « implausible », SF-241-06).
+      const { jarvis, handle } = heardLiveAndFinal(live, final, final.split(' ').length > 3 ? 2_500 : 900);
+      expect(handle).toHaveBeenCalledWith(final);
+      jarvis.ngOnDestroy();
+    }));
+  }
+
+  /** Une parole acceptée par l'ancienne boucle, après que Jarvis a dit `lastSaid`. */
+  function heardAfter(jarvis: JarvisComponent, lastSaid: string | null, text: string): void {
+    jarvis['spoken'].set(lastSaid);
+    jarvis['voicedMs'] = 1_100;
+    void jarvis['acceptHeard'](text, new TurnClock(0, 2_700), true);
+    flushMicrotasks();
+  }
+
+  const NOT_UNDERSTOOD = 'Pardon, Monsieur, je n’ai pas bien saisi : à quoi faites-vous référence?';
+
+  it('F-265 / SF-265-01 — séance du 15/11 : « Ah bah, c’est pas dit non » après « Voici la galerie » : Jarvis se tait',
+    fakeAsync(() => {
+      const jarvis = conversing(true);
+      heardAfter(jarvis, 'Voici la galerie des vidéos, Monsieur.', 'Ah bah, c’est pas dit non.');
+      expect(fastBrain.converse).toHaveBeenCalled();
+      fast!.onText(NOT_UNDERSTOOD);
+      fast!.onText('Pouvez-vous préciser ?');
+      fast!.onDone({ brain: 'FAST', spokenText: NOT_UNDERSTOOD, firstTokenMs: 300, model: 'm' });
+      fastDone!('ok');
+      flushMicrotasks();
+      expect(voice.enqueue).not.toHaveBeenCalled();
+      expect(jarvis['spoken']()).toBe('Voici la galerie des vidéos, Monsieur.');
+      expect(traceEvents().some((e) => e.ev === 'pardon_hushed')).toBeTrue();
+      expect(pardons()).toBe(0);
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-265 / SF-265-01 — après une vraie question de Jarvis, « je n’ai pas compris » reste dit', fakeAsync(() => {
+    const jarvis = conversing(true);
+    heardAfter(jarvis, 'Le WAF est à jour. Par quel sujet commençons-nous ?', 'Ah bah, c’est pas dit non.');
+    fast!.onText(NOT_UNDERSTOOD);
+    fast!.onDone({ brain: 'FAST', spokenText: NOT_UNDERSTOOD, firstTokenMs: 300, model: 'm' });
+    fastDone!('ok');
+    flushMicrotasks();
+    expect(voice.enqueue.calls.mostRecent().args[0]).toBe(NOT_UNDERSTOOD);
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-265 / SF-265-01 — une phrase courte comprise reçoit sa réponse ; un mot bref n’est jamais tu', fakeAsync(() => {
+    const jarvis = conversing(true);
+    heardAfter(jarvis, 'Voici la galerie des vidéos, Monsieur.', 'La deuxième.');
+    fast!.onText(NOT_UNDERSTOOD);
+    fast!.onDone({ brain: 'FAST', spokenText: NOT_UNDERSTOOD, firstTokenMs: 300, model: 'm' });
+    fastDone!('ok');
+    flushMicrotasks();
+    expect(voice.enqueue.calls.mostRecent().args[0]).withContext('mot bref').toBe(NOT_UNDERSTOOD);
+    voice.enqueue.calls.reset();
+    heardAfter(jarvis, 'Voici la galerie des vidéos, Monsieur.', 'Montre la vidéo d’hier.');
+    fast!.onText('Voici la vidéo d’hier, Monsieur.');
+    fast!.onDone({ brain: 'FAST', spokenText: 'Voici la vidéo d’hier, Monsieur.', firstTokenMs: 300, model: 'm' });
+    fastDone!('ok');
+    flushMicrotasks();
+    expect(voice.enqueue.calls.mostRecent().args[0]).withContext('comprise').toBe('Voici la vidéo d’hier, Monsieur.');
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-265 / SF-265-01 — une demande corrigée au toucher n’est jamais tue', fakeAsync(() => {
+    const jarvis = conversing(true);
+    jarvis['spoken'].set('Voici la galerie des vidéos, Monsieur.');
+    jarvis['hushable'] = 'Maman ?';
+    void jarvis['submitCorrection']('Montre la galerie.');
+    flushMicrotasks();
+    fast!.onText(NOT_UNDERSTOOD);
+    fastDone!('ok');
+    flushMicrotasks();
+    expect(voice.enqueue.calls.mostRecent().args[0]).toBe(NOT_UNDERSTOOD);
+    jarvis.ngOnDestroy();
+  }));
+
   function graceListening(): { jarvis: JarvisComponent; stt: () => StreamHandlers; handle: jasmine.Spy } {
     graceMs = 700;
     const ready = streamWithAudio();

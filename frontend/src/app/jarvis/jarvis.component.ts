@@ -103,6 +103,7 @@ import {
 } from './jarvis-conversation';
 import { ExchangeFiller, FORMULA_CLIPS, FormulaPicker, LINKED_FILLER_DELAY_MS, linkedFiller } from './jarvis-phrases';
 import { MAX_LISTEN_MS, MIN_VOICED_MS, NoiseFloor, SpeechRejection, speechGate } from './jarvis-speech-gate';
+import { isClarification, mayHushPardon } from './jarvis-addressed';
 import { JARVIS_GRACE_MS, STREAM_FALLBACK_MS, SUSPENDED_EXTRA_MS, isSuspended } from './jarvis-turn-end';
 import { AnticipationWatch, JarvisSpeculation, sameUtterance } from './jarvis-speculation';
 import { CORRECTION_WINDOW_MS as VOICE_CORRECTION_WINDOW_MS, applyCorrection, parseVoiceCorrection } from './jarvis-correction';
@@ -2433,6 +2434,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
     let text = '';
     // F-251 / SF-251-03 — le texte vient-il de la retranscription complète de l'énoncé ?
     let transcribed = false;
+    // F-265 / SF-265-01 — ce que la transcription en direct avait entendu, quand la finale la remplace.
+    let liveText: string | null = null;
     const conversing = this.conversation.active;
     clock.listenMode = conversing ? 'CONV_BATCH' : 'BATCH';
     if (this.live) {
@@ -2454,6 +2457,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       if (final?.text.trim()) {
         clock.sttProvider = final.provider;
         transcribed = true;
+        liveText = streamed;
       }
       this.keepForBench(audio, seconds, clock.listenMode, final?.provider ?? null, streamed, text);
     } else {
@@ -2471,14 +2475,15 @@ export class JarvisComponent implements OnInit, OnDestroy {
         return;
       }
     }
-    await this.acceptHeard(text, clock, transcribed);
+    await this.acceptHeard(text, clock, transcribed, liveText);
   }
 
   /**
    * Une parole entendue (ancienne boucle, ou tour confirmé par le service — F-257 / SF-257-06) : porte de parole réelle,
    * puis la suite commune (confirmation, commandes, cerveau).
    */
-  private async acceptHeard(text: string, clock: TurnClock, transcribed: boolean): Promise<void> {
+  private async acceptHeard(text: string, clock: TurnClock, transcribed: boolean,
+                            liveText: string | null = null): Promise<void> {
     this.trace.mark('transcript', `chars=${text.length} mode=${clock.listenMode}`);
     // SF-233-11 — un bruit ou une phrase vide n'est jamais envoyé ; en conversation, l'écoute repart sans un mot.
     // F-239 / SF-239-01 (D3b) — la porte de parole réelle : sans parole réelle, AUCUN tour (ni cerveau rapide, ni
@@ -2487,7 +2492,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     // F-241 / SF-241-06 — le débit « implausible » se juge sur la durée de l'écoute (speech_ms), pas sur le temps de voix.
     const rejection = speechGate(text, {
       voicedMs: this.voicedMs, listenedMs: clock.speechMs === null ? null : clock.speechMs + this.listenRingMs, preRoll: this.listenPreRoll,
-      transcribed,
+      transcribed, liveText,
     });
     if (!text || (rejection && !confirming)) {
       this.state.set(this.turnRunning ? 'reflexion' : 'repos');
@@ -2504,8 +2509,18 @@ export class JarvisComponent implements OnInit, OnDestroy {
     clock.mark('transcript');
     this.pendingClock = clock;
     this.said.set(text);
+    // F-265 / SF-265-01 — phrase courte hors d'une question de Jarvis : un « je n'ai pas compris » du cerveau sera tu.
+    const known = this.subjects().flatMap((w) => [w.name, w.hostName ?? '']);
+    this.hushable = !confirming && mayHushPardon(text, { lastSaid: this.spoken(), preRoll: this.listenPreRoll, known })
+      ? text : null;
     await this.handle(text);
   }
+
+  /**
+   * F-265 / SF-265-01 — la phrase entendue pour laquelle Jarvis se tait si le cerveau répond qu'il n'a pas compris
+   * (consommée par l'échange suivant, et seulement pour ce même texte).
+   */
+  private hushable: string | null = null;
 
   /** F-251 / SF-251-03 — le dernier rejet a déjà valu un « Pardon » (réarmé par une parole acceptée). */
   private pardonedLast = false;
@@ -2530,6 +2545,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
    */
   private rejectSpeech(clock: TurnClock, kind: SpeechRejection, chars: number): void {
     this.trace.mark('speech_rejected', `${kind} chars=${chars} voiced=${Math.round(this.voicedMs ?? -1)}`);
+    // F-265 / SF-265-01 — une autre voix de la pièce : ni tour, ni « Pardon, Monsieur ? ».
+    const quiet = kind === 'discordant';
     clock.count('falseTriggers');
     clock.rejected = { rejectedKind: kind, rejectedChars: Math.min(10_000, Math.max(0, chars)) };
     const report = clock.takeReport();
@@ -2540,7 +2557,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
       void this.endConversation();
       return;
     }
-    this.sayPardon();
+    if (!quiet) {
+      this.sayPardon();
+    }
   }
 
   // ---- F-252 / SF-252-02 : répondre sans attendre la retranscription ----
@@ -2915,6 +2934,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   private async converseOnce(text: string): Promise<void> {
     this.state.set('reflexion');
+    // F-265 / SF-265-01 — cette phrase peut-elle valoir le silence plutôt qu'un « je n'ai pas compris » ?
+    const hush = this.hushable === text;
+    this.hushable = null;
+    let hushed = false;
+    const spokenBefore = this.spoken();
     // F-240 / SF-240-04 — la réponse d'Opus reste à l'écran tant que le cerveau rapide n'a rien répondu d'autre :
     // « développe le point Helios » (ligne-marque ⤵) la lit.
     this.spoken.set(null);
@@ -2999,7 +3023,17 @@ export class JarvisComponent implements OnInit, OnDestroy {
       turnId: this.trace.turnId(), pageId: this.trace.page() };
     const speculation = this.claimSpeculation(text, body, clock);
     const handlers: FastBrainHandlers = {
-      onText: (sentence) => this.zone.run(() => sayNow(sentence)),
+      onText: (sentence) => this.zone.run(() => {
+        // F-265 / SF-265-01 — la réponse commence par « je n'ai pas compris » sur une phrase qui ne lui était pas
+        // adressée : Jarvis se tait (toute la réponse), rien n'est dit ni affiché.
+        if (hush && !hushed && said === '' && isClarification(sentence)) {
+          hushed = true;
+          this.trace.mark('pardon_hushed', `chars=${text.length}`);
+        }
+        if (!hushed) {
+          sayNow(sentence);
+        }
+      }),
       onCards: (event) => this.zone.run(() => {
         if (latest()) {
           this.receiveCards(showing, event);
@@ -3060,6 +3094,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
         : outcome === 'dropped' ? 'ok' : outcome;
     }
     this.trace.mark('brain_done', `${outcome}${fellBack ? ' repli' : ''} said=${said.length}`);
+    if (hushed) {
+      // F-265 / SF-265-01 — rien n'a été dit : l'écran garde la réponse précédente ; la parole compte comme fausse alerte.
+      this.spoken.set(spokenBefore);
+      clock?.count('falseTriggers');
+    }
     // F-253 / SF-253-07 — l'échange rapide clôt sa scène et compte ce qu'elle a montré (SF-234-11), sauf si une
     // délégation, un repli vers Opus ou un échange plus récent l'a reprise.
     if (this.fastSceneSeq === seq) {
@@ -3118,7 +3157,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
         if (typeof done.prepMs === 'number' && done.prepMs >= 0) {
           clock.speed = { ...clock.speed, prepMs: Math.min(600_000, Math.round(done.prepMs)) };
         }
-        if (done.brain === 'FAST') {
+        if (done.brain === 'FAST' && !hushed) {
           this.lastFastAnswerAt = Date.now();
         }
       }

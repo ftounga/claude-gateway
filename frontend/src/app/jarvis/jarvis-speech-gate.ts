@@ -1,3 +1,4 @@
+import { liveFinalDiscord } from './jarvis-addressed';
 import { isNoise } from './jarvis-conversation';
 
 /**
@@ -10,7 +11,7 @@ import { isNoise } from './jarvis-conversation';
  */
 
 /** Pourquoi une parole est refusée — rapporté dans la mesure du tour, **jamais le texte**. */
-export type SpeechRejection = 'empty' | 'noise' | 'hallucination' | 'no_voice' | 'implausible';
+export type SpeechRejection = 'empty' | 'noise' | 'hallucination' | 'no_voice' | 'implausible' | 'discordant';
 
 /*
  * F-241 / SF-241-06 — **le micro « n'entend pas »** (mesure prod du 2026-11-02 au soir : 6 paroles réelles sur 10
@@ -55,6 +56,11 @@ export interface ListenFacts {
   preRoll?: boolean;
   /** F-251 / SF-251-03 — le texte vient de la retranscription complète de l'énoncé (pas du seul flux). */
   transcribed?: boolean;
+  /**
+   * F-265 / SF-265-01 — ce que la transcription en direct avait entendu, quand le texte jugé vient de la retranscription
+   * complète. Une phrase courte sans rien de commun avec lui est refusée « discordant » (une autre voix de la pièce).
+   */
+  liveText?: string | null;
 }
 
 /** Le seuil de voix ne descend jamais sous ce niveau (un souffle n'est pas une voix), ni au-dessus du seuil fixe. */
@@ -131,6 +137,10 @@ export function speechGate(said: string | null | undefined, facts: ListenFacts):
   if (HALLUCINATIONS.has(normalized) || normalized.startsWith('sous titres realises')
       || normalized.startsWith('sous titrage')) {
     return 'hallucination';
+  }
+  // F-265 / SF-265-01 — direct et finale n'ont rien en commun sur une phrase courte : une voix lointaine, pas le PO.
+  if (facts.transcribed && liveFinalDiscord(facts.liveText, raw)) {
+    return 'discordant';
   }
   // Niveau non mesuré, ou phrase du réveil : les règles de voix ne s'appliquent pas (inchangé depuis SF-239-01).
   if (facts.preRoll || facts.voicedMs === null) {
