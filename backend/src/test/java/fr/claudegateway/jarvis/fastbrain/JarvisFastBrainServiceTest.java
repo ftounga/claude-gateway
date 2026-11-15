@@ -988,6 +988,38 @@ class JarvisFastBrainServiceTest {
     }
 
     @Test
+    void f262AGeneralRequestIsAnsweredTracedAndNeverRoutedToTheJarvisThread() {
+        JarvisFastBrainService service = service(delegating("""
+                {"demande": "Faire le tour des clients", "label": "tour", "annonce": "Je fais le tour, Monsieur.",
+                 "sujet": "jarvis"}
+                """), null, null);
+        JarvisDelegationRegistry registry = mock(JarvisDelegationRegistry.class);
+        service.setContext(null, null, registry);
+        fr.claudegateway.jarvis.thread.JarvisLinkService links =
+                mock(fr.claudegateway.jarvis.thread.JarvisLinkService.class);
+        service.setLinks(links);
+        fr.claudegateway.jarvis.thread.JarvisThreadService threads =
+                mock(fr.claudegateway.jarvis.thread.JarvisThreadService.class);
+        service.setThreads(threads);
+        JarvisFastExchangeWriter writer = mock(JarvisFastExchangeWriter.class);
+        service.setExchanges(writer);
+        fr.claudegateway.atelier.AtelierProperties atelier = mock(fr.claudegateway.atelier.AtelierProperties.class);
+        when(atelier.model()).thenReturn("claude-opus-5-5");
+        service.setOffline(mock(fr.claudegateway.jarvis.state.JarvisStateTurnMeter.class), atelier, null);
+
+        StringBuilder spoken = new StringBuilder();
+        JarvisFastBrainService.Outcome out = service.converse(ask("Fais-moi le tour des clients"), spoken::append);
+
+        assertThat(out.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(out.reason()).isEqualTo(JarvisFastBrainService.REASON_GENERAL);
+        assertThat(spoken.toString()).startsWith("Je fais le tour, Monsieur.").isNotBlank();
+        org.mockito.Mockito.verify(writer).write(eq(alice), any(), eq(out.spokenText()));
+        org.mockito.Mockito.verifyNoInteractions(links, threads);
+        org.mockito.Mockito.verify(registry, org.mockito.Mockito.never()).offer(any(), any(), any(), any(), any(),
+                any(), any());
+    }
+
+    @Test
     void f245AnAdditionToALiveTurnLeavesNoNewLink() {
         JarvisFastBrainService service = service(delegating("""
                 {"demande": "Et aussi les tickets en revue", "label": "tickets en revue",
@@ -1138,7 +1170,7 @@ class JarvisFastBrainServiceTest {
         assertThat(JSON.writeValueAsString(calls.get(1).tools())).isEqualTo(first);
         assertThat(JSON.writeValueAsString(calls.get(2).tools())).isEqualTo(first);
         assertThat(calls.get(0).system()).isEqualTo(calls.get(2).system());
-        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("20");
+        assertThat(JarvisFastBrainPrompt.VERSION).isEqualTo("21");
         assertThat(first).doesNotContain("Kestrel").doesNotContain(subject.toString());
     }
 

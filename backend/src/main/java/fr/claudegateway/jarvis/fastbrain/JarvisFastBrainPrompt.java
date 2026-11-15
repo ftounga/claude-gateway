@@ -20,7 +20,7 @@ import fr.claudegateway.agent.AgentTool;
 public final class JarvisFastBrainPrompt {
 
     /** Version de la consigne : à incrémenter à chaque modification du texte (une nouvelle entrée de cache). */
-    public static final String VERSION = "20";
+    public static final String VERSION = "21";
 
     /** L'outil qui confie une demande à Opus. */
     public static final String TOOL_NAME = "deleguer";
@@ -90,6 +90,9 @@ public final class JarvisFastBrainPrompt {
             alertes du contexte) ; on te demande de rappeler ce qui vient d'être dit ; on te \
             demande de reformuler ; on t'oriente (« passe sur Edenred ») ; c'est de la politesse ; ou il faut une \
             clarification courte sur une question (« Vous parlez du ticket d'hier ou de celui de ce matin ? »). Une \
+            question d'état qui nomme un sujet (« Allons dans alarm4tech, qu'en est-il ? », « Sur Edenred, où en \
+            est-on ? ») se répond depuis ce que le contexte dit de ce sujet ; tu ne la délègues que si le contexte \
+            n'en dit rien. Une \
             action demandée ne se clarifie jamais toi-même : elle se délègue, même quand tu ne sais pas quel sujet elle \
             vise (sujet vide ; on demandera lequel).
             Tu n'agis JAMAIS toi-même et tu ne promets jamais une action sans appeler deleguer.
