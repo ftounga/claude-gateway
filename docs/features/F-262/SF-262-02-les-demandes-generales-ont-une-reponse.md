@@ -10,7 +10,7 @@
 
 ## Statut
 
-`in-progress`
+`done`
 
 ## Date de création
 
@@ -54,7 +54,7 @@ Une demande « générale » (sujet `jarvis`, sans poste) reçoit toujours une r
 - [x] CA2 — Le message envoyé à Opus porte « Situation : demande générale » ; un poste éteint porte « Situation : poste éteint » ; la consigne système est **identique** dans les deux cas.
 - [x] CA3 — Opus en échec : la phrase de repli est dite (`GENERAL_FAILED` pour une demande générale).
 - [x] CA4 — Délégation vers un sujet de poste connecté : inchangée.
-- [ ] CA5 — Consigne v21 : la règle « question d'état + sujet nommé » est présente ; banc CONVERSATION ×2 vert (V8).
+- [x] CA5 — Consigne v21 : la règle « question d'état + sujet nommé » est présente ; banc CONVERSATION ×2 vert (V8).
 - [x] CA6 — L'échange est tracé (`exchanges.write`) pour une demande générale répondue.
 - [x] CA7 — Deux tours poste éteint sur le même poste : annonce complète puis « Toujours éteint. » ; consigne identique aux deux appels.
 - [x] CA8 — Le message d'un tour poste éteint porte « Sujet visé : <nom> (poste <client>). »
