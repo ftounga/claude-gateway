@@ -958,6 +958,36 @@ class JarvisFastBrainServiceTest {
     }
 
     @Test
+    void f262AnOfflineHostIsTestedBeforeRoutingSoNoLinkNorOfferIsLeftHanging() {
+        UUID host = UUID.randomUUID();
+        workspace.setHostId(host);
+        when(workspaces.findByIdAndUserId(subject, alice)).thenReturn(java.util.Optional.of(workspace));
+        JarvisFastBrainService service = service(delegating("""
+                {"demande": "Avancer le chantier 3", "label": "chantier 3", "annonce": "J'avance le chantier 3.",
+                 "sujet": "", "chantier": 3}
+                """), null, null);
+        JarvisDelegationRegistry registry = mock(JarvisDelegationRegistry.class);
+        service.setContext(null, null, registry);
+        fr.claudegateway.jarvis.thread.JarvisLinkService links =
+                mock(fr.claudegateway.jarvis.thread.JarvisLinkService.class);
+        service.setLinks(links);
+        fr.claudegateway.jarvis.state.JarvisStateTurnMeter meter =
+                mock(fr.claudegateway.jarvis.state.JarvisStateTurnMeter.class);
+        when(meter.hostOffline(alice, workspace)).thenReturn(true);
+        fr.claudegateway.atelier.AtelierProperties atelier = mock(fr.claudegateway.atelier.AtelierProperties.class);
+        when(atelier.model()).thenReturn("claude-opus-5-5");
+        service.setOffline(meter, atelier, null);
+
+        JarvisFastBrainService.Outcome out = service.converse(ask("Avance le chantier 3"), new StringBuilder()::append);
+
+        assertThat(out.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(out.reason()).isEqualTo(JarvisFastBrainService.REASON_OFFLINE);
+        org.mockito.Mockito.verifyNoInteractions(links);
+        org.mockito.Mockito.verify(registry, org.mockito.Mockito.never()).offer(any(), any(), any(), any(), any(),
+                any(), any());
+    }
+
+    @Test
     void f245AnAdditionToALiveTurnLeavesNoNewLink() {
         JarvisFastBrainService service = service(delegating("""
                 {"demande": "Et aussi les tickets en revue", "label": "tickets en revue",

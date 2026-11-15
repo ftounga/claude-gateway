@@ -1283,6 +1283,63 @@ class AnthropicAgentProviderTest {
         assertThat(body.has("fallbacks")).isFalse();
     }
 
+    /** F-262 / SF-262-01 — la vraie réponse de l'API (relevée le 2026-11-15) à `disabled` sur Opus 5.5. */
+    private static final String OPUS_55_DISABLED_REFUSAL = """
+            {"type":"error","error":{"type":"invalid_request_error","message":"\\"thinking.type.disabled\\" is not \
+            supported for this model. Use \\"thinking.type.adaptive\\" and \\"output_config.effort\\" to control \
+            thinking behavior."}}""";
+
+    @Test
+    void reasoningOffOnOpusFiveFiveSendsNoThinkingButItsEffortAndPassesAFaithfulServer() {
+        buildWith(AgentApiFeaturesProperties.defaults());
+        java.util.concurrent.atomic.AtomicReference<String> captured = new java.util.concurrent.atomic.AtomicReference<>();
+        // Serveur fidèle à l'API : toute extinction de la réflexion sur Opus 5.5 rend le 400 réel.
+        server.expect(requestTo(URL)).andRespond(request -> {
+            String body = ((org.springframework.mock.http.client.MockClientHttpRequest) request).getBodyAsString();
+            captured.set(body);
+            JsonNode json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(body);
+            String type = json.path("thinking").path("type").asText("");
+            if ("claude-opus-5-5".equals(json.path("model").asText()) && ("disabled".equals(type)
+                    || "between_tools".equals(type))) {
+                return withStatus(HttpStatusCode.valueOf(400)).contentType(MediaType.APPLICATION_JSON)
+                        .body(OPUS_55_DISABLED_REFUSAL).createResponse(request);
+            }
+            return withSuccess("""
+                    {"content": [{"type": "text", "text": "Le chantier 3 avance."}], "stop_reason": "end_turn",
+                     "usage": {"input_tokens": 1, "output_tokens": 1}}
+                    """, MediaType.APPLICATION_JSON).createResponse(request);
+        });
+
+        AgentTurn turn = provider.nextTurn(new AgentTurnRequest("claude-opus-5-5", "consigne",
+                List.of(AgentMessage.userText("bonjour")), List.of(delegateTool()), null, AgentReasoning.off("low"),
+                null, null, AgentCallShape.compact(600)));
+
+        assertThat(turn.text()).isEqualTo("Le chantier 3 avance.");
+        JsonNode body;
+        try {
+            body = new com.fasterxml.jackson.databind.ObjectMapper().readTree(captured.get());
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex);
+        }
+        assertThat(body.has("thinking")).isFalse();
+        assertThat(body.path("output_config").path("effort").asText()).isEqualTo("low");
+    }
+
+    @Test
+    void aProviderRefusalKeepsItsStatusTypeAndMessageForTheLog() {
+        org.springframework.web.client.HttpClientErrorException refusal =
+                org.springframework.web.client.HttpClientErrorException.create(HttpStatusCode.valueOf(400), "Bad Request",
+                        HttpHeaders.EMPTY, OPUS_55_DISABLED_REFUSAL.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                        java.nio.charset.StandardCharsets.UTF_8);
+
+        String motive = AnthropicAgentProvider.refusalMotive(refusal);
+
+        assertThat(motive).startsWith(" statut=400 type=invalid_request_error message=")
+                .contains("thinking.type.disabled").doesNotContain("\n").doesNotContain("sk-ant");
+        assertThat(AnthropicAgentProvider.refusalMotive(new org.springframework.web.client.ResourceAccessException("x")))
+                .isEqualTo(" cause=ResourceAccessException");
+    }
+
     @Test
     void aCompactCallDeclaresOnlyItsStrictToolWithItsOwnOutputCap() {
         buildWith(AgentApiFeaturesProperties.defaults());

@@ -516,7 +516,10 @@ public class JarvisFastBrainService {
 
     /** Ce qui suit la décision : routage, question du sujet, trace au fil, mémoire, registre (effets d'un échange). */
     private Outcome settle(Request request, Outcome decided, Sink sink) {
-        Outcome outcome = offlineInstead(request, route(request, decided), sink);
+        // F-262 / SF-262-01 (6b) — le poste est testé AVANT le routage : un poste éteint n'ouvre ni ligne « ↗ … en
+        // cours » ni délégation enregistrée, qui resteraient figées.
+        Outcome diverted = offlineInstead(request, decided, sink);
+        Outcome outcome = diverted != decided ? diverted : route(request, decided);
         if (sink != null && decided.kind() == Kind.DELEGATE && outcome.kind() == Kind.ANSWER
                 && !REASON_OFFLINE.equals(outcome.reason())) {
             // F-239 / SF-239-02 — la question du sujet est dite (elle n'était jamais poussée au fil de l'eau).
@@ -548,7 +551,9 @@ public class JarvisFastBrainService {
     static final String REASON_OFFLINE = "offline";
     /** Appels au modèle au plus : trois lectures, puis la réponse. */
     static final int OFFLINE_MAX_CALLS = 4;
-    static final String OFFLINE_FAILED = "Je ne peux pas vous en dire davantage pour le moment, Monsieur.";
+    static final String OFFLINE_FAILED = "Je n'ai aucun relevé récent de ce poste, Monsieur.";
+    /** F-262 / SF-262-01 — le repli factuel : les faits relevés du poste visé, au plus ce nombre. */
+    static final int OFFLINE_FALLBACK_FACTS = 2;
 
     /** F-253 / SF-253-05 — le poste éteint se détecte comme la mesure F-247 ; le modèle est celui du terminal. */
     private fr.claudegateway.jarvis.state.JarvisStateTurnMeter offlineMeter;
@@ -587,8 +592,11 @@ public class JarvisFastBrainService {
         Workspace target;
         try {
             UUID subject = outcome.delegation().subjectId();
-            target = subject == null ? null : workspaces.findByIdAndUserId(subject, request.userId()).orElse(null);
-            boolean hosted = subject != null && (target == null || target.getHostId() == null);
+            if (subject == null) {
+                return outcome; // sans sujet, le routage demande lequel (D19), poste éteint ou non
+            }
+            target = workspaces.findByIdAndUserId(subject, request.userId()).orElse(null);
+            boolean hosted = target == null || target.getHostId() == null;
             if (hosted || !Boolean.TRUE.equals(offlineMeter.hostOffline(request.userId(), target))) {
                 return outcome;
             }
@@ -598,7 +606,7 @@ public class JarvisFastBrainService {
         }
         String notice = offlineNotice(offlineUniverseOf(request.userId()), target);
         sink.text(notice + " ");
-        String answer = answerOffline(request, target);
+        String answer = answerOffline(request, target, outcome.delegation().chantier());
         for (String sentence : JarvisFastGuards.split(answer + " ").sentences()) {
             sink.text(sentence + " ");
         }
@@ -612,11 +620,18 @@ public class JarvisFastBrainService {
                 .filter(c -> target.getHostId().equals(c.id())).map(fr.claudegateway.jarvis.universe.JarvisUniverse.Client::name)
                 .findFirst().orElse(null);
         return (name == null ? "Le poste est éteint" : "Le poste de " + name + " est éteint")
-                + " ; je vous réponds avec ce que je sais.";
+                + " ; je ne peux pas y agir, je vous dis ce que je sais.";
     }
 
-    /** La boucle de lecture d'Opus : outils de lecture seule, chacun une fois ; jamais d'exception vers la réplique. */
-    private String answerOffline(Request request, Workspace target) {
+    /**
+     * La boucle de lecture d'Opus : outils de lecture seule, chacun une fois ; jamais d'exception vers la réplique.
+     * F-262 / SF-262-01 — réflexion adaptative à l'effort du cerveau rapide (Opus 5.5 n'accepte aucune extinction), place
+     * de réflexion dans le plafond, blocs de réflexion rejoués dans la boucle ; lectures sur le <b>poste visé</b>. Si le
+     * modèle échoue : les faits relevés de ce poste.
+     */
+    private String answerOffline(Request request, Workspace target, Integer chantier) {
+        Request onTarget = target == null ? request : new Request(request.userId(), target, chantier, request.text(),
+                request.heardBeforeCut(), request.screen(), request.presentation());
         try {
             String apiKey = byok == null ? null : byok.resolveActiveApiKey(request.userId()).orElse(null);
             List<AgentMessage> conversation = new ArrayList<>();
@@ -626,26 +641,55 @@ public class JarvisFastBrainService {
                 boolean last = n == OFFLINE_MAX_CALLS - 1;
                 AgentTurn turn = provider.nextTurn(new AgentTurnRequest(atelierProperties.model(),
                         JarvisOfflinePrompt.SYSTEM, List.copyOf(conversation),
-                        last ? List.of() : JarvisOfflinePrompt.TOOLS, apiKey, AgentReasoning.off(properties.effort()),
-                        AgentContextPolicy.none(), AgentTurnMode.ACT, AgentCallShape.compact(properties.maxTokens())));
+                        last ? List.of() : JarvisOfflinePrompt.TOOLS, apiKey,
+                        new AgentReasoning(true, properties.effort()), AgentContextPolicy.none(), AgentTurnMode.ACT,
+                        AgentCallShape.compact(properties.maxTokens() + THINKING_ROOM_TOKENS)));
                 account(request.userId(), target, turn, JARVIS_OPUS);
                 if (turn.toolCalls().isEmpty()) {
-                    return turn.text() == null || turn.text().isBlank() ? OFFLINE_FAILED : turn.text().strip();
+                    return turn.text() == null || turn.text().isBlank() ? offlineFacts(onTarget) : turn.text().strip();
                 }
-                List<fr.claudegateway.agent.AgentContentBlock> said = new ArrayList<>();
+                // La réflexion du tour d'abord, telle quelle (blocs signés, inchangés, dans l'ordre), puis le texte et
+                // les appels d'outils : le fournisseur l'exige quand on lui renvoie les résultats.
+                List<fr.claudegateway.agent.AgentContentBlock> said = new ArrayList<>(
+                        turn.reasoning() == null ? List.of() : turn.reasoning());
+                if (turn.text() != null && !turn.text().isBlank()) {
+                    said.add(new fr.claudegateway.agent.AgentContentBlock.Text(turn.text()));
+                }
                 List<fr.claudegateway.agent.AgentContentBlock> results = new ArrayList<>();
                 for (AgentToolCall tc : turn.toolCalls()) {
                     said.add(new fr.claudegateway.agent.AgentContentBlock.ToolUse(tc.id(), tc.name(), tc.input()));
-                    String text = read.add(tc.name()) ? readOffline(request, tc) : ALREADY_READ;
+                    String text = read.add(tc.name()) ? readOffline(onTarget, tc) : ALREADY_READ;
                     results.add(new fr.claudegateway.agent.AgentContentBlock.ToolResult(tc.id(), text, false));
                 }
                 conversation.add(AgentMessage.assistant(said));
                 conversation.add(AgentMessage.toolResults(results));
             }
         } catch (RuntimeException e) {
-            log.warn("Réponse poste éteint en échec ({})", e.getClass().getSimpleName());
+            log.warn("Réponse poste éteint en échec ({} : {})", e.getClass().getSimpleName(), e.getMessage());
         }
-        return OFFLINE_FAILED;
+        return offlineFacts(onTarget);
+    }
+
+    /**
+     * F-262 / SF-262-01 — le repli : les faits relevés du poste visé (registre d'état, datés), au plus
+     * {@value #OFFLINE_FALLBACK_FACTS} ; sans fait, {@link #OFFLINE_FAILED}. Jamais d'exception.
+     */
+    String offlineFacts(Request onTarget) {
+        if (stateTool == null || onTarget.userId() == null) {
+            return OFFLINE_FAILED;
+        }
+        try {
+            Workspace w = onTarget.workspace();
+            List<String> facts = stateTool.read(onTarget.userId(), w == null ? null : w.getHostId(),
+                    com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode(), onTarget.presentation())
+                    .lines().stream()
+                    .map(l -> l.text() == null ? "" : l.text().replaceFirst("^-\\s*", "").strip())
+                    .filter(t -> !t.isEmpty()).limit(OFFLINE_FALLBACK_FACTS).toList();
+            return facts.isEmpty() ? OFFLINE_FAILED : "Dernier relevé : " + String.join(" ; ", facts) + ".";
+        } catch (RuntimeException e) {
+            log.debug("Faits du poste illisibles ({})", e.getClass().getSimpleName());
+            return OFFLINE_FAILED;
+        }
     }
 
     /** Une lecture de l'outil demandé ; tout autre nom est refusé (la liste est celle de {@link JarvisOfflinePrompt}). */
