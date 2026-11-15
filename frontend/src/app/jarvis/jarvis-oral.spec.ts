@@ -60,6 +60,19 @@ describe('Jarvis — « passe sur … » (F-231 / SF-231-02)', () => {
     expect(subjectSwitch('va sur agenor', subjects)?.id).toBe('3');
   });
 
+  it('F-263 — reconnaît le sujet nommé au milieu de la phrase (« vers CAGIP sur data-platform »)', () => {
+    const real = [
+      { id: 'dp', name: 'data-platform' },
+      { id: 'ag', name: 'agenor' },
+      { id: 'td', name: 'Terminal du poste' },
+      { id: 'ed', name: 'EDENRED' },
+    ];
+    expect(subjectSwitch('Bascule vers CAGIP sur data-platform.', real)?.id).toBe('dp');
+    expect(subjectSwitch('passe sur le chantier 2 de agenor', real)?.id).toBe('ag');
+    expect(subjectSwitch('va sur agenor puis sur data-platform', real)).toBeNull();
+    expect(subjectSwitch('bascule vers CAGIP', real)).toBeNull();
+  });
+
   it('ne devine pas : inconnu ou ambigu ⇒ null (la phrase part au cerveau)', () => {
     expect(subjectSwitch('passe sur Thales', subjects)).toBeNull();
     expect(subjectSwitch('passe sur e', subjects)).toBeNull();
