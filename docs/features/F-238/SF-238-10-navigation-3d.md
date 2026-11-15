@@ -41,9 +41,10 @@ des transitions sans saut, avec la narration SF-238-12 branchée sur la phrase *
    « déplie tout », « tourne » ⇒ **sans IA**. Tout ce qui nomme un service ou une zone part au cerveau rapide.
 4. **Outil `afficher`** (cerveau rapide) : enum `action` étendue **une fois** de `focus`, `flux`, `replier`,
    `deplier`, `eclater`, `rassembler`, `vue` ; champ `vue` étendu de `ensemble|dessus|face|2d|3d` ; `cible` = le nom
-   tel que dit. Consigne version **22** (la « version 4 » du cadrage date d'avant les versions 5→21) : un paragraphe
-   de navigation d'architecture et la règle « montrer d'initiative un schéma ⇒ cadrer l'entrée »
-   (`afficher(flux, « entrée », appui)`), qui sert SF-238-13 sans nouvelle modification.
+   tel que dit. Version **22** (la « version 4 » du cadrage date d'avant les versions 5→21) : la doctrine vit dans la
+   **description fixe de l'outil** (cadrage §11.3) — navigation d'architecture, « montrer d'initiative un schéma ⇒
+   cadrer l'entrée » (`afficher(flux, « entrée », appui)`), « sans schéma ⇒ proposer d'en dessiner un » — qui sert
+   SF-238-13 sans nouvelle modification ; le **texte** de la consigne reste celui de la v21 (D-10-6).
 5. **`## Écran`** (message, jamais la consigne) : ligne « Architecture « titre » ; focus : … ; repliées : … ; éclaté :
    … ; vue : … ; flux : … », juste après l'en-tête, bloc ≤ 1 500 caractères.
 6. **Transitions** (directeur pur) : T-A3 éclater/rassembler 1,2 s `glisse` ; T-A4 replier 0,7 s `entree` (services
@@ -149,3 +150,8 @@ compteur (cadrage §8.3) : ici éteintes (latentes, sans particules) — signal�
 - **D-10-4** Liaisons vers une capsule : éteintes (latentes, sans particules) plutôt qu'ancrées au bord avec compteur.
 - **D-10-5** La narration lit `playingSentence` (déjà posé au `onPlaying` de chaque phrase) : aucune modification de
   l'écoute ni de la voix.
+- **D-10-6** Mesuré au banc de conversation : avec la doctrine dans le **texte** de la consigne, « regarde les tickets
+  bloqués d'Helios » restait sans délégation (0/2 au banc, 7/8 en sonde ; main : 10/10). Déplacée dans la description de
+  l'outil `afficher` : 8/8 en sonde, 2/2 au banc ; banc de conversation 97,2 % / 98,6 % (main : 100 % / 97,2 %, même
+  bruit du juge sur les formules), banc des pièces 100 % ×2 (NAVIGATE 15/15 dont 5 ordres d'architecture).
+- **D-10-7** En 2D (graphe absent), « zoome sur … » cadre tout de suite la partie nommée du SVG (repli F-237).
