@@ -1382,6 +1382,11 @@ public class JarvisFastBrainService {
     static final String SHOWN_REPLY = "Voici.";
     /** F-237 / SF-237-08 — la réponse à une deuxième lecture des pièces dans la même réponse. */
     static final String ALREADY_READ = "Lecture déjà faite pour cette réponse.";
+    /**
+     * F-263 / SF-263-01 — l'aveu dit quand le tour finit sur une annonce (« Je cherche les schémas… ») suivie d'outils
+     * sans phrase ni écran : jamais une promesse laissée dans le vide.
+     */
+    static final String NOTHING_SHOWN = "Je n'ai rien pu vous afficher, Monsieur.";
 
     /** Un appel au modèle : le tour, le délai du premier jeton, ou la raison de l'échec. */
     private record Called(AgentTurn turn, long firstMs, String failure) {
@@ -1526,6 +1531,7 @@ public class JarvisFastBrainService {
         boolean conversationsRead = false;
         int appuiLeft = JarvisShowCommand.MAX_APPUI;
         List<JarvisShowCommand> shown = new ArrayList<>();
+        boolean hangingRetried = false;
         for (int n = 0; n < MAX_CALLS; n++) {
             AgentTurnRequest call = new AgentTurnRequest(model, system, List.copyOf(conversation),
                     JarvisFastBrainPrompt.tools(), apiKey, reasoning(),
@@ -1568,6 +1574,10 @@ public class JarvisFastBrainService {
                         out.show(parsed.command());
                         shown.add(parsed.command());
                         appuiLeft -= parsed.appuiUsed();
+                    } else {
+                        // F-263 / SF-263-01 — un refus d'affichage laisse une trace : l'action et le motif rendu au modèle.
+                        log.info("Ordre d'écran refusé (action={}) : {}", tc.input() == null ? ""
+                                : tc.input().path("action").asText(""), parsed.toolResult());
                     }
                     results.add(new fr.claudegateway.agent.AgentContentBlock.ToolResult(tc.id(), parsed.toolResult(),
                             parsed.command() == null));
@@ -1621,7 +1631,14 @@ public class JarvisFastBrainService {
                 }
             }
             boolean needPhrase = !shown.isEmpty() && gate.spoken().isEmpty();
-            if (delegates || results.isEmpty() || !(freshRead || needPhrase)) {
+            // F-263 / SF-263-01 — une annonce déjà dite, puis des outils sans phrase ni écran : relancer une fois (les
+            // résultats, refus compris, sont rendus au modèle) plutôt que finir sur la promesse.
+            boolean hanging = !delegates && endsHanging(turn, shown, gate.spoken());
+            boolean retryHanging = hanging && !(freshRead || needPhrase) && !hangingRetried && n < MAX_CALLS - 1;
+            if (retryHanging) {
+                hangingRetried = true;
+            }
+            if (delegates || results.isEmpty() || !(freshRead || needPhrase || retryHanging)) {
                 break;
             }
             // F-257 / SF-257-13 — la réflexion du tour d'abord, telle quelle (le fournisseur exige ses blocs signés,
@@ -1680,11 +1697,26 @@ public class JarvisFastBrainService {
             out.text(SHOWN_REPLY + " ");
             text = SHOWN_REPLY;
         }
+        if (endsHanging(turn, shown, text)) {
+            // F-263 / SF-263-01 — relance faite ou plafond atteint : l'échec est dit, honnêtement.
+            out.text(NOTHING_SHOWN + " ");
+            text = text + " " + NOTHING_SHOWN;
+        }
         if (text.isEmpty() || (turn.truncated() && shown.isEmpty())) {
             return autoEmpty(request, firstMs, gate.guards(), turn).withShows(shown);
         }
         return new Outcome(Kind.ANSWER, text, null, null, properties.model(), firstMs, null, gate.guards())
                 .withShows(shown);
+    }
+
+    /**
+     * F-263 / SF-263-01 — vrai si l'appel s'achève sur des outils (autres que {@code deleguer}) sans un mot, alors
+     * qu'une phrase a déjà été dite et que rien n'a été montré dans le tour : l'annonce resterait une promesse vide.
+     */
+    static boolean endsHanging(AgentTurn turn, List<JarvisShowCommand> shown, String spoken) {
+        return turn != null && shown.isEmpty() && spoken != null && !spoken.isBlank() && !turn.toolCalls().isEmpty()
+                && (turn.text() == null || turn.text().isBlank()) && turn.toolCalls().stream()
+                        .noneMatch(tc -> JarvisFastBrainPrompt.TOOL_NAME.equals(tc.name()));
     }
 
     /**

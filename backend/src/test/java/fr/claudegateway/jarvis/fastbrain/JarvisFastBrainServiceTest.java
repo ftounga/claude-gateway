@@ -1193,6 +1193,73 @@ class JarvisFastBrainServiceTest {
         assertThat(screen.said.toString()).contains("voici les preuves");
     }
 
+    // ------------------------------------------------------- F-263 / SF-263-01 : pas d'annonce sans écran
+
+    private static final String SHOW_REFUSED = """
+            {"action":"inconnue","pieces":[],"portee":{"sujet":"","chantier":null,"categorie":"","type":"",
+             "serie":"","depuis":""},"index":null,"temps":null,"chapitre":"","page":null,"zoom":"","cible":"",
+             "raison":"demande"}""";
+    private static final String READ_SCHEMAS = """
+            {"sujet":"","chantier":null,"categorie":"","type":"","recherche":"schema"}""";
+
+    @Test
+    void f263AnAnnouncementFollowedBySilentToolsIsRetriedOnceAndThePhraseIsSaid() {
+        JarvisFastPieces pieces = mock(JarvisFastPieces.class);
+        when(pieces.read(eq(alice), eq(subject), any())).thenReturn("Aucune pièce trouvée.");
+        Screen screen = new Screen();
+        JarvisFastBrainService service = service(scripted(
+                new AgentTurn("Je cherche les schémas, Monsieur.", List.of(tool("p1", "pieces", READ_SCHEMAS)), false,
+                        100, 10),
+                new AgentTurn("", List.of(tool("p2", "pieces", READ_SCHEMAS), tool("s1", "afficher", SHOW_REFUSED)),
+                        false, 100, 10),
+                new AgentTurn("Je n'en trouve aucun, Monsieur.", List.of(), true, 100, 10)), null, null);
+        service.setPieces(pieces);
+
+        JarvisFastBrainService.Outcome outcome = service.converse(ask("Montre-moi les schémas"), screen);
+
+        assertThat(calls).hasSize(3);
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(outcome.spokenText()).contains("Je n'en trouve aucun")
+                .doesNotContain(JarvisFastBrainService.NOTHING_SHOWN);
+        // Le refus d'écran est rendu au modèle à la relance.
+        AgentTurnRequest third = calls.get(2);
+        assertThat(third.messages().get(third.messages().size() - 1).content())
+                .anyMatch(b -> b instanceof fr.claudegateway.agent.AgentContentBlock.ToolResult r && r.isError());
+    }
+
+    @Test
+    void f263AnAnnouncementThatStillShowsNothingEndsOnAnHonestAdmission() {
+        JarvisFastPieces pieces = mock(JarvisFastPieces.class);
+        when(pieces.read(eq(alice), eq(subject), any())).thenReturn("Aucune pièce trouvée.");
+        Screen screen = new Screen();
+        AgentTurn silent = new AgentTurn("", List.of(tool("p2", "pieces", READ_SCHEMAS),
+                tool("s1", "afficher", SHOW_REFUSED)), false, 100, 10);
+        JarvisFastBrainService service = service(scripted(
+                new AgentTurn("Je cherche les schémas, Monsieur.", List.of(tool("p1", "pieces", READ_SCHEMAS)), false,
+                        100, 10), silent, silent), null, null);
+        service.setPieces(pieces);
+
+        JarvisFastBrainService.Outcome outcome = service.converse(ask("Montre-moi les schémas"), screen);
+
+        assertThat(calls).hasSize(3);
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(outcome.spokenText()).endsWith(JarvisFastBrainService.NOTHING_SHOWN);
+        assertThat(screen.said.toString()).contains(JarvisFastBrainService.NOTHING_SHOWN);
+        assertThat(screen.shows).isEmpty();
+    }
+
+    @Test
+    void f263ASaidPhraseOrAShownPieceNeedsNoAdmission() {
+        assertThat(JarvisFastBrainService.endsHanging(new AgentTurn("Voilà.", List.of(tool("p", "pieces", READ_SCHEMAS)),
+                false, 1, 1), List.of(), "Je cherche.")).isFalse();
+        assertThat(JarvisFastBrainService.endsHanging(new AgentTurn("", List.of(tool("p", "pieces", READ_SCHEMAS)),
+                false, 1, 1), List.of(), "")).isFalse();
+        assertThat(JarvisFastBrainService.endsHanging(new AgentTurn("", List.of(tool("d", "deleguer", "{}")),
+                false, 1, 1), List.of(), "Je cherche.")).isFalse();
+        assertThat(JarvisFastBrainService.endsHanging(new AgentTurn("", List.of(tool("p", "pieces", READ_SCHEMAS)),
+                false, 1, 1), List.of(), "Je cherche.")).isTrue();
+    }
+
     @Test
     void showWithoutSentenceAsksForThePhraseOnce() {
         Screen screen = new Screen();
