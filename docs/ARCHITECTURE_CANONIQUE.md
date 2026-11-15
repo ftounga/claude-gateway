@@ -1454,7 +1454,11 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   telle que reçue), `code` (Mermaid), `svg_key` / `png_key` / `drawio_key` (S3 `diagrams/{u}/{ws}/{id}.*`, effacés
   avec le sujet), `created_at`. Écrit **après** un rendu réussi, au mieux (jamais une cause d'échec) ; outil et
   description inchangés. Lu par l'index des pièces (`diag:<id>`) et `GET /api/jarvis/pieces/diag:<id>/image|spec`
-  sous `user_id`. F-238 y **ajoute** `graph_json` (migration `238-…`).
+  sous `user_id`. **F-238 / SF-238-07** (migration `238-diagram-renders-graph`, additive) : `graph_json` (graphe
+  d'architecture `ArchitectureGraph` v1, JSON compact ≤ 64 Kio, `null` pour Mermaid), `graph_version` (smallint),
+  `node_count` / `zone_count` / `edge_count` (listes sans charger le JSON). Rangé avec la ligne (jamais sans dépôt
+  réussi) ou calculé **une fois** à la première lecture `GET /api/jarvis/pieces/diag:<id>/graph` (mise à jour
+  conditionnelle `graph_json is null` sous `user_id`).
 - **jarvis_voice_choices** — **la voix de Jarvis choisie à l'audition** (F-233 / SF-233-07, migration `198`) :
   `user_id`, `provider` (`openai|elevenlabs`), `voice` (nom ou identifiant), `label` (lettre entendue), `chosen_at`.
   Le plus récent du compte fait foi (`JarvisVoiceService.current(userId)`), sinon la configuration. Purgé à la
