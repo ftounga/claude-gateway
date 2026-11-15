@@ -39,9 +39,16 @@ export class JarvisSpeculation {
   private dropped = false;
   private readonly finished: Promise<FastBrainOutcome>;
 
-  /** Lance l'appel provisoire ; rien de ce qu'il reçoit n'est joué avant {@link adopt}. */
+  /** F-257 / SF-257-12 — la première phrase reçue avant l'adoption a été signalée. */
+  private firstSignalled = false;
+
+  /**
+   * Lance l'appel provisoire ; rien de ce qu'il reçoit n'est joué avant {@link adopt}. F-257 / SF-257-12 :
+   * `onFirstText` reçoit la première phrase **retenue** (avant l'adoption), pour en préparer la voix sans la jouer.
+   */
   constructor(private readonly client: JarvisFastBrainClient, readonly body: ConverseBody,
-              readonly speculationId: string = crypto.randomUUID(), readonly anticipated = false) {
+              readonly speculationId: string = crypto.randomUUID(), readonly anticipated = false,
+              private readonly onFirstText?: (sentence: string) => void) {
     this.finished = client.converse({ ...body, speculationId }, this.holding(), this.controller.signal);
   }
 
@@ -82,7 +89,13 @@ export class JarvisSpeculation {
 
   private holding(): FastBrainHandlers {
     return {
-      onText: (sentence) => this.held((h) => h.onText(sentence)),
+      onText: (sentence) => {
+        if (!this.firstSignalled && !this.target && !this.dropped) {
+          this.firstSignalled = true;
+          this.onFirstText?.(sentence);
+        }
+        this.held((h) => h.onText(sentence));
+      },
       onUnderstood: (text) => this.held((h) => h.onUnderstood?.(text)),
       onDelegated: (delegation) => this.held((h) => h.onDelegated(delegation)),
       onFallback: (reason) => this.held((h) => h.onFallback(reason)),

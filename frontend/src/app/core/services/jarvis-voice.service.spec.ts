@@ -174,3 +174,72 @@ describe('JarvisVoiceService.busy (F-251 / SF-251-01)', () => {
     expect(voice.busy).toBeFalse();
   });
 });
+
+/** **La phrase préparée** (F-257 / SF-257-12) : synthétisée pendant la confirmation, jouée seulement si reprise. */
+describe('JarvisVoiceService.warm (F-257 / SF-257-12)', () => {
+  type Internals = {
+    fetchAudio: (text: string, ws: string | null, abort: AbortController, hooks?: unknown) => Promise<unknown>;
+    runQueue: () => Promise<void>;
+    queue: { text: string; url: Promise<unknown> | null; abort: AbortController }[];
+  };
+  let voice: JarvisVoiceService;
+  let internals: Internals;
+  let fetches: { text: string; abort: AbortController }[];
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [JarvisVoiceService, { provide: HttpClient, useValue: {} }, { provide: AuthService, useValue: {} }],
+    });
+    voice = TestBed.inject(JarvisVoiceService);
+    internals = voice as unknown as Internals;
+    fetches = [];
+    spyOn(internals, 'fetchAudio').and.callFake((text: string, _ws: string | null, abort: AbortController,
+      hooks?: unknown) => {
+      fetches.push({ text, abort });
+      (hooks as { onFirstByte?: () => void } | undefined)?.onFirstByte?.();
+      return Promise.resolve({ url: 'blob:x', alignment: null });
+    });
+    spyOn(internals, 'runQueue').and.returnValue(Promise.resolve());
+  });
+
+  it('la même phrase confiée à la file reprend la synthèse préparée (un seul appel), premier octet posé', async () => {
+    voice.warm('Bonjour, Monsieur.', 'S1');
+    let firstByte = 0;
+    voice.enqueue('Bonjour, Monsieur.', 'S1', { onFirstByte: () => firstByte++ });
+    await Promise.resolve();
+    expect(fetches.map((f) => f.text)).toEqual(['Bonjour, Monsieur.']);
+    expect(fetches[0].abort.signal.aborted).toBeFalse();
+    expect(internals.queue[0].abort).toBe(fetches[0].abort);
+    expect(firstByte).toBe(1);
+  });
+
+  it('une autre phrase (ou un autre sujet) : la préparée est abandonnée, la file demande la sienne', () => {
+    voice.warm('Bonjour, Monsieur.', 'S1');
+    voice.enqueue('Bonsoir.', 'S1');
+    expect(fetches.map((f) => f.text)).toEqual(['Bonjour, Monsieur.', 'Bonsoir.']);
+    expect(fetches[0].abort.signal.aborted).toBeTrue();
+
+    voice.warm('Oui.', 'S1');
+    voice.enqueue('Oui.', 'S2');
+    expect(fetches[2].abort.signal.aborted).toBeTrue();
+  });
+
+  it('unwarm (réponse jetée) abandonne la synthèse ; rien ne reste à reprendre', () => {
+    voice.warm('Bonjour, Monsieur.', 'S1');
+    voice.unwarm();
+    expect(fetches[0].abort.signal.aborted).toBeTrue();
+    voice.enqueue('Bonjour, Monsieur.', 'S1');
+    expect(fetches.length).toBe(2);
+  });
+
+  it('une préparation trop ancienne n’est plus reprise', () => {
+    const now = Date.now();
+    const clock = spyOn(Date, 'now').and.returnValue(now);
+    voice.warm('Bonjour, Monsieur.', 'S1');
+    clock.and.returnValue(now + 16_000);
+    voice.enqueue('Bonjour, Monsieur.', 'S1');
+    expect(fetches.length).toBe(2);
+    expect(fetches[0].abort.signal.aborted).toBeTrue();
+  });
+});
