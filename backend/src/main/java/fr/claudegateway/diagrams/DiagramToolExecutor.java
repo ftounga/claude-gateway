@@ -47,12 +47,12 @@ public class DiagramToolExecutor {
 
     /** Conserve un rendu réussi — au mieux : jamais une raison d'échouer le rendu. */
     private void keep(UUID userId, Workspace workspace, String callId, String engine, JsonNode spec, String code,
-            String fileName, DiagramRenderService.Files files) {
+            String fileName, DiagramRenderService.Files files, JsonNode graph) {
         if (renders == null) {
             return;
         }
         try {
-            renders.record(userId, workspace, callId, engine, spec, code, fileName, files);
+            renders.record(userId, workspace, callId, engine, spec, code, fileName, files, graph);
         } catch (RuntimeException e) {
             // déjà journalisé côté service ; le schéma est livré dans le projet
         }
@@ -121,7 +121,8 @@ public class DiagramToolExecutor {
         }
         keep(userId, workspace, callId, cloud ? "cloud" : "mermaid", cloud ? spec : null, cloud ? null : code, name,
                 format == Format.SVG ? new DiagramRenderService.Files(rendered.bytes(), null, null)
-                        : new DiagramRenderService.Files(null, rendered.bytes(), null));
+                        : new DiagramRenderService.Files(null, rendered.bytes(), null),
+                cloud ? rendered.graph() : null);
         String warning = rendered.hasUnknownTypes()
                 // F-142 / SF-142-09 : dit, et pas seulement dessiné. L'utilisateur doit savoir quels
                 // composants n'ont pas d'icône officielle — c'est à lui de juger si c'est acceptable.
@@ -187,7 +188,8 @@ public class DiagramToolExecutor {
                     DiagramToolCatalog.RENDER);
         }
         keep(userId, workspace, callId, "drawio", spec, null, source,
-                new DiagramRenderService.Files(null, rendered.hasPreview() ? rendered.png() : null, rendered.drawio()));
+                new DiagramRenderService.Files(null, rendered.hasPreview() ? rendered.png() : null, rendered.drawio()),
+                rendered.graph());
         StringBuilder message = new StringBuilder();
         message.append("Schéma rendu par la gateway. Fichier RÉOUVRABLE déposé sous « ").append(deposited)
                 .append(" » : l'utilisateur peut l'ouvrir et le MODIFIER dans draw.io / diagrams.net "

@@ -95,6 +95,8 @@ public class HttpDiagramRenderer implements DiagramRenderer {
         if (properties.isCadre()) {
             // F-238 / SF-238-01 : le schéma cadré (liaisons orthogonales). Absent ⇒ graphviz, comme avant.
             body.put("layout", "elk");
+            // F-238 / SF-238-07 : le graphe d'architecture revient avec le SVG, pour être conservé.
+            body.put("graph", true);
         }
         // F-142 / SF-142-18 : le service rend le schéma cloud en SVG auto-contenu (icônes inlinées en
         // data:), net à toute échelle dans une page. On l'annonce comme tel pour l'extension et le type.
@@ -157,7 +159,61 @@ public class HttpDiagramRenderer implements DiagramRenderer {
             previewError = "Aperçu trop lourd : " + png.length + " octets.";
             png = new byte[0];
         }
-        return new Editable(drawio, png, previewError);
+        return new Editable(drawio, png, previewError, graphOf(json));
+    }
+
+    /**
+     * F-238 / SF-238-07 — le graphe d'une description conservée, par le moteur <b>cadré</b> (toujours {@code elk} :
+     * la 3D repose sur la mise en page cadrée), avec le même corps qu'un rendu neuf.
+     */
+    @Override
+    public java.util.Optional<JsonNode> computeGraph(String engine, JsonNode spec) {
+        if (!isAvailable()) {
+            throw new DiagramRendererUnavailableException(
+                    "Le rendu de diagrammes n'est pas configuré sur cette installation.");
+        }
+        if (spec == null || !spec.isObject() || !spec.path("nodes").isArray() || spec.path("nodes").isEmpty()) {
+            throw new DiagramRejectedException("La description ne porte aucun nœud.");
+        }
+        boolean drawio = "drawio".equalsIgnoreCase(engine);
+        if (!drawio && !"cloud".equalsIgnoreCase(engine)) {
+            return java.util.Optional.empty();
+        }
+        ObjectNode body = mapper.createObjectNode();
+        body.put("engine", drawio ? "drawio" : "cloud");
+        body.set("spec", spec);
+        body.put("layout", "elk");
+        if (!drawio) {
+            body.put("graph", true);
+        }
+        HttpResponse<byte[]> response = post(body);
+        int status = response.statusCode();
+        if (status == 400 || status == 413 || status == 422) {
+            throw new DiagramRejectedException(reason(response.body()));
+        }
+        if (status != 200) {
+            throw new DiagramRendererUnavailableException("Le service de rendu a répondu " + status + ".");
+        }
+        if (!isJson(response)) {
+            return java.util.Optional.empty(); // service d'avant SF-238-05 : pas de graphe
+        }
+        try {
+            return java.util.Optional.ofNullable(
+                    graphOf(mapper.readTree(new String(response.body(), StandardCharsets.UTF_8))));
+        } catch (IOException | RuntimeException e) {
+            throw new DiagramRendererUnavailableException("Le service de rendu a renvoyé une réponse illisible.");
+        }
+    }
+
+    /** Le graphe d'une réponse JSON, s'il y en a un (objet), sinon {@code null}. */
+    private static JsonNode graphOf(JsonNode json) {
+        JsonNode graph = json == null ? null : json.get("graph");
+        return graph != null && graph.isObject() ? graph : null;
+    }
+
+    private static boolean isJson(HttpResponse<byte[]> response) {
+        return response.headers().firstValue("Content-Type").orElse("").toLowerCase(java.util.Locale.ROOT)
+                .startsWith("application/json");
     }
 
     /** Base64 tolérant : une valeur absente ou illisible vaut « pas de fichier », jamais une exception. */
@@ -196,6 +252,18 @@ public class HttpDiagramRenderer implements DiagramRenderer {
         int status = response.statusCode();
         if (status == 200) {
             byte[] image = response.body();
+            JsonNode graph = null;
+            if (isJson(response)) {
+                // F-238 / SF-238-07 : `{svg (base64), graph}` — le SVG suit le chemin d'avant, le graphe sera rangé.
+                try {
+                    JsonNode json = mapper.readTree(new String(image, StandardCharsets.UTF_8));
+                    image = decode(json.path("svg").asText(""));
+                    graph = graphOf(json);
+                } catch (IOException | RuntimeException e) {
+                    throw new DiagramRendererUnavailableException(
+                            "Le service de rendu a renvoyé une réponse illisible.");
+                }
+            }
             if (image == null || image.length == 0) {
                 throw new DiagramRendererUnavailableException("Le service de rendu a renvoyé une image vide.");
             }
@@ -207,7 +275,7 @@ public class HttpDiagramRenderer implements DiagramRenderer {
             String unknown = response.headers().firstValue("X-Cg-Unknown-Types").orElse("");
             // F-142 / SF-142-17 : « ce schéma est trop dense » suit le même chemin.
             String notice = response.headers().firstValue("X-Cg-Diagram-Notice").orElse("");
-            return new Rendered(image, format, unknown, notice);
+            return new Rendered(image, format, unknown, notice, graph);
         }
         if (status == 400 || status == 413 || status == 422) {
             throw new DiagramRejectedException(reason(response.body()));

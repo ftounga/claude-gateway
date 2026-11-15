@@ -169,6 +169,15 @@ public class JarvisPieceContentService {
         return d.getSpecJson();
     }
 
+    /**
+     * Le graphe d'architecture d'un schéma du compte (F-238 / SF-238-07), calculé une fois s'il manque. Volontairement
+     * hors transaction : le calcul éventuel est un appel HTTP au renderer. La ligne est d'abord trouvée par
+     * ({@code id}, {@code user_id}) — un autre compte ne déclenche jamais de calcul.
+     */
+    public String diagramGraph(UUID userId, String rawId) {
+        return diagrams.graph(diagram(userId, rawId)).orElseThrow(PieceNotFoundException::new);
+    }
+
     private DiagramRender diagram(UUID userId, String rawId) {
         PieceId id = PieceId.parse(rawId).filter(p -> "diag".equals(p.prefix()))
                 .orElseThrow(PieceNotFoundException::new);
