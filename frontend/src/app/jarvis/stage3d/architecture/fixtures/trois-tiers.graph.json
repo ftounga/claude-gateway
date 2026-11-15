@@ -1,0 +1,551 @@
+{
+ "version": 1,
+ "title": "Application 3-tiers multi-AZ",
+ "direction": "LR",
+ "bounds": {
+  "w": 1248,
+  "h": 1184
+ },
+ "zones": [
+  {
+   "id": "cloud",
+   "kind": "cloud",
+   "label": "AWS Cloud",
+   "parent": "",
+   "depth": 0,
+   "box": {
+    "x": 200,
+    "y": 64,
+    "w": 1024,
+    "h": 1096
+   },
+   "inferred": true
+  },
+  {
+   "id": "region",
+   "kind": "region",
+   "label": "Région eu-west-3",
+   "parent": "cloud",
+   "depth": 1,
+   "box": {
+    "x": 224,
+    "y": 272,
+    "w": 976,
+    "h": 864
+   },
+   "inferred": true
+  },
+  {
+   "id": "vpc",
+   "kind": "vpc",
+   "label": "VPC 10.0.0.0/16",
+   "parent": "region",
+   "depth": 2,
+   "box": {
+    "x": 248,
+    "y": 320,
+    "w": 928,
+    "h": 632
+   },
+   "inferred": true
+  },
+  {
+   "id": "aza",
+   "kind": "az",
+   "label": "Availability Zone A",
+   "parent": "vpc",
+   "depth": 3,
+   "box": {
+    "x": 448,
+    "y": 368,
+    "w": 704,
+    "h": 256
+   },
+   "inferred": true
+  },
+  {
+   "id": "azb",
+   "kind": "az",
+   "label": "Availability Zone B",
+   "parent": "vpc",
+   "depth": 3,
+   "box": {
+    "x": 448,
+    "y": 672,
+    "w": 704,
+    "h": 256
+   },
+   "inferred": true
+  },
+  {
+   "id": "puba",
+   "kind": "subnet_public",
+   "label": "Sous-réseau public A",
+   "parent": "aza",
+   "depth": 4,
+   "box": {
+    "x": 472,
+    "y": 416,
+    "w": 240,
+    "h": 184
+   },
+   "inferred": true
+  },
+  {
+   "id": "priva",
+   "kind": "subnet_private",
+   "label": "Sous-réseau privé A",
+   "parent": "aza",
+   "depth": 4,
+   "box": {
+    "x": 760,
+    "y": 416,
+    "w": 368,
+    "h": 184
+   },
+   "inferred": true
+  },
+  {
+   "id": "pubb",
+   "kind": "subnet_public",
+   "label": "Sous-réseau public B",
+   "parent": "azb",
+   "depth": 4,
+   "box": {
+    "x": 472,
+    "y": 720,
+    "w": 240,
+    "h": 184
+   },
+   "inferred": true
+  },
+  {
+   "id": "privb",
+   "kind": "subnet_private",
+   "label": "Sous-réseau privé B",
+   "parent": "azb",
+   "depth": 4,
+   "box": {
+    "x": 760,
+    "y": 720,
+    "w": 368,
+    "h": 184
+   },
+   "inferred": true
+  }
+ ],
+ "nodes": [
+  {
+   "id": "users",
+   "type": "aws.users",
+   "resolved": "aws/general/user",
+   "label": "Utilisateurs",
+   "zone": "",
+   "family": "client",
+   "unknown": false,
+   "box": {
+    "x": 24,
+    "y": 552,
+    "w": 128,
+    "h": 112
+   }
+  },
+  {
+   "id": "r53",
+   "type": "aws.route53",
+   "resolved": "aws/network/route-53",
+   "label": "Route 53",
+   "zone": "cloud",
+   "family": "network",
+   "unknown": false,
+   "box": {
+    "x": 224,
+    "y": 112,
+    "w": 128,
+    "h": 112
+   }
+  },
+  {
+   "id": "alb",
+   "type": "aws.alb",
+   "resolved": "aws/network/elb-application-load-balancer",
+   "label": "ALB",
+   "zone": "vpc",
+   "family": "network",
+   "unknown": false,
+   "box": {
+    "x": 272,
+    "y": 592,
+    "w": 128,
+    "h": 112
+   }
+  },
+  {
+   "id": "nata",
+   "type": "aws.natgateway",
+   "resolved": "aws/network/nat-gateway",
+   "label": "NAT A",
+   "zone": "puba",
+   "family": "network",
+   "unknown": false,
+   "box": {
+    "x": 528,
+    "y": 464,
+    "w": 128,
+    "h": 112
+   }
+  },
+  {
+   "id": "ec2a",
+   "type": "aws.ec2",
+   "resolved": "aws/compute/ec2",
+   "label": "Web A",
+   "zone": "priva",
+   "family": "compute",
+   "unknown": false,
+   "box": {
+    "x": 784,
+    "y": 464,
+    "w": 128,
+    "h": 112
+   }
+  },
+  {
+   "id": "rdsa",
+   "type": "aws.rds",
+   "resolved": "aws/database/rds",
+   "label": "RDS primaire",
+   "zone": "priva",
+   "family": "database",
+   "unknown": false,
+   "box": {
+    "x": 976,
+    "y": 464,
+    "w": 128,
+    "h": 112
+   }
+  },
+  {
+   "id": "natb",
+   "type": "aws.natgateway",
+   "resolved": "aws/network/nat-gateway",
+   "label": "NAT B",
+   "zone": "pubb",
+   "family": "network",
+   "unknown": false,
+   "box": {
+    "x": 528,
+    "y": 768,
+    "w": 128,
+    "h": 112
+   }
+  },
+  {
+   "id": "ec2b",
+   "type": "aws.ec2",
+   "resolved": "aws/compute/ec2",
+   "label": "Web B",
+   "zone": "privb",
+   "family": "compute",
+   "unknown": false,
+   "box": {
+    "x": 784,
+    "y": 768,
+    "w": 128,
+    "h": 112
+   }
+  },
+  {
+   "id": "rdsb",
+   "type": "aws.rds",
+   "resolved": "aws/database/rds",
+   "label": "RDS secours",
+   "zone": "privb",
+   "family": "database",
+   "unknown": false,
+   "box": {
+    "x": 976,
+    "y": 768,
+    "w": 128,
+    "h": 112
+   }
+  },
+  {
+   "id": "s3",
+   "type": "aws.s3",
+   "resolved": "aws/storage/simple-storage-service-s3",
+   "label": "S3 statiques",
+   "zone": "region",
+   "family": "storage",
+   "unknown": false,
+   "box": {
+    "x": 248,
+    "y": 1000,
+    "w": 128,
+    "h": 112
+   }
+  }
+ ],
+ "edges": [
+  {
+   "id": "e0",
+   "from": "users",
+   "to": "r53",
+   "label": "DNS",
+   "bidirectional": false,
+   "points": [
+    {
+     "x": 104,
+     "y": 552
+    },
+    {
+     "x": 104,
+     "y": 160
+    },
+    {
+     "x": 256,
+     "y": 160
+    }
+   ],
+   "labelBox": {
+    "x": 88,
+    "y": 348,
+    "w": 33,
+    "h": 16
+   }
+  },
+  {
+   "id": "e1",
+   "from": "users",
+   "to": "alb",
+   "label": "HTTPS",
+   "bidirectional": false,
+   "points": [
+    {
+     "x": 120,
+     "y": 584
+    },
+    {
+     "x": 320,
+     "y": 584
+    },
+    {
+     "x": 320,
+     "y": 592
+    }
+   ],
+   "labelBox": {
+    "x": 197,
+    "y": 576,
+    "w": 46,
+    "h": 16
+   }
+  },
+  {
+   "id": "e2",
+   "from": "alb",
+   "to": "ec2a",
+   "label": "",
+   "bidirectional": false,
+   "points": [
+    {
+     "x": 368,
+     "y": 640
+    },
+    {
+     "x": 832,
+     "y": 640
+    },
+    {
+     "x": 832,
+     "y": 552
+    }
+   ],
+   "labelBox": null
+  },
+  {
+   "id": "e3",
+   "from": "alb",
+   "to": "ec2b",
+   "label": "",
+   "bidirectional": false,
+   "points": [
+    {
+     "x": 368,
+     "y": 632
+    },
+    {
+     "x": 440,
+     "y": 632
+    },
+    {
+     "x": 440,
+     "y": 656
+    },
+    {
+     "x": 744,
+     "y": 656
+    },
+    {
+     "x": 744,
+     "y": 784
+    },
+    {
+     "x": 816,
+     "y": 784
+    }
+   ],
+   "labelBox": null
+  },
+  {
+   "id": "e4",
+   "from": "ec2a",
+   "to": "rdsa",
+   "label": "SQL",
+   "bidirectional": false,
+   "points": [
+    {
+     "x": 880,
+     "y": 496
+    },
+    {
+     "x": 1008,
+     "y": 496
+    }
+   ],
+   "labelBox": {
+    "x": 928,
+    "y": 488,
+    "w": 33,
+    "h": 16
+   }
+  },
+  {
+   "id": "e5",
+   "from": "ec2b",
+   "to": "rdsa",
+   "label": "SQL",
+   "bidirectional": false,
+   "points": [
+    {
+     "x": 880,
+     "y": 784
+    },
+    {
+     "x": 984,
+     "y": 784
+    },
+    {
+     "x": 984,
+     "y": 512
+    },
+    {
+     "x": 1008,
+     "y": 512
+    }
+   ],
+   "labelBox": {
+    "x": 968,
+    "y": 640,
+    "w": 33,
+    "h": 16
+   }
+  },
+  {
+   "id": "e6",
+   "from": "rdsa",
+   "to": "rdsb",
+   "label": "réplication",
+   "bidirectional": false,
+   "points": [
+    {
+     "x": 1040,
+     "y": 552
+    },
+    {
+     "x": 1040,
+     "y": 768
+    }
+   ],
+   "labelBox": {
+    "x": 997,
+    "y": 660,
+    "w": 86,
+    "h": 16
+   }
+  },
+  {
+   "id": "e7",
+   "from": "ec2a",
+   "to": "s3",
+   "label": "",
+   "bidirectional": false,
+   "points": [
+    {
+     "x": 840,
+     "y": 552
+    },
+    {
+     "x": 840,
+     "y": 648
+    },
+    {
+     "x": 376,
+     "y": 648
+    },
+    {
+     "x": 376,
+     "y": 992
+    },
+    {
+     "x": 328,
+     "y": 992
+    },
+    {
+     "x": 328,
+     "y": 1000
+    }
+   ],
+   "labelBox": null
+  },
+  {
+   "id": "e8",
+   "from": "ec2a",
+   "to": "nata",
+   "label": "",
+   "bidirectional": false,
+   "points": [
+    {
+     "x": 816,
+     "y": 496
+    },
+    {
+     "x": 624,
+     "y": 496
+    }
+   ],
+   "labelBox": null
+  },
+  {
+   "id": "e9",
+   "from": "ec2b",
+   "to": "natb",
+   "label": "",
+   "bidirectional": false,
+   "points": [
+    {
+     "x": 816,
+     "y": 800
+    },
+    {
+     "x": 624,
+     "y": 800
+    }
+   ],
+   "labelBox": null
+  }
+ ],
+ "notices": [
+  "NOTE DU RENDU : zones supposées d'après leur libellé (précise « kind ») : « AWS Cloud » = cloud, « Région eu-west-3 » = region, « VPC 10.0.0.0/16 » = vpc, « Availability Zone A » = az, « Availability Zone B » = az, « Sous-réseau public A » = subnet_public, « Sous-réseau privé A » = subnet_private, « Sous-réseau public B » = subnet_public, « Sous-réseau privé B » = subnet_private"
+ ]
+}

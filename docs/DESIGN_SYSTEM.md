@@ -1039,6 +1039,16 @@ valeur en dur ailleurs.
   qui revient en veille. Source unique : `FACE_COLORS` (`jarvis-motion.ts`). Aucune police nouvelle ; le visage est
   décoratif (`aria-hidden`), l'état reste écrit.
 
+- **Scène d'architecture (F-238 / SF-238-09)** — un schéma AWS posé en plateaux de **verre orange** (`--cg-holo`,
+  fond 0,04–0,18, bords qui s'illuminent, trame discrète), **toutes les zones dans la même teinte** (Q1, PO
+  2026-11-15) : leur nature se lit par le **trait** (pointillé pour Région, AZ, groupe d'auto-scaling ; continu
+  sinon), le **libellé** (Space Grotesk 600 capitales) et l'**altitude** (une terrasse par niveau d'imbrication).
+  Services : icône officielle **non recolorée** (boîte neutre tant que l'atlas n'est pas servi) sur un **socle**
+  lumineux avec halo et ombre ; libellé en Inter 500 12 px crème `--cg-holo-core`. Liaisons : **filaments** à noyau
+  crème `--cg-holo-text` et halo orange, coudes droits, colonnes verticales entre plateaux ; **particules** orange à
+  cœur blanc dans le sens du flux. Héros (ce dont Jarvis parle) : blanc chaud `--cg-holo-core`. Aucune couleur ni
+  police nouvelle ; source unique `jarvis-motion.ts`. Vue de dessus = le schéma 2D cadré au pixel près.
+
 ## 24 — Conventions AWS des schémas d'architecture (ajout F-238 / SF-238-06, 2026-11-02)
 
 Les schémas d'architecture **livrés** (moteur `cloud` et `drawio` du service de rendu, schéma cadré) suivent les

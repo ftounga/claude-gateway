@@ -132,6 +132,9 @@ export const MOTION_DURATIONS = {
   /** SF-236-15 — T-P4 repli / dépli d'un panneau latéral du cockpit (`glisse`), et apparition d'un filament. */
   sidePanel: 320,
   sideFilament: 180,
+  /** F-238 / SF-238-09 — T-A1 entrée de l'architecture (séquence), T-A2 sortie (`entree`). */
+  archEntry: 2200,
+  archExit: 600,
 } as const;
 
 /** Lit une courbe en `cubic-bezier(...)`. */
