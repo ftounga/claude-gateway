@@ -52,14 +52,14 @@ univers suspendu pendant la scène, et masquage des CIDR / comptes / ARN en mode
 | Libellé sans donnée sensible | inchangé | — |
 
 ## Critères d'acceptation
-- [ ] Chaque cause de repli ⇒ SVG cadré (table de vérité, test).
-- [ ] Téléphone : le schéma 3-tiers occupe ≥ 60 % de la largeur à 390 × 844 et tous les libellés de zones porteuses
-      sont visibles (banc `/jarvis`) ; volet bas.
-- [ ] Présentation : aucun CIDR / ARN / identifiant de compte dans le DOM ni dans le plan (test).
-- [ ] Univers suspendu pendant la scène (0 image), repris ensuite (test).
+- [x] Chaque cause de repli ⇒ SVG cadré (table de vérité, test).
+- [x] Téléphone : le schéma 3-tiers occupe ≥ 60 % de la largeur à 390 × 844 (test) et les 6 libellés de zones
+      porteuses sont visibles (banc `/jarvis` : 6/6, 3/6 avant) ; volet bas.
+- [x] Présentation : aucun CIDR / ARN / identifiant de compte dans les libellés ni dans le plan (test).
+- [x] Univers suspendu pendant la scène (0 image), repris ensuite (banc `/jarvis`, PC et téléphone).
 - [ ] Téléphone p50 ≥ 50 i/s sur 60 nœuds : mesuré au banc en rendu logiciel (indicatif) ; mesure sur le téléphone
       du PO à J+7 (SF-238-14).
-- [ ] Planche itération 1 ; **visa PO** (relayé).
+- [x] Planche itérations 1-2 : `~/.local/share/claude-gateway/captures-f238/iteration-1-2/planche-f238-iterations-1-2.html` ; **visa PO** relayé.
 
 ## Périmètre — hors scope
 Montrer d'initiative (SF-238-13) ; mesure `UsageEvent` (SF-238-14).
