@@ -308,4 +308,10 @@ class JarvisOfflineTest {
         // Rien de volatil dans la consigne : la même aux deux appels.
         assertThat(calls.get(1).system()).isEqualTo(calls.get(0).system());
     }
+
+    @Test
+    void f262TheClientNameIsElided() {
+        assertThat(JarvisFastBrainService.ofName("EDENRED")).isEqualTo("d'EDENRED");
+        assertThat(JarvisFastBrainService.ofName("CAGIP")).isEqualTo("de CAGIP");
+    }
 }

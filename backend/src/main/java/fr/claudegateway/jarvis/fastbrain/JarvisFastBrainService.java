@@ -679,12 +679,17 @@ public class JarvisFastBrainService {
                 + ".";
     }
 
+    /** « de CAGIP », « d'EDENRED » : l'élision devant une voyelle (ou un h). */
+    static String ofName(String name) {
+        return name.matches("(?iu)^[aeiouyhàâéèêëîïôûù].*") ? "d'" + name : "de " + name;
+    }
+
     /** La phrase dite d'abord, au nom du client quand il est connu. */
     static String offlineNotice(fr.claudegateway.jarvis.universe.JarvisUniverse universe, Workspace target) {
         String name = universe == null || target == null ? null : universe.clients().stream()
                 .filter(c -> target.getHostId().equals(c.id())).map(fr.claudegateway.jarvis.universe.JarvisUniverse.Client::name)
                 .findFirst().orElse(null);
-        return (name == null ? "Le poste est éteint" : "Le poste de " + name + " est éteint")
+        return (name == null ? "Le poste est éteint" : "Le poste " + ofName(name) + " est éteint")
                 + " ; je ne peux pas y agir, je vous dis ce que je sais.";
     }
 
