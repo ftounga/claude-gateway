@@ -26,8 +26,8 @@ dessiner un ; jamais d'architecture sur une question qui ne porte pas sur l'infr
 ## Comportement attendu
 
 ### Cas nominal
-1. **Cerveau rapide** : la doctrine est déjà dans la consigne **version 22** (posée par SF-238-10, aucune
-   modification ici) : appui (6) « architecture ⇒ le schéma », puis `afficher(flux, « entrée », appui)` ; sans schéma,
+1. **Cerveau rapide** : la doctrine est déjà dans la **version 22** (description fixe de l'outil `afficher`, posée par
+   SF-238-10 ; aucune modification ici) : appui (6) « architecture ⇒ le schéma », puis `afficher(flux, « entrée », appui)` ; sans schéma,
    « Voulez-vous que je dessine l'architecture, Monsieur ? » et, sur « oui », `deleguer` (render_diagram puis montrer).
 2. **Écran** : une galerie d'architecture montrée **d'initiative** s'ouvre directement sur la plus récente
    (`select = 1`) ⇒ visionneuse 3D, T-A1 ; le premier cadrage `flux / entrée` arrivé avant le graphe attend la
@@ -44,10 +44,10 @@ dessiner un ; jamais d'architecture sur une question qui ne porte pas sur l'infr
 | Mode présentation / sobre | inchangé F-237 (rien d'initiative) | — |
 
 ## Critères d'acceptation
-- [ ] Banc de 10 questions réelles : la pièce est ouverte quand un schéma existe (≥ 9/10).
-- [ ] Jamais quand la question ne porte pas sur l'infra (0/10 faux positifs).
-- [ ] Aucune consigne système modifiée au-delà de la version 22 (test : `VERSION` = 22, préfixe inchangé).
-- [ ] Une galerie d'architecture d'initiative s'ouvre sur la plus récente (test).
+- [x] Banc de 10 questions réelles : la pièce est ouverte quand un schéma existe (≥ 9/10) — **9/10 et 10/10** (Sonnet 5.5, 2 passages).
+- [x] Jamais quand la question ne porte pas sur l'infra (0/10 faux positifs) — **0/10 et 0/10**.
+- [x] Aucune consigne système modifiée au-delà de la version 22 (test : `VERSION` = 22, préfixe inchangé).
+- [x] Une galerie d'architecture d'initiative s'ouvre sur la plus récente (test).
 
 ## Périmètre — hors scope
 Mesure (SF-238-14) ; changement de consigne (aucun).
@@ -79,3 +79,9 @@ Non applicable (aucune lecture nouvelle).
 
 ## Dépendances
 SF-238-10 (consigne v22, visionneuse, attente du graphe), SF-238-12 (narration) : livrées.
+
+## Notes et décisions
+- **D-13-1** Questions réelles relevées en lecture seule (`atelier_messages`, « architecture », « déployé », « infra »,
+  « schéma », « VPC », « EKS ») puis ramenées au sujet du banc (Edenred-Portail) ; aucune donnée client dans le jeu.
+- **D-13-2** Seul écart du passage 1 : I04 (« explique-moi comment fonctionne le réseau sur l'architecture du
+  portail ») délégué à Opus sans montrer le schéma — défendable (explication longue), compté comme échec.
