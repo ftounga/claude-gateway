@@ -95,6 +95,8 @@ export class ArchitectureStageComponent {
   readonly spoken = input<string>('');
   /** SF-238-10 — la 3D n'a pas pu se poser (graphe illisible, WebGL absent) : l'hôte prend le repli 2D. */
   readonly failed = output<'webgl' | 'perf'>();
+  /** SF-238-14 — une phrase entendue a allumé quelque chose (mesure). */
+  readonly narrated = output<void>();
   /** SF-238-11 — mode présentation : CIDR, comptes et ARN masqués dans les étiquettes et le plan (D10). */
   readonly presentation = input(false);
 
@@ -131,7 +133,12 @@ export class ArchitectureStageComponent {
   private readonly followVoice = effect(() => {
     const phrase = this.spoken();
     if (phrase) {
-      untracked(() => this.engine?.narrate(phrase));
+      untracked(() => {
+        const result = this.engine?.narrate(phrase);
+        if (result && (result.lit.length > 0 || result.flow.length > 0)) {
+          this.narrated.emit(); // SF-238-14 — une phrase qui allume (mesure, sans contenu)
+        }
+      });
     }
   });
 

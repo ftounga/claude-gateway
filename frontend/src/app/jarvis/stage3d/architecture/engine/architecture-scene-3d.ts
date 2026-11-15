@@ -24,7 +24,8 @@ import {
 } from '../architecture-layout-3d';
 import {
   ArchCamera, ArchFrame, ArchMove, ArchPhaseKind, ArchState, ArchTransition, ArchitecturePlan,
-  ArchitectureStageDirector, Viewport, blendCamera, cameraBasis, moveFor, moveProgress, pickAt,
+  ArchitectureStageDirector, MAJOR_MOVE_MS, Viewport, blendCamera, cameraBasis, moveFor, moveProgress, paceMove,
+  pickAt,
 } from '../architecture-stage-director';
 import { ArchitectureNarrator } from '../architecture-narration';
 import { phoneZoneLabel } from '../architecture-render';
@@ -1060,6 +1061,8 @@ export class ArchitectureEngine {
   private readonly cameraNow: ArchCamera;
   /** Retour PO 2026-11-16 — intensité courante de la lueur (repos ⇄ allumé). */
   private bloom = BLOOM_REST;
+  /** SF-238-14 — début du dernier grand déplacement de caméra (rythme). */
+  private lastMajorMove: number | null = null;
   /** SF-238-10 — l'état venu de la navigation, et ce que la narration y allume. */
   private base: ArchState;
   private narrated: { lit: readonly string[]; flow: readonly string[] } = { lit: [], flow: [] };
@@ -1164,9 +1167,14 @@ export class ArchitectureEngine {
   setState(state: ArchState, at = this.options.clock()): void {
     const director = this.graph.director;
     const previous = this.plan;
-    const { ms, curve } = moveFor(previous.state, state);
+    const { ms: nominal, curve } = moveFor(previous.state, state);
+    // SF-238-14 — au plus un grand déplacement par 2,5 s : un second qui suit de près ralentit.
+    const ms = paceMove(this.lastMajorMove, at, nominal);
     if (ms > 0) {
       this.move = director.startMove(this.graph.frame, this.cameraNow, at, ms, curve);
+      if (nominal >= MAJOR_MOVE_MS) {
+        this.lastMajorMove = at;
+      }
     }
     this.transition = { from: director.snapshot(previous, this.graph.frame), at };
     this.plan = director.plan(state, this.viewport());

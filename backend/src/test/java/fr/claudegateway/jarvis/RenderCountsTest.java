@@ -85,4 +85,13 @@ class RenderCountsTest {
         String out = RenderCounts.format(all);
         assertThat(out.length()).isLessThanOrEqualTo(RenderCounts.MAX_LENGTH);
     }
+
+    @org.junit.jupiter.api.Test
+    void f238ArchitectureKeysAreInTheClosedVocabulary() {
+        // F-238 / SF-238-14 (cadrage §20) — la mesure de l'architecture en 3D, sans contenu.
+        assertThat(RenderCounts.KEYS).contains("a_3d", "a_ai", "a_sec", "a_2d_u", "a_2d_g", "a_2d_w", "a_2d_p",
+                "a_2d_m", "a_exp", "a_fold", "a_unf", "a_foc", "a_flow", "a_view", "a_narr", "a_amb");
+        assertThat(RenderCounts.parse("a_3d=2;a_sec=95;a_narr=7")).containsEntry("a_3d", 2).containsEntry("a_sec", 95)
+                .containsEntry("a_narr", 7);
+    }
 }

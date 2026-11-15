@@ -191,6 +191,9 @@ export class JarvisPieceStore {
     }
     const resolution = binding.resolve(action.request, nav.arch);
     if ('refusal' in resolution) {
+      if (resolution.refusal === 'AMBIGUOUS') {
+        this.count('a_amb'); // F-238 / SF-238-14 — la question « lequel ? » posée
+      }
       return { ok: false, reason: resolution.refusal, detail: resolution.detail };
     }
     return this.dispatch({ ...action, op: resolution.op }, source, now);
@@ -222,6 +225,12 @@ export class JarvisPieceStore {
     }
     if (action.type === 'page') {
       this.count('pdf_pg');
+    }
+    if (action.type === 'arch' && action.op && after.arch !== before.arch) {
+      const key = archKey(action.op);
+      if (key) {
+        this.count(key); // F-238 / SF-238-14 — éclatements, replis, focus, flux, vues, « en 2D »
+      }
     }
     const closing = (action.type === 'close' || action.type === 'back' || action.type === 'up')
       && (before.level === 'GALERIE' || before.level === 'PIECE');
@@ -502,6 +511,28 @@ export class JarvisPieceStore {
     this.pendingCards.set([]);
     this.cancelLinger();
     this.deckId = null;
+  }
+}
+
+/** F-238 / SF-238-14 — la clé de mesure d'une opération d'architecture (aucun contenu). */
+export function archKey(op: ArchOp): PieceCountKey | null {
+  switch (op.kind) {
+    case 'explode':
+      return op.on ? 'a_exp' : null;
+    case 'fold':
+      return 'a_fold';
+    case 'unfold':
+      return 'a_unf';
+    case 'focus':
+      return op.ref ? 'a_foc' : null;
+    case 'flow':
+      return 'a_flow';
+    case 'view':
+      return 'a_view';
+    case 'flat':
+      return op.on ? 'a_2d_m' : null;
+    default:
+      return null;
   }
 }
 

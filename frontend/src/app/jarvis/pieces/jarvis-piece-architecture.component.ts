@@ -75,7 +75,7 @@ const LONG_PRESS_MS = 600;
       @if (graph(); as g) {
         <app-architecture-stage [graph]="g" [state]="state()" [contained]="true" [spoken]="spoken()"
                                 [iconFetcher]="icons" phase="entree" [presentation]="store.presentation()" [level]="low() ? 'low' : 'high'"
-                                (failed)="fail($event)" />
+                                (failed)="fail($event)" (narrated)="store.count('a_narr')" />
       } @else if (!loaded()) {
         <p class="pa__note">Je pose le schéma…</p>
       }
@@ -182,6 +182,12 @@ export class JarvisPieceArchitectureComponent implements OnDestroy {
       return;
     }
     this.store.archScene.set(true);
+    // F-238 / SF-238-14 — une scène 3D posée (d'initiative ou non) ; les secondes en 3D comptées à la fermeture.
+    this.store.count('a_3d');
+    if (this.nav().origin === 'PROACTIVE') {
+      this.store.count('a_ai');
+    }
+    this.shownAt = Date.now();
     this.graph.set(graph);
     this.layout.set(layout);
     const targets = new ArchitectureTargets(layout);
@@ -191,6 +197,8 @@ export class JarvisPieceArchitectureComponent implements OnDestroy {
   /** SF-238-11 — la 3D renonce (graphe, WebGL, performance) : le SVG cadré reprend, l'univers repart. */
   fail(reason: 'graph' | 'webgl' | 'perf'): void {
     this.store.archScene.set(false);
+    this.store.count(reason === 'graph' ? 'a_2d_g' : reason === 'webgl' ? 'a_2d_w' : 'a_2d_p');
+    this.countSeconds();
     this.fallback.emit(reason);
   }
 
@@ -310,7 +318,18 @@ export class JarvisPieceArchitectureComponent implements OnDestroy {
     }
   }
 
+  /** Les secondes passées en 3D depuis la pose (comptées une fois). */
+  private shownAt = 0;
+
+  private countSeconds(): void {
+    if (this.shownAt > 0) {
+      this.store.count('a_sec', Math.round((Date.now() - this.shownAt) / 1000));
+      this.shownAt = 0;
+    }
+  }
+
   ngOnDestroy(): void {
+    this.countSeconds();
     this.store.archScene.set(false);
     this.loading?.abort();
     this.clearPress();
