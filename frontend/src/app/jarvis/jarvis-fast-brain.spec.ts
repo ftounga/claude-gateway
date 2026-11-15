@@ -72,3 +72,25 @@ describe('Le cerveau rapide, côté écran (F-235 / SF-235-05)', () => {
     expect(log).toEqual(['understood:Où en est CAGIP ?']);
   });
 });
+
+/** F-257 / SF-257-13 — le préfixe chauffé pendant la parole. */
+describe('JarvisFastBrainClient.warmTurn (F-257 / SF-257-13)', () => {
+  it('demande le pré-chauffage du tour (sujet, présentation), sans attendre ni lever', async () => {
+    const { TestBed } = await import('@angular/core/testing');
+    const { AuthService } = await import('../core/services/auth.service');
+    const { JarvisFastBrainClient } = await import('./jarvis-fast-brain');
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ providers: [{ provide: AuthService, useValue: { token: () => 't' } }] });
+    const client = TestBed.inject(JarvisFastBrainClient);
+    const fetchSpy = spyOn(window, 'fetch').and.returnValue(Promise.reject(new Error('réseau')));
+    client.warmTurn('S1', false);
+    client.warmTurn(null, true);
+    expect(fetchSpy.calls.count()).toBe(2);
+    const [url, init] = fetchSpy.calls.argsFor(0) as [string, RequestInit];
+    expect(url).toBe('/api/jarvis/converse/warm');
+    expect(JSON.parse(init.body as string)).toEqual({ subjectId: 'S1', turn: true, presentation: false });
+    expect(JSON.parse((fetchSpy.calls.argsFor(1)[1] as RequestInit).body as string))
+      .toEqual({ turn: true, presentation: true });
+    await Promise.resolve();
+  });
+});

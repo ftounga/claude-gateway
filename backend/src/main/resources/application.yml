@@ -709,6 +709,9 @@ app:
       universe-ttl: ${APP_JARVIS_FAST_BRAIN_UNIVERSE_TTL:30s}
       # F-252 / SF-252-02 : reponse provisoire pendant la retranscription (coupe-circuit).
       speculation: ${APP_JARVIS_FAST_BRAIN_SPECULATION:true}
+      # F-257 / SF-257-13 : reflexion du cerveau rapide. off = eteinte (Sonnet 5.5 : `between_tools`, qui retient le
+      # debut de la reponse ~0,6 s quand des outils sont declares) ; adaptive = le modele decide, a l'effort ci-dessus.
+      thinking: ${APP_JARVIS_FAST_THINKING:adaptive}
     # F-235 / SF-235-08 (D16) : LE BANC du cerveau rapide (POST /api/admin/jarvis/fast-brain/bench, ADMIN) — le juge
     # qui note chaque cas. La mise en service (enabled=true ci-dessus) suit un passage dont la porte est franchie.
     fast-brain-bench:

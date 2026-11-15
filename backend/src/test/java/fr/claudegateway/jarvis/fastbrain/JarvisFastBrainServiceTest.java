@@ -126,6 +126,30 @@ class JarvisFastBrainServiceTest {
     }
 
     @Test
+    void turnWarmCarriesExactlyThePrefixOfTheNextCallThenWaits() {
+        JarvisFastBrainService service = service(answering("Oui."), null, null);
+        service.setThinking("adaptive");
+        service.converse(ask("Où en est le chantier 3 ?"), null);
+        assertThat(service.warmTurn(alice, workspace, false)).isTrue();
+
+        AgentTurnRequest real = calls.get(0);
+        AgentTurnRequest warm = calls.get(1);
+        assertThat(warm.model()).isEqualTo(real.model());
+        assertThat(warm.system()).isEqualTo(real.system());
+        assertThat(warm.tools()).isEqualTo(real.tools());
+        assertThat(warm.reasoning()).isEqualTo(real.reasoning());
+        assertThat(warm.messages()).hasSameSizeAs(real.messages());
+        assertThat(warm.messages().subList(0, warm.messages().size() - 1))
+                .isEqualTo(real.messages().subList(0, real.messages().size() - 1));
+        assertThat(((fr.claudegateway.agent.AgentContentBlock.Text) warm.messages().get(warm.messages().size() - 1)
+                .content().get(0)).text()).isEqualTo(JarvisFastBrainService.WARM_TEXT);
+        assertThat(warm.shape().maxTokens()).isZero();
+        // Au plus un toutes les 1,5 s (horloge figée) : la parole hachée ne multiplie pas les appels.
+        assertThat(service.warmTurn(alice, workspace, false)).isFalse();
+        assertThat(calls).hasSize(2);
+    }
+
+    @Test
     void systemPromptIsIdenticalFromOneCallToTheNext() {
         JarvisFastBrainService service = service(answering("Oui."), null, null);
         service.converse(ask("Un"), null);

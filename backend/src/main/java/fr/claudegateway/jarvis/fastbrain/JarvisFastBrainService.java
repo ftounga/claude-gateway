@@ -826,14 +826,60 @@ public class JarvisFastBrainService {
             String apiKey = byok == null ? null : byok.resolveActiveApiKey(userId).orElse(null);
             AgentTurn turn = provider.nextTurn(new AgentTurnRequest(properties.model(),
                     systemFor(userId, portraitFor(userId, false, false)), List.of(AgentMessage.userText(WARM_TEXT)), JarvisFastBrainPrompt.tools(), apiKey,
-                    AgentReasoning.off(properties.effort()), AgentContextPolicy.none(), AgentTurnMode.ACT,
-                    AgentCallShape.compact(0)));
+                    reasoning(), AgentContextPolicy.none(), AgentTurnMode.ACT,
+                    shape(0)));
             if (turn != null) {
                 account(userId, workspace, turn);
             }
             return true;
         } catch (RuntimeException e) {
             log.debug("Cerveau rapide : pré-chauffage en échec ({})", e.getClass().getSimpleName());
+            return true;
+        }
+    }
+
+    /** F-257 / SF-257-13 — au plus un pré-chauffage de tour par compte dans cet intervalle (parole hachée, bruits). */
+    static final java.time.Duration WARM_TURN_EVERY = java.time.Duration.ofMillis(1_500);
+    private final java.util.Map<UUID, java.time.Instant> warmedTurn = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** F-257 / SF-257-13 — le pré-chauffage d'un tour, en tâche de fond : la requête HTTP n'attend jamais le modèle. */
+    public void warmTurnAsync(UUID userId, Workspace workspace, boolean presentation) {
+        calls.execute(() -> warmTurn(userId, workspace, presentation));
+    }
+
+    /**
+     * F-257 / SF-257-13 — <b>le préfixe du prochain appel, chauffé pendant que l'utilisateur parle</b>. Mesuré le
+     * 2026-11-12 : après ≈ 10 s sans appel, le fournisseur rend le premier jeton en ≈ 1,8 s ; 0,6 à 4 s après un appel
+     * portant le même préfixe, en ≈ 0,7 s (réflexion adaptative). Le préfixe est <b>exactement</b> celui de l'appel de
+     * la réplique (outils, consigne et portrait, univers de référence, échanges de la session, même réflexion) ; seul
+     * le dernier message, volatil et jamais mis en cache, diffère. {@code max_tokens: 0} : rien n'est généré. Ne lève
+     * jamais. Rend vrai s'il est parti.
+     */
+    public boolean warmTurn(UUID userId, Workspace workspace, boolean presentation) {
+        java.time.Instant now = clock.instant();
+        java.time.Instant last = warmedTurn.get(userId);
+        if (last != null && last.plus(WARM_TURN_EVERY).isAfter(now)) {
+            return false;
+        }
+        if (budgetState(userId) == Budget.HARD) {
+            return false;
+        }
+        warmedTurn.put(userId, now);
+        try {
+            Request request = new Request(userId, workspace, null, WARM_TEXT, null, null, presentation);
+            fr.claudegateway.jarvis.portrait.JarvisPortraitService.Snapshot portrait =
+                    portraitFor(userId, presentation, false);
+            List<AgentMessage> messages = new ArrayList<>(messages(request, "", reference(request)));
+            messages.set(messages.size() - 1, AgentMessage.userText(WARM_TEXT));
+            AgentTurn turn = provider.nextTurn(new AgentTurnRequest(properties.model(), systemFor(userId, portrait),
+                    List.copyOf(messages), JarvisFastBrainPrompt.tools(), apiKeyOf(userId), reasoning(),
+                    AgentContextPolicy.none(), AgentTurnMode.ACT, shape(0)));
+            if (turn != null) {
+                account(userId, workspace, turn);
+            }
+            return true;
+        } catch (RuntimeException e) {
+            log.debug("Cerveau rapide : pré-chauffage de tour en échec ({})", e.getClass().getSimpleName());
             return true;
         }
     }
@@ -1135,6 +1181,35 @@ public class JarvisFastBrainService {
         this.parallelPrep = parallelPrep;
     }
 
+    /**
+     * F-257 / SF-257-13 — <b>le mode de réflexion du cerveau rapide</b>. {@code off} (forme d'origine, F-235 D2) : le
+     * fournisseur éteint la réflexion ; sur Sonnet 5.5 il ne sait le faire que par « réflexion seulement entre outils »,
+     * forme qui, outils déclarés, <b>retient le début de la réponse</b> ≈ 0,6 s (mesure du 2026-11-12, mini-spec).
+     * {@code adaptive} : le modèle décide s'il réfléchit, à l'effort configuré ({@code low}) — il n'en perd aucune
+     * capacité (il peut réfléchir, ce que {@code off} lui interdit) et son texte part dès qu'il est écrit.
+     */
+    private boolean adaptiveThinking = false;
+
+    /** Place laissée à la réflexion dans le plafond de sortie (elle y compte) : la réponse dite garde ses 600 jetons. */
+    static final int THINKING_ROOM_TOKENS = 4_000;
+
+    @Autowired(required = false)
+    public void setThinking(
+            @org.springframework.beans.factory.annotation.Value("${app.jarvis.fast-brain.thinking:off}")
+            String thinking) {
+        this.adaptiveThinking = "adaptive".equalsIgnoreCase(thinking == null ? "" : thinking.strip());
+    }
+
+    /** F-257 / SF-257-13 — la réflexion demandée au cerveau rapide (éteinte, ou adaptative à l'effort configuré). */
+    AgentReasoning reasoning() {
+        return adaptiveThinking ? new AgentReasoning(true, properties.effort()) : AgentReasoning.off(properties.effort());
+    }
+
+    /** F-257 / SF-257-13 — la forme d'appel : le plafond de la réponse, plus la place de la réflexion si elle est permise. */
+    AgentCallShape shape(int maxTokens) {
+        return AgentCallShape.compact(adaptiveThinking && maxTokens > 0 ? maxTokens + THINKING_ROOM_TOKENS : maxTokens);
+    }
+
     /** F-252 / SF-252-01 — lance les lectures de la réplique (hors banc). */
     Prepared prepare(Request request) {
         return new Prepared(this, request);
@@ -1333,8 +1408,8 @@ public class JarvisFastBrainService {
         List<JarvisShowCommand> shown = new ArrayList<>();
         for (int n = 0; n < MAX_CALLS; n++) {
             AgentTurnRequest call = new AgentTurnRequest(model, system, List.copyOf(conversation),
-                    JarvisFastBrainPrompt.tools(), apiKey, AgentReasoning.off(properties.effort()),
-                    AgentContextPolicy.none(), AgentTurnMode.ACT, AgentCallShape.compact(properties.maxTokens()));
+                    JarvisFastBrainPrompt.tools(), apiKey, reasoning(),
+                    AgentContextPolicy.none(), AgentTurnMode.ACT, shape(properties.maxTokens()));
             Called called = call(call, gate, userId, request.workspace());
             if (n == 0) {
                 firstMs = called.firstMs();
@@ -1429,7 +1504,9 @@ public class JarvisFastBrainService {
             if (delegates || results.isEmpty() || !(freshRead || needPhrase)) {
                 break;
             }
-            List<fr.claudegateway.agent.AgentContentBlock> said = new ArrayList<>();
+            // F-257 / SF-257-13 — la réflexion du tour d'abord, telle quelle (le fournisseur exige ses blocs signés,
+            // inchangés et dans l'ordre, quand on lui renvoie les résultats d'outils) ; vide en réflexion éteinte.
+            List<fr.claudegateway.agent.AgentContentBlock> said = new ArrayList<>(turn.reasoning() == null ? List.of() : turn.reasoning());
             if (turn.text() != null && !turn.text().isBlank()) {
                 said.add(new fr.claudegateway.agent.AgentContentBlock.Text(turn.text()));
             }
@@ -1543,6 +1620,14 @@ public class JarvisFastBrainService {
             return new Called(null, firstToken.get(), REASON_ERROR);
         }
         long firstMs = firstToken.get() >= 0 ? firstToken.get() : (System.nanoTime() - started) / 1_000_000L;
+        if (turn != null) {
+            // F-257 / SF-257-13 — la mesure d'un appel, sans contenu : où partent les secondes du cerveau.
+            log.info("Cerveau rapide : appel premier_jeton={} ms total={} ms réflexion={} blocs sortie={} jetons "
+                    + "entrée={} lus_cache={} écrits_cache={} outils={}", firstMs,
+                    (System.nanoTime() - started) / 1_000_000L, turn.reasoning() == null ? 0 : turn.reasoning().size(),
+                    turn.outputTokens(), turn.inputTokens(), turn.cacheReadTokens(), turn.cacheWriteTokens(),
+                    turn.toolCalls().size());
+        }
         if (turn == null || turn.refused()) {
             return new Called(turn, firstMs, REASON_REFUSAL);
         }

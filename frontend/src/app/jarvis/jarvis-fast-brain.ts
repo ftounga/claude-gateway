@@ -149,6 +149,18 @@ export class JarvisFastBrainClient {
   }
 
   /**
+   * F-257 / SF-257-13 — l'utilisateur parle : la passerelle chauffe maintenant le préfixe du prochain appel (premier
+   * jeton ≈ 0,7 s au lieu de ≈ 1,8 s après un silence). Sans attente, sans erreur : best-effort.
+   */
+  warmTurn(subjectId: string | null, presentation: boolean): void {
+    void fetch('/api/jarvis/converse/warm', {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify({ ...(subjectId ? { subjectId } : {}), turn: true, presentation }),
+    }).catch(() => undefined);
+  }
+
+  /**
    * F-252 / SF-252-02 — le verdict sur une réponse provisoire ; tenté deux fois, jamais d'exception (sans verdict, la
    * passerelle jette la réponse).
    */
