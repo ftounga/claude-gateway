@@ -1,8 +1,9 @@
 {
-  "_": "F-256 — corpus SYNTHÉTIQUE du banc à vraie voix (données fictives, univers du compte de test : CAGIP > agenor, data-platform ; EDENRED > waf). Une phrase = des segments dits par la voix de synthèse, séparés par des pauses (ms). `expected` = ce qui doit être compris ; `show` = la phrase demande un affichage.",
+  "_": "F-256 — corpus SYNTHÉTIQUE du banc à vraie voix (données fictives, univers du compte de test : CAGIP > agenor, data-platform ; EDENRED > waf). Une phrase = des segments dits par la voix de synthèse, séparés par des pauses (ms). `expected` = ce qui doit être compris ; `show` = la phrase demande un affichage. F-265 : la voix « tiers » (`only`) ne dit que les phrases `tiers` (rien n'est attendu : Jarvis doit se taire) ; une étape peut porter `voice`, `gain` ou `capture`.",
   "voices": [
     { "id": "mS2c341jkKGRuIkGxaYf", "name": "fr-1" },
-    { "id": "JBFqnCBsd6RMkjVDRZzb", "name": "george" }
+    { "id": "JBFqnCBsd6RMkjVDRZzb", "name": "george" },
+    { "id": "XrExE9yKIg1WjnnlVkGX", "name": "tiers", "only": true }
   ],
   "phrases": [
     { "id": "n01", "kind": "normale", "segments": ["Bonjour Jarvis."], "pauses": [] },
@@ -16,7 +17,10 @@
     { "id": "n09", "kind": "pause", "segments": ["Attends,", "en fait, parle-moi plutôt du WAF."], "pauses": [900] },
     { "id": "n10", "kind": "normale", "segments": ["Merci Jarvis, ce sera tout pour le moment."], "pauses": [] },
     { "id": "n11", "kind": "ecran", "show": true, "segments": ["Montre-moi les sujets d'EDENRED."], "pauses": [] },
-    { "id": "c01", "kind": "coupure", "segments": ["Non, attends, parle-moi plutôt d'agenor."], "pauses": [] }
+    { "id": "c01", "kind": "coupure", "segments": ["Non, attends, parle-moi plutôt d'agenor."], "pauses": [] },
+    { "id": "t01", "kind": "tiers", "tiers": true, "voices": ["tiers"], "segments": ["Maman ? Maman ?"], "pauses": [] },
+    { "id": "t02", "kind": "tiers", "tiers": true, "voices": ["tiers"], "segments": ["Ah bah, c'est pas dit non."], "pauses": [] },
+    { "id": "t03", "kind": "tiers", "tiers": true, "voices": ["tiers"], "segments": ["Tu viens manger ?"], "pauses": [] }
   ],
   "scenarios": [
     { "id": "conversation", "label": "Conversation suivie", "voice": "fr-1",
@@ -32,6 +36,10 @@
     { "id": "bruit", "label": "Bruit de fond", "voice": "george", "noise": 0.02,
       "steps": [{ "say": "n02" }, { "say": "n03" }, { "say": "n06" }] },
     { "id": "captures-prod", "label": "Vraies captures du PO (09/11)", "captures": true },
+    { "id": "voix-tierce", "label": "Voix tierce dans la pièce (F-265) : Jarvis se tait, le PO reste entendu", "voice": "george",
+      "steps": [{ "say": "n04" }, { "say": "t01", "voice": "tiers", "gain": 0.3 }, { "say": "t02", "voice": "tiers", "gain": 0.3 },
+        { "say": "n11" }, { "capture": "203e992b-7349-437c-896f-b53789995f57" }, { "capture": "29fdc4d1-9eb4-4f65-ae8a-7c640957f359" },
+        { "say": "t03", "voice": "tiers", "gain": 0.3 }, { "say": "n07" }, { "say": "n06" }] },
     { "id": "temoin", "label": "Témoin : micro factice de Chrome (fichier), sans le mélangeur du banc", "voice": "fr-1", "chromeMic": "n02" }
   ]
 }

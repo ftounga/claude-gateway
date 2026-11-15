@@ -40,6 +40,18 @@ export function sentenceKey(text) {
   return words(text).join(' ');
 }
 
+/**
+ * F-265 / SF-265-01 — une phrase de Jarvis qui dit ne pas avoir compris (« Pardon, Monsieur, je n'ai pas bien compris :
+ * pouvez-vous répéter ? »), même règle que `isClarification` de l'écran.
+ */
+export function isPardon(text) {
+  const p = String(text ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  return /\bpas (bien |tout a fait |tres bien )?(compris|saisi|entendu|suivi|capte)\b/.test(p)
+    || /\b(pouvez vous|peux tu|pourriez vous|voudriez vous) (me )?(le |la )?(repeter|redire|reformuler)\b/.test(p)
+    || /\b(pas|guere) (certain|sur|sure) de (bien )?(vous )?(suivre|comprendre)\b/.test(p)
+    || /^pardon( monsieur)?$/.test(p);
+}
+
 /** Le texte dit par une réponse SSE du cerveau rapide (deltas `text`). */
 function sseText(entry) {
   return entry.sse.filter((e) => e.event === 'text').map((e) => e.data?.delta ?? e.data?.text ?? '').join('');
@@ -122,6 +134,10 @@ export function analyseTurn(turn, { api, probes, traces, next, spokenBefore }) {
     refused,
     voiciWithoutShow: voici && shown.length === 0,
     rejected,
+    // F-265 / SF-265-01 — Jarvis a-t-il PARLÉ (voix jouée) dans ce tour, et a-t-il dit « je n'ai pas compris » ?
+    tiers: !!turn.tiers,
+    spokeAloud: !!firstVoice,
+    pardonAloud: !!firstVoice && spoken.some(isPardon),
   };
 }
 
@@ -145,7 +161,8 @@ export function analyse(runs, costs = {}) {
   const all = scenarios.flatMap((s) => s.turns.map((t) => ({ ...t, scenario: s.id })));
   const expected = all.filter((t) => t.expected);
   const heard = expected.filter((t) => t.heard);
-  const empties = all.filter((t) => !t.expected);
+  const empties = all.filter((t) => !t.expected && !t.tiers);
+  const tiers = all.filter((t) => t.tiers);
   const fallbacks = all.filter((t) => t.streamFallback);
   const unexplained = fallbacks.filter((t) => !t.ws.closes.some((c) => c.reason || ![1000, 1005, 1006].includes(c.code)));
   const latencies = heard.map((t) => t.firstSoundMs);
@@ -183,6 +200,10 @@ export function analyse(runs, costs = {}) {
       showRefused: all.filter((t) => t.refused.length).map((t) => `${t.scenario}/${t.id}: ${t.refused.join(',')}`),
       emptyCaptures: empties.length,
       emptyCapturesAnswered: empties.filter((t) => t.heard).map((t) => `${t.id}: ${t.heardText}`),
+      // F-265 / SF-265-01 — une autre voix de la pièce : Jarvis doit se taire ; et les « pardon » dits partout.
+      tiersPlayed: tiers.length,
+      tiersAnswered: tiers.filter((t) => t.spokeAloud).map((t) => `${t.scenario}/${t.id}: ${t.heardText ?? ''}`),
+      pardonsAloud: all.filter((t) => t.pardonAloud).map((t) => `${t.scenario}/${t.id}`),
       delegated: all.filter((t) => t.delegated).length,
       notListening: scenarios.reduce((n, s) => n + s.missedListening, 0),
       reloads: scenarios.reduce((n, s) => n + s.reloads, 0),
@@ -216,6 +237,8 @@ export function summary(report) {
     `« Voici » sans image  : ${t.voiciWithoutShow.length}${t.voiciWithoutShow.length ? ` (${t.voiciWithoutShow.join(', ')})` : ''}`,
     `Écran                 : ${t.showAsked} ordres demandés, ${t.shown} tours affichés, refus : ${t.showRefused.length ? t.showRefused.join(' ; ') : 'aucun'}`,
     `Captures vides        : ${t.emptyCaptures} jouées, ${t.emptyCapturesAnswered.length} ont donné un tour${t.emptyCapturesAnswered.length ? ` (${t.emptyCapturesAnswered.join(' | ')})` : ''}`,
+    `Voix tierces          : ${t.tiersPlayed} jouées, ${t.tiersAnswered.length} ont reçu une réponse dite${t.tiersAnswered.length ? ` (${t.tiersAnswered.join(' | ')})` : ''}`,
+    `« Pardon » dits       : ${t.pardonsAloud.length}${t.pardonsAloud.length ? ` (${t.pardonsAloud.join(', ')})` : ''}`,
     `Délégations à Opus    : ${t.delegated}`,
     `Jarvis n'écoutait pas : ${t.notListening} fois au moment de jouer une phrase (40 s d'attente)`,
     `Page rechargée        : ${t.reloads} fois en plein scénario${t.reloadCauses.length ? ` (${t.reloadCauses.join(', ')})` : ''}`,
@@ -229,7 +252,8 @@ export function summary(report) {
         + ` ${turn.streamFallback ? `repli=${turn.streamFallback} ` : ''}son ${ms(turn.firstSoundMs)}`
         + ` wer ${turn.wer ?? '—'} « ${(turn.heardText ?? '').slice(0, 70)} »`
         + `${turn.handledLocally ? ' (traité sur place, sans cerveau)' : ''}${turn.repeated.length ? ' RÉPÉTÉ' : ''}${turn.voiciWithoutShow ? ' VOICI-SANS-IMAGE' : ''}`
-        + `${turn.rejected.length ? ` rejet=${turn.rejected.join(',')}` : ''}`);
+        + `${turn.rejected.length ? ` rejet=${turn.rejected.join(',')}` : ''}`
+        + `${turn.tiers ? (turn.spokeAloud ? ' TIERS-RÉPONDU' : ' tiers-tu') : ''}${turn.pardonAloud ? ' PARDON' : ''}`);
     }
   }
   return lines.join('\n');

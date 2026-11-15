@@ -184,7 +184,7 @@ export interface TurnTimingReport {
    * F-239 / SF-239-01 (D3b) — une parole refusée par la porte de parole réelle (aucun tour) : la raison et la longueur
    * du texte transcrit, **jamais le texte**.
    */
-  rejectedKind?: 'empty' | 'noise' | 'hallucination' | 'no_voice' | 'implausible' | null;
+  rejectedKind?: 'empty' | 'noise' | 'hallucination' | 'no_voice' | 'implausible' | 'discordant' | null;
   rejectedChars?: number | null;
   /**
    * F-240 / SF-240-01 — ce qui a été dit (jamais le texte) : mots, caractères et durée audio de la réponse dite (hors

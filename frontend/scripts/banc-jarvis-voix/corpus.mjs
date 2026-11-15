@@ -90,7 +90,8 @@ export async function build({ key = process.env.ELEVEN, corpus = CORPUS } = {}) 
   const index = { generatedAt: new Date().toISOString(), synthetic: {}, captures: {} };
   let chars = 0;
   for (const voice of spec.voices) {
-    for (const phrase of spec.phrases) {
+    // F-265 / SF-265-01 — une voix réservée (la voix tierce) ne dit que les phrases qui la nomment, et inversement.
+    for (const phrase of spec.phrases.filter((ph) => (ph.voices ? ph.voices.includes(voice.name) : !voice.only))) {
       const file = join(corpus, 'synthetique', voice.name, `${phrase.id}.wav`);
       if (!(await exists(file))) {
         if (!key) {
@@ -109,8 +110,8 @@ export async function build({ key = process.env.ELEVEN, corpus = CORPUS } = {}) 
         await writeFile(file, wav(Buffer.concat(parts)));
       }
       const pcm = pcmOf(await readFile(file));
-      index.synthetic[`${voice.name}/${phrase.id}`] = { file, expected: phrase.segments.join(' '), kind: phrase.kind,
-        show: !!phrase.show, ...activity(pcm) };
+      index.synthetic[`${voice.name}/${phrase.id}`] = { file, expected: phrase.tiers ? null : phrase.segments.join(' '),
+        kind: phrase.kind, show: !!phrase.show, tiers: !!phrase.tiers, ...activity(pcm) };
     }
   }
   const labels = join(corpus, 'captures-prod', 'labels.json');
@@ -119,8 +120,10 @@ export async function build({ key = process.env.ELEVEN, corpus = CORPUS } = {}) 
       const file = join(corpus, 'captures-prod', `${c.id}.wav`);
       if (await exists(file)) {
         const pcm = pcmOf(await readFile(file));
-        index.captures[c.id] = { file, expected: c.corrected_text || c.final_text || null, stream: c.stream_text || null,
-          at: c.at, kind: c.final_text ? 'capture' : 'capture-vide', ...activity(pcm) };
+        // F-265 / SF-265-01 — une capture d'une AUTRE voix de la pièce (`tiers`) : rien n'est attendu, Jarvis se tait.
+        index.captures[c.id] = { file, expected: c.tiers ? null : c.corrected_text || c.final_text || null,
+          stream: c.stream_text || null, at: c.at, tiers: !!c.tiers,
+          kind: c.tiers ? 'capture-tiers' : c.final_text ? 'capture' : 'capture-vide', ...activity(pcm) };
       }
     }
   }

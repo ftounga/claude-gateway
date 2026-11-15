@@ -148,7 +148,7 @@ public class JarvisTurnTiming {
 
     /**
      * F-239 / SF-239-02 (D3b) — la parole a été refusée par la porte de parole réelle (aucun tour) : la raison (liste
-     * fermée : empty, noise, hallucination, no_voice, implausible), {@code null} sinon. Jamais le texte.
+     * fermée : empty, noise, hallucination, no_voice, implausible, discordant — F-265), {@code null} sinon. Jamais le texte.
      */
     @Column(name = "rejected_kind", length = 16)
     private String rejectedKind;
