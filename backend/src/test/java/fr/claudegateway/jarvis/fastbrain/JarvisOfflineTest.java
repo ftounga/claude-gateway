@@ -219,4 +219,75 @@ class JarvisOfflineTest {
         JarvisFastBrainService.Outcome outcome = delegated();
         assertThat(service(answering("x")).offlineInstead(ask(), outcome, null)).isSameAs(outcome);
     }
+    // ---- F-262 / SF-262-02 — les demandes générales ont une réponse ----
+
+    private JarvisFastBrainService.Outcome general() {
+        return new JarvisFastBrainService.Outcome(JarvisFastBrainService.Kind.DELEGATE, "",
+                new JarvisFastBrainService.Delegation(UUID.randomUUID(), "Faire le tour des clients", "tour",
+                        "Je fais le tour de vos clients, Monsieur.", JarvisFastBrainService.JARVIS_THREAD_TARGET, null,
+                        false, null),
+                null, "m", 100L, null, JarvisFastBrainService.Guards.NONE, null);
+    }
+
+    private static String firstUserText(AgentTurnRequest request) {
+        return ((fr.claudegateway.agent.AgentContentBlock.Text) request.messages().get(0).content().get(0)).text();
+    }
+
+    @Test
+    void f262AGeneralRequestIsAnsweredReadOnlyAfterItsAnnouncement() {
+        JarvisFastBrainService.Outcome out = service(answering("Edenred attend votre relecture, relevé ce matin."))
+                .generalInstead(ask(), general(), sink);
+
+        assertThat(out.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(out.reason()).isEqualTo(JarvisFastBrainService.REASON_GENERAL);
+        assertThat(out.delegation()).isNull();
+        assertThat(said.get(0)).isEqualTo("Je fais le tour de vos clients, Monsieur. ");
+        assertThat(String.join("", said)).contains("Edenred attend votre relecture");
+        assertThat(calls).hasSize(1);
+        assertThat(calls.get(0).reasoning().adaptive()).isTrue();
+        assertThat(calls.get(0).tools()).extracting(AgentTool::name)
+                .containsExactlyInAnyOrder("pieces", "agenda", "etat", "conversations");
+    }
+
+    @Test
+    void f262TheSituationIsInTheMessageAndTheSystemPromptIsTheSameForBothCases() {
+        Workspace w = owned(host);
+        when(meter.hostOffline(alice, w)).thenReturn(true);
+        JarvisFastBrainService s = service(answering("Rien de neuf."));
+
+        s.offlineInstead(ask(), delegated(), sink);
+        s.generalInstead(ask(), general(), sink);
+
+        assertThat(calls).hasSize(2);
+        assertThat(firstUserText(calls.get(0))).contains(JarvisOfflinePrompt.SITUATION_OFFLINE)
+                .doesNotContain(JarvisOfflinePrompt.SITUATION_GENERAL);
+        assertThat(firstUserText(calls.get(1))).contains(JarvisOfflinePrompt.SITUATION_GENERAL)
+                .doesNotContain(JarvisOfflinePrompt.SITUATION_OFFLINE);
+        assertThat(calls.get(0).system()).isEqualTo(calls.get(1).system()).isEqualTo(JarvisOfflinePrompt.SYSTEM);
+    }
+
+    @Test
+    void f262AFailingModelOnAGeneralRequestStillSaysSomething() {
+        AiAgentProvider failing = request -> {
+            calls.add(request);
+            throw new fr.claudegateway.ai.AIProviderException("Échec de l'appel au fournisseur IA.",
+                    new IllegalStateException("panne"));
+        };
+        JarvisFastBrainService.Outcome out = service(failing).generalInstead(ask(), general(), sink);
+
+        assertThat(out.reason()).isEqualTo(JarvisFastBrainService.REASON_GENERAL);
+        assertThat(String.join("", said)).contains(JarvisFastBrainService.GENERAL_FAILED);
+    }
+
+    @Test
+    void f262ADelegationToASubjectOrWithoutSinkIsNotAGeneralRequest() {
+        JarvisFastBrainService s = service(answering("x"));
+        JarvisFastBrainService.Outcome toSubject = delegated();
+        JarvisFastBrainService.Outcome toJarvis = general();
+
+        assertThat(s.generalInstead(ask(), toSubject, sink)).isSameAs(toSubject);
+        assertThat(s.generalInstead(ask(), toJarvis, null)).isSameAs(toJarvis);
+        assertThat(calls).isEmpty();
+        assertThat(said).isEmpty();
+    }
 }

@@ -519,9 +519,13 @@ public class JarvisFastBrainService {
         // F-262 / SF-262-01 (6b) — le poste est testé AVANT le routage : un poste éteint n'ouvre ni ligne « ↗ … en
         // cours » ni délégation enregistrée, qui resteraient figées.
         Outcome diverted = offlineInstead(request, decided, sink);
+        if (diverted == decided) {
+            // F-262 / SF-262-02 (6a) — une demande générale (fil Jarvis, bac à sable fermé depuis F-39) se répond ici.
+            diverted = generalInstead(request, decided, sink);
+        }
         Outcome outcome = diverted != decided ? diverted : route(request, decided);
         if (sink != null && decided.kind() == Kind.DELEGATE && outcome.kind() == Kind.ANSWER
-                && !REASON_OFFLINE.equals(outcome.reason())) {
+                && !REASON_OFFLINE.equals(outcome.reason()) && !REASON_GENERAL.equals(outcome.reason())) {
             // F-239 / SF-239-02 — la question du sujet est dite (elle n'était jamais poussée au fil de l'eau).
             sink.text(outcome.spokenText() + " ");
         }
@@ -549,6 +553,10 @@ public class JarvisFastBrainService {
 
     /** F-253 / SF-253-05 — la réponse a été faite côté passerelle, le poste étant éteint. */
     static final String REASON_OFFLINE = "offline";
+    /** F-262 / SF-262-02 — une demande générale (aucun poste) répondue côté passerelle. */
+    static final String REASON_GENERAL = "general";
+    /** F-262 / SF-262-02 — le repli d'une demande générale quand Opus ne répond pas. */
+    static final String GENERAL_FAILED = "Je n'ai pas d'élément pour vous répondre d'ici, Monsieur.";
     /** Appels au modèle au plus : trois lectures, puis la réponse. */
     static final int OFFLINE_MAX_CALLS = 4;
     static final String OFFLINE_FAILED = "Je n'ai aucun relevé récent de ce poste, Monsieur.";
@@ -606,12 +614,37 @@ public class JarvisFastBrainService {
         }
         String notice = offlineNotice(offlineUniverseOf(request.userId()), target);
         sink.text(notice + " ");
-        String answer = answerOffline(request, target, outcome.delegation().chantier());
+        String answer = answerOffline(request, target, outcome.delegation().chantier(),
+                JarvisOfflinePrompt.SITUATION_OFFLINE);
         for (String sentence : JarvisFastGuards.split(answer + " ").sentences()) {
             sink.text(sentence + " ");
         }
         return new Outcome(Kind.ANSWER, notice + " " + answer, null, REASON_OFFLINE, atelierProperties.model(),
                 outcome.firstTokenMs(), null, outcome.guards(), outcome.understood()).withShows(outcome.shows());
+    }
+
+    /**
+     * F-262 / SF-262-02 (6a) — une délégation au fil Jarvis (demande générale, aucun poste) ne part pas : ce fil est en
+     * bac à sable, chemin fermé depuis F-39, et la demande y mourait en silence. Jarvis dit son annonce, puis Opus
+     * répond côté passerelle en lecture seule, comme poste éteint. Sans écouteur ni service : l'issue telle quelle.
+     */
+    Outcome generalInstead(Request request, Outcome outcome, Sink sink) {
+        if (sink == null || outcome.kind() != Kind.DELEGATE || outcome.delegation() == null
+                || !JARVIS_THREAD_TARGET.equals(outcome.delegation().subjectId()) || atelierProperties == null
+                || request.userId() == null) {
+            return outcome;
+        }
+        String annonce = outcome.delegation().annonce() == null ? "" : outcome.delegation().annonce().strip();
+        if (!annonce.isEmpty()) {
+            sink.text(annonce + " ");
+        }
+        String answer = answerOffline(request, null, null, JarvisOfflinePrompt.SITUATION_GENERAL);
+        for (String sentence : JarvisFastGuards.split(answer + " ").sentences()) {
+            sink.text(sentence + " ");
+        }
+        return new Outcome(Kind.ANSWER, (annonce.isEmpty() ? "" : annonce + " ") + answer, null, REASON_GENERAL,
+                atelierProperties.model(), outcome.firstTokenMs(), null, outcome.guards(), outcome.understood())
+                .withShows(outcome.shows());
     }
 
     /** La phrase dite d'abord, au nom du client quand il est connu. */
@@ -629,13 +662,15 @@ public class JarvisFastBrainService {
      * de réflexion dans le plafond, blocs de réflexion rejoués dans la boucle ; lectures sur le <b>poste visé</b>. Si le
      * modèle échoue : les faits relevés de ce poste.
      */
-    private String answerOffline(Request request, Workspace target, Integer chantier) {
+    private String answerOffline(Request request, Workspace target, Integer chantier, String situation) {
+        boolean general = JarvisOfflinePrompt.SITUATION_GENERAL.equals(situation);
         Request onTarget = target == null ? request : new Request(request.userId(), target, chantier, request.text(),
                 request.heardBeforeCut(), request.screen(), request.presentation());
         try {
             String apiKey = byok == null ? null : byok.resolveActiveApiKey(request.userId()).orElse(null);
             List<AgentMessage> conversation = new ArrayList<>();
-            conversation.add(AgentMessage.userText(context(request) + "\n\nParole de Monsieur : " + request.text()));
+            conversation.add(AgentMessage.userText(context(request) + "\n\n" + situation + "\nParole de Monsieur : "
+                    + request.text()));
             java.util.Set<String> read = new java.util.HashSet<>();
             for (int n = 0; n < OFFLINE_MAX_CALLS; n++) {
                 boolean last = n == OFFLINE_MAX_CALLS - 1;
@@ -646,7 +681,10 @@ public class JarvisFastBrainService {
                         AgentCallShape.compact(properties.maxTokens() + THINKING_ROOM_TOKENS)));
                 account(request.userId(), target, turn, JARVIS_OPUS);
                 if (turn.toolCalls().isEmpty()) {
-                    return turn.text() == null || turn.text().isBlank() ? offlineFacts(onTarget) : turn.text().strip();
+                    if (turn.text() != null && !turn.text().isBlank()) {
+                        return turn.text().strip();
+                    }
+                    break;
                 }
                 // La réflexion du tour d'abord, telle quelle (blocs signés, inchangés, dans l'ordre), puis le texte et
                 // les appels d'outils : le fournisseur l'exige quand on lui renvoie les résultats.
@@ -665,9 +703,10 @@ public class JarvisFastBrainService {
                 conversation.add(AgentMessage.toolResults(results));
             }
         } catch (RuntimeException e) {
-            log.warn("Réponse poste éteint en échec ({} : {})", e.getClass().getSimpleName(), e.getMessage());
+            log.warn("Réponse {} en échec ({} : {})", general ? "demande générale" : "poste éteint",
+                    e.getClass().getSimpleName(), e.getMessage());
         }
-        return offlineFacts(onTarget);
+        return general ? GENERAL_FAILED : offlineFacts(onTarget);
     }
 
     /**
