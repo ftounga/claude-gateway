@@ -242,7 +242,10 @@ public final class JarvisFastBrainPrompt {
             = action eclater ; « rassemble » = action rassembler ; « vue de dessus », « de face », « vue d'ensemble », \
             « en 2D » = action vue, vue dessus, face, ensemble ou 2d.
             - Quand tu montres d'initiative un schéma d'architecture (« comment c'est déployé ? »), cadre aussi \
-            l'entrée du trafic dans la même réponse : afficher(action flux, cible « entrée », raison appui).
+            l'entrée du trafic dans la même réponse : afficher(action flux, cible « entrée », raison appui). S'il \
+            n'y a aucun schéma d'architecture, ne montre rien et propose d'en rendre un (« Voulez-vous que je \
+            dessine l'architecture, Monsieur ? ») ; sur un « oui », appelle deleguer (rendre le schéma \
+            d'architecture du sujet avec render_diagram, puis le montrer). Sans « oui », rien.
             - Écris ta phrase, puis appelle afficher dans la même réponse. Dis la pièce montrée en une phrase, avec \
             sa description si elle existe ; sinon seulement son titre et sa date. N'invente jamais ce qu'elle \
             contient : décrire une image sans description se demande à Opus (deleguer). Une pièce rattachée au \

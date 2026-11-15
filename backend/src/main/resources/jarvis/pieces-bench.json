@@ -4,6 +4,7 @@
   "pieces": "6 pièces\nneed:m3 | texte | « Besoin initial du chantier 3 » | Corrige l'erreur 502 du portail | lundi 2 novembre 09:02 | chantier 3\ndep:a1 | image | « capture-502.png » | Voici la capture de l'erreur 502 | lundi 2 novembre 09:03 | chantier 3\nproof:b4 | image | « Santé du portail » | Étape 4, 2 commandes, toutes réussies | mardi 3 novembre 09:40 | chantier 3\nvideo:c7@v2 | vidéo | « Démo du déploiement » | Le déploiement sur EKS | mardi 3 novembre 09:55 | chantier 3\ndiag:d9 | architecture | « Architecture du portail » | VPC de prod, EKS, RDS | lundi 2 novembre 15:10 | chantier 3\npage:e2@v3 | page | « Rapport 502 » | Ce que montre la page : la cause et le correctif | mardi 3 novembre 10:01 | chantier 3",
   "galleryScreen": "## Écran\nGalerie : Vidéos du chantier 3 — Edenred-Portail (3 pièces) ; sélection : aucune\n1. vidéo — « Démo du déploiement » — mardi 09:55\n2. vidéo — « Cours 2 : Terraform » — lundi 14:00\n3. vidéo — « Cours 3 : Observabilité » — lundi 16:20",
   "videoScreen": "## Écran\nGalerie : Vidéos du chantier 3 — Edenred-Portail (3 pièces) ; sélection : 2\n1. vidéo — « Démo du déploiement » — mardi 09:55\n2. vidéo — « Cours 2 : Terraform » — lundi 14:00 — en lecture 0:42 / 3:10 — chapitre 1 « Introduction »\n3. vidéo — « Cours 3 : Observabilité » — lundi 16:20",
+  "archScreen": "## Écran\nGalerie : Productions du chantier 3 — Edenred-Portail (1 pièce) ; sélection : 1\nArchitecture « Architecture du portail » ; focus : aucun ; repliées : aucune ; éclaté : non ; vue : ensemble ; flux : aucun\n1. architecture — « Architecture du portail » — lundi 15:10",
   "cases": [
     { "id": "S01", "category": "SHOW", "text": "Où en est le chantier 3 ?", "expect": { "show": true, "reason": "appui", "chantier": 3 } },
     { "id": "S02", "category": "SHOW", "text": "Fais-moi le point sur le chantier 3.", "expect": { "show": true, "reason": "appui", "chantier": 3 } },
@@ -47,6 +48,11 @@
     { "id": "U03", "category": "UNIVERS", "text": "Montre-moi les sujets d'Orion.", "expect": { "show": true, "action": ["univers"], "vue": "sujets", "client": "Orion" } },
     { "id": "U04", "category": "UNIVERS", "text": "Montre-moi les postes connectés.", "expect": { "show": true, "action": ["univers"], "vue": "connectes" } },
     { "id": "U05", "category": "UNIVERS", "text": "Montre-moi les étapes en cours.", "expect": { "show": true, "action": ["univers"], "vue": "etapes-en-cours" } },
-    { "id": "U06", "category": "UNIVERS", "text": "Affiche mes clients à l'écran.", "expect": { "show": true, "action": ["univers"], "vue": "clients" } }
+    { "id": "U06", "category": "UNIVERS", "text": "Affiche mes clients à l'écran.", "expect": { "show": true, "action": ["univers"], "vue": "clients" } },
+    { "id": "A01", "category": "NAVIGATE", "screen": "archScreen", "text": "Zoome sur la base de données.", "expect": { "show": true, "action": ["focus"] } },
+    { "id": "A02", "category": "NAVIGATE", "screen": "archScreen", "text": "Montre-moi le flux sortant de l'ALB.", "expect": { "show": true, "action": ["flux"] } },
+    { "id": "A03", "category": "NAVIGATE", "screen": "archScreen", "text": "Replie le VPC.", "expect": { "show": true, "action": ["replier"] } },
+    { "id": "A04", "category": "NAVIGATE", "screen": "archScreen", "text": "Passe en vue de dessus, s'il te plaît.", "expect": { "show": true, "action": ["vue"], "vue": "dessus" } },
+    { "id": "A05", "category": "NAVIGATE", "screen": "archScreen", "text": "D'où vient le trafic ?", "expect": { "show": true, "action": ["flux"] } }
   ]
 }
