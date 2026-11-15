@@ -1,8 +1,9 @@
 import { TestBed } from '@angular/core/testing';
 
-import { FAN_ARC_DEG, FAN_VISIBLE, fanLayout, fanStart } from './jarvis-piece-fan';
+import { FAN_ARC_DEG, FAN_VISIBLE, HERO_SCALE, arcAroundHero, fanLayout, fanStart } from './jarvis-piece-fan';
 import { JarvisPieceClient, pieceQueryString } from './jarvis-piece-client';
-import { JarvisPieceGalleryComponent, galleryLayout, swipeAction } from './jarvis-piece-gallery.component';
+import { BURST_SCALE, BURST_STAGGER_MS, JarvisPieceGalleryComponent, galleryLayout, swipeAction }
+  from './jarvis-piece-gallery.component';
 import { JarvisPieceStore, refusalPhrase } from './jarvis-piece-store';
 import { Piece } from './jarvis-piece.models';
 
@@ -44,13 +45,15 @@ describe('Jarvis — galerie des pièces (F-237 / SF-237-05)', () => {
     const slots = fanLayout(5, null);
     expect(slots[0].angle).toBe(-FAN_ARC_DEG / 2);
     expect(slots[4].angle).toBe(FAN_ARC_DEG / 2);
-    expect(slots.every((s) => s.visible && s.alpha === 0.75)).toBeTrue();
+    expect(slots.every((s) => s.visible && s.alpha === 1)).toBeTrue(); // F-264 : allumées, plus « fades »
     const many = fanLayout(30, 20);
     expect(many.filter((s) => s.visible).length).toBe(FAN_VISIBLE);
     expect(many[19].hero).toBeTrue();
     expect(many[19].visible).toBeTrue();
     expect(many[0].visible).toBeFalse();
-    expect(many[0].alpha).toBe(0.18);
+    expect(many[0].alpha).toBe(0.75); // F-264 : jamais 0,18
+    expect(many[19].alpha).toBe(1);
+    expect(many[19].scale).toBe(HERO_SCALE);
     expect(fanStart(30, 30)).toBe(19);
     expect(fanLayout(1, 1)[0].angle).toBe(0);
   });
@@ -90,6 +93,47 @@ describe('Jarvis — galerie des pièces (F-237 / SF-237-05)', () => {
     store.dispatch({ type: 'next' });
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.pg__panel').textContent).toContain('hors ligne');
+  });
+
+  it('F-264 — éventail : les cartes jaillissent du centre, une à une ; la qualité basse coupe les animations continues', async () => {
+    await store.openGallery({ subjectId: 's', label: 'Pièces' }, { subjectId: 's' });
+    const fixture = TestBed.createComponent(JarvisPieceGalleryComponent);
+    fixture.componentRef.setInput('threeD', true);
+    fixture.componentRef.setInput('lowQuality', true);
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    if (!el.querySelector('.pg--fan')) {
+      pending('mouvement réduit sur ce navigateur de test : la grille remplace l’éventail');
+      return;
+    }
+    expect(el.querySelector('.pg--low')).not.toBeNull();
+    expect(el.querySelector('.pg__floor')).not.toBeNull();
+    const cards = [...el.querySelectorAll<HTMLElement>('.pg__card')];
+    expect(cards[1].style.animationDelay).toBe(`${BURST_STAGGER_MS}ms`);
+    const x = fanLayout(4, null)[0].x;
+    expect(cards[0].style.getPropertyValue('--pg-fx')).toContain(`${-x * BURST_SCALE}px`);
+    expect(cards[0].style.transform).toContain('var(--pg-spread');
+    fixture.componentRef.setInput('lowQuality', false);
+    fixture.detectChanges();
+    expect(el.querySelector('.pg--low')).toBeNull();
+  });
+
+  it('F-264 — l’arc tourne autour de la pièce choisie : elle revient au centre, face à la caméra', () => {
+    const turned = arcAroundHero(fanLayout(7, 2));
+    expect(turned[1].angle).toBe(0);
+    expect(turned[1].x).toBe(0);
+    expect(turned[0].angle).toBeLessThan(0);
+    expect(turned[2].angle).toBeGreaterThan(0);
+    expect(turned[6].visible).toBeFalse(); // passerait derrière (> 90°)
+    expect(arcAroundHero(fanLayout(5, null))).toEqual(fanLayout(5, null));
+  });
+
+  it('F-264 — la galerie est un calque plein écran fixe, au-dessus du cockpit', () => {
+    const fixture = TestBed.createComponent(JarvisPieceGalleryComponent);
+    fixture.detectChanges();
+    const host = getComputedStyle(fixture.nativeElement as HTMLElement);
+    expect(host.position).toBe('fixed');
+    expect(Number(host.zIndex)).toBeGreaterThan(3);
   });
 
   it('mode présentation : aucune pièce, toute ouverture refusée ; la fermeture passe', async () => {
