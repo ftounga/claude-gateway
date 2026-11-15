@@ -165,6 +165,7 @@ import {
   JarvisFastBrainClient,
   announcementText, isCorrection, isRepeatCommand,
 } from './jarvis-fast-brain';
+import { DiscreetVeilComponent } from '../layout/discreet-veil/discreet-veil.component';
 
 /** Le sujet retenu sur cet appareil, d'une ouverture de Jarvis à l'autre. */
 export const JARVIS_SUBJECT_KEY = 'cg.jarvis.subject';
@@ -210,7 +211,7 @@ export function companionOffer(version: JarvisCompanionVersion, installed: numbe
  */
 @Component({
   selector: 'app-jarvis',
-  imports: [JarvisPieceGalleryComponent, JarvisCockpitComponent, JarvisCompanionsComponent, JarvisCostPanelComponent, JarvisPortraitComponent, JarvisMailboxesComponent, JarvisCalendarsComponent, JarvisClientMailComponent, JarvisStatePanelComponent, JarvisAgendaComponent, JarvisThreadPanelComponent, JarvisMailCardComponent, JarvisCardDetailComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatMenuModule],
+  imports: [DiscreetVeilComponent, JarvisPieceGalleryComponent, JarvisCockpitComponent, JarvisCompanionsComponent, JarvisCostPanelComponent, JarvisPortraitComponent, JarvisMailboxesComponent, JarvisCalendarsComponent, JarvisClientMailComponent, JarvisStatePanelComponent, JarvisAgendaComponent, JarvisThreadPanelComponent, JarvisMailCardComponent, JarvisCardDetailComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatMenuModule],
   templateUrl: './jarvis.component.html',
   styleUrl: './jarvis.component.scss',
   providers: [JarvisAppUpdate],

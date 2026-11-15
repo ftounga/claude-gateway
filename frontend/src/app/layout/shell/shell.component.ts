@@ -16,6 +16,7 @@ import { NoticeAnnouncerComponent } from '../notice-announcer/notice-announcer.c
 import { spaceLinks } from '../../shared/space-links';
 import { PushActivationService } from '../../core/services/push-activation.service';
 import { CurrentClientService } from '../../core/services/current-client.service';
+import { DiscreetVeilComponent } from '../discreet-veil/discreet-veil.component';
 
 /** Préférence par appareil : la barre de navigation reste affichée sur les écrans de travail (F-207 / SF-207-01). */
 export const NAV_PINNED_KEY = 'cg.nav.pinned';
@@ -82,6 +83,7 @@ function writePinned(pinned: boolean): void {
     HelpChatWidgetComponent,
     NotificationBellComponent,
     NoticeAnnouncerComponent,
+    DiscreetVeilComponent,
   ],
   templateUrl: './shell.component.html',
   styleUrl: './shell.component.scss',

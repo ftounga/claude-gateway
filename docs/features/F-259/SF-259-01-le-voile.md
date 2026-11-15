@@ -7,7 +7,7 @@
 `F-259` — Le voile discret (cadrage `CADRAGE-F-259-le-voile-discret.md`)
 
 ## Statut
-`draft` · **Estimation :** 1 j · **Branche :** `feat/SF-259-01-le-voile`
+`done` · **Estimation :** 1 j · **Branche :** `feat/SF-259-01-le-voile`
 
 ## Objectif
 Qu'un regard de passage sur l'écran du PO ne voie qu'une page banale, posée par un raccourci ou après une courte
@@ -51,14 +51,14 @@ inactivité, et enlevée d'un clic sans rien perdre.
 | Titre neutre | « Documentation » |
 
 ## Critères d'acceptation
-- [ ] Réglage désactivé par défaut ; activé, il est retrouvé après rechargement sur le même appareil.
-- [ ] Double Échap (< 500 ms) pose le voile ; deux Échap espacés de plus de 500 ms ne le posent pas.
-- [ ] Après le délai sans activité, le voile se pose ; une activité avant l'échéance relance le compte.
-- [ ] Voile posé : titre « Documentation » et icône neutre ; retrait : titre et icône rétablis.
-- [ ] Mouvement de souris et touches n'enlèvent pas le voile ; un clic l'enlève et ne déclenche rien dessous.
-- [ ] Un tour d'agent en cours continue de s'afficher derrière et est visible, à jour, au retrait.
-- [ ] Aucun texte du voile ne contient « Claude », « NG Portal », « Atelier » ni un nom de client.
-- [ ] Voile présent sur `/atelier` et `/jarvis`, absent de `/login` et de l'accueil public.
+- [x] Réglage désactivé par défaut ; activé, il est retrouvé après rechargement sur le même appareil.
+- [x] Double Échap (< 500 ms) pose le voile ; deux Échap espacés de plus de 500 ms ne le posent pas.
+- [x] Après le délai sans activité, le voile se pose ; une activité avant l'échéance relance le compte.
+- [x] Voile posé : titre « Documentation » et icône neutre ; retrait : titre et icône rétablis.
+- [x] Mouvement de souris et touches n'enlèvent pas le voile ; un clic l'enlève et ne déclenche rien dessous.
+- [x] Un tour d'agent en cours continue de s'afficher derrière et est visible, à jour, au retrait.
+- [x] Aucun texte du voile ne contient « Claude », « NG Portal », « Atelier » ni un nom de client.
+- [x] Voile présent sur `/atelier` et `/jarvis`, absent de `/login` et de l'accueil public.
 
 ## Plan de test
 - **Unitaires** (service du voile, `fakeAsync`) : double Échap dans/hors fenêtre ; minuterie d'inactivité relancée

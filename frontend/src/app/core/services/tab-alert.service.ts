@@ -1,5 +1,6 @@
 import { DOCUMENT } from '@angular/common';
 import { Injectable, inject } from '@angular/core';
+import { DiscreetVeilService } from './discreet-veil.service';
 
 /**
  * Signal in-tab (F-153 / SF-153-01) — palier 2 de la « version mobile ».
@@ -17,6 +18,7 @@ import { Injectable, inject } from '@angular/core';
 @Injectable({ providedIn: 'root' })
 export class TabAlertService {
   private readonly doc = inject(DOCUMENT);
+  private readonly veil = inject(DiscreetVeilService);
 
   /** Titre de l'onglet avant le signal, à restaurer. `null` = aucun signal levé. */
   private savedTitle: string | null = null;
@@ -65,7 +67,8 @@ export class TabAlertService {
    * voit déjà la réponse ou l'invite d'autorisation à l'écran — un signal serait du bruit.
    */
   private raise(label: string): void {
-    if (!this.doc.hidden) {
+    // F-259 / SF-259-01 : sous le voile, l'onglet reste « Documentation » — un signal le trahirait.
+    if (!this.doc.hidden || this.veil.veiled()) {
       return;
     }
     this.ensureListener();
