@@ -171,6 +171,25 @@ class JarvisFastBrainApiIntegrationTest {
     }
 
     @Test
+    @DisplayName("SF-257-13 : le pré-chauffage d'un tour répond 204 sans attendre ; l'appel de fond ne génère rien ; "
+            + "le sujet d'Alice n'est jamais lu pour Bob")
+    void aTurnWarmAnswersAtOnceAndNeverReadsAnotherAccountsSubject() throws Exception {
+        UUID secret = workspaceRepository.save(Workspace.builder().userId(aliceId).name("Zorglub-Secret-Alice")
+                .projectPath("zorglub").executionTarget(WorkspaceExecutionTarget.RUNNER).build()).getId();
+        mockMvc.perform(post("/api/jarvis/converse/warm").contextPath("/api")
+                        .header("Authorization", "Bearer " + bobToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"subjectId\":\"" + secret + "\",\"turn\":true,\"presentation\":false}"))
+                .andExpect(status().isNoContent());
+        org.mockito.ArgumentCaptor<AgentTurnRequest> sent = org.mockito.ArgumentCaptor.forClass(AgentTurnRequest.class);
+        org.mockito.Mockito.verify(agentProvider, org.mockito.Mockito.timeout(5_000)).nextTurn(sent.capture());
+        AgentTurnRequest warm = sent.getValue();
+        assertThat(warm.shape().maxTokens()).isZero();
+        assertThat(warm.reasoning().adaptive()).isTrue();
+        assertThat(warm.system() + warm.messages()).doesNotContain("Zorglub").doesNotContain("zorglub");
+    }
+
+    @Test
     @DisplayName("isolation : le sujet d'Alice est introuvable pour Bob (404), rien ne part au fournisseur")
     void anotherAccountsSubjectIsNotFound() throws Exception {
         mockMvc.perform(post("/api/jarvis/converse").contextPath("/api")

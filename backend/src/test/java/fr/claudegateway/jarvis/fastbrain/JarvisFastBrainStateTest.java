@@ -146,4 +146,39 @@ class JarvisFastBrainStateTest {
         assertThat(out.spokenText()).contains("(relevé d'hier 17:42)");
         assertThat(heard.toString()).contains("relevé d'hier 17:42");
     }
+
+    @Test
+    @DisplayName("SF-257-13 : par défaut la réflexion reste éteinte, plafond de 600 jetons inchangé")
+    void thinkingOffByDefault() throws Exception {
+        when(block.ready(any(), any(), any())).thenReturn(JarvisStateBlock.Selected.EMPTY);
+        service(steps(null, "Bonjour, Monsieur.")).converse(ask("Bonjour", false), null);
+        assertThat(calls.get(0).reasoning().disabled()).isTrue();
+        assertThat(calls.get(0).reasoning().adaptive()).isFalse();
+        assertThat(calls.get(0).shape().maxTokens()).isEqualTo(600);
+    }
+
+    @Test
+    @DisplayName("SF-257-13 : réflexion adaptative à l'effort configuré ; place de réflexion en plus ; blocs rejoués")
+    void adaptiveThinkingReplaysItsBlocksInTheToolLoop() throws Exception {
+        when(block.ready(any(), any(), any())).thenReturn(JarvisStateBlock.Selected.EMPTY);
+        when(tool.read(eq(alice), eq(host), any(), anyBoolean())).thenReturn(new JarvisStateTool.Read(
+                JarvisStateTool.OPEN + "\n- MR grp/proj!42 : opened\n" + JarvisStateTool.CLOSE, List.of()));
+        fr.claudegateway.agent.AgentContentBlock thought =
+                new fr.claudegateway.agent.AgentContentBlock.Reasoning("", "sig-1");
+        AgentTurn etat = new AgentTurn("", List.of(new AgentToolCall("e1", "etat",
+                JSON.readTree("{\"cle\":\"grp/proj!42\",\"famille\":\"\",\"client\":\"\"}"))), false, 100, 10,
+                false, List.of(thought));
+        JarvisFastBrainService s = service(steps(etat, "La MR grp/proj!42 est ouverte."));
+        s.setThinking("adaptive");
+        s.converse(ask("La MR 42 ?", false), null);
+
+        assertThat(calls).hasSize(2);
+        assertThat(calls.get(0).reasoning().adaptive()).isTrue();
+        assertThat(calls.get(0).reasoning().disabled()).isFalse();
+        assertThat(calls.get(0).reasoning().effort()).isEqualTo("low");
+        assertThat(calls.get(0).shape().maxTokens()).isEqualTo(600 + JarvisFastBrainService.THINKING_ROOM_TOKENS);
+        var replayed = calls.get(1).messages().get(calls.get(1).messages().size() - 2);
+        assertThat(replayed.content().get(0)).isEqualTo(thought);
+        assertThat(replayed.content().get(1)).isInstanceOf(fr.claudegateway.agent.AgentContentBlock.ToolUse.class);
+    }
 }

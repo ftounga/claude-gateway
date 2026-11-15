@@ -164,8 +164,12 @@ public class JarvisFastBrainController {
         return ResponseEntity.ok().contentType(MediaType.TEXT_EVENT_STREAM).body(emitter);
     }
 
-    /** La demande de pré-chauffage : le sujet ouvert (facultatif, pour le journal du coût). */
-    public record WarmRequest(UUID subjectId) {
+    /**
+     * La demande de pré-chauffage : le sujet ouvert (facultatif, pour le journal du coût). F-257 / SF-257-13 :
+     * {@code turn} vrai — l'utilisateur parle, le préfixe du prochain appel est chauffé maintenant (au plus un toutes
+     * les 1,5 s) ; {@code presentation} : le mode présentation de l'écran (le portrait n'y sert pas).
+     */
+    public record WarmRequest(UUID subjectId, Boolean turn, Boolean presentation) {
     }
 
     /**
@@ -180,7 +184,11 @@ public class JarvisFastBrainController {
         UUID userId = currentUser.requireId();
         Workspace workspace = request == null || request.subjectId() == null ? null
                 : workspaces.findByIdAndUserId(request.subjectId(), userId).orElse(null);
-        service.warmAsync(userId, workspace);
+        if (request != null && Boolean.TRUE.equals(request.turn())) {
+            service.warmTurnAsync(userId, workspace, Boolean.TRUE.equals(request.presentation()));
+        } else {
+            service.warmAsync(userId, workspace);
+        }
         return ResponseEntity.noContent().build();
     }
 
