@@ -115,6 +115,28 @@ class JarvisPiecesBenchTest {
     }
 
     @Test
+    void architectureIsShownOnInfraQuestionsAndNeverElsewhere() throws Exception {
+        // F-238 / SF-238-13 — 10 questions réelles sur l'infra, 10 qui n'en sont pas.
+        JarvisPiecesBench.Set set = JarvisPiecesBench.load();
+        assertThat(set.cases().stream().filter(c -> "ARCHI".equals(c.category()))).hasSize(10);
+        assertThat(set.cases().stream().filter(c -> "ARCHI_NEUTRAL".equals(c.category()))).hasSize(10);
+        JarvisShowCommand piece = show("""
+                {"action":"piece","pieces":["diag:d9"],"raison":"appui"}""");
+        JarvisShowCommand entry = show("""
+                {"action":"flux","cible":"entrée","raison":"appui"}""");
+        assertThat(JarvisPiecesBench.evaluate(find(set, "I01"), answer("Voici l'architecture du portail.", piece, entry))
+                .routeAgreed()).isTrue();
+        assertThat(JarvisPiecesBench.evaluate(find(set, "I01"), answer("Le portail tourne sur EKS.")).routeAgreed())
+                .isFalse();
+        JarvisFastBrainBenchService.Verdict wrong = JarvisPiecesBench.evaluate(find(set, "J01"),
+                answer("Voici le schéma.", piece));
+        assertThat(wrong.comment()).contains("architecture montrée à tort");
+        assertThat(JarvisPiecesBench.gate(List.of(wrong))).anyMatch(f -> f.contains("hors sujet d'infra"));
+        assertThat(JarvisPiecesBench.evaluate(find(set, "J01"), answer("Je n'ai pas la main sur votre Mac."))
+                .routeAgreed()).isTrue();
+    }
+
+    @Test
     void benchReadsTheFixedPiecesNeverTheDatabase() throws Exception {
         List<AgentTurnRequest> calls = new ArrayList<>();
         AgentTurn[] turns = {

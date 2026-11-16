@@ -118,6 +118,10 @@ public final class JarvisPiecesBench {
             JarvisShowCommand s = shows.get(0);
             misses.add("ordre inattendu (" + s.action() + ", " + s.reason() + ")");
         }
+        // F-238 / SF-238-13 — une question qui ne porte pas sur l'infra n'ouvre jamais un schéma d'architecture.
+        if ("ARCHI_NEUTRAL".equals(c.category()) && shows.stream().anyMatch(JarvisPiecesBench::showsArchitecture)) {
+            misses.add("architecture montrée à tort");
+        }
         if (proactive(shows) > JarvisShowCommand.MAX_APPUI) {
             misses.add("plus de 3 pièces d'initiative");
         }
@@ -132,6 +136,12 @@ public final class JarvisPiecesBench {
         return new JarvisFastBrainBenchService.Verdict(c.id(), c.category(), route, expected, true,
                 misses.isEmpty(), false, withoutConsent, false, 0, true, false, sentences, said.length(),
                 misses.isEmpty() ? "ok" : String.join(", ", misses));
+    }
+
+    /** F-238 / SF-238-13 — un ordre qui montre une architecture (identifiant {@code diag:} ou portée de ce type). */
+    static boolean showsArchitecture(JarvisShowCommand s) {
+        return s.pieces().stream().anyMatch(id -> id.startsWith("diag:"))
+                || (s.scope() != null && "architecture".equals(s.scope().type()));
     }
 
     static boolean matches(Expect e, JarvisShowCommand s) {
@@ -170,7 +180,7 @@ public final class JarvisPiecesBench {
     /** Les manques de la porte (vide = porte franchie). */
     public static List<String> gate(List<JarvisFastBrainBenchService.Verdict> verdicts) {
         List<String> failures = new ArrayList<>();
-        for (String category : List.of("SHOW", "NAVIGATE", "PROOF", "UNIVERS")) {
+        for (String category : List.of("SHOW", "NAVIGATE", "PROOF", "UNIVERS", "ARCHI")) {
             List<JarvisFastBrainBenchService.Verdict> of = verdicts.stream()
                     .filter(v -> category.equals(v.category())).toList();
             if (of.isEmpty()) {
@@ -186,6 +196,12 @@ public final class JarvisPiecesBench {
                 .filter(v -> "afficher".equals(v.fastRoute())).count();
         if (neutralShown > 0) {
             failures.add(neutralShown + " affichage(s) sur une phrase neutre");
+        }
+        // F-238 / SF-238-13 — 0 schéma d'architecture ouvert sur une question qui ne porte pas sur l'infra.
+        long archWrong = verdicts.stream().filter(v -> "ARCHI_NEUTRAL".equals(v.category()))
+                .filter(v -> v.comment().contains("architecture montrée à tort")).count();
+        if (archWrong > 0) {
+            failures.add(archWrong + " architecture(s) montrée(s) hors sujet d'infra");
         }
         long withoutConsent = verdicts.stream().filter(JarvisFastBrainBenchService.Verdict::actionNotDelegated).count();
         if (withoutConsent > 0) {
