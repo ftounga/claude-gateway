@@ -115,7 +115,8 @@ const LONG_PRESS_MS = 600;
     /* SF-238-11 — téléphone : la fiche en volet bas (4 lignes au plus), les boutons en haut. */
     :host(.pa--phone) .pa__panel { left: 0; right: 0; top: auto; bottom: 0; width: auto; border-radius: 4px 4px 0 0;
       padding: 8px 16px; max-height: 96px; overflow: hidden; }
-    :host(.pa--phone) .pa__tools { top: 8px; bottom: auto; left: 8px; }
+    :host(.pa--phone) .pa__tools { top: 8px; bottom: auto; left: 8px; right: 8px; flex-wrap: wrap; gap: 4px; }
+    :host(.pa--phone) .pa__btn { padding: 0 8px; }
     .pa__btn { min-width: 44px; min-height: 44px; padding: 0 12px; border-radius: 4px; cursor: pointer;
       color: var(--cg-holo-text, #F0954F); font: 12px Inter, sans-serif;
       background: color-mix(in srgb, var(--cg-navy, #0B1020) 70%, transparent);

@@ -28,6 +28,13 @@ import {
 } from '../architecture-stage-director';
 import { ArchitectureNarrator } from '../architecture-narration';
 import { phoneZoneLabel } from '../architecture-render';
+import { PHONE_ZONE_ORDER } from '../architecture-stage-director';
+
+/** Rang d'une nature de zone au téléphone (AZ d'abord). */
+function phoneZoneRank(kind: string): number {
+  const i = PHONE_ZONE_ORDER.indexOf(kind);
+  return i < 0 ? PHONE_ZONE_ORDER.length : i;
+}
 
 /**
  * F-238 / SF-238-09 — **la scène d'architecture en 3D** (cadrage §9, §10, §14). Seul fichier `three` de la SF,
@@ -462,9 +469,8 @@ export class ArchitectureSceneGraph {
     this.plateLabels = layout.plates.map((p) => (this.options.labelHost
       ? this.makeLabel(options.phone ? phoneZoneLabel(p.label) : p.label, 'zone', p.x0 + p.w / 2, p.z0 + p.d - 0.05,
         // SF-238-11 — au téléphone, les zones (courtes) passent avant les services au dé-chevauchement : le PO doit
-        // lire la structure (la zone la plus large d'abord : l'AZ avant ses sous-réseaux) ; un service masqué se lit à
-        // son icône et au toucher.
-        options.phone ? 0.6 - (p.w * p.d) / maxArea / 10 : 2 + (p.w * p.d) / maxArea) : null));
+        // lire la structure (AZ, puis sous-réseaux, puis VPC…) ; un service masqué se lit à son icône et au toucher.
+        options.phone ? 0.5 + phoneZoneRank(p.kind) / 100 : 2 + (p.w * p.d) / maxArea) : null));
     this.capsuleLabels = layout.plates.map((p) => this.makeLabel('', 'capsule', p.x0 + p.w / 2, p.z0 + p.d / 2, 0.5));
   }
 
