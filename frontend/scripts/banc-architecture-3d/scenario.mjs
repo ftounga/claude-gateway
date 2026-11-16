@@ -41,7 +41,7 @@ const files = http(async (req, res) => {
     res.end();
   }
 });
-await new Promise((r) => files.listen(4356, r));
+await new Promise((r) => files.listen(4366, r));
 await mkdir(out, { recursive: true });
 
 const now = Date.now();
@@ -75,7 +75,13 @@ async function measure(page) {
       const r = e.getBoundingClientRect();
       return getComputedStyle(e).visibility !== 'hidden' && Number(e.style.opacity || 0) > 0.05 && r.width > 0;
     }).map((e) => e.textContent);
-    return { viewer: !!viewer, svg: !!document.querySelector('.pv__zoom'), canvas: canvas && { x: canvas.left,
+    const universe = document.querySelector('app-jarvis-stage-3d');
+    const uCmp = universe && window.ng?.getComponent(universe);
+    // SF-238-11 — l'emprise réelle du schéma à l'écran : les étiquettes et icônes posées (pas le canevas).
+    const zones = [...(viewer?.querySelectorAll('.jv3d-label--arch-zone') ?? [])].filter((e) =>
+      getComputedStyle(e).visibility !== 'hidden' && Number(e.style.opacity || 0) > 0.05).map((e) => e.textContent);
+    return { viewer: !!viewer, svg: !!document.querySelector('.pv__zoom'), zones,
+      universeFrames: uCmp?.engine?.frames ?? null, canvas: canvas && { x: canvas.left,
       y: canvas.top, w: canvas.width, h: canvas.height }, calls: stage?.getAttribute('data-calls') ?? null,
       lit: stage?.getAttribute('data-lit') ?? '', labels, vw: innerWidth, vh: innerHeight,
       scrollW: document.documentElement.scrollWidth, panel: document.querySelector('.pa__panel')?.textContent ?? '' };
@@ -113,13 +119,21 @@ async function run({ width, height, tag }) {
     }
     return req.continue();
   });
-  await page.goto(`http://localhost:4356/jarvis?sujet=${DATA_PLATFORM}`, { waitUntil: 'load' });
+  await page.goto(`http://localhost:4366/jarvis?sujet=${DATA_PLATFORM}`, { waitUntil: 'load' });
   await sleep(7000);
+  if (process.env.BANC_LOW === '1') {
+    // Qualité basse de l'écran (ce que la séance du PO a parfois) : la scène d'architecture part au niveau bas.
+    await page.evaluate(() => {
+      const stage = document.querySelector('app-jarvis-stage-3d');
+      const cmp = stage && window.ng.getComponent(stage);
+      cmp?.level.set('low');
+    });
+  }
   const app = () => window.ng.getComponent(document.querySelector('app-jarvis'));
   const say = (text) => page.evaluate((a, t) => (0, eval)(a)().handle(t), app.toString(), text);
   const shot = async (name, wait) => {
     await sleep(wait);
-    await page.screenshot({ path: join(out, `${name}-${tag}.png`) });
+    await page.screenshot({ path: join(out, `${name}-${tag}${process.env.BANC_LOW === '1' ? '-bas' : ''}.png`) });
     return measure(page);
   };
 
@@ -132,6 +146,60 @@ async function run({ width, height, tag }) {
   note(Math.abs(cx - a.vw / 2) < 48, `${tag} scène centrée horizontalement (centre ${Math.round(cx)} / ${a.vw / 2})`);
   note(/e0|e1/.test(a.lit), `${tag} premier cadrage : le flux d'entrée est allumé (${a.lit || 'rien'})`);
   note(Number(a.calls) > 0 && Number(a.calls) <= 20, `${tag} appels de dessin ${a.calls} (≤ 20)`);
+
+  // SF-238-11 — l'univers recouvert est suspendu (0 image) pendant la scène.
+  const u0 = (await measure(page)).universeFrames;
+  await sleep(1500);
+  const u1 = (await measure(page)).universeFrames;
+  note(u0 !== null && u0 === u1, `${tag} univers suspendu pendant la scène (${u0} → ${u1} images)`);
+  if (tag === 'tel') {
+    const held = ['AZ A', 'AZ B', 'Public A', 'Privé A', 'Public B', 'Privé B'];
+    const seen = held.filter((z) => a.zones.some((l) => (l ?? '').toLowerCase() === z.toLowerCase()));
+    note(seen.length === held.length, `${tag} libellés des zones porteuses visibles : ${seen.length}/${held.length} (${a.zones.join(' | ')})`);
+  }
+
+  // Retour PO 2026-11-16 — gestes : pivoter (glisser), pincer à deux doigts, recentrer.
+  const cam = () => page.evaluate(() => {
+    const v = document.querySelector('app-jarvis-piece-architecture');
+    if (!v) {
+      return { az: NaN, el: NaN, zoom: NaN };
+    }
+    const nav = window.ng.getComponent(v).nav();
+    return { az: nav.arch.orbit.az, el: nav.arch.orbit.el, zoom: nav.zoom, folded: nav.arch.folded.map((r) => r.id).join(','), focus: nav.arch.focus?.id ?? '' };
+  });
+  const box = await page.evaluate(() => {
+    const r = (document.querySelector('app-jarvis-piece-architecture .pa') ?? document.body).getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height };
+  });
+  const c0 = await cam();
+  // Le glisser part du vide (coin du cadre) : en rendu logiciel la première image peut tarder plus que le toucher long
+  // (600 ms), qui replierait alors la zone sous le doigt — sur un vrai écran le geste part tout de suite.
+  const sx = box.x + box.w * 0.4;
+  const sy = box.y + box.h * 0.42;
+  await page.mouse.move(sx, sy);
+  await page.mouse.down();
+  for (let i = 1; i <= 12; i++) {
+    await page.mouse.move(sx - i * 15, sy + i * 3);
+  }
+  await page.mouse.up();
+  const r1 = await shot('sf11-g1-pivote', 900);
+  const c1 = await cam();
+  note(c1.az !== c0.az, `${tag} glisser fait pivoter (azimut ${c0.az.toFixed(2)} → ${c1.az.toFixed(2)})`);
+  const cdp = await page.createCDPSession();
+  const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map(([x, y], id) => ({ x, y, id })) });
+  await touch('touchStart', [[box.x - 40, box.y], [box.x + 40, box.y]]);
+  for (let i = 1; i <= 10; i++) {
+    await touch('touchMove', [[box.x - 40 - i * 12, box.y], [box.x + 40 + i * 12, box.y]]);
+  }
+  await touch('touchEnd', []);
+  const r2 = await shot('sf11-g2-pince', 900);
+  const c2 = await cam();
+  note(c2.zoom > c1.zoom, `${tag} pincer (écarter) zoome (×${c1.zoom} → ×${c2.zoom})`);
+  await page.evaluate(() => [...document.querySelectorAll('.pa__btn')].find((b) => b.textContent.trim() === 'Recentrer')?.click());
+  await shot('sf11-g3-recentre', 1800);
+  const c3 = await cam();
+  note(c3.zoom === 1 && c3.az === 0, `${tag} « Recentrer » remet la vue d'ensemble (×${c3.zoom}, azimut ${c3.az})`);
+  void r1; void r2;
 
   await say('Zoome sur la base');
   const b = await shot('sf10-2-focus-base', 2600);
@@ -158,6 +226,11 @@ async function run({ width, height, tag }) {
   await say('En 2D');
   const f = await shot('sf10-6-en-2d', 1200);
   note(!f.viewer, `${tag} « en 2D » : la visionneuse SVG cadrée reprend (3D ${f.viewer})`);
+  await sleep(1500);
+  const u2 = (await measure(page)).universeFrames;
+  await sleep(1200);
+  const u3 = (await measure(page)).universeFrames;
+  note(u3 > u2, `${tag} l'univers reprend après la scène (${u2} → ${u3} images)`);
   note(f.scrollW <= f.vw, `${tag} pas de défilement horizontal (${f.scrollW} ≤ ${f.vw})`);
   note(errors.length === 0, `${tag} erreurs de page : ${JSON.stringify(errors.slice(0, 3))}`);
   await browser.close();

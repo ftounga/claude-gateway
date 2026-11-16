@@ -13,6 +13,7 @@ import { PieceNav } from './jarvis-piece-nav';
 import { ArchRequest, defaultArchNav } from './jarvis-piece-arch';
 import { JarvisPieceStore } from './jarvis-piece-store';
 import { Piece } from './jarvis-piece.models';
+import { ArchGestures } from './jarvis-piece-gestures';
 
 /** Le chemin du graphe conservé d'un schéma (SF-238-07), sous JWT, filtré `user_id` par la passerelle. */
 export function graphPath(pieceId: string): string {
@@ -55,8 +56,6 @@ export function servicePanel(layout: ArchLayout, id: string | null): ServicePane
 
 /** Gestes (cadrage §12) : glisser = orbite, toucher long = replier / déplier, double toucher sur le vide = éclater. */
 const LONG_PRESS_MS = 600;
-const DRAG_PX = 6;
-const ORBIT_PER_PX = 0.006;
 
 /**
  * F-238 / SF-238-10 — **la visionneuse 3D d'une pièce `ARCHITECTURE`** (cadrage §7, §12) : lit le graphe conservé,
@@ -67,14 +66,16 @@ const ORBIT_PER_PX = 0.006;
 @Component({
   selector: 'app-jarvis-piece-architecture',
   standalone: true,
+  host: { '[class.pa--phone]': 'phone()' },
   imports: [ArchitectureStageComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="pa" (pointerdown)="down($event)" (pointermove)="move($event)" (pointerup)="up($event)"
-         (pointercancel)="cancel()" (pointerleave)="cancel()" (wheel)="wheel($event)" (dblclick)="double($event)">
+         (pointercancel)="cancel()" (wheel)="wheel($event)" (dblclick)="double($event)">
       @if (graph(); as g) {
         <app-architecture-stage [graph]="g" [state]="state()" [contained]="true" [spoken]="spoken()"
-                                [iconFetcher]="icons" phase="entree" (failed)="fallback.emit('webgl')" />
+                                [iconFetcher]="icons" phase="entree" [presentation]="store.presentation()" [level]="low() ? 'low' : 'high'"
+                                (failed)="fail($event)" />
       } @else if (!loaded()) {
         <p class="pa__note">Je pose le schéma…</p>
       }
@@ -93,6 +94,9 @@ const ORBIT_PER_PX = 0.006;
           {{ nav().arch?.exploded ? 'Rassembler' : 'Éclater' }}</button>
         <button type="button" class="pa__btn" (click)="ask({ kind: 'view', view: nav().arch?.view === 'dessus' ? 'ensemble' : 'dessus' })">
           {{ nav().arch?.view === 'dessus' ? 'Ensemble' : 'Dessus' }}</button>
+        <button type="button" class="pa__btn" aria-label="Zoomer" (click)="zoom('+')">+</button>
+        <button type="button" class="pa__btn" aria-label="Dézoomer" (click)="zoom('-')">−</button>
+        <button type="button" class="pa__btn" (click)="ask({ kind: 'recenter' })">Recentrer</button>
         <button type="button" class="pa__btn" (click)="ask({ kind: 'view', view: '2d' })">2D</button>
       </div>
     }
@@ -108,6 +112,11 @@ const ORBIT_PER_PX = 0.006;
     .pa__panel-title { margin: 0 0 4px; font: 600 14px 'Space Grotesk', Inter, sans-serif; letter-spacing: .04em; }
     .pa__panel-line { margin: 0; }
     .pa__tools { position: absolute; left: 16px; bottom: 16px; display: flex; gap: 8px; }
+    /* SF-238-11 — téléphone : la fiche en volet bas (4 lignes au plus), les boutons en haut. */
+    :host(.pa--phone) .pa__panel { left: 0; right: 0; top: auto; bottom: 0; width: auto; border-radius: 4px 4px 0 0;
+      padding: 8px 16px; max-height: 96px; overflow: hidden; }
+    :host(.pa--phone) .pa__tools { top: 8px; bottom: auto; left: 8px; right: 8px; flex-wrap: wrap; gap: 4px; }
+    :host(.pa--phone) .pa__btn { padding: 0 8px; }
     .pa__btn { min-width: 44px; min-height: 44px; padding: 0 12px; border-radius: 4px; cursor: pointer;
       color: var(--cg-holo-text, #F0954F); font: 12px Inter, sans-serif;
       background: color-mix(in srgb, var(--cg-navy, #0B1020) 70%, transparent);
@@ -115,7 +124,7 @@ const ORBIT_PER_PX = 0.006;
   `],
 })
 export class JarvisPieceArchitectureComponent implements OnDestroy {
-  private readonly store = inject(JarvisPieceStore);
+  readonly store = inject(JarvisPieceStore);
   private readonly client = inject(JarvisPieceClient);
 
   readonly piece = input.required<Piece>();
@@ -123,8 +132,10 @@ export class JarvisPieceArchitectureComponent implements OnDestroy {
   /** La phrase de Jarvis entendue (début de lecture) : la narration SF-238-12. */
   readonly spoken = input<string>('');
   readonly phone = input(false);
+  /** SF-238-11 — qualité basse (niveau de départ de la scène). */
+  readonly low = input(false);
   /** Graphe absent ou illisible, 3D impossible : la visionneuse SVG reprend la main. */
-  readonly fallback = output<'graph' | 'webgl'>();
+  readonly fallback = output<'graph' | 'webgl' | 'perf'>();
 
   private readonly stage = viewChild(ArchitectureStageComponent);
   readonly graph = signal<ArchitectureGraph | null>(null);
@@ -141,6 +152,8 @@ export class JarvisPieceArchitectureComponent implements OnDestroy {
   private loading: AbortController | null = null;
   private press: { x: number; y: number; at: number; dragged: boolean; long: boolean } | null = null;
   private pressTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Retour PO 2026-11-16 — pivoter, pincer, toucher : la lecture des pointeurs (pure). */
+  private readonly gestures = new ArchGestures();
 
   private readonly pieceKey = computed(() => this.piece().id);
   private readonly loadGraph = effect(() => {
@@ -165,13 +178,20 @@ export class JarvisPieceArchitectureComponent implements OnDestroy {
     const graph = readArchitectureGraph(raw);
     const layout = graph ? layoutArchitecture(graph) : null;
     if (!graph || !layout) {
-      this.fallback.emit('graph');
+      this.fail('graph');
       return;
     }
+    this.store.archScene.set(true);
     this.graph.set(graph);
     this.layout.set(layout);
     const targets = new ArchitectureTargets(layout);
     this.unbind = this.store.bindArchitecture({ pieceId: id, resolve: (request, arch) => targets.resolve(request, arch) });
+  }
+
+  /** SF-238-11 — la 3D renonce (graphe, WebGL, performance) : le SVG cadré reprend, l'univers repart. */
+  fail(reason: 'graph' | 'webgl' | 'perf'): void {
+    this.store.archScene.set(false);
+    this.fallback.emit(reason);
   }
 
   /** Une demande du toucher : la même porte que la voix et l'outil. */
@@ -184,41 +204,47 @@ export class JarvisPieceArchitectureComponent implements OnDestroy {
       return;
     }
     event.stopPropagation(); // le glisser tourne le schéma : il ne feuillette pas la galerie
-    this.press = { x: event.clientX, y: event.clientY, at: Date.now(), dragged: false, long: false };
+    (event.currentTarget as HTMLElement | null)?.setPointerCapture?.(event.pointerId);
+    this.gestures.down(event.pointerId, event.clientX, event.clientY, Date.now());
     this.clearPress();
+    if (this.gestures.pinching) {
+      this.press = null;
+      return;
+    }
+    this.press = { x: event.clientX, y: event.clientY, at: Date.now(), dragged: false, long: false };
     this.pressTimer = setTimeout(() => this.longPress(), LONG_PRESS_MS);
   }
 
   move(event: PointerEvent): void {
-    const press = this.press;
-    if (!press) {
+    const g = this.gestures.move(event.pointerId, event.clientX, event.clientY);
+    if (g.kind === 'zoom') {
+      this.clearPress();
+      this.store.dispatch({ type: 'zoom', step: g.step }, 'touch'); // pincement à deux doigts
       return;
     }
-    const dx = event.clientX - press.x;
-    const dy = event.clientY - press.y;
-    if (!press.dragged && Math.abs(dx) + Math.abs(dy) < DRAG_PX) {
+    if (g.kind !== 'orbit') {
       return;
     }
-    if (!press.dragged) {
-      press.dragged = true;
+    if (this.press && !this.press.dragged) {
+      this.press.dragged = true;
       this.clearPress();
       if (this.nav().arch?.view === 'dessus') {
         this.ask({ kind: 'view', view: 'ensemble' }); // tourner autour quitte la vue de dessus
       }
     }
-    press.x = event.clientX;
-    press.y = event.clientY;
-    this.ask({ kind: 'orbit', dAz: -dx * ORBIT_PER_PX, dEl: dy * ORBIT_PER_PX });
+    this.ask({ kind: 'orbit', dAz: g.dAz, dEl: g.dEl });
   }
 
   up(event: PointerEvent): void {
-    if (this.press) {
-      event.stopPropagation();
-    }
+    event.stopPropagation();
     const press = this.press;
+    const g = this.gestures.up(event.pointerId, event.clientX, event.clientY, Date.now());
+    if (g.kind === 'none' && (this.gestures.pinching || this.gestures.dragging)) {
+      return; // un autre doigt est encore posé
+    }
     this.press = null;
     this.clearPress();
-    if (!press || press.dragged || press.long) {
+    if (g.kind !== 'tap' || !press || press.long) {
       return;
     }
     const hit = this.stage()?.pick(event.clientX, event.clientY) ?? null;
@@ -230,8 +256,13 @@ export class JarvisPieceArchitectureComponent implements OnDestroy {
     this.ask({ kind: 'focus', target: current === hit.id ? '' : hit.id });
   }
 
+  zoom(step: '+' | '-'): void {
+    this.store.dispatch({ type: 'zoom', step }, 'touch');
+  }
+
   cancel(): void {
     this.press = null;
+    this.gestures.cancel();
     this.clearPress();
   }
 
@@ -244,7 +275,10 @@ export class JarvisPieceArchitectureComponent implements OnDestroy {
 
   wheel(event: WheelEvent): void {
     event.preventDefault();
-    this.store.dispatch({ type: 'zoom', step: event.deltaY < 0 ? '+' : '-' }, 'touch');
+    const g = ArchGestures.wheel(event.deltaY);
+    if (g.kind === 'zoom') {
+      this.store.dispatch({ type: 'zoom', step: g.step }, 'touch');
+    }
   }
 
   private longPress(): void {
@@ -277,6 +311,7 @@ export class JarvisPieceArchitectureComponent implements OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.store.archScene.set(false);
     this.loading?.abort();
     this.clearPress();
     this.unbind?.();

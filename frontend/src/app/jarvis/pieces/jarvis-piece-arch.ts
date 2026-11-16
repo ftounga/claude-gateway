@@ -38,7 +38,9 @@ export type ArchRequest =
   | { kind: 'explode'; on: boolean }
   | { kind: 'view'; view: ArchViewName | '2d' | '3d' }
   | { kind: 'turn' }
-  | { kind: 'orbit'; dAz: number; dEl: number };
+  | { kind: 'orbit'; dAz: number; dEl: number }
+  /** SF-238-11 (retour PO) — recentrer : vue d'ensemble, sans focus, orbite et zoom remis à zéro. */
+  | { kind: 'recenter' };
 
 /** Une demande résolue : ce que le réducteur applique. */
 export type ArchOp =
@@ -49,7 +51,8 @@ export type ArchOp =
   | { kind: 'explode'; on: boolean }
   | { kind: 'view'; view: ArchViewName }
   | { kind: 'flat'; on: boolean }
-  | { kind: 'orbit'; dAz: number; dEl: number };
+  | { kind: 'orbit'; dAz: number; dEl: number }
+  | { kind: 'recenter' };
 
 /** « tourne » : un huitième de tour. */
 export const TURN_STEP = Math.PI / 4;
@@ -74,6 +77,8 @@ export function trivialArchOp(request: ArchRequest): ArchOp | null {
       return { kind: 'orbit', dAz: TURN_STEP, dEl: 0 };
     case 'orbit':
       return { kind: 'orbit', dAz: request.dAz, dEl: request.dEl };
+    case 'recenter':
+      return { kind: 'recenter' };
     case 'unfold':
       return request.target.trim() === '' ? { kind: 'unfold', refs: 'all' } : null;
     case 'focus':
@@ -121,6 +126,8 @@ export function reduceArch(state: ArchNav, op: ArchOp): ArchNav {
       return { ...state, view: op.view, orbit: { az: 0, el: 0 } };
     case 'flat':
       return state.flat === op.on ? state : { ...state, flat: op.on };
+    case 'recenter':
+      return { ...state, focus: null, view: 'ensemble', orbit: { az: 0, el: 0 } };
     case 'orbit': {
       const el = Math.min(ORBIT_EL_MAX, Math.max(ORBIT_EL_MIN, state.orbit.el + op.dEl));
       return { ...state, orbit: { az: wrapAngle(state.orbit.az + op.dAz), el } };
@@ -157,6 +164,7 @@ const DEEP = /^(en 3d|en trois d|passe en 3d|passe en trois d|vue 3d)$/;
 const FOLD_ALL = /^(replie tout|replie tous les groupes|replie toutes les zones)$/;
 const UNFOLD_ALL = /^(deplie tout|deplie tous les groupes|deplie toutes les zones)$/;
 const TURN = /^(tourne|tourne le schema|fais le tourner)$/;
+const RECENTER = /^(recentre|recentre le schema|recadre|recadre le schema|centre le schema|remets le schema au centre)$/;
 
 /**
  * Les ordres exacts d'architecture (cadrage §7, §12), reconnus sur l'appareil sans IA quand une pièce `ARCHITECTURE`
@@ -196,6 +204,9 @@ export function archVoiceRequest(said: string | null | undefined): ArchRequest |
   }
   if (TURN.test(words)) {
     return { kind: 'turn' };
+  }
+  if (RECENTER.test(words)) {
+    return { kind: 'recenter' };
   }
   return null;
 }

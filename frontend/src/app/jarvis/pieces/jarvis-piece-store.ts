@@ -138,6 +138,9 @@ export class JarvisPieceStore {
     return result.ok ? { ok: true } : { ok: false, reason: result.reason };
   }
 
+  /** F-238 / SF-238-11 — une scène d'architecture est posée au centre (l'univers recouvert se suspend). */
+  readonly archScene = signal(false);
+
   /** F-238 / SF-238-10 — la visionneuse 3D liée à la pièce ouverte, et la demande arrivée avant elle. */
   private archBinding: ArchBinding | null = null;
   private pendingArch: { action: Extract<NavAction, { type: 'arch' }>; source?: 'voice' | 'touch' | 'ai'; at: number }

@@ -18,6 +18,8 @@ export const ARCH_FOV = 40;
 /** Vue d'ensemble (T-A9) : élévation 32°, azimut 35°. */
 export const ENSEMBLE_ELEVATION = (32 * Math.PI) / 180;
 export const ENSEMBLE_AZIMUTH = (35 * Math.PI) / 180;
+/** SF-238-11 — vue d'ensemble en portrait (téléphone) : plus haute, le schéma tient en grand. */
+export const PORTRAIT_ELEVATION = (55 * Math.PI) / 180;
 /** Le 2D cadré : contenu `contain`, centré, marge de 5 % de chaque côté. */
 export const SVG_FIT = 0.9;
 /** Vue d'ensemble : marge minimale au bord du cadre (le schéma occupe le centre, en grand). */
@@ -28,6 +30,10 @@ export const MAX_LIT = 3;
 export const LABEL_ALL_UNDER = 24;
 export const LABEL_NEIGHBOURS_UNDER = 40;
 export const PHONE_LABELS = 16;
+/** SF-238-11 — téléphone : libellés de zones au plus, et l'ordre des zones qui structurent le schéma. */
+export const PHONE_ZONE_LABELS = 7;
+export const PHONE_ZONE_ORDER: readonly string[] = ['az', 'subnet_public', 'subnet_private', 'vpc', 'asg',
+  'security_group', 'region', 'account', 'onprem', 'generic', 'cloud'];
 
 export type ArchView = 'ensemble' | 'dessus' | 'face';
 /** SF-238-10 — vue de face : élévation 10° (le bas de l'orbite bornée), azimut 0. */
@@ -250,14 +256,36 @@ export function cameraFor(layout: ArchLayout, state: ArchState, viewport: Viewpo
   }
   const height = (state.view === 'dessus' ? 0 : layout.maxLevel * stepOf(state)) + NODE_FLOAT;
   const orbit = state.view === 'dessus' ? { az: 0, el: 0 } : state.orbit ?? { az: 0, el: 0 };
-  const baseEl = state.view === 'dessus' ? MAX_ELEVATION : state.view === 'face' ? FACE_ELEVATION : ENSEMBLE_ELEVATION;
+  // SF-238-11 — en portrait, la vue d'ensemble se lève (55°) : la profondeur du schéma occupe la hauteur de l'écran.
+  const baseEl = state.view === 'dessus' ? MAX_ELEVATION : state.view === 'face' ? FACE_ELEVATION
+    : viewport.height > viewport.width ? PORTRAIT_ELEVATION : ENSEMBLE_ELEVATION;
   const baseAz = state.view === 'ensemble' ? ENSEMBLE_AZIMUTH : 0;
-  let camera: ArchCamera = {
-    target: [0, height / 2, 0], azimuth: baseAz + orbit.az,
-    elevation: Math.min(MAX_ELEVATION, Math.max(MIN_ELEVATION, baseEl + orbit.el)), distance: 1, fov: ARCH_FOV,
-  };
   const e = extent ?? { x0: -layout.width / 2, x1: layout.width / 2, z0: -layout.depth / 2, z1: layout.depth / 2 };
-  camera = { ...camera, target: [(e.x0 + e.x1) / 2, height / 2, (e.z0 + e.z1) / 2] };
+  const start = (az: number): ArchCamera => ({
+    target: [(e.x0 + e.x1) / 2, height / 2, (e.z0 + e.z1) / 2], azimuth: az + orbit.az,
+    elevation: Math.min(MAX_ELEVATION, Math.max(MIN_ELEVATION, baseEl + orbit.el)), distance: 1, fov: ARCH_FOV,
+  });
+  // SF-238-11 — écran en portrait (téléphone) : le schéma se tourne d'un quart de tour si sa longueur tient mieux
+  // dans la hauteur de l'écran ; on garde l'orientation qui le rend le plus grand (la plus petite distance).
+  const portrait = state.view !== 'dessus' && viewport.height > viewport.width;
+  // De face (azimut 0 ou 90°), un schéma ne s'étale pas en diagonale : 30 à 40 % plus grand dans la largeur.
+  const bases = portrait && state.view === 'ensemble' ? [0, Math.PI / 2] : portrait ? [baseAz, baseAz + Math.PI / 2]
+    : [baseAz];
+  let best: ArchCamera | null = null;
+  for (const az of bases) {
+    const fitted = fitCamera(start(az), e, height, viewport);
+    if (!best || fitted.distance < best.distance * 0.98) {
+      best = fitted;
+    }
+  }
+  const camera = best as ArchCamera;
+  // Éclaté : le volume plus haut est recadré (la caméra recule d'elle-même, T-A3). Zoom : elle se rapproche.
+  return zoom > 1 ? { ...camera, distance: camera.distance / zoom } : camera;
+}
+
+/** Le volume (emprise × hauteur) au centre et en grand pour une orientation donnée. */
+function fitCamera(initial: ArchCamera, e: ArchExtent, height: number, viewport: Viewport): ArchCamera {
+  let camera = initial;
   const corners = [[e.x0, 0, e.z0], [e.x1, 0, e.z0], [e.x0, 0, e.z1], [e.x1, 0, e.z1], [e.x0, height, e.z0],
     [e.x1, height, e.z0], [e.x0, height, e.z1], [e.x1, height, e.z1]];
   const box = (c: ArchCamera): { x0: number; x1: number; y0: number; y1: number } => {
@@ -304,8 +332,7 @@ export function cameraFor(layout: ArchLayout, state: ArchState, viewport: Viewpo
         camera.target[2] + basis.right[2] * sx + basis.up[2] * sy],
     };
   }
-  // Éclaté : le volume plus haut est recadré (la caméra recule d'elle-même, T-A3). Zoom : elle se rapproche.
-  return zoom > 1 ? { ...camera, distance: camera.distance / zoom } : camera;
+  return camera;
 }
 
 /** SF-238-10 — la caméra entre deux plans (cible et distance linéaires, azimut par le plus court chemin). */
@@ -606,8 +633,30 @@ export class ArchitectureStageDirector {
       }
       return count <= LABEL_NEIGHBOURS_UNDER && neighbours(i);
     });
-    const zoneBudget = state.phone ? Math.max(0, PHONE_LABELS - nodeLabel.filter(Boolean).length) : Infinity;
-    const plateLabel = plates.map((p) => lit.has(p.id) || p.id === focus || p.riseRank < zoneBudget);
+    let plateLabel: boolean[];
+    if (state.phone) {
+      // SF-238-11 — téléphone : les zones qui structurent le schéma d'abord (AZ, sous-réseaux, VPC…, au plus
+      // {@link PHONE_ZONE_LABELS}), puis les services dans l'ordre du flux, 16 étiquettes en tout (cadrage §14).
+      const rank = (k: string): number => PHONE_ZONE_ORDER.indexOf(k) < 0 ? PHONE_ZONE_ORDER.length
+        : PHONE_ZONE_ORDER.indexOf(k);
+      const zones = plates.map((p) => p.index).sort((a, b) => rank(plates[a].kind) - rank(plates[b].kind) || a - b)
+        .slice(0, PHONE_ZONE_LABELS);
+      const zoneSet = new Set(zones);
+      plateLabel = plates.map((p) => lit.has(p.id) || p.id === focus || zoneSet.has(p.index));
+      let room = Math.max(0, PHONE_LABELS - plateLabel.filter(Boolean).length);
+      const order = nodes.map((n) => n.index).sort((a, b) => nodes[a].flowRank - nodes[b].flowRank || a - b);
+      const forced = new Set(nodes.filter((n) => lit.has(n.id) || n.id === focus).map((n) => n.index));
+      room -= forced.size;
+      for (const i of order) {
+        const wanted = forced.has(i) || (nodeLabel[i] && room > 0);
+        if (nodeLabel[i] && !forced.has(i) && wanted) {
+          room--;
+        }
+        nodeLabel[i] = wanted;
+      }
+    } else {
+      plateLabel = plates.map(() => true);
+    }
 
     // SF-238-10 (§8.3) — replis : une zone repliée rentre ses services en capsule au centre de son plateau (le
     // plateau garde son emprise : rien ne saute) ; ses plateaux intérieurs s'effacent. Au-delà de 40 services, les

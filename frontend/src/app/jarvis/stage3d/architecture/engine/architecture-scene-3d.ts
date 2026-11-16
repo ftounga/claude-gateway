@@ -14,6 +14,7 @@ import { EngineClock } from '../../jarvis-banc';
 import { FrameHost, FrameLoop } from '../../jarvis-frame-loop';
 import { HOLO_ALPHA, HOLO_COLORS, HoloRole, MOTION_DURATIONS, rgb } from '../../jarvis-motion';
 import { QualityLevel } from '../../jarvis-render-capability';
+import { QualityGovernor } from '../../jarvis-quality';
 import { levelBudget } from '../../hud/jarvis-device-profile';
 import { JarvisPost } from '../../engine/jarvis-post';
 import { ArchitectureIconSource } from '../architecture-icons';
@@ -26,6 +27,14 @@ import {
   ArchitectureStageDirector, Viewport, blendCamera, cameraBasis, moveFor, moveProgress, pickAt,
 } from '../architecture-stage-director';
 import { ArchitectureNarrator } from '../architecture-narration';
+import { phoneZoneLabel } from '../architecture-render';
+import { PHONE_ZONE_ORDER } from '../architecture-stage-director';
+
+/** Rang d'une nature de zone au téléphone (AZ d'abord). */
+function phoneZoneRank(kind: string): number {
+  const i = PHONE_ZONE_ORDER.indexOf(kind);
+  return i < 0 ? PHONE_ZONE_ORDER.length : i;
+}
 
 /**
  * F-238 / SF-238-09 — **la scène d'architecture en 3D** (cadrage §9, §10, §14). Seul fichier `three` de la SF,
@@ -44,7 +53,14 @@ export const LABELS_PHONE = 16;
 
 const PLATE_THICKNESS = 0.04;
 /** Intensité du bloom F-236 : liserés, filaments et particules brillent, sans noyer les icônes. */
-const BLOOM_STRENGTH = 0.75;
+/**
+ * Retour PO 2026-11-16 — « trop lumineux » : au repos la lumière est sobre (icônes AWS et libellés lisibles) ; la forte
+ * lueur est réservée à ce que Jarvis allume (narration, flux, héros).
+ */
+export const BLOOM_REST = 0.3;
+export const BLOOM_LIT = 0.65;
+/** Halo, socle et filaments d'un élément au repos : une fraction de la lueur d'un élément allumé. */
+export const REST_GLOW = 0.3;
 const SOCKET_RADIUS = 0.42;
 const HALO_RADIUS = 0.78;
 
@@ -417,7 +433,7 @@ export class ArchitectureSceneGraph {
     this.lengths = new Float32Array(layout.edges.length);
     const segments = layout.edges.reduce((sum, e) => sum + pathPoints(e) - 1, 0);
     this.filaments = this.buildLines(segments, { linewidth: options.phone ? 1.8 : 1.6 });
-    this.glows = this.buildLines(segments, { linewidth: options.phone ? 5 : 6, opacity: 0.4 });
+    this.glows = this.buildLines(segments, { linewidth: options.phone ? 4 : 5, opacity: 0.2 });
 
     // Particules : pool fixe.
     this.maxSparks = options.phone ? PARTICLES_PHONE : PARTICLES_PC;
@@ -448,8 +464,14 @@ export class ArchitectureSceneGraph {
       ? this.makeLabel(node.label, 'service', node.x, node.z + ICON_SIZE / 2 + 0.04, 1) : null));
     // Zone : au milieu de son bord avant (le plus proche de la caméra), à l'intérieur ; les plateaux emboîtés y
     // sont décalés en plan ET en altitude, leurs libellés ne s'empilent plus dans un même coin.
-    this.plateLabels = layout.plates.map((p) => (this.labels.length < cap
-      ? this.makeLabel(p.label, 'zone', p.x0 + p.w / 2, p.z0 + p.d - 0.05, 2 + (p.w * p.d) / maxArea) : null));
+    // SF-238-11 — cause du défaut téléphone : les zones partageaient le plafond des services (16) et seules les 6
+    // premières avaient un libellé. Toutes les zones (≤ 24) ont désormais le leur ; le plan décide lesquels se voient.
+    this.plateLabels = layout.plates.map((p) => (this.options.labelHost
+      ? this.makeLabel(options.phone ? phoneZoneLabel(p.label) : p.label, 'zone', p.x0 + p.w / 2, p.z0 + p.d - 0.05,
+        // SF-238-11 — au téléphone, les zones (courtes) passent avant les services au dé-chevauchement : le PO doit
+        // lire la structure (AZ, puis sous-réseaux, puis VPC…) ; un service masqué se lit à son icône et au toucher.
+        options.phone ? 0.5 + phoneZoneRank(p.kind) / 100 : 2 + (p.w * p.d) / maxArea,
+        p.kind === 'subnet_public' || p.kind === 'subnet_private') : null));
     this.capsuleLabels = layout.plates.map((p) => this.makeLabel('', 'capsule', p.x0 + p.w / 2, p.z0 + p.d / 2, 0.5));
   }
 
@@ -562,15 +584,18 @@ export class ArchitectureSceneGraph {
       const z = f.nodeZ[i];
       const role = this.palette.get(plan.nodeRole[i]) as number[];
       this.disc(i * 3, x, alt + 0.001, z, HALO_RADIUS * 0.8 * s, a, 0, 0);
-      this.disc(i * 3 + 1, x, alt + 0.002, z, HALO_RADIUS * s, normal[0] * a, normal[1] * a,
-        normal[2] * a);
-      const k = 0.4 + 0.6 * a;
+      const on = plan.nodeLit[i] === 1;
+      const g = on ? a : a * REST_GLOW;
+      this.disc(i * 3 + 1, x, alt + 0.002, z, HALO_RADIUS * s, normal[0] * g, normal[1] * g,
+        normal[2] * g);
+      const k = on ? 0.4 + 0.6 * a : 0.15 + 0.25 * a;
       this.disc(i * 3 + 2, x, alt + 0.003, z, SOCKET_RADIUS * s, role[0] * k, role[1] * k, role[2] * k);
       const size = ICON_SIZE * s;
       this.matrix.makeScale(size, size, size);
       this.matrix.setPosition(x, alt + f.float, z);
       this.icons.setMatrixAt(i, this.matrix);
-      icon[i] = Math.min(1, s) * (a >= 0.45 ? 1 : 0.55);
+      // Icônes AWS à leurs couleurs officielles, pleinement lisibles ; seulement atténuées hors du focus.
+      icon[i] = Math.min(1, s) * (a >= HOLO_ALPHA.context ? 1 : 0.7);
     }
     this.discs.instanceMatrix.needsUpdate = true;
     if (this.discs.instanceColor) {
@@ -737,8 +762,8 @@ export class ArchitectureSceneGraph {
     this.world.add(floor);
   }
 
-  private makeLabel(text: string, kind: 'zone' | 'service' | 'capsule', x: number, z: number, priority: number):
-      Label | null {
+  private makeLabel(text: string, kind: 'zone' | 'service' | 'capsule', x: number, z: number, priority: number,
+      rightAligned = false): Label | null {
     if (!this.options.labelHost) {
       return null;
     }
@@ -747,7 +772,8 @@ export class ArchitectureSceneGraph {
     element.textContent = text;
     element.style.opacity = '0';
     const object = new CSS2DObject(element);
-    object.center.set(0.5, kind === 'zone' ? 1 : kind === 'capsule' ? 0.5 : 0);
+    object.center.set(kind === 'zone' && this.options.phone ? (rightAligned ? 1 : 0) : 0.5,
+      kind === 'zone' ? 1 : kind === 'capsule' ? 0.5 : 0);
     object.position.set(x, 0, z);
     this.world.add(object);
     const label = { object, element, shown: 0, lit: false, priority, masked: false };
@@ -895,7 +921,8 @@ export class ArchitectureSceneGraph {
         const u = len > 0 ? Math.max(0, Math.min(1, (traced - walked) / len)) : (traced > walked ? 1 : 0);
         const hot = lit && s - 1 < swept;
         const role = hot ? white : cream;
-        const vis = traced > walked ? (hot || !lit ? a : Math.min(a, HOLO_ALPHA.active)) : 0;
+        const base = traced > walked ? (hot || !lit ? a : Math.min(a, HOLO_ALPHA.active)) : 0;
+        const vis = lit ? base : base * (0.35 + 0.65 * REST_GLOW);
         const x1 = path[o0] + (path[o1] - path[o0]) * u;
         const y1 = path[o0 + 1] + (path[o1 + 1] - path[o0 + 1]) * u;
         const z1 = path[o0 + 2] + (path[o1 + 2] - path[o0 + 2]) * u;
@@ -922,14 +949,38 @@ export class ArchitectureSceneGraph {
           capsule.element.textContent = plan.capsuleText[i];
         }
         const zone = this.plateLabels[i];
-        const text = plan.plateBadge[i] ? `${p.label} ${plan.plateBadge[i]}` : p.label;
+        const name = this.options.phone ? phoneZoneLabel(p.label) : p.label;
+        const text = plan.plateBadge[i] ? `${name} ${plan.plateBadge[i]}` : name;
         if (zone && zone.element.textContent !== text) {
           zone.element.textContent = text;
         }
       });
     }
+    // SF-238-11 — le libellé d'une zone au milieu du bord le plus proche de la caméra (le schéma peut tourner d'un
+    // quart de tour au téléphone, et l'orbite le fait tourner).
+    const sa = Math.sin(plan.camera.azimuth);
+    const ca = Math.cos(plan.camera.azimuth);
+    const side = Math.abs(sa) > Math.abs(ca);
+    // Téléphone : au coin gauche de ce bord (vu de la caméra), aligné à gauche — deux zones voisines ne posent plus
+    // leurs libellés au même endroit (convention AWS : le libellé en haut à gauche).
+    const left = this.options.phone;
+    const rx = ca;
+    const rz = -sa;
     plates.forEach((p, i) => {
-      this.placeLabel(this.plateLabels[i], p.x0 + p.w / 2, f.plateAlt[i] + 0.01, p.z0 + p.d - 0.05,
+      let lx = side ? (sa > 0 ? p.x0 + p.w - 0.05 : p.x0 + 0.05) : p.x0 + p.w / 2;
+      let lz = side ? p.z0 + p.d / 2 : ca > 0 ? p.z0 + p.d - 0.05 : p.z0 + 0.05;
+      if (left) {
+        // Le bout du bord le plus à gauche à l'écran (droite de la caméra = (cos a, 0, −sin a)), un peu en dedans ;
+        // un sous-réseau au bout droit (aligné à droite) : il ne recouvre plus le libellé de son AZ, posé au même coin.
+        const rightEnd = p.kind === 'subnet_public' || p.kind === 'subnet_private';
+        const flip = rightEnd ? -1 : 1;
+        if (side) {
+          lz = rz * flip < 0 ? p.z0 + p.d - 0.08 : p.z0 + 0.08;
+        } else {
+          lx = rx * flip < 0 ? p.x0 + p.w - 0.08 : p.x0 + 0.08;
+        }
+      }
+      this.placeLabel(this.plateLabels[i], lx, f.plateAlt[i] + 0.01, lz,
         plan.plateLabel[i] ? f.labels * (1 - f.plateHidden[i]) : 0, plan.plateRole[i] === 'core');
       this.placeLabel(this.capsuleLabels[i], p.x0 + p.w / 2, f.plateAlt[i] + f.float, p.z0 + p.d / 2,
         plan.capsuleText[i] ? f.labels * f.plateCapsule[i] : 0, false);
@@ -967,6 +1018,9 @@ export interface ArchitectureEngineOptions extends ArchitectureSceneOptions {
   clock: EngineClock;
   frameHost: FrameHost;
   onFirstFrame?(): void;
+  /** SF-238-11 — qualité adaptative (gouverneur F-236) ; Bas trop lent ⇒ `onFallback` (le SVG cadré reprend). */
+  adaptive?: boolean;
+  onFallback?(): void;
 }
 
 /** Le moteur : rendu WebGL, lumière F-236 (bloom), étiquettes, boucle d'images (0 image onglet caché). */
@@ -996,11 +1050,16 @@ export class ArchitectureEngine {
   private scriptIndex = -1;
   fps = 0;
   private last: number | null = null;
+  /** SF-238-11 — la qualité adaptative (3 niveaux, puis repli 2D). */
+  private readonly governor: QualityGovernor | null;
+  private gaveUp = false;
   private readonly look = new Vector3();
   private cameraFor: ArchitecturePlan | null = null;
   /** SF-238-10 — le déplacement en cours (T-A3 → T-A6, T-A9) et la caméra affichée (point de départ du suivant). */
   private move: ArchMove | null = null;
   private readonly cameraNow: ArchCamera;
+  /** Retour PO 2026-11-16 — intensité courante de la lueur (repos ⇄ allumé). */
+  private bloom = BLOOM_REST;
   /** SF-238-10 — l'état venu de la navigation, et ce que la narration y allume. */
   private base: ArchState;
   private narrated: { lit: readonly string[]; flow: readonly string[] } = { lit: [], flow: [] };
@@ -1033,6 +1092,12 @@ export class ArchitectureEngine {
     // L'horloge part de 0 à la pose : au banc (horloge figée à t), l'instant de la phase est t.
     this.setPhase(phase, 0);
     this.loop = new FrameLoop(options.frameHost, (now) => this.draw(now));
+    this.governor = options.adaptive ? new QualityGovernor(options.level, 0) : null;
+  }
+
+  /** SF-238-11 — le niveau de qualité courant. */
+  get level(): QualityLevel {
+    return this.governor?.level ?? this.options.level;
   }
 
   get frames(): number {
@@ -1156,6 +1221,26 @@ export class ArchitectureEngine {
     this.narrate(this.script[index].text, this.script[index].at);
   }
 
+  /** SF-238-11 — le gouverneur F-236 : descend (densité de pixels, lumière), remonte, ou renonce (repli 2D). */
+  private adapt(dt: number, now: number): void {
+    const verdict = this.governor?.sample(dt, now);
+    if (!verdict || verdict.kind === 'keep') {
+      return;
+    }
+    if (verdict.kind === 'fallback2d') {
+      if (!this.gaveUp) {
+        this.gaveUp = true;
+        this.options.onFallback?.();
+      }
+      return;
+    }
+    this.renderer.setPixelRatio(Math.min(this.options.pixelRatio, levelBudget(verdict.level, this.options.phone)
+      .pixelRatio));
+    this.renderer.setSize(this.width, this.height, false);
+    this.post.setLevel(verdict.level);
+    this.post.setSize(this.width, this.height);
+  }
+
   private viewport(): Viewport {
     return { width: this.width, height: this.height };
   }
@@ -1166,6 +1251,7 @@ export class ArchitectureEngine {
       const dt = now - this.last;
       if (dt > 0) {
         this.fps = this.fps === 0 ? 1000 / dt : this.fps * 0.9 + (1000 / dt) * 0.1;
+        this.adapt(dt, now);
       }
     }
     this.last = now;
@@ -1195,7 +1281,10 @@ export class ArchitectureEngine {
       this.camera.lookAt(this.look);
     }
     this.renderer.info.reset();
-    this.post.render(BLOOM_STRENGTH, t);
+    // La lueur monte quand Jarvis allume quelque chose, redescend au repos (glissé, sans allocation).
+    const target = this.plan.state.lit.length > 0 || (this.plan.state.flow?.length ?? 0) > 0 ? BLOOM_LIT : BLOOM_REST;
+    this.bloom += (target - this.bloom) * 0.08;
+    this.post.render(this.bloom, t);
     // Les icônes par-dessus la lumière (hors bloom), comptées dans le budget d'appels.
     const before = this.renderer.info.render.calls;
     this.renderer.autoClear = false;

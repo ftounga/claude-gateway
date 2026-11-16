@@ -17,6 +17,7 @@ import { JarvisPieceStore } from './jarvis-piece-store';
 import { viewerFor } from './jarvis-piece-viewers';
 import { Piece, PieceChapter } from './jarvis-piece.models';
 import { JarvisPieceArchitectureComponent } from './jarvis-piece-architecture.component';
+import { archRender } from '../stage3d/architecture/architecture-render';
 
 /** Fiche de lecture d'une vidéo (sous-ensemble de `VideoResponse`). */
 interface VideoInfo {
@@ -53,11 +54,11 @@ interface PageInfo {
           @case ('architecture-3d') {
             @if (show3d()) {
               <!-- F-238 / SF-238-10 — l'architecture en 3D, au centre ; le SVG cadré reste son repli. -->
-              <app-jarvis-piece-architecture class="pv__arch" [piece]="p" [nav]="nav()" [spoken]="spoken()"
-                                             [phone]="phone()" (fallback)="archFailed.set(true)" />
+              <app-jarvis-piece-architecture class="pv__arch pv__fade" [piece]="p" [nav]="nav()" [spoken]="spoken()"
+                                             [phone]="phone()" [low]="low()" (fallback)="archFallback.set($event)" />
             } @else {
-              <ng-container [ngTemplateOutlet]="svgSchema" />
-              @if (allow3d() && !archFailed()) {
+              <div class="pv__fade"><ng-container [ngTemplateOutlet]="svgSchema" /></div>
+              @if (allow3d() && !archFallback()) {
                 <button type="button" class="pv__zone" (click)="store.dispatch({ type: 'arch', request: { kind: 'view', view: '3d' } }, 'touch')">
                   Voir en 3D</button>
               }
@@ -167,7 +168,10 @@ interface PageInfo {
       border: 1px solid color-mix(in srgb, var(--cg-holo, #E07B39) 55%, transparent); }
     .pv__zone--on { border-color: var(--cg-holo-green, #4CF2A0); }
     .pv__arch { position: absolute; inset: 0; }
-    @media (prefers-reduced-motion: reduce) { .pv__image, .pv__slide { transition: none; } }
+    /* SF-238-11 — T-A10 : bascule 3D ↔ 2D en fondu croisé (0,4 s, courbe « glisse »). */
+    .pv__fade { animation: pv-fade 400ms cubic-bezier(.65,0,.35,1) both; }
+    @keyframes pv-fade { from { opacity: 0; } to { opacity: 1; } }
+    @media (prefers-reduced-motion: reduce) { .pv__image, .pv__slide { transition: none; } .pv__fade { animation: none; } }
   `],
 })
 export class JarvisPieceViewerComponent implements OnDestroy {
@@ -185,9 +189,17 @@ export class JarvisPieceViewerComponent implements OnDestroy {
   readonly spoken = input<string>('');
   /** F-238 / SF-238-10 — téléphone : plateaux éclatés plus bas, étiquettes du focus (cadrage §14). */
   readonly phone = input(false);
-  /** F-238 / SF-238-10 — la 3D n'a pas pu se poser pour cette pièce (graphe absent, WebGL) : le SVG reprend. */
-  readonly archFailed = signal(false);
-  readonly show3d = computed(() => this.allow3d() && !this.archFailed() && !this.nav().arch?.flat);
+  /** SF-238-11 — qualité basse de l'écran : la scène d'architecture part au niveau bas. */
+  readonly low = input(false);
+  /** F-238 / SF-238-11 — la 3D a renoncé pour cette pièce (graphe absent, WebGL, performance) : le SVG reprend. */
+  readonly archFallback = signal<'graph' | 'webgl' | 'perf' | null>(null);
+  /** F-238 / SF-238-11 — la table de vérité du rendu (cadrage §14) : 3D, ou le SVG cadré et pourquoi. */
+  readonly archMode = computed(() => archRender({
+    universe3d: this.allow3d(), sober: false, reducedMotion: false,
+    graph: this.archFallback() === 'graph' ? false : null, webglFailed: this.archFallback() === 'webgl',
+    perfFallback: this.archFallback() === 'perf', flat: !!this.nav().arch?.flat,
+  }));
+  readonly show3d = computed(() => this.archMode().mode === '3d');
 
   private readonly media = viewChild<ElementRef<HTMLMediaElement>>('media');
 
@@ -296,7 +308,7 @@ export class JarvisPieceViewerComponent implements OnDestroy {
     this.failed.set(false);
     this.videoChapters.set([]);
     this.svg.set({ frame: null, targets: [] });
-    this.archFailed.set(false);
+    this.archFallback.set(null);
     const piece = this.piece();
     if (!piece || piece.available === 'HOST_OFFLINE') {
       return;

@@ -10,6 +10,7 @@ import { ArchitectureGraph, ARCH_ICON_PX } from './architecture-graph';
 import { neutralIconSource } from './architecture-icons';
 import { IconFetcher, loadIconAtlas } from './architecture-icon-atlas';
 import { layoutArchitecture } from './architecture-layout-3d';
+import { maskGraph } from './architecture-render';
 import { ArchPhaseKind, ArchState, svgFit } from './architecture-stage-director';
 import type { ArchitectureEngine } from './engine/architecture-scene-3d';
 
@@ -22,7 +23,7 @@ import type { ArchitectureEngine } from './engine/architecture-scene-3d';
  */
 @Component({
   selector: 'app-architecture-stage',
-  host: { '[class.arch--contained]': 'contained()' },
+  host: { '[class.arch--contained]': 'contained()', '[class.arch--phone]': 'state().phone' },
   template: `
     <canvas #canvas class="arch__canvas" aria-hidden="true"></canvas>
     <div #labels class="jv3d-labels arch__labels"></div>
@@ -50,6 +51,9 @@ import type { ArchitectureEngine } from './engine/architecture-scene-3d';
     /* SF-238-10 — dans la visionneuse d'une pièce : le cadre de la pièce, pas l'écran entier. */
     :host(.arch--contained) { position: absolute; overflow: hidden; background: transparent; }
     :host(.arch--contained) .arch__labels { position: absolute; }
+    /* SF-238-11 — téléphone : étiquettes plus petites (le schéma tient, les zones restent lisibles). */
+    :host(.arch--phone) ::ng-deep .jv3d-label--arch-zone { font-size: 9px; letter-spacing: 0.08em; }
+    :host(.arch--phone) ::ng-deep .jv3d-label--arch-service { font-size: 11px; }
     :host ::ng-deep .jv3d-label--arch-capsule { font-family: var(--cg-font-body); font-size: 12px; letter-spacing: 0;
       text-transform: none; color: var(--cg-holo-core, #FFF3E4); border: 1px solid var(--cg-holo, #E07B39); }
     .arch__canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
@@ -59,7 +63,7 @@ import type { ArchitectureEngine } from './engine/architecture-scene-3d';
       color: var(--cg-holo-text, #F0954F); }
     /* Verre navy sous chaque libellé : une liaison qui passe dessous ne le rend jamais illisible (≥ 5,8:1). */
     :host ::ng-deep [class*='jv3d-label--arch-'] { padding: 1px 6px; border-radius: 2px; text-shadow: none;
-      background: color-mix(in srgb, var(--cg-navy, #0B1020) 78%, transparent); }
+      background: color-mix(in srgb, var(--cg-navy, #0B1020) 92%, transparent); }
     :host ::ng-deep .jv3d-label.is-masked { visibility: hidden; }
     :host ::ng-deep .jv3d-label--arch-zone { font-size: 10px; letter-spacing: 0.12em; }
     :host ::ng-deep .jv3d-label--arch-service { font-family: var(--cg-font-body); font-weight: 500;
@@ -90,7 +94,9 @@ export class ArchitectureStageComponent {
    */
   readonly spoken = input<string>('');
   /** SF-238-10 — la 3D n'a pas pu se poser (graphe illisible, WebGL absent) : l'hôte prend le repli 2D. */
-  readonly failed = output<void>();
+  readonly failed = output<'webgl' | 'perf'>();
+  /** SF-238-11 — mode présentation : CIDR, comptes et ARN masqués dans les étiquettes et le plan (D10). */
+  readonly presentation = input(false);
 
   protected readonly icon = ARCH_ICON_PX;
   protected readonly unavailable = signal(false);
@@ -179,11 +185,12 @@ export class ArchitectureStageComponent {
   }
 
   private async boot(): Promise<void> {
-    const layout = layoutArchitecture(this.graph());
+    const graph = this.presentation() ? maskGraph(this.graph()) : this.graph();
+    const layout = layoutArchitecture(graph);
     const canvas = this.canvas().nativeElement;
     if (!layout || !canvas.getContext) {
       this.unavailable.set(true);
-      this.failed.emit();
+      this.failed.emit('webgl');
       return;
     }
     try {
@@ -193,6 +200,8 @@ export class ArchitectureStageComponent {
         canvas, width, height, pixelRatio: devicePixelRatio || 1, level: this.level(), layout,
         icons: neutralIconSource(), labelHost: this.labels().nativeElement, phone: this.state().phone,
         random: seededRandom(238), clock: this.clock() ?? realClock(), frameHost: browserFrameHost(),
+        // SF-238-11 — qualité adaptative : Bas trop lent ⇒ le SVG cadré reprend (hors banc : horloge réelle).
+        adaptive: this.clock() === null, onFallback: () => this.failed.emit('perf'),
       }, this.state(), this.phase());
       if (this.script().length > 0) {
         this.engine.playScript(this.script());
@@ -205,7 +214,7 @@ export class ArchitectureStageComponent {
       }
     } catch {
       this.unavailable.set(true);
-      this.failed.emit();
+      this.failed.emit('webgl');
     }
   }
 
