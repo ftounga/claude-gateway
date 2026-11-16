@@ -151,6 +151,25 @@ export class ArchitectureStageComponent {
     return this.engine?.pick((clientX - rect.left) * kx, (clientY - rect.top) * ky) ?? null;
   }
 
+  /**
+   * SF-238-15 — le zoom vers un point de la fenêtre (molette, pincement ; `null` = centre du cadre) : le zoom et le
+   * décalage à demander, bornés, ou `null` tant que la scène n'est pas posée.
+   */
+  zoomAt(clientX: number | null, clientY: number | null, factor: number):
+      { zoom: number; pan: { x: number; z: number } } | null {
+    if (!this.engine) {
+      return null;
+    }
+    if (clientX === null || clientY === null) {
+      return this.engine.zoomAt(null, factor);
+    }
+    const el = this.host.nativeElement;
+    const rect = el.getBoundingClientRect();
+    const kx = rect.width > 0 ? el.offsetWidth / rect.width : 1;
+    const ky = rect.height > 0 ? el.offsetHeight / rect.height : 1;
+    return this.engine.zoomAt({ x: (clientX - rect.left) * kx, y: (clientY - rect.top) * ky }, factor);
+  }
+
   private box(): { width: number; height: number } {
     if (!this.contained()) {
       return { width: innerWidth, height: innerHeight };

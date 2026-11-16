@@ -25,7 +25,7 @@ export function archStateOf(nav: PieceNav, phone: boolean): ArchState {
   const arch = nav.arch ?? defaultArchNav();
   return {
     view: arch.view, exploded: arch.exploded, focus: arch.focus?.id ?? null, lit: [], flow: arch.flow?.edges ?? [],
-    folded: arch.folded.map((r) => r.id), zoom: nav.zoom, orbit: arch.orbit, phone,
+    folded: arch.folded.map((r) => r.id), zoom: nav.zoom, pan: { x: nav.pan.x, z: nav.pan.y }, orbit: arch.orbit, phone,
   };
 }
 
@@ -56,6 +56,9 @@ export function servicePanel(layout: ArchLayout, id: string | null): ServicePane
 
 /** Gestes (cadrage §12) : glisser = orbite, toucher long = replier / déplier, double toucher sur le vide = éclater. */
 const LONG_PRESS_MS = 600;
+/** SF-238-15 — boutons « + / − » : ×1,5 par appui ; une rafale de molette compte pour un ordre. */
+const BUTTON_ZOOM = 1.5;
+const WHEEL_BURST_MS = 400;
 
 /**
  * F-238 / SF-238-10 — **la visionneuse 3D d'une pièce `ARCHITECTURE`** (cadrage §7, §12) : lit le graphe conservé,
@@ -154,6 +157,9 @@ export class JarvisPieceArchitectureComponent implements OnDestroy {
   private pressTimer: ReturnType<typeof setTimeout> | null = null;
   /** Retour PO 2026-11-16 — pivoter, pincer, toucher : la lecture des pointeurs (pure). */
   private readonly gestures = new ArchGestures();
+  /** SF-238-15 — le pincement en cours est déjà compté (un ordre par geste). */
+  private pinchCounted = false;
+  private lastWheel = 0;
 
   private readonly pieceKey = computed(() => this.piece().id);
   private readonly loadGraph = effect(() => {
@@ -219,6 +225,7 @@ export class JarvisPieceArchitectureComponent implements OnDestroy {
       this.press = null;
       return;
     }
+    this.pinchCounted = false; // un nouveau geste commence : son pincement éventuel sera compté une fois
     this.press = { x: event.clientX, y: event.clientY, at: Date.now(), dragged: false, long: false };
     this.pressTimer = setTimeout(() => this.longPress(), LONG_PRESS_MS);
   }
@@ -227,7 +234,9 @@ export class JarvisPieceArchitectureComponent implements OnDestroy {
     const g = this.gestures.move(event.pointerId, event.clientX, event.clientY);
     if (g.kind === 'zoom') {
       this.clearPress();
-      this.store.dispatch({ type: 'zoom', step: g.step }, 'touch'); // pincement à deux doigts
+      // Pincement à deux doigts, vers le milieu des doigts ; un ordre compté par pincement (pas par mouvement).
+      this.zoomBy(g.factor, g.x, g.y, this.pinchCounted ? undefined : 'touch');
+      this.pinchCounted = true;
       return;
     }
     if (g.kind !== 'orbit') {
@@ -264,8 +273,22 @@ export class JarvisPieceArchitectureComponent implements OnDestroy {
     this.ask({ kind: 'focus', target: current === hit.id ? '' : hit.id });
   }
 
+  /** Boutons « + / − » : ×1,5 vers le centre du cadre. */
   zoom(step: '+' | '-'): void {
-    this.store.dispatch({ type: 'zoom', step }, 'touch');
+    this.zoomBy(step === '+' ? BUTTON_ZOOM : 1 / BUTTON_ZOOM, null, null, 'touch');
+  }
+
+  /**
+   * SF-238-15 — zoomer vers un point de la fenêtre (`null` = centre) : la scène calcule le zoom et le décalage bornés
+   * (le schéma reste au cadre), la navigation les pose. Scène pas encore posée : le cran du réducteur.
+   */
+  private zoomBy(factor: number, x: number | null, y: number | null, source: 'touch' | undefined): void {
+    const next = this.stage()?.zoomAt(x, y, factor) ?? null;
+    if (!next) {
+      this.store.dispatch({ type: 'zoom', step: factor >= 1 ? '+' : '-' }, source);
+      return;
+    }
+    this.store.dispatch({ type: 'zoom', value: next.zoom, pan: { x: next.pan.x, y: next.pan.z } }, source);
   }
 
   cancel(): void {
@@ -283,9 +306,13 @@ export class JarvisPieceArchitectureComponent implements OnDestroy {
 
   wheel(event: WheelEvent): void {
     event.preventDefault();
-    const g = ArchGestures.wheel(event.deltaY);
+    const g = ArchGestures.wheel(event.deltaY, event.clientX, event.clientY, event.deltaMode);
     if (g.kind === 'zoom') {
-      this.store.dispatch({ type: 'zoom', step: g.step }, 'touch');
+      // Une rafale de molette (< 400 ms entre deux crans) est un seul ordre compté.
+      const now = Date.now();
+      const counted = now - this.lastWheel < WHEEL_BURST_MS;
+      this.lastWheel = now;
+      this.zoomBy(g.factor, g.x, g.y, counted ? undefined : 'touch');
     }
   }
 

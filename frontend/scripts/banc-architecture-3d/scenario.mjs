@@ -138,6 +138,12 @@ async function run({ width, height, tag }) {
   };
 
   await say('Comment c\'est déployé chez ce client ?');
+  if (process.env.BANC_ZOOM === '1') {
+    await zoomScenario(page, shot, tag);
+    note(errors.length === 0, `${tag} erreurs de page : ${JSON.stringify(errors.slice(0, 3))}`);
+    await browser.close();
+    return;
+  }
   const a = await shot('sf10-1-montre', 4200);
   note(a.viewer, `${tag} l'architecture s'ouvre dans la visionneuse 3D (pas le SVG) : ${a.viewer} / svg ${a.svg}`);
   const area = a.canvas ? (a.canvas.w * a.canvas.h) / (a.vw * a.vh) : 0;
@@ -234,6 +240,99 @@ async function run({ width, height, tag }) {
   note(f.scrollW <= f.vw, `${tag} pas de défilement horizontal (${f.scrollW} ≤ ${f.vw})`);
   note(errors.length === 0, `${tag} erreurs de page : ${JSON.stringify(errors.slice(0, 3))}`);
   await browser.close();
+}
+
+/**
+ * SF-238-15 — zoom borné et cadrage plein (`BANC_ZOOM=1`) : au repos, après un pincement fort, après dix crans de
+ * molette au même endroit, après « Recentrer ». Vérifie qu'un service reste visible dans le cadre et mesure
+ * l'emprise du schéma (étiquettes et icônes posées) dans le cadre de la visionneuse.
+ */
+async function zoomScenario(page, shot, tag) {
+  const frame = () => page.evaluate(() => {
+    const v = document.querySelector('app-jarvis-piece-architecture .pa');
+    const c = v?.getBoundingClientRect();
+    if (!c) {
+      // La 3D a renoncé (repli SVG) : plus aucun service dans la visionneuse.
+      return { cx: innerWidth / 2, cy: innerHeight / 2, w: innerWidth, h: innerHeight, services: [], fillW: 0, fillH: 0,
+        zoom: NaN, web: null, rds: null, gone: true,
+        fallback: (window.__counts ?? []).filter((k) => k.startsWith('a_2d')).join(',') };
+    }
+    const inside = (r) => r.right > c.left && r.left < c.right && r.bottom > c.top && r.top < c.bottom;
+    const shown = (e) => getComputedStyle(e).visibility !== 'hidden' && Number(e.style.opacity || 0) > 0.05;
+    const services = [...v.querySelectorAll('.jv3d-label--arch-service')].filter(shown)
+      .map((e) => ({ t: e.textContent, r: e.getBoundingClientRect() })).filter((s) => inside(s.r));
+    const all = [...v.querySelectorAll('.jv3d-label')].filter(shown).map((e) => e.getBoundingClientRect()).filter(inside);
+    let x0 = Infinity; let x1 = -Infinity; let y0 = Infinity; let y1 = -Infinity;
+    for (const r of all) {
+      x0 = Math.min(x0, r.left); x1 = Math.max(x1, r.right); y0 = Math.min(y0, r.top); y1 = Math.max(y1, r.bottom);
+    }
+    const nav = window.ng.getComponent(document.querySelector('app-jarvis-piece-architecture')).nav();
+    const pick = (name) => {
+      const e = services.find((s) => s.t === name);
+      return e ? { x: (e.r.left + e.r.right) / 2, y: e.r.top - 12 } : null;
+    };
+    const fps = v.querySelector('app-architecture-stage')?.getAttribute('data-fps') ?? '';
+    return { fps, cx: c.left + c.width / 2, cy: c.top + c.height / 2, w: c.width, h: c.height,
+      services: services.map((s) => s.t), fillW: all.length ? (x1 - x0) / c.width : 0,
+      fillH: all.length ? (y1 - y0) / c.height : 0, zoom: nav.zoom, web: pick('Web A') ?? pick('ALB'),
+      rds: pick('RDS primaire') ?? pick('Web B') };
+  });
+  const report = (name, f) => `${tag} ${name} : ${f.services.length} service(s) dans le cadre, `
+    + `${f.fps ? `${f.fps} images/s, ` : ''}${f.fallback ? `repli ${f.fallback}, ` : ''}emprise des libellés `
+    + `${Math.round(f.fillW * 100)} % × ${Math.round(f.fillH * 100)} %, zoom ×${Number(f.zoom).toFixed(2)}`
+    + (f.gone ? ' — la 3D a renoncé (repli SVG)' : '');
+  await shot('z1-repos', 4200);
+  if (process.env.BANC_GOVERNOR === '1') {
+    await page.evaluate(() => { window.__keepGovernor = true; });
+  }
+  // Le motif d'un éventuel repli 2D (compteurs de la mesure, sans contenu) et la cadence de la scène.
+  await page.evaluate(() => {
+    const store = window.ng.getComponent(document.querySelector('app-jarvis-piece-architecture')).store;
+    const count = store.count.bind(store);
+    window.__counts = [];
+    store.count = (key, n) => { window.__counts.push(key); count(key, n); };
+    // Rendu LOGICIEL (swiftshader, 2 à 17 images/s) : le gouverneur de qualité renoncerait à la 3D au premier gros
+    // plan, ce qu'un vrai GPU ne fait pas. Le banc des gestes l'écarte (BANC_GOVERNOR=1 pour le garder).
+    if (!window.__keepGovernor) {
+      const stage = window.ng.getComponent(document.querySelector('app-architecture-stage'));
+      if (stage?.engine) {
+        stage.engine.governor = null;
+      }
+    }
+  });
+  const f1 = await frame();
+  note(f1.services.length >= 6, report('repos', f1));
+  // Pincement fort : deux doigts écartés de 80 à 560 px (×7) autour d'un service.
+  const cdp = await page.createCDPSession();
+  const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map(([x, y], id) => ({ x, y, id })) });
+  const at = f1.web ?? { x: f1.cx, y: f1.cy };
+  const half = Math.min(240, f1.w / 2 - 8);
+  await touch('touchStart', [[at.x - 40, at.y], [at.x + 40, at.y]]);
+  for (let i = 1; i <= 20; i++) {
+    const d = 40 + ((half - 40) * i) / 20;
+    await touch('touchMove', [[at.x - d, at.y], [at.x + d, at.y]]);
+  }
+  await touch('touchEnd', []);
+  await shot('z2-pince-fort', 1400);
+  const f2 = await frame();
+  note(f2.services.length >= 1 && f2.zoom > 1, report('pincement fort', f2));
+  // Molette : dix crans vers l'avant au-dessus d'un service (après « Recentrer »).
+  await page.evaluate(() => [...document.querySelectorAll('.pa__btn')].find((b) => b.textContent.trim() === 'Recentrer')?.click());
+  await new Promise((r) => setTimeout(r, 1800));
+  const f2b = await frame();
+  const hover = f2b.rds ?? { x: f2b.cx, y: f2b.cy };
+  await page.mouse.move(hover.x, hover.y);
+  for (let i = 0; i < 10; i++) {
+    await page.mouse.wheel({ deltaY: -100 });
+    await new Promise((r) => setTimeout(r, 60));
+  }
+  await shot('z3-molette-x10', 1400);
+  const f3 = await frame();
+  note(f3.services.length >= 1 && f3.zoom > 1, report('molette ×10', f3));
+  await page.evaluate(() => [...document.querySelectorAll('.pa__btn')].find((b) => b.textContent.trim() === 'Recentrer')?.click());
+  await shot('z4-recentre', 2200);
+  const f4 = await frame();
+  note(f4.zoom === 1 && f4.services.length >= f1.services.length, report('après Recentrer', f4));
 }
 
 const SIZES = { 1920: [1920, 1080], 390: [390, 844] };

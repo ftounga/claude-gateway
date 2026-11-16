@@ -6,10 +6,11 @@ import { JarvisPieceStore } from '../../pieces/jarvis-piece-store';
 import { Piece } from '../../pieces/jarvis-piece.models';
 import { archStateOf, servicePanel } from '../../pieces/jarvis-piece-architecture.component';
 import { TROIS_TIERS_GRAPH, sixtyNodesGraph } from './architecture-graph.fixture';
-import { ArchLayout, layoutArchitecture } from './architecture-layout-3d';
+import { ArchLayout, ICON_SIZE, layoutArchitecture } from './architecture-layout-3d';
 import {
-  ArchState, ArchitectureStageDirector, DEFAULT_ARCH_STATE, NAV_MOVES, blendCamera, moveFor, moveProgress, pickAt,
-  springProgress,
+  ARCH_MAX_ZOOM, ICON_MAX_SHARE, ArchCamera, ArchState, ArchitectureStageDirector, DEFAULT_ARCH_STATE, NAV_MOVES, Viewport,
+  baseCameraFor, blendCamera, cameraBasis, cameraFor, moveFor, moveProgress, pickAt, projectToScreen, sceneVolumes,
+  springProgress, stepOf, volumePoints, zoomToward,
 } from './architecture-stage-director';
 import { ArchitectureTargets } from './architecture-targets';
 
@@ -250,5 +251,128 @@ describe('Architecture — la visionneuse dans la galerie (F-238 / SF-238-10)', 
     expect(servicePanel(layout(), 'alb')).toEqual({ label: 'ALB', type: 'ALB', zone: 'VPC 10.0.0.0/16',
       inbound: ['Utilisateurs'], outbound: ['Web A', 'Web B'] });
     expect(servicePanel(layout(), null)).toBeNull();
+  });
+});
+
+describe('Architecture — zoom borné et cadrage plein (F-238 / SF-238-15)', () => {
+  const l = layout();
+  const PHONE: Viewport = { width: 356, height: 680 };
+  const states: ArchState[] = [{ ...DEFAULT_ARCH_STATE }, { ...DEFAULT_ARCH_STATE, exploded: true },
+    { ...DEFAULT_ARCH_STATE, view: 'face' }, { ...DEFAULT_ARCH_STATE, orbit: { az: 1.2, el: -0.3 } }];
+
+  /** Les services dont l'icône est devant la caméra et au cadre. */
+  function inFrame(camera: ArchCamera, state: ArchState, view: Viewport): number {
+    const b = cameraBasis(camera);
+    let n = 0;
+    for (const node of l.nodes) {
+      const y = (node.plate >= 0 ? l.plates[node.plate].level * stepOf(state) : 0) + 0.35;
+      const v = [node.x - b.position[0], y - b.position[1], node.z - b.position[2]];
+      const ahead = v[0] * b.forward[0] + v[1] * b.forward[1] + v[2] * b.forward[2];
+      const p = projectToScreen(camera, view, node.x, y, node.z);
+      if (ahead > 0.05 && p.x >= 0 && p.x <= view.width && p.y >= 0 && p.y <= view.height) {
+        n++;
+      }
+    }
+    return n;
+  }
+
+  /** La plus grande icône au cadre, en part de la plus petite dimension du cadre (perspective : bord ≈ +30 %). */
+  function largestIcon(camera: ArchCamera, state: ArchState, view: Viewport): number {
+    const b = cameraBasis(camera);
+    const tan = Math.tan((camera.fov * Math.PI) / 360);
+    let worst = 0;
+    for (const node of l.nodes) {
+      const y = (node.plate >= 0 ? l.plates[node.plate].level * stepOf(state) : 0) + 0.35;
+      const v = [node.x - b.position[0], y - b.position[1], node.z - b.position[2]];
+      const ahead = v[0] * b.forward[0] + v[1] * b.forward[1] + v[2] * b.forward[2];
+      const p = projectToScreen(camera, view, node.x, y, node.z);
+      if (ahead > 0.05 && p.x >= 0 && p.x <= view.width && p.y >= 0 && p.y <= view.height) {
+        const px = (ICON_SIZE / (2 * tan * ahead)) * view.height;
+        worst = Math.max(worst, px / Math.min(view.width, view.height));
+      }
+    }
+    return worst;
+  }
+
+  /** Hors de tout plateau et de toute icône (jamais « dans » le schéma). */
+  function outsideBox(camera: ArchCamera, state: ArchState): boolean {
+    const p = cameraBasis(camera).position;
+    return sceneVolumes(l, stepOf(state)).every((v) => [0, 1, 2].some((k) => p[k] < v.min[k] || p[k] > v.max[k]));
+  }
+
+  /** Dix zooms ×1,5 vers un point de l'écran, comme une molette tenue ou un pincement fort. */
+  function zoomHard(state: ArchState, view: Viewport, point: { x: number; y: number } | null): ArchState {
+    let s = state;
+    const base = baseCameraFor(l, s, view);
+    for (let i = 0; i < 10; i++) {
+      const next = zoomToward(l, s, base, view, point, 1.5);
+      s = { ...s, zoom: next.zoom, pan: next.pan };
+    }
+    return s;
+  }
+
+  it('après un zoom maximal vers le centre, un coin ou le vide, la caméra reste hors des plateaux et un service au cadre', () => {
+    for (const view of [VIEW, PHONE]) {
+      for (const state of states) {
+        const points = [null, { x: 2, y: 2 }, { x: view.width - 2, y: view.height - 2 },
+          { x: view.width / 2, y: view.height - 1 }, { x: view.width * 0.3, y: view.height * 0.4 }];
+        for (const point of points) {
+          const s = zoomHard(state, view, point);
+          const camera = cameraFor(l, s, view);
+          expect(s.zoom).toBeLessThanOrEqual(ARCH_MAX_ZOOM);
+          expect(s.zoom).toBeGreaterThan(1);
+          expect(outsideBox(camera, s)).withContext(`${view.width} ${state.view} ${JSON.stringify(point)}`).toBeTrue();
+          expect(inFrame(camera, s, view)).withContext(`${view.width} ${state.view} ${JSON.stringify(point)}`)
+            .toBeGreaterThanOrEqual(1);
+          expect(largestIcon(camera, s, view)).withContext(`icône ${view.width} ${JSON.stringify(point)}`)
+            .toBeLessThanOrEqual(ICON_MAX_SHARE * 1.3);
+        }
+      }
+    }
+  });
+
+  it('le point visé reste sous le pointeur en rapprochant (zoom vers le survol)', () => {
+    const state = { ...DEFAULT_ARCH_STATE };
+    const base = baseCameraFor(l, state, VIEW);
+    const rds = l.nodes[l.nodeById.get('rdsa') as number];
+    const y = l.plates[rds.plate].level * stepOf(state) + 0.35;
+    const at = projectToScreen(base, VIEW, rds.x, y, rds.z);
+    const next = zoomToward(l, state, base, VIEW, at, 1.5);
+    const after = projectToScreen(cameraFor(l, { ...state, ...next }, VIEW), VIEW, rds.x, y, rds.z);
+    const centre = { x: VIEW.width / 2, y: VIEW.height / 2 };
+    // Le service survolé ne s'éloigne pas du pointeur (à la parallaxe près), alors qu'un zoom au centre l'éjecterait.
+    expect(Math.hypot(after.x - at.x, after.y - at.y)).toBeLessThan(0.5 * Math.hypot(at.x - centre.x, at.y - centre.y));
+  });
+
+  it('dézoomer ramène le décalage à proportion ; ×1 = la vue de repos exacte', () => {
+    const state = zoomHard({ ...DEFAULT_ARCH_STATE }, VIEW, { x: 100, y: 100 });
+    const base = baseCameraFor(l, state, VIEW);
+    let s = state;
+    for (let i = 0; i < 12; i++) {
+      const next = zoomToward(l, s, base, VIEW, null, 1 / 1.5);
+      s = { ...s, zoom: next.zoom, pan: next.pan };
+    }
+    expect(s.zoom).toBe(1);
+    expect(s.pan).toEqual({ x: 0, z: 0 });
+    expect(cameraFor(l, s, VIEW)).toEqual(base);
+  });
+
+  it('au repos, le schéma remplit le cadre : ≥ 80 % de la dimension limitante (PC et portrait téléphone)', () => {
+    for (const view of [VIEW, PHONE, { width: 1565, height: 730 }]) {
+      for (const state of [{ ...DEFAULT_ARCH_STATE, phone: view.width < 768 }]) {
+        const camera = cameraFor(l, state, view);
+        let x0 = Infinity; let x1 = -Infinity; let y0 = Infinity; let y1 = -Infinity;
+        for (const [x, y, z] of volumePoints(l, stepOf(state))) {
+          const p = projectToScreen(camera, view, x, y, z);
+          x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y);
+        }
+        const fill = Math.max((x1 - x0) / view.width, (y1 - y0) / view.height);
+        expect(fill).withContext(`${view.width}×${view.height}`).toBeGreaterThanOrEqual(0.8);
+        expect(x0).toBeGreaterThanOrEqual(-1);
+        expect(y0).toBeGreaterThanOrEqual(-1);
+        expect(x1).toBeLessThanOrEqual(view.width + 1);
+        expect(y1).toBeLessThanOrEqual(view.height + 1);
+      }
+    }
   });
 });

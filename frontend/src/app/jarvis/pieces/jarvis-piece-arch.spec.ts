@@ -58,6 +58,23 @@ describe('Jarvis — navigation d’une architecture (F-238 / SF-238-10)', () =>
     expect(nav.zoom).toBe(1);
   });
 
+  it('SF-238-15 — zoom d’architecture plafonné à ×4, décalage posé avec le zoom, ramené au dézoom, remis à 0 par Recentrer', () => {
+    let nav = opened();
+    nav = reduceNav(nav, { type: 'zoom', step: '+' }).state;
+    nav = reduceNav(nav, { type: 'zoom', step: '+' }).state;
+    nav = reduceNav(nav, { type: 'zoom', step: '+' }).state;
+    expect(nav.zoom).toBe(4);
+    expect(reduceNav(nav, { type: 'zoom', value: 7 }).state.zoom).toBe(4);
+    nav = reduceNav(nav, { type: 'zoom', value: 3, pan: { x: 1, y: -2 } }).state;
+    expect([nav.zoom, nav.pan.x, nav.pan.y]).toEqual([3, 1, -2]);
+    nav = reduceNav(nav, { type: 'zoom', step: '-' }).state; // ×1,5 : le décalage revient à proportion
+    expect(nav.zoom).toBe(1.5);
+    expect(nav.pan.x).toBeCloseTo(0.25, 6);
+    nav = reduceNav(nav, { type: 'arch', request: { kind: 'recenter' } }).state;
+    expect([nav.zoom, nav.pan.x, nav.pan.y]).toEqual([1, 0, 0]);
+    expect(screenBlock(reduceNav(nav, { type: 'zoom', value: 1.6875 }).state)).toContain('zoom ×1.7');
+  });
+
   it('hors architecture : refus « pas possible sur cette pièce »', () => {
     const nav = opened([VIDEO, ARCH], 1);
     expect(reduceNav(nav, { type: 'arch', request: { kind: 'explode', on: true } }).reason).toBe('NOT_APPLICABLE');
