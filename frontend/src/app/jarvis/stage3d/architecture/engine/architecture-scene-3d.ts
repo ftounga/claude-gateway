@@ -470,7 +470,8 @@ export class ArchitectureSceneGraph {
       ? this.makeLabel(options.phone ? phoneZoneLabel(p.label) : p.label, 'zone', p.x0 + p.w / 2, p.z0 + p.d - 0.05,
         // SF-238-11 — au téléphone, les zones (courtes) passent avant les services au dé-chevauchement : le PO doit
         // lire la structure (AZ, puis sous-réseaux, puis VPC…) ; un service masqué se lit à son icône et au toucher.
-        options.phone ? 0.5 + phoneZoneRank(p.kind) / 100 : 2 + (p.w * p.d) / maxArea) : null));
+        options.phone ? 0.5 + phoneZoneRank(p.kind) / 100 : 2 + (p.w * p.d) / maxArea,
+        p.kind === 'subnet_public' || p.kind === 'subnet_private') : null));
     this.capsuleLabels = layout.plates.map((p) => this.makeLabel('', 'capsule', p.x0 + p.w / 2, p.z0 + p.d / 2, 0.5));
   }
 
@@ -761,8 +762,8 @@ export class ArchitectureSceneGraph {
     this.world.add(floor);
   }
 
-  private makeLabel(text: string, kind: 'zone' | 'service' | 'capsule', x: number, z: number, priority: number):
-      Label | null {
+  private makeLabel(text: string, kind: 'zone' | 'service' | 'capsule', x: number, z: number, priority: number,
+      rightAligned = false): Label | null {
     if (!this.options.labelHost) {
       return null;
     }
@@ -771,7 +772,8 @@ export class ArchitectureSceneGraph {
     element.textContent = text;
     element.style.opacity = '0';
     const object = new CSS2DObject(element);
-    object.center.set(kind === 'zone' && this.options.phone ? 0 : 0.5, kind === 'zone' ? 1 : kind === 'capsule' ? 0.5 : 0);
+    object.center.set(kind === 'zone' && this.options.phone ? (rightAligned ? 1 : 0) : 0.5,
+      kind === 'zone' ? 1 : kind === 'capsule' ? 0.5 : 0);
     object.position.set(x, 0, z);
     this.world.add(object);
     const label = { object, element, shown: 0, lit: false, priority, masked: false };
@@ -968,11 +970,14 @@ export class ArchitectureSceneGraph {
       let lx = side ? (sa > 0 ? p.x0 + p.w - 0.05 : p.x0 + 0.05) : p.x0 + p.w / 2;
       let lz = side ? p.z0 + p.d / 2 : ca > 0 ? p.z0 + p.d - 0.05 : p.z0 + 0.05;
       if (left) {
-        // Le bout du bord le plus à gauche à l'écran (droite de la caméra = (cos a, 0, −sin a)), un peu en dedans.
+        // Le bout du bord le plus à gauche à l'écran (droite de la caméra = (cos a, 0, −sin a)), un peu en dedans ;
+        // un sous-réseau au bout droit (aligné à droite) : il ne recouvre plus le libellé de son AZ, posé au même coin.
+        const rightEnd = p.kind === 'subnet_public' || p.kind === 'subnet_private';
+        const flip = rightEnd ? -1 : 1;
         if (side) {
-          lz = rz * 1 < 0 ? p.z0 + p.d - 0.08 : p.z0 + 0.08;
+          lz = rz * flip < 0 ? p.z0 + p.d - 0.08 : p.z0 + 0.08;
         } else {
-          lx = rx < 0 ? p.x0 + p.w - 0.08 : p.x0 + 0.08;
+          lx = rx * flip < 0 ? p.x0 + p.w - 0.08 : p.x0 + 0.08;
         }
       }
       this.placeLabel(this.plateLabels[i], lx, f.plateAlt[i] + 0.01, lz,

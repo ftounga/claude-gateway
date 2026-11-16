@@ -175,7 +175,7 @@ async function run({ width, height, tag }) {
   // Le glisser part du vide (coin du cadre) : en rendu logiciel la première image peut tarder plus que le toucher long
   // (600 ms), qui replierait alors la zone sous le doigt — sur un vrai écran le geste part tout de suite.
   const sx = box.x + box.w * 0.4;
-  const sy = box.y - box.h * 0.4;
+  const sy = box.y + box.h * 0.42;
   await page.mouse.move(sx, sy);
   await page.mouse.down();
   for (let i = 1; i <= 12; i++) {
