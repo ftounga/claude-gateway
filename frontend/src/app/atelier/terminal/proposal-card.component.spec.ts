@@ -3,7 +3,7 @@ import { of, throwError } from 'rxjs';
 
 import { AtelierGovernanceProposal } from '../../core/models/atelier.models';
 import { GovernanceProposalService } from '../../core/services/governance-proposal.service';
-import { ProposalCardComponent, proposalBlock, proposalKindLabel } from './proposal-card.component';
+import { ProposalCardComponent, proposalBlock, proposalKindLabel, proposalScopeLabel } from './proposal-card.component';
 
 describe('ProposalCardComponent (F-177 / SF-177-02)', () => {
   const proposal: AtelierGovernanceProposal = {
@@ -25,10 +25,14 @@ describe('ProposalCardComponent (F-177 / SF-177-02)', () => {
   let fixture: ComponentFixture<ProposalCardComponent>;
   let service: jasmine.SpyObj<GovernanceProposalService>;
 
-  function create(status: 'PENDING' | 'APPLIED' | 'REFUSED' = 'PENDING', readOnly = false): HTMLElement {
+  function create(
+    status: 'PENDING' | 'APPLIED' | 'REFUSED' = 'PENDING',
+    readOnly = false,
+    shown: AtelierGovernanceProposal = proposal,
+  ): HTMLElement {
     service.get.and.returnValue(of({ id: 'p-1', status, type: 'REGLE', scope: 'POSTE', name: 'Jira', path: 'GOUVERNANCE.md' }));
     fixture = TestBed.createComponent(ProposalCardComponent);
-    fixture.componentRef.setInput('proposal', proposal);
+    fixture.componentRef.setInput('proposal', shown);
     fixture.componentRef.setInput('workspaceId', 'ws-1');
     fixture.componentRef.setInput('readOnly', readOnly);
     fixture.detectChanges();
@@ -41,7 +45,7 @@ describe('ProposalCardComponent (F-177 / SF-177-02)', () => {
   }
 
   beforeEach(() => {
-    service = jasmine.createSpyObj('GovernanceProposalService', ['get', 'apply', 'refuse']);
+    service = jasmine.createSpyObj('GovernanceProposalService', ['get', 'apply', 'refuse', 'promote']);
     TestBed.configureTestingModule({
       imports: [ProposalCardComponent],
       providers: [{ provide: GovernanceProposalService, useValue: service }],
@@ -65,7 +69,8 @@ describe('ProposalCardComponent (F-177 / SF-177-02)', () => {
     fixture.detectChanges();
     expect(service.apply).toHaveBeenCalledWith('ws-1', 'p-1');
     expect(el.textContent).toContain('Appliqué');
-    expect(buttons(el).length).toBe(0);
+    // F-266 : seule la recopie sur tous mes postes reste proposée.
+    expect(buttons(el).map((b) => b.textContent?.trim())).toEqual(['Valable sur tous mes postes']);
   });
 
   it('[Refuser] écarte sans écrire', () => {
@@ -99,10 +104,39 @@ describe('ProposalCardComponent (F-177 / SF-177-02)', () => {
     expect(service.get).toHaveBeenCalledTimes(2);
   });
 
-  it('une proposition déjà appliquée ne montre plus de bouton', () => {
+  it('une proposition déjà appliquée ne montre plus que « Valable sur tous mes postes » (F-266)', () => {
     const el = create('APPLIED');
-    expect(buttons(el).length).toBe(0);
+    expect(buttons(el).map((b) => b.textContent?.trim())).toEqual(['Valable sur tous mes postes']);
     expect(el.textContent).toContain('Appliqué');
+  });
+
+  it('F-266 : « Valable sur tous mes postes » recopie la règle et le dit', () => {
+    const el = create('APPLIED');
+    service.promote.and.returnValue(of({ id: 'r-1', title: 'Jira', content: 'Commentaires Jira courts.' }));
+    buttons(el)[0].click();
+    fixture.detectChanges();
+    expect(service.promote).toHaveBeenCalledWith('ws-1', 'p-1');
+    expect(el.textContent).toContain('Recopiée sur tous vos postes.');
+    expect(buttons(el).length).toBe(0);
+  });
+
+  it('F-266 : un échec de recopie dit pourquoi', () => {
+    const el = create('APPLIED');
+    service.promote.and.returnValue(throwError(() => ({ status: 409, error: { message: 'Applique d’abord la règle' } })));
+    buttons(el)[0].click();
+    fixture.detectChanges();
+    expect(el.textContent).toContain('Applique d’abord la règle');
+  });
+
+  it('F-266 : une règle de tous mes postes le dit et ne se recopie pas', () => {
+    const el = create('APPLIED', false, { ...proposal, scope: 'COMPTE', path: 'compte · tous mes postes' });
+    expect(el.textContent).toContain('Pour tous mes postes');
+    expect(buttons(el).length).toBe(0);
+  });
+
+  it('F-266 : un skill appliqué ne se recopie pas', () => {
+    const el = create('APPLIED', false, { ...proposal, type: 'SKILL', path: '.claude/skills/jira.md' });
+    expect(buttons(el).length).toBe(0);
   });
 
   it('lecture seule : aucun bouton', () => {
@@ -116,5 +150,7 @@ describe('ProposalCardComponent (F-177 / SF-177-02)', () => {
     expect(proposalKindLabel('GABARIT')).toBe('Gabarit');
     // F-182 / SF-182-03 : un agent nommé se propose comme un skill.
     expect(proposalKindLabel('AGENT')).toBe('Agent');
+    expect(proposalScopeLabel('COMPTE')).toBe('Pour tous mes postes');
+    expect(proposalScopeLabel('SUJET')).toBe('Pour ce sujet');
   });
 });

@@ -7,7 +7,7 @@
 `F-266` — Règles de tous mes postes (portée COMPTE)
 
 ## Statut
-`ready` (après SF-266-01)
+`done`
 
 ## Date de création
 2026-11-16

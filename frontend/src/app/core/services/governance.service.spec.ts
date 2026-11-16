@@ -64,4 +64,21 @@ describe('GovernanceService', () => {
     expect(request.request.params.get('path')).toBe('acces.md');
     request.flush(null);
   });
+
+  it('F-266 : liste, retire et recopie les règles de tous mes postes, sans identifiant d’utilisateur', () => {
+    service.listAccountRules().subscribe();
+    service.deleteAccountRule('r-1').subscribe();
+    service.promoteHostRule('h1', 'Style des preuves').subscribe();
+
+    const list = http.expectOne('/api/governance/account-rules');
+    expect(list.request.method).toBe('GET');
+    list.flush([]);
+    const removal = http.expectOne('/api/governance/account-rules/r-1');
+    expect(removal.request.method).toBe('DELETE');
+    removal.flush(null);
+    const promote = http.expectOne('/api/governance/hosts/h1/account-rules');
+    expect(promote.request.method).toBe('POST');
+    expect(promote.request.body).toEqual({ title: 'Style des preuves' });
+    promote.flush({ id: 'r-2', title: 'Style des preuves', content: 'x' });
+  });
 });

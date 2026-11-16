@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { AtelierGovernanceProposalView } from '../models/atelier.models';
+import { AccountGovernanceRule } from '../models/governance.models';
 
 /**
  * **Les propositions de gouvernance d'un terminal** (F-177 / SF-177-02) : relire le statut,
@@ -26,5 +27,10 @@ export class GovernanceProposalService {
 
   refuse(workspaceId: string, proposalId: string): Observable<AtelierGovernanceProposalView> {
     return this.http.post<AtelierGovernanceProposalView>(`${this.url(workspaceId, proposalId)}/refuse`, {});
+  }
+
+  /** F-266 : « Valable sur tous mes postes » — recopie une règle de poste ou de sujet appliquée. */
+  promote(workspaceId: string, proposalId: string): Observable<AccountGovernanceRule> {
+    return this.http.post<AccountGovernanceRule>(`${this.url(workspaceId, proposalId)}/promote`, {});
   }
 }

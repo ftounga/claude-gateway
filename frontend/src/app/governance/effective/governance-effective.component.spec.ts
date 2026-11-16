@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { MatDialog } from '@angular/material/dialog';
 import { of } from 'rxjs';
 
 import { GovernanceEffective } from '../../core/models/governance.models';
@@ -29,13 +30,26 @@ describe('GovernanceEffectiveComponent (F-177 / SF-177-04)', () => {
 
   let fixture: ComponentFixture<GovernanceEffectiveComponent>;
   let service: jasmine.SpyObj<GovernanceService>;
+  let confirmed = true;
+  const dialog = { open: jasmine.createSpy('open').and.callFake(() => ({ afterClosed: () => of(confirmed) })) };
 
   beforeEach(() => {
-    service = jasmine.createSpyObj('GovernanceService', ['getEffective', 'apply']);
+    service = jasmine.createSpyObj('GovernanceService', [
+      'getEffective',
+      'apply',
+      'listAccountRules',
+      'deleteAccountRule',
+      'promoteHostRule',
+    ]);
     service.getEffective.and.returnValue(of(view));
+    service.listAccountRules.and.returnValue(of([]));
     TestBed.configureTestingModule({
       imports: [GovernanceEffectiveComponent],
-      providers: [{ provide: GovernanceService, useValue: service }, provideNoopAnimations()],
+      providers: [
+        { provide: GovernanceService, useValue: service },
+        { provide: MatDialog, useValue: dialog },
+        provideNoopAnimations(),
+      ],
     });
     fixture = TestBed.createComponent(GovernanceEffectiveComponent);
     fixture.componentRef.setInput('hostRef', 'h-1');
@@ -99,5 +113,62 @@ describe('GovernanceEffectiveComponent (F-177 / SF-177-04)', () => {
   it('libellés des états', () => {
     expect(rulesStateLabel({ state: 'INJOIGNABLE', excerpt: null, truncated: false })).toContain('injoignable');
     expect(rulesStateLabel({ state: 'INCONNU', excerpt: null, truncated: false })).toContain('Pas encore lu');
+  });
+
+  describe('F-266 : tous mes postes', () => {
+    const rule = { id: 'r-1', title: 'Style des preuves', content: 'Fond navy #0B1020.' };
+
+    function reload(effective: GovernanceEffective, rules: { id: string; title: string; content: string }[]): HTMLElement {
+      service.getEffective.and.returnValue(of(effective));
+      service.listAccountRules.and.returnValue(of(rules));
+      fixture.componentRef.setInput('hostRef', 'h-3');
+      fixture.detectChanges();
+      fixture.detectChanges();
+      return fixture.nativeElement as HTMLElement;
+    }
+
+    function button(el: HTMLElement, label: string): HTMLButtonElement {
+      return Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.trim() === label) as HTMLButtonElement;
+    }
+
+    it('sans règle, le dit', () => {
+      expect((fixture.nativeElement as HTMLElement).textContent).toContain('Aucune règle sur tous vos postes');
+    });
+
+    it('liste les règles et [Retirer] la retire après confirmation', () => {
+      const el = reload(view, [rule]);
+      expect(el.textContent).toContain('Style des preuves');
+      expect(el.textContent).toContain('Fond navy #0B1020.');
+      confirmed = true;
+      service.deleteAccountRule.and.returnValue(of(undefined));
+      button(el, 'Retirer').click();
+      fixture.detectChanges();
+      expect(service.deleteAccountRule).toHaveBeenCalledWith('r-1');
+      expect(el.textContent).toContain('Aucune règle sur tous vos postes');
+    });
+
+    it('sans confirmation, ne retire rien', () => {
+      const el = reload(view, [rule]);
+      confirmed = false;
+      button(el, 'Retirer').click();
+      expect(dialog.open).toHaveBeenCalled();
+      expect(service.deleteAccountRule).not.toHaveBeenCalled();
+    });
+
+    it('[Valable sur tous mes postes] recopie la règle du poste et relit la liste', () => {
+      const el = reload({ ...view, hostRuleTitles: ['Jira', 'Style des preuves'] }, []);
+      service.promoteHostRule.and.returnValue(of({ id: 'r-2', title: 'Jira', content: 'x' }));
+      service.listAccountRules.and.returnValue(of([{ id: 'r-2', title: 'Jira', content: 'x' }]));
+      button(el, 'Valable sur tous mes postes').click();
+      fixture.detectChanges();
+      expect(service.promoteHostRule).toHaveBeenCalledWith('h-3', 'Jira');
+      expect(el.textContent).toContain('Déjà sur tous mes postes');
+    });
+
+    it('une règle déjà recopiée se met à jour', () => {
+      const el = reload({ ...view, hostRuleTitles: ['style des PREUVES'] }, [rule]);
+      expect(el.textContent).toContain('Déjà sur tous mes postes');
+      expect(button(el, 'Mettre à jour')).toBeTruthy();
+    });
   });
 });

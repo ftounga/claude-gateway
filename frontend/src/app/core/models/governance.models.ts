@@ -543,4 +543,16 @@ export interface GovernanceEffective {
   packages: GovernancePackageLag[];
   /** F-182 / SF-182-01 : les agents nommés, poste puis sujets (absent d'un serveur antérieur). */
   agents?: GovernanceAgentView[];
+  /** F-266 : les titres des règles du `GOUVERNANCE.md` du poste, lu en entier (absent d'un serveur antérieur). */
+  hostRuleTitles?: string[];
+}
+
+/** **Une règle de tous mes postes** (F-266) : rangée côté passerelle, injectée sur chaque poste. */
+export interface AccountGovernanceRule {
+  id: string;
+  title: string;
+  content: string;
+  sourceHostId?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 }
