@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-266 / SF-266-01 — LES REGLES DE TOUS MES POSTES (portee COMPTE).
+
+      Une regle de gouvernance rangee COTE SERVEUR pour un compte : injectee a chaque tour de cet
+      utilisateur, quel que soit le poste (et en heberge), avant les GOUVERNANCE.md du poste et du sujet.
+      Une regle de poste ou de sujet de meme titre l'emporte (title_key compare sans casse).
+
+      ISOLATION : toute lecture porte user_id ; unicite (user_id, title_key).
+      PAS DE CLE ETRANGERE (meme choix que prompt_source_files) : purge explicite a la suppression du
+      compte (AccountService). source_host_id / source_proposal_id ne sont qu'une trace d'origine.
+    -->
+
+    <changeSet id="266-01-account-governance-rules" author="claude-gateway">
+        <createTable tableName="account_governance_rules">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <!-- Le titre tel qu'ecrit : il devient la section "## titre". -->
+            <column name="title" type="varchar(120)"><constraints nullable="false"/></column>
+            <!-- Le titre en minuscules, espaces reduits : cle d'unicite et de tri (ordre stable). -->
+            <column name="title_key" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="content" type="varchar(1000000)"><constraints nullable="false"/></column>
+            <column name="source_host_id" type="uuid"/>
+            <column name="source_proposal_id" type="uuid"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="account_governance_rules" columnNames="user_id, title_key"
+                             constraintName="uq_account_governance_rules_user_title"/>
+        <rollback>
+            <dropTable tableName="account_governance_rules"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

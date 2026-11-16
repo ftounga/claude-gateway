@@ -44,4 +44,12 @@ class GovernanceEffectiveServiceTest {
         assertThat(lag.filesMinVersion()).isEqualTo(4);
         assertThat(lag.filesMaxVersion()).isEqualTo(17);
     }
+
+    @org.junit.jupiter.api.Test
+    void ruleTitlesAreReadFromTheWholeFileInOrderWithoutDuplicate() {
+        String file = "# Gouvernance\n\n## Langue\n\nx\n\n### Détail\n\n## Style des preuves (capturer_preuves)\n\ny\n## Langue\n";
+        org.assertj.core.api.Assertions.assertThat(GovernanceEffectiveService.ruleTitles(file))
+                .containsExactly("Langue", "Style des preuves (capturer_preuves)");
+        org.assertj.core.api.Assertions.assertThat(GovernanceEffectiveService.ruleTitles(null)).isEmpty();
+    }
 }

@@ -55,6 +55,10 @@ public class GovernanceProposalService {
     public static final String AGENT = "AGENT";
     public static final String POSTE = "POSTE";
     public static final String SUJET = "SUJET";
+    /** Tous les postes du compte (F-266 / SF-266-01) : règle rangée côté serveur, sans fichier. */
+    public static final String COMPTE = "COMPTE";
+    /** Ce que la carte montre comme « fichier » d'une règle de portée {@code COMPTE}. */
+    public static final String ACCOUNT_PATH = "compte · tous mes postes";
 
     /** Fichier des règles du client. */
     public static final String RULES_FILE = PromptSourceStore.GOVERNANCE_FILE;
@@ -82,6 +86,7 @@ public class GovernanceProposalService {
     private final RunnerAuditService auditService;
     private final ObjectMapper objectMapper;
     private PromptSourceStore promptSourceStore;
+    private AccountGovernanceService accountRules;
 
     public GovernanceProposalService(GovernanceProposalRepository proposals, WorkspaceService workspaceService,
             RunnerToolGateway gateway, RunnerAuditService auditService, ObjectMapper objectMapper) {
@@ -95,6 +100,12 @@ public class GovernanceProposalService {
     @Autowired(required = false)
     public void setPromptSourceStore(PromptSourceStore promptSourceStore) {
         this.promptSourceStore = promptSourceStore;
+    }
+
+    /** Les règles de tous mes postes (F-266) ; {@code null} = portée {@code COMPTE} indisponible. */
+    @Autowired(required = false)
+    public void setAccountRules(AccountGovernanceService accountRules) {
+        this.accountRules = accountRules;
     }
 
     // ------------------------------------------------------------------ proposer
@@ -113,8 +124,15 @@ public class GovernanceProposalService {
         if (!List.of(REGLE, SKILL, GABARIT, AGENT).contains(type)) {
             throw new InvalidProposalException("type doit valoir REGLE, SKILL, GABARIT ou AGENT.");
         }
-        if (!List.of(POSTE, SUJET).contains(scope)) {
-            throw new InvalidProposalException("portee doit valoir POSTE ou SUJET.");
+        if (!List.of(POSTE, SUJET, COMPTE).contains(scope)) {
+            throw new InvalidProposalException("portee doit valoir POSTE, SUJET ou COMPTE.");
+        }
+        if (COMPTE.equals(scope) && !REGLE.equals(type)) {
+            throw new InvalidProposalException("portée COMPTE réservée aux règles (type REGLE) : un skill, un "
+                    + "gabarit ou un agent se propose en portée POSTE ou SUJET.");
+        }
+        if (COMPTE.equals(scope) && accountRules == null) {
+            throw new InvalidProposalException("portée COMPTE indisponible ici : propose en portée POSTE ou SUJET.");
         }
         String name = rawName == null ? "" : rawName.strip();
         if (name.isEmpty() || name.length() > MAX_NAME_CHARS) {
@@ -132,6 +150,9 @@ public class GovernanceProposalService {
         String reason = rawReason == null ? "" : rawReason.strip();
         if (reason.length() > MAX_REASON_CHARS) {
             reason = reason.substring(0, MAX_REASON_CHARS);
+        }
+        if (COMPTE.equals(scope)) {
+            return proposeAccountRule(userId, workspace, name, content, reason);
         }
         checkScope(workspace, scope);
         String path = pathOf(type, name);
@@ -178,6 +199,39 @@ public class GovernanceProposalService {
                 reason.isEmpty() ? null : reason, before == null, shown, omitted);
     }
 
+    /**
+     * Une règle de tous mes postes (F-266 / SF-266-01) : le « fichier » est la règle de même titre rangée
+     * côté serveur ; rien n'est lu sur une machine, aucun poste n'est requis.
+     */
+    private GovernanceProposalBlock proposeAccountRule(UUID userId, Workspace workspace, String name,
+            String content, String reason) {
+        String before = accountRules.find(userId, name).map(AccountGovernanceRule::getContent).orElse(null);
+        if (before != null && before.strip().equals(content)) {
+            throw new InvalidProposalException("Rien à changer : la règle « " + name
+                    + " » de tous tes postes contient déjà exactement cela.");
+        }
+        List<GovernanceProposalBlock.DiffLine> diff = new ArrayList<>();
+        if (before != null) {
+            diff.add(new GovernanceProposalBlock.DiffLine("DEL", "## " + name));
+            before.lines().forEach(line -> diff.add(new GovernanceProposalBlock.DiffLine("DEL", line)));
+        }
+        diff.add(new GovernanceProposalBlock.DiffLine("ADD", "## " + name));
+        diff.add(new GovernanceProposalBlock.DiffLine("ADD", ""));
+        content.lines().forEach(line -> diff.add(new GovernanceProposalBlock.DiffLine("ADD", line)));
+        int omitted = Math.max(0, diff.size() - MAX_DIFF_LINES);
+        List<GovernanceProposalBlock.DiffLine> shown = List.copyOf(diff.subList(0, Math.min(diff.size(),
+                MAX_DIFF_LINES)));
+        GovernanceProposal saved = proposals.save(GovernanceProposal.builder()
+                .userId(userId).workspaceId(workspace.getId()).hostId(workspace.getHostId())
+                .type(REGLE).scope(COMPTE).name(name).path(ACCOUNT_PATH).reason(reason.isEmpty() ? null : reason)
+                .content(content).diffJson(toJson(shown))
+                .baseDigest(before == null ? GovernanceProposal.ABSENT : digest(before))
+                .status(GovernanceProposal.PENDING).createdAt(OffsetDateTime.now())
+                .build());
+        return new GovernanceProposalBlock(saved.getId(), REGLE, COMPTE, name, ACCOUNT_PATH,
+                reason.isEmpty() ? null : reason, before == null, shown, omitted);
+    }
+
     // ------------------------------------------------------------------ décider
 
     /** La proposition et son statut. */
@@ -201,6 +255,9 @@ public class GovernanceProposalService {
             throw new ProposalConflictException("Cette proposition est déjà "
                     + (GovernanceProposal.APPLIED.equals(proposal.getStatus()) ? "appliquée." : "refusée."));
         }
+        if (COMPTE.equals(proposal.getScope())) {
+            return applyAccountRule(userId, proposal);
+        }
         checkScope(workspace, proposal.getScope());
         Optional<String> current = readCurrent(workspace, proposal.getScope(), proposal.getPath(), true);
         String now = current.map(GovernanceProposalService::digest).orElse(GovernanceProposal.ABSENT);
@@ -215,6 +272,49 @@ public class GovernanceProposalService {
         proposals.save(proposal);
         refreshPromptCache(userId, workspace, proposal);
         return GovernanceProposalView.of(proposal);
+    }
+
+    /** [Appliquer] d'une règle de tous mes postes : écrite en base, si elle n'a pas changé depuis. */
+    private GovernanceProposalView applyAccountRule(UUID userId, GovernanceProposal proposal) {
+        if (accountRules == null) {
+            throw new ProposalUnreachableException("Les règles de tous tes postes sont indisponibles : réessaie.");
+        }
+        String now = accountRules.find(userId, proposal.getName())
+                .map(rule -> digest(rule.getContent())).orElse(GovernanceProposal.ABSENT);
+        if (!now.equals(proposal.getBaseDigest())) {
+            throw new ProposalConflictException("La règle « " + proposal.getName() + " » de tous tes postes a "
+                    + "changé depuis la proposition : redemande-la à l'agent pour repartir de la règle actuelle.");
+        }
+        accountRules.upsert(userId, proposal.getName(), proposal.getContent(), proposal.getHostId(),
+                proposal.getId());
+        proposal.setStatus(GovernanceProposal.APPLIED);
+        proposal.setAppliedDigest(digest(proposal.getContent()));
+        proposal.setDecidedAt(OffsetDateTime.now());
+        proposals.save(proposal);
+        return GovernanceProposalView.of(proposal);
+    }
+
+    /**
+     * « Valable sur tous mes postes » (F-266 / SF-266-01) : recopie la section d'une règle de poste ou de sujet
+     * <b>appliquée</b> en portée {@code COMPTE}. Lue dans la proposition : le poste peut être éteint.
+     */
+    @Transactional
+    public AccountGovernanceRuleView promote(UUID userId, UUID workspaceId, UUID proposalId) {
+        workspaceService.requireOwned(userId, workspaceId);
+        GovernanceProposal proposal = require(userId, workspaceId, proposalId);
+        if (accountRules == null) {
+            throw new ProposalUnreachableException("Les règles de tous tes postes sont indisponibles : réessaie.");
+        }
+        if (!REGLE.equals(proposal.getType()) || COMPTE.equals(proposal.getScope())) {
+            throw new ProposalConflictException("Seule une règle de poste ou de sujet se recopie sur tous tes postes.");
+        }
+        if (!GovernanceProposal.APPLIED.equals(proposal.getStatus())) {
+            throw new ProposalConflictException("Applique d'abord la règle, puis recopie-la sur tous tes postes.");
+        }
+        String body = AccountGovernanceService.section(proposal.getContent(), proposal.getName())
+                .orElseThrow(() -> new ProposalNotFoundException("Règle « " + proposal.getName()
+                        + " » introuvable dans la proposition."));
+        return accountRules.upsert(userId, proposal.getName(), body, proposal.getHostId(), proposal.getId());
     }
 
     /** [Refuser] : la proposition est écartée, rien n'est écrit. */

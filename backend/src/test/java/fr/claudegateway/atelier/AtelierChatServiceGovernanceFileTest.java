@@ -244,4 +244,81 @@ class AtelierChatServiceGovernanceFileTest {
         assertThat(system).contains(AtelierChatService.SUBJECT_GOVERNANCE_HEADER + "Règle hébergée.")
                 .doesNotContain(AtelierChatService.HOST_GOVERNANCE_HEADER);
     }
+
+    // ------------------------------------------------------------------ F-266 / SF-266-01
+
+    private fr.claudegateway.atelier.proposal.AccountGovernanceRuleRepository accountRules(
+            fr.claudegateway.atelier.proposal.AccountGovernanceRule... rules) {
+        fr.claudegateway.atelier.proposal.AccountGovernanceRuleRepository repo = org.mockito.Mockito.mock(
+                fr.claudegateway.atelier.proposal.AccountGovernanceRuleRepository.class);
+        lenient().when(repo.findByUserIdOrderByTitleKeyAsc(any())).thenReturn(List.of());
+        lenient().when(repo.findByUserIdOrderByTitleKeyAsc(userId)).thenReturn(List.of(rules));
+        service.setAccountGovernance(new fr.claudegateway.atelier.proposal.AccountGovernanceService(repo, null, null));
+        return repo;
+    }
+
+    private static fr.claudegateway.atelier.proposal.AccountGovernanceRule accountRule(String title, String content) {
+        return fr.claudegateway.atelier.proposal.AccountGovernanceRule.builder().title(title)
+                .titleKey(fr.claudegateway.atelier.proposal.AccountGovernanceService.titleKey(title))
+                .content(content).build();
+    }
+
+    @Test
+    void accountRuleReachesEverySubjectBeforeTheHostRules() {
+        accountRules(accountRule("Style des preuves", "Fond navy #0B1020."));
+        file(hostA, "", "GOUVERNANCE.md", "## Jira\n\nCommentaires Jira courts.");
+
+        String onA = turn(subject(hostA, "data-platform"));
+
+        String block = fr.claudegateway.atelier.proposal.AccountGovernanceService.HEADER
+                + "## Style des preuves\n\nFond navy #0B1020.";
+        assertThat(onA).contains(block);
+        assertThat(onA.indexOf(block)).isLessThan(onA.indexOf(AtelierChatService.HOST_GOVERNANCE_HEADER));
+    }
+
+    @Test
+    void accountRuleReachesAHostWithoutRules() {
+        accountRules(accountRule("Style des preuves", "Fond navy #0B1020."));
+
+        String onB = turn(subject(hostB, "lzi"));
+
+        assertThat(onB).contains(fr.claudegateway.atelier.proposal.AccountGovernanceService.HEADER
+                + "## Style des preuves\n\nFond navy #0B1020.")
+                .doesNotContain(AtelierChatService.HOST_GOVERNANCE_HEADER);
+    }
+
+    @Test
+    void aHostRuleOfTheSameTitleWinsWithoutDuplicate() {
+        accountRules(accountRule("Style des preuves", "Version du compte."),
+                accountRule("Tickets", "Toujours citer le ticket."));
+        file(hostA, "", "GOUVERNANCE.md", "## STYLE des preuves\n\nVersion du poste.");
+
+        String system = turn(subject(hostA, "data-platform"));
+
+        assertThat(system).contains("Version du poste.").doesNotContain("Version du compte.")
+                .contains("## Tickets\n\nToujours citer le ticket.");
+    }
+
+    @Test
+    void accountBlockIsStableAndAbsentWithoutRules() {
+        accountRules(accountRule("Style des preuves", "Fond navy #0B1020."));
+        Workspace subject = subject(hostA, "data-platform");
+        assertThat(turn(subject)).isEqualTo(turn(subject));
+
+        accountRules();
+        assertThat(turn(subject)).doesNotContain(fr.claudegateway.atelier.proposal.AccountGovernanceService.HEADER);
+    }
+
+    @Test
+    void aLongClaudeMdIsBoundedAndTheClientRulesStillFollow() {
+        file(hostA, "data-platform", "CLAUDE.md", "c".repeat(AtelierChatService.PROJECT_CONVENTIONS_MAX_CHARS + 20_000));
+        file(hostA, "", "GOUVERNANCE.md", "## Jira\n\nCommentaires Jira courts.");
+
+        String system = turn(subject(hostA, "data-platform"));
+
+        assertThat(system).contains(AtelierChatService.PROJECT_CONVENTIONS_TRUNCATION)
+                .doesNotContain("c".repeat(AtelierChatService.PROJECT_CONVENTIONS_MAX_CHARS + 1))
+                .contains(AtelierChatService.HOST_GOVERNANCE_HEADER + "## Jira");
+        assertThat(system.length()).isLessThanOrEqualTo(AtelierChatService.SYSTEM_MAX_CHARS);
+    }
 }

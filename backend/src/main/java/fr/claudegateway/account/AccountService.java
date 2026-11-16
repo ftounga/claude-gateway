@@ -128,6 +128,15 @@ public class AccountService {
         this.governanceProposalRepository = proposals;
     }
 
+    /** Les règles de tous mes postes (F-266 / SF-266-01) : purge nommée du compte. */
+    private fr.claudegateway.atelier.proposal.AccountGovernanceRuleRepository accountGovernanceRuleRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setAccountGovernanceRuleRepository(
+            fr.claudegateway.atelier.proposal.AccountGovernanceRuleRepository rules) {
+        this.accountGovernanceRuleRepository = rules;
+    }
+
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setJourneyRepositories(fr.claudegateway.atelier.journey.SubjectJourneyRepository journeys,
             fr.claudegateway.atelier.journey.SubjectJourneyEventRepository journeyEvents) {
@@ -567,6 +576,10 @@ public class AccountService {
         // Les propositions de gouvernance (F-177 / SF-177-02) : elles suivent aussi le terminal.
         if (governanceProposalRepository != null) {
             governanceProposalRepository.purgeUser(userId);
+        }
+        // Les règles de tous mes postes (F-266 / SF-266-01) : sans clé étrangère, purge nommée.
+        if (accountGovernanceRuleRepository != null) {
+            accountGovernanceRuleRepository.purgeUser(userId);
         }
         // Le registre des besoins (F-205 / SF-205-01) : sans clé étrangère vers le terminal, purge nommée.
         if (appRequestService != null) {

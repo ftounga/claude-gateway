@@ -44,4 +44,10 @@ public class GovernanceProposalController {
     public GovernanceProposalView refuse(@PathVariable UUID workspaceId, @PathVariable UUID proposalId) {
         return service.refuse(currentUser.requireId(), workspaceId, proposalId);
     }
+
+    /** « Valable sur tous mes postes » (F-266 / SF-266-01) : recopie une règle appliquée en portée compte. */
+    @PostMapping("/promote")
+    public AccountGovernanceRuleView promote(@PathVariable UUID workspaceId, @PathVariable UUID proposalId) {
+        return service.promote(currentUser.requireId(), workspaceId, proposalId);
+    }
 }

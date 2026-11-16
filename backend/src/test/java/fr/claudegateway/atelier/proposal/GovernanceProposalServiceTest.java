@@ -253,4 +253,85 @@ class GovernanceProposalServiceTest {
         assertThat(out).isEqualTo("# G\n\n## Jira\n\nCourts.\n\n## Langue\n\nFrançais.\n");
         assertThat(diff).extracting(GovernanceProposalBlock.DiffLine::kind).contains("DEL", "ADD");
     }
+
+    // ------------------------------------------------------------------ F-266 / SF-266-01
+
+    @Mock private AccountGovernanceRuleRepository accountRepo;
+
+    private final Map<String, AccountGovernanceRule> accountRows = new HashMap<>();
+
+    private void withAccountRules() {
+        service.setAccountRules(new AccountGovernanceService(accountRepo, null, null));
+        lenient().when(accountRepo.findByUserIdAndTitleKey(any(), any())).thenAnswer(inv -> {
+            AccountGovernanceRule r = accountRows.get(inv.getArgument(1));
+            return r != null && r.getUserId().equals(inv.getArgument(0)) ? Optional.of(r) : Optional.empty();
+        });
+        lenient().when(accountRepo.save(any())).thenAnswer(inv -> {
+            AccountGovernanceRule r = inv.getArgument(0);
+            accountRows.put(r.getTitleKey(), r);
+            return r;
+        });
+    }
+
+    @Test
+    void accountScopeIsProposedAndAppliedWithoutAnyHost() {
+        withAccountRules();
+        Workspace ws = subject();
+        ws.setHostId(null);
+        ws.setExecutionTarget(WorkspaceExecutionTarget.SANDBOX);
+
+        GovernanceProposalBlock block = service.propose(userId, ws, "REGLE", "compte", "Style des preuves",
+                "Fond navy #0B1020.", null);
+
+        assertThat(block.scope()).isEqualTo("COMPTE");
+        assertThat(block.path()).isEqualTo(GovernanceProposalService.ACCOUNT_PATH);
+        assertThat(accountRows).isEmpty();
+
+        GovernanceProposalView view = service.apply(userId, ws.getId(), block.proposalId());
+
+        assertThat(view.status()).isEqualTo(GovernanceProposal.APPLIED);
+        assertThat(accountRows.get("style des preuves").getContent()).isEqualTo("Fond navy #0B1020.");
+        verify(gateway, never()).readFile(any(), anyString(), anyString());
+        verify(gateway, never()).writeFile(any(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void accountScopeConflictsWhenTheRuleChangedMeanwhile() {
+        withAccountRules();
+        Workspace ws = subject();
+        GovernanceProposalBlock block = service.propose(userId, ws, "REGLE", "COMPTE", "Style", "v1", null);
+        accountRows.put("style", AccountGovernanceRule.builder().userId(userId).title("Style").titleKey("style")
+                .content("autre").build());
+
+        assertThatThrownBy(() -> service.apply(userId, ws.getId(), block.proposalId()))
+                .isInstanceOf(ProposalConflictException.class);
+        assertThat(accountRows.get("style").getContent()).isEqualTo("autre");
+    }
+
+    @Test
+    void accountScopeIsOnlyForRules() {
+        withAccountRules();
+        Workspace ws = subject();
+        assertThatThrownBy(() -> service.propose(userId, ws, "SKILL", "COMPTE", "jira", "x", null))
+                .isInstanceOf(InvalidProposalException.class).hasMessageContaining("réservée aux règles");
+    }
+
+    @Test
+    void anAppliedHostRuleIsPromotedEvenWithTheHostOff() {
+        withAccountRules();
+        Workspace ws = subject();
+        files.put("|GOUVERNANCE.md", "# Gouvernance\n\n## Langue\n\nFrançais.\n");
+        GovernanceProposalBlock block = service.propose(userId, ws, "REGLE", "POSTE", "Style des preuves",
+                "- Fond navy.\n- 3 à 5 blocs.", null);
+        assertThatThrownBy(() -> service.promote(userId, ws.getId(), block.proposalId()))
+                .isInstanceOf(ProposalConflictException.class);
+        service.apply(userId, ws.getId(), block.proposalId());
+        files.clear(); // poste éteint : rien n'est relu sur la machine
+
+        AccountGovernanceRuleView promoted = service.promote(userId, ws.getId(), block.proposalId());
+
+        assertThat(promoted.title()).isEqualTo("Style des preuves");
+        assertThat(promoted.content()).isEqualTo("- Fond navy.\n- 3 à 5 blocs.");
+        assertThat(accountRows.get("style des preuves").getSourceHostId()).isEqualTo(hostId);
+    }
 }
