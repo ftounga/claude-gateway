@@ -14,9 +14,10 @@ import java.util.UUID;
  * @param skills   les skills, poste puis sujets
  * @param packages les paquets activés et leur état de dépôt
  * @param agents   les agents nommés (F-182 / SF-182-01), poste puis sujets, avec leur validation
+ * @param hostRuleTitles les titres des règles du {@code GOUVERNANCE.md} du poste, lu en entier (F-266)
  */
 public record GovernanceEffectiveView(String hostRef, RulesFile hostRules, List<SubjectRules> subjects,
-        List<SkillView> skills, List<PackageLag> packages, List<AgentView> agents) {
+        List<SkillView> skills, List<PackageLag> packages, List<AgentView> agents, List<String> hostRuleTitles) {
 
     /**
      * Un agent nommé (F-182 / SF-182-01) — jamais sa consigne.

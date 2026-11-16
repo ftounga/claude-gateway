@@ -105,9 +105,17 @@ public class GovernanceEffectiveService {
         }
 
         // 2) Les règles du poste, lues sur la machine.
-        RulesFile hostRules = host.hosted()
-                ? new RulesFile("SANS_MACHINE", null, false)
-                : rulesOf(hostFiles.read(userId, host, RULES_FILE));
+        // F-266 / SF-266-01 : les titres des règles du poste, lus dans le fichier ENTIER (l'extrait est borné),
+        // pour proposer « Valable sur tous mes postes » règle par règle.
+        List<String> hostRuleTitles = new ArrayList<>();
+        RulesFile hostRules;
+        if (host.hosted()) {
+            hostRules = new RulesFile("SANS_MACHINE", null, false);
+        } else {
+            GovernanceHostFiles.HostFileRead read = hostFiles.read(userId, host, RULES_FILE);
+            hostRules = rulesOf(read);
+            hostRuleTitles.addAll(ruleTitles(read.contentOrEmpty()));
+        }
 
         // 3) Les sujets : leurs règles et leurs skills, tels que la consigne les a lus (cache).
         List<SubjectRules> subjects = new ArrayList<>();
@@ -172,7 +180,18 @@ public class GovernanceEffectiveService {
             }
         }
         return new GovernanceEffectiveView(host.ref(), hostRules, List.copyOf(subjects), List.copyOf(skills),
-                List.copyOf(packages), List.copyOf(agents));
+                List.copyOf(packages), List.copyOf(agents), List.copyOf(hostRuleTitles));
+    }
+
+    /** Les titres {@code ## …} d'un {@code GOUVERNANCE.md}, dans l'ordre, sans doublon. */
+    static List<String> ruleTitles(String content) {
+        List<String> titles = new ArrayList<>();
+        if (content == null) {
+            return titles;
+        }
+        content.lines().filter(line -> line.startsWith("## ")).map(line -> line.substring(3).strip())
+                .filter(title -> !title.isEmpty() && !titles.contains(title)).forEach(titles::add);
+        return titles;
     }
 
     /** La vue d'un agent, sans sa consigne. */

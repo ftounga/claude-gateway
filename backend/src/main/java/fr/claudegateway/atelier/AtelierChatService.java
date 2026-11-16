@@ -282,8 +282,23 @@ public class AtelierChatService implements RelayInterruptTarget {
             "Je n'ai pas pu envoyer cette conversation au modèle : sa structure était invalide, et la "
                     + "réparation automatique n'a pas suffi. Relance-moi — si le problème persiste, un "
                     + "« nouveau départ » repart sur une base saine, la conversation reste affichée.";
-    /** Garde-fou : longueur max de la consigne système (CLAUDE.md + skills). */
-    private static final int SYSTEM_MAX_CHARS = 40_000;
+    /**
+     * Garde-fou : longueur max de la consigne système.
+     *
+     * <p>F-266 / SF-266-01 — était 40 000 depuis F-28, quand la consigne n'était guère que CLAUDE.md. Les
+     * doctrines et guides d'outils ont depuis dépassé ce plafond à eux seuls (mesuré le 2026-11-16 :
+     * ~43 000 caractères pour un sujet de poste, ~49 000 au terminal du poste, AVANT les sources du
+     * client) : la coupe en fin de consigne retirait en silence CLAUDE.md, les {@code GOUVERNANCE.md} et
+     * les règles des paquets. Chaque source étant désormais bornée à part (CLAUDE.md
+     * {@link #PROJECT_CONVENTIONS_MAX_CHARS}, chaque {@code GOUVERNANCE.md} {@link #GOVERNANCE_FILE_MAX_CHARS},
+     * règles de tous mes postes 8 000), le plafond global n'est plus qu'un filet.</p>
+     */
+    static final int SYSTEM_MAX_CHARS = 120_000;
+    /** Borne du CLAUDE.md injecté (F-266 / SF-266-01) : au-delà, la coupe se dit. */
+    static final int PROJECT_CONVENTIONS_MAX_CHARS = 30_000;
+    /** Ce qui remplace la fin coupée d'un CLAUDE.md trop long. */
+    static final String PROJECT_CONVENTIONS_TRUNCATION =
+            "\n… (CLAUDE.md tronqué : ouvre-le pour la suite)\n";
     /**
      * Charpente de la consigne système (F-121 / SF-121-12) : des <b>bannières de section</b>, dans le
      * vocabulaire déjà en place (<code>--- Titre ---</code>, cf. {@link #GOVERNANCE_HEADER},
@@ -1140,7 +1155,8 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "maintenant, toujours… »), de skill ou de gabarit passe par gouvernance_proposer : "
                     + "type REGLE (section de GOUVERNANCE.md), SKILL (.claude/skills/<nom>.md) ou GABARIT "
                     + "(.claude/gabarits/<nom>.md) ; portee POSTE (vaut pour tout le poste) ou SUJET "
-                    + "(ce sujet seulement).\n"
+                    + "(ce sujet seulement) ; pour une REGLE seulement, portee COMPTE (vaut sur tous les postes "
+                    + "et clients de l'utilisateur : « partout », « chez tous mes clients »).\n"
                     + "- Un AGENT NOMMÉ (« crée-moi un agent relecteur… ») passe aussi par gouvernance_proposer, "
                     + "type AGENT (.claude/agents/<nom>.md) : entête description, outils (lecture, ecriture ou "
                     + "liste), modele seulement avec une justification ; puis sa consigne.\n"
@@ -2332,6 +2348,14 @@ public class AtelierChatService implements RelayInterruptTarget {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setGovernanceProposals(fr.claudegateway.atelier.proposal.GovernanceProposalService proposals) {
         this.governanceProposals = proposals;
+    }
+
+    /** Les règles de tous mes postes (F-266 / SF-266-01) ; {@code null} = bloc absent de la consigne. */
+    private fr.claudegateway.atelier.proposal.AccountGovernanceService accountGovernance;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setAccountGovernance(fr.claudegateway.atelier.proposal.AccountGovernanceService accountGovernance) {
+        this.accountGovernance = accountGovernance;
     }
 
     /** Le registre des besoins (F-205 / SF-205-01) ; {@code null} = outil non offert. */
@@ -10847,12 +10871,13 @@ public class AtelierChatService implements RelayInterruptTarget {
                             + "(mode d'emploi complet) ; GABARIT = .claude/gabarits/<nom>.md ; AGENT = "
                             + ".claude/agents/<nom>.md (agent nommé : entête description/outils/modele, puis sa "
                             + "consigne). portee POSTE = "
-                            + "racine du poste (vaut dans tous ses sujets) ; SUJET = ce sujet seulement.",
+                            + "racine du poste (vaut dans tous ses sujets) ; SUJET = ce sujet seulement ; COMPTE "
+                            + "(REGLE seulement) = tous les postes de l'utilisateur, rangée côté passerelle.",
                     Map.of("type", "object",
                             "properties", Map.of(
                                     "type", Map.of("type", "string", "enum",
                                             List.of("REGLE", "SKILL", "GABARIT", "AGENT")),
-                                    "portee", Map.of("type", "string", "enum", List.of("POSTE", "SUJET")),
+                                    "portee", Map.of("type", "string", "enum", List.of("POSTE", "SUJET", "COMPTE")),
                                     "nom", Map.of("type", "string",
                                             "description", "Titre de la règle, ou nom du skill/gabarit/agent "
                                                     + "(ex. « ticket-jira »)."),
@@ -11459,9 +11484,13 @@ public class AtelierChatService implements RelayInterruptTarget {
             // borne de fin, la dernière consigne d'un CLAUDE.md impératif coulait dans la section
             // suivante et devenait indiscernable d'une consigne de la passerelle. Les deux bornes
             // apparaissent ensemble, ou aucune (pas de CLAUDE.md lisible ⇒ pas de section du tout).
+            String conventions = instructions.get();
+            if (conventions.length() > PROJECT_CONVENTIONS_MAX_CHARS) {
+                conventions = conventions.substring(0, PROJECT_CONVENTIONS_MAX_CHARS) + PROJECT_CONVENTIONS_TRUNCATION;
+            }
             system.append(GOVERNANCE_PREAMBLE)
                     .append(PROJECT_CONVENTIONS_HEADER)
-                    .append(instructions.get()).append("\n\n")
+                    .append(conventions).append("\n\n")
                     .append(PROJECT_CONVENTIONS_FOOTER);
         }
 
@@ -11469,22 +11498,46 @@ public class AtelierChatService implements RelayInterruptTarget {
         // du SUJET, au même rang que CLAUDE.md (hiérarchie poste → sujet, comme Claude Code). Bornés,
         // encadrés, relus comme les autres sources (cache prompt_source_files sur cible RUNNER). Le
         // contenu ne change qu'à une modification du fichier : préfixe stable, cache F-134 préservé.
+        //
+        // F-266 / SF-266-01 — LES RÈGLES DE TOUS MES POSTES (portée COMPTE), rangées côté serveur, viennent
+        // AVANT celles du poste (général → précis), sur toutes les cibles (poste, sujet, hébergé). Une
+        // règle du poste ou du sujet de même titre, dans le texte RÉELLEMENT injecté (borné), la remplace :
+        // pas de doublon. Le bloc ne dépend que des règles (tri stable) : préfixe stable, cache F-134 préservé ;
+        // un compte sans règle a une consigne inchangée à l'octet près.
+        String boundedHostRules = null;
         java.util.Optional<String> hostRules = hostGovernanceFile(userId, workspace, usePromptCache);
         if (hostRules.isPresent() && !hostRules.get().isBlank()) {
             reads++;
             chars += hostRules.get().length();
-            system.append(HOST_GOVERNANCE_HEADER).append(boundGovernance(hostRules.get())).append("\n\n")
-                    .append(HOST_GOVERNANCE_FOOTER);
+            boundedHostRules = boundGovernance(hostRules.get());
         }
+        String boundedSubjectRules = null;
         if (!workspace.isHostTerminal()) {
             java.util.Optional<String> subjectRules = promptFile(userId, workspace,
                     fr.claudegateway.atelier.promptsource.PromptSourceStore.GOVERNANCE_FILE, usePromptCache);
             if (subjectRules.isPresent() && !subjectRules.get().isBlank()) {
                 reads++;
                 chars += subjectRules.get().length();
-                system.append(SUBJECT_GOVERNANCE_HEADER).append(boundGovernance(subjectRules.get()))
-                        .append("\n\n").append(SUBJECT_GOVERNANCE_FOOTER);
+                boundedSubjectRules = boundGovernance(subjectRules.get());
             }
+        }
+        if (accountGovernance != null) {
+            java.util.List<String> specific = new java.util.ArrayList<>();
+            if (boundedHostRules != null) {
+                specific.add(boundedHostRules);
+            }
+            if (boundedSubjectRules != null) {
+                specific.add(boundedSubjectRules);
+            }
+            system.append(accountGovernance.promptBlock(userId, specific));
+        }
+        if (boundedHostRules != null) {
+            system.append(HOST_GOVERNANCE_HEADER).append(boundedHostRules).append("\n\n")
+                    .append(HOST_GOVERNANCE_FOOTER);
+        }
+        if (boundedSubjectRules != null) {
+            system.append(SUBJECT_GOVERNANCE_HEADER).append(boundedSubjectRules)
+                    .append("\n\n").append(SUBJECT_GOVERNANCE_FOOTER);
         }
 
         // Les règles de gouvernance viennent APRÈS les conventions du projet et AVANT les skills
@@ -11602,6 +11655,11 @@ public class AtelierChatService implements RelayInterruptTarget {
                     UUID.randomUUID().toString(), reads, chars);
         }
         String result = system.toString();
+        if (result.length() > SYSTEM_MAX_CHARS) {
+            // F-266 / SF-266-01 : une coupe retire la FIN de la consigne — les sources du client. Elle se dit.
+            log.warn("Consigne système coupée à {} caractères : {} perdus", SYSTEM_MAX_CHARS,
+                    result.length() - SYSTEM_MAX_CHARS);
+        }
         String systemPrefix = result.length() > SYSTEM_MAX_CHARS
                 ? result.substring(0, SYSTEM_MAX_CHARS) : result;
         return new PromptBuild(systemPrefix, subjectCtx.toString());

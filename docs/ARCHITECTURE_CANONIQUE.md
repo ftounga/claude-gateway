@@ -416,7 +416,16 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   fichier à la proposition, `ABSENT` sinon), `status (PENDING|APPLIED|REFUSED)`, `applied_digest`,
   `created_at`, `decided_at`. Index `(user_id, workspace_id)`. **Rien ne s'écrit à la proposition** :
   seul [Appliquer] écrit (via le runner), et refuse si le fichier a changé depuis. Isolation `user_id`
-  + `requireOwned` ; purge nommée à la suppression du compte.
+  + `requireOwned` ; purge nommée à la suppression du compte. F-266 : `scope` accepte aussi `COMPTE`
+  (type `REGLE` seulement, `path` = `compte · tous mes postes`, `content` = le texte de la règle).
+
+- **account_governance_rules** — **les règles de tous mes postes** (F-266 / SF-266-01, migration
+  `266-01`) : `id (uuid)`, `user_id (uuid, NOT NULL)`, `title (varchar 120)`, `title_key (varchar 120,
+  titre en minuscules, espaces réduits)`, `content` (≤ 4 000 car.), `source_host_id (uuid, null)`,
+  `source_proposal_id (uuid, null)`, `created_at`, `updated_at`. Unique `(user_id, title_key)`.
+  Injectées dans la consigne de chaque tour de l'utilisateur, avant les `GOUVERNANCE.md` du poste et du
+  sujet ; une règle de poste/sujet de même titre l'emporte. Pas de clé étrangère ; purge nommée à la
+  suppression du compte.
 
 - **subject_journeys** / **subject_journey_events** — **le parcours du sujet d'un terminal** (F-176,
   migration `145`) : mode **Libre** (défaut) ou **Guidé** — Investigation → Plan → Exécution →
