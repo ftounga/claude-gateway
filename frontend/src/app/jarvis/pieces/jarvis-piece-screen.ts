@@ -59,7 +59,7 @@ function line(item: NavItem, nav: PieceNav): string {
       parts.push(`page ${nav.page}`);
     }
     if (nav.zoom > 1) {
-      parts.push(`zoom ×${nav.zoom}${nav.target ? ` sur « ${clip(nav.target, 40)} »` : ''}`);
+      parts.push(`zoom ×${Math.round(nav.zoom * 10) / 10}${nav.target ? ` sur « ${clip(nav.target, 40)} »` : ''}`);
     }
   }
   return parts.join(' — ');

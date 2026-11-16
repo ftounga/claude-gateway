@@ -25,7 +25,7 @@ import {
 import {
   ArchCamera, ArchFrame, ArchMove, ArchPhaseKind, ArchState, ArchTransition, ArchitecturePlan,
   ArchitectureStageDirector, MAJOR_MOVE_MS, Viewport, blendCamera, cameraBasis, moveFor, moveProgress, paceMove,
-  pickAt,
+  pickAt, zoomToward,
 } from '../architecture-stage-director';
 import { ArchitectureNarrator } from '../architecture-narration';
 import { phoneZoneLabel } from '../architecture-render';
@@ -1147,6 +1147,14 @@ export class ArchitectureEngine {
     return pickAt(this.options.layout, this.graph.frame, this.cameraNow, this.viewport(), x, y);
   }
 
+  /**
+   * SF-238-15 — le zoom vers un point de l'écran (px du cadre, `null` = centre) : le zoom et le décalage à demander
+   * (bornés : la caméra ne quitte jamais le schéma). La navigation les pose ; la scène y glisse.
+   */
+  zoomAt(point: { x: number; y: number } | null, factor: number): { zoom: number; pan: { x: number; z: number } } {
+    return zoomToward(this.options.layout, this.plan.state, this.plan.base, this.viewport(), point, factor);
+  }
+
   /** Banc — une narration rejouée : chaque phrase commence à son instant (ms), horloge figée comprise. */
   playScript(script: readonly { at: number; text: string }[]): void {
     this.script = script;
@@ -1266,6 +1274,7 @@ export class ArchitectureEngine {
     this.followScript(t);
     if (this.phase === 'entree' && t - this.phaseStart >= MOTION_DURATIONS.archEntry) {
       this.phase = 'repos'; // T-A1 finie : l'image est la même, les transitions de navigation peuvent jouer
+      this.declutterDue = true; // SF-238-15 — les étiquettes à leur place finale
     }
     this.graph.update(this.plan, this.phase, t - this.phaseStart, t / 1000, this.width / Math.max(1, this.height),
       this.transition, this.move);
@@ -1278,6 +1287,7 @@ export class ArchitectureEngine {
         this.cameraNow) : blendCamera(this.plan.camera, this.plan.camera, 1, this.cameraNow);
       if (p >= 1) {
         this.move = null;
+        this.declutterDue = true; // SF-238-15 — fin d'un zoom ou d'un déplacement : chevauchements relus
       }
       const b = cameraBasis(cam);
       this.camera.fov = cam.fov;
@@ -1305,7 +1315,7 @@ export class ArchitectureEngine {
     this.calls = this.sceneCalls + this.iconCalls;
     this.labels?.render(this.graph.scene, this.camera);
     // Chevauchements : à l'image qui suit un changement de plan, puis toutes les 15 images tant que ça bouge.
-    if (this.labels && (this.declutterDue || (this.phase !== 'repos' && this.loop.frames % 15 === 0))) {
+    if (this.labels && (this.declutterDue || ((this.phase !== 'repos' || moving) && this.loop.frames % 15 === 0))) {
       this.declutterDue = false;
       this.graph.declutterLabels();
     }

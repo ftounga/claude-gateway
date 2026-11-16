@@ -7,7 +7,8 @@
 
 export type GestureEvent =
   | { kind: 'orbit'; dAz: number; dEl: number }
-  | { kind: 'zoom'; step: '+' | '-' }
+  /** SF-238-15 — zoom continu (facteur) vers un point de la fenêtre (milieu des doigts, pointeur de la souris). */
+  | { kind: 'zoom'; factor: number; x: number; y: number }
   | { kind: 'tap'; x: number; y: number }
   | { kind: 'none' };
 
@@ -15,8 +16,16 @@ export type GestureEvent =
 export const DRAG_PX = 6;
 /** Radians d'orbite par pixel glissé. */
 export const ORBIT_PER_PX = 0.006;
-/** Pincement : un cran de zoom quand l'écart des deux doigts a varié de ce facteur. */
-export const PINCH_STEP = 1.35;
+/** Pincement : on émet dès que l'écart des deux doigts a varié de ce facteur (lissage). */
+export const PINCH_STEP = 1.04;
+/**
+ * SF-238-15 — sensibilité du pincement : zoom = (variation de l'écart)^0,75 ; un pincement normal (écart ×2) ≈ ×1,7,
+ * pas ×4 ni plus.
+ */
+export const PINCH_EXPONENT = 0.75;
+/** SF-238-15 — molette : ×1,15 par cran (100 px), borné par événement (pavés tactiles, molettes rapides). */
+export const WHEEL_STEP = 1.15;
+export const WHEEL_MAX = 1.5;
 /** Un toucher plus long n'est pas un toucher bref (le toucher long replie, géré à part). */
 export const TAP_MAX_MS = 500;
 
@@ -65,15 +74,17 @@ export class ArchGestures {
     p.y = y;
     if (this.pointers.size >= 2 && this.pinchBase !== null) {
       const spread = this.spread();
-      if (spread >= this.pinchBase * PINCH_STEP) {
+      if (this.pinchBase <= 0 || spread <= 0) {
         this.pinchBase = spread;
-        return { kind: 'zoom', step: '+' };
+        return { kind: 'none' };
       }
-      if (spread <= this.pinchBase / PINCH_STEP) {
-        this.pinchBase = spread;
-        return { kind: 'zoom', step: '-' };
+      const ratio = spread / this.pinchBase;
+      if (ratio < PINCH_STEP && ratio > 1 / PINCH_STEP) {
+        return { kind: 'none' };
       }
-      return { kind: 'none' };
+      this.pinchBase = spread;
+      const [a, b] = [...this.pointers.values()];
+      return { kind: 'zoom', factor: Math.pow(ratio, PINCH_EXPONENT), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     }
     if (!this.start || this.pinched) {
       return { kind: 'none' };
@@ -109,9 +120,17 @@ export class ArchGestures {
     this.pinchBase = null;
   }
 
-  /** Molette : un cran par événement, dans le sens de la roue. */
-  static wheel(deltaY: number): GestureEvent {
-    return deltaY === 0 ? { kind: 'none' } : { kind: 'zoom', step: deltaY < 0 ? '+' : '-' };
+  /**
+   * Molette : ×{@link WHEEL_STEP} par cran (100 px ; `deltaMode` 1 = lignes, 2 = pages) vers le pointeur, dans le sens
+   * de la roue, borné à ×{@link WHEEL_MAX} par événement.
+   */
+  static wheel(deltaY: number, x: number, y: number, deltaMode = 0): GestureEvent {
+    if (deltaY === 0) {
+      return { kind: 'none' };
+    }
+    const notches = deltaMode === 1 ? deltaY / 3 : deltaMode === 2 ? deltaY : deltaY / 100;
+    const factor = Math.min(WHEEL_MAX, Math.max(1 / WHEEL_MAX, Math.pow(WHEEL_STEP, -notches)));
+    return { kind: 'zoom', factor, x, y };
   }
 
   private spread(): number {

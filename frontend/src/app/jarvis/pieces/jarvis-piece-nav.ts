@@ -1,4 +1,5 @@
 import { normalize } from '../jarvis-oral';
+import { ARCH_MAX_ZOOM } from '../stage3d/architecture/architecture-stage-director';
 import { ArchNav, ArchOp, ArchRequest, defaultArchNav, reduceArch, trivialArchOp } from './jarvis-piece-arch';
 import { Piece, PieceCategory, PieceChapter, PieceKind } from './jarvis-piece.models';
 import { viewerFor } from './jarvis-piece-viewers';
@@ -82,7 +83,11 @@ export type NavAction =
   | { type: 'pause' }
   | { type: 'seek'; t?: number; chapter?: number | string }
   | { type: 'page'; n?: number; delta?: number }
-  | { type: 'zoom'; step?: '+' | '-' | 'reset'; value?: number; target?: string }
+  | {
+    type: 'zoom'; step?: '+' | '-' | 'reset'; value?: number; target?: string;
+    /** SF-238-15 — architecture : le décalage posé avec le zoom vers le point visé (unités du plan, x et z). */
+    pan?: { x: number; y: number };
+  }
   | { type: 'pan'; dx: number; dy: number }
   | { type: 'fullscreen' }
   /** F-237 / SF-237-09 — des cartes rejoignent la galerie ouverte (preuve produite en direct, T-G7). */
@@ -286,21 +291,28 @@ export function reduceNav(state: PieceNav, action: NavAction): NavResult {
         return refuse(state, 'NOT_APPLICABLE');
       }
       let zoom = state.zoom;
+      // SF-238-15 — une architecture plafonne à ×4 (au-delà on ne lit plus le schéma) : plafonnée, pas refusée.
+      const arch = item.kind === 'ARCHITECTURE';
+      const max = arch ? ARCH_MAX_ZOOM : MAX_ZOOM;
       if (action.value != null) {
         if (action.value < MIN_ZOOM || action.value > MAX_ZOOM) {
           return refuse(state, 'OUT_OF_RANGE');
         }
-        zoom = action.value;
+        zoom = Math.min(max, action.value);
       } else if (action.step === 'reset') {
         zoom = MIN_ZOOM;
       } else if (action.step === '-') {
         zoom = Math.max(MIN_ZOOM, zoom / 2);
       } else if (action.step === '+' || action.target) {
-        zoom = Math.min(MAX_ZOOM, zoom * 2);
+        zoom = Math.min(max, zoom * 2);
       }
       const reset = zoom === MIN_ZOOM;
+      // Un dézoom par cran ramène le décalage d'architecture à proportion (×1 = vue d'ensemble exacte).
+      const pan = action.pan ?? (arch && state.zoom > MIN_ZOOM && zoom < state.zoom
+        ? { x: state.pan.x * (zoom - 1) / (state.zoom - 1), y: state.pan.y * (zoom - 1) / (state.zoom - 1) }
+        : state.pan);
       return ok({
-        ...state, zoom, pan: reset ? { x: 0, y: 0 } : state.pan,
+        ...state, zoom, pan: reset ? { x: 0, y: 0 } : pan,
         target: reset ? null : action.target ?? state.target,
       });
     }

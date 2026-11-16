@@ -23,7 +23,9 @@ export const PORTRAIT_ELEVATION = (55 * Math.PI) / 180;
 /** Le 2D cadré : contenu `contain`, centré, marge de 5 % de chaque côté. */
 export const SVG_FIT = 0.9;
 /** Vue d'ensemble : marge minimale au bord du cadre (le schéma occupe le centre, en grand). */
-export const ENSEMBLE_MARGIN = 0.04;
+export const ENSEMBLE_MARGIN = 0.05;
+/** SF-238-15 — marge latérale minimale (px) : la demi-largeur d'une étiquette de service. */
+export const LABEL_MARGIN_PX = 24;
 /** Au plus trois éléments allumés à la fois (règle F-234 D2). */
 export const MAX_LIT = 3;
 /** Étiquettes (cadrage §8.2, §14). */
@@ -57,8 +59,13 @@ export interface ArchState {
   phone: boolean;
   /** SF-238-10 — zones repliées en capsule (ids). */
   folded?: readonly string[];
-  /** SF-238-10 — zoom du réducteur commun (×1 à ×8) : la caméra se rapproche d'autant. */
+  /** SF-238-10 — zoom du réducteur commun (×1 à {@link ARCH_MAX_ZOOM}) : la caméra se rapproche d'autant. */
   zoom?: number;
+  /**
+   * SF-238-15 — décalage de la cible dans le plan (unités, x et z), posé par le zoom vers le point visé ; borné à
+   * l'emprise des services ({@link applyZoomPan}).
+   */
+  pan?: { x: number; z: number };
   /** SF-238-10 — décalage d'orbite (radians), posé au toucher ou par « tourne ». */
   orbit?: { az: number; el: number };
 }
@@ -83,6 +90,8 @@ export interface ArchCamera {
 export interface ArchitecturePlan {
   state: ArchState;
   camera: ArchCamera;
+  /** SF-238-15 — la caméra de la même vue à ×1 sans décalage (référence du zoom vers le point visé). */
+  base: ArchCamera;
   /** Δ entre deux niveaux, et facteur d'altitude (0 en vue de dessus : plateaux couchés, D-09-1). */
   step: number;
   lift: number;
@@ -246,13 +255,18 @@ export interface ArchExtent {
 /** La caméra d'une vue (T-A9), cadrée sur l'emprise (tout le schéma, ou le focus : T-A6), zoom et orbite compris. */
 export function cameraFor(layout: ArchLayout, state: ArchState, viewport: Viewport, extent: ArchExtent | null = null):
     ArchCamera {
-  const zoom = Math.max(1, state.zoom ?? 1);
+  return applyZoomPan(layout, state, baseCameraFor(layout, state, viewport, extent), viewport);
+}
+
+/** SF-238-15 — la caméra d'une vue à ×1, sans décalage : le cadrage de repos (orbite comprise). */
+export function baseCameraFor(layout: ArchLayout, state: ArchState, viewport: Viewport,
+    extent: ArchExtent | null = null): ArchCamera {
   if (state.view === 'dessus' && !extent) {
     const tan = Math.tan((ARCH_FOV * Math.PI) / 360);
     // Zénith : la largeur visible au sol est exactement celle du 2D cadré.
     const fit = svgFit(layout.graph.bounds, viewport);
     const distance = (viewport.height * 0.01) / (2 * fit.scale * tan);
-    return { target: [0, 0, 0], azimuth: 0, elevation: Math.PI / 2, distance: distance / zoom, fov: ARCH_FOV };
+    return { target: [0, 0, 0], azimuth: 0, elevation: Math.PI / 2, distance, fov: ARCH_FOV };
   }
   const height = (state.view === 'dessus' ? 0 : layout.maxLevel * stepOf(state)) + NODE_FLOAT;
   const orbit = state.view === 'dessus' ? { az: 0, el: 0 } : state.orbit ?? { az: 0, el: 0 };
@@ -271,23 +285,74 @@ export function cameraFor(layout: ArchLayout, state: ArchState, viewport: Viewpo
   // De face (azimut 0 ou 90°), un schéma ne s'étale pas en diagonale : 30 à 40 % plus grand dans la largeur.
   const bases = portrait && state.view === 'ensemble' ? [0, Math.PI / 2] : portrait ? [baseAz, baseAz + Math.PI / 2]
     : [baseAz];
+  // SF-238-15 — tout le schéma : on cadre les vrais volumes (plateaux à leur altitude, services), pas la boîte
+  // « emprise × hauteur max » dont le haut est vide au-dessus des plateaux bas (le schéma remplit le cadre).
+  const points = extent ? boxCorners(e, height)
+    : volumePoints(layout, state.view === 'dessus' ? 0 : stepOf(state));
   let best: ArchCamera | null = null;
   for (const az of bases) {
-    const fitted = fitCamera(start(az), e, height, viewport);
+    const fitted = fitCamera(start(az), points, viewport);
     if (!best || fitted.distance < best.distance * 0.98) {
       best = fitted;
     }
   }
-  const camera = best as ArchCamera;
-  // Éclaté : le volume plus haut est recadré (la caméra recule d'elle-même, T-A3). Zoom : elle se rapproche.
-  return zoom > 1 ? { ...camera, distance: camera.distance / zoom } : camera;
+  // Éclaté : le volume plus haut est recadré (la caméra recule d'elle-même, T-A3).
+  return extent ? best as ArchCamera : onServicePlane(layout, state, best as ArchCamera);
 }
 
-/** Le volume (emprise × hauteur) au centre et en grand pour une orientation donnée. */
-function fitCamera(initial: ArchCamera, e: ArchExtent, height: number, viewport: Viewport): ArchCamera {
-  let camera = initial;
-  const corners = [[e.x0, 0, e.z0], [e.x1, 0, e.z0], [e.x0, 0, e.z1], [e.x1, 0, e.z1], [e.x0, height, e.z0],
+/**
+ * SF-238-15 — même image, cible reposée **sur la ligne de visée** à l'altitude moyenne des services (le recentrage
+ * du cadrage peut la pousser sous le sol) : la caméra ne bouge pas, mais le zoom rapproche ensuite vers le plan des
+ * services au lieu d'un point enfoui, et la borne « hors de la boîte » se mesure depuis l'intérieur du schéma.
+ */
+function onServicePlane(layout: ArchLayout, state: ArchState, camera: ArchCamera): ArchCamera {
+  const step = state.view === 'dessus' ? 0 : stepOf(state);
+  if (layout.nodes.length === 0) {
+    return camera;
+  }
+  const y = layout.nodes.reduce((sum, n) => sum + (n.plate >= 0 ? layout.plates[n.plate].level * step : 0), 0)
+    / layout.nodes.length + NODE_FLOAT;
+  const dir = viewDir(camera);
+  if (dir[1] < 0.05) {
+    return camera;
+  }
+  const u = (y - camera.target[1]) / dir[1];
+  if (u >= camera.distance * 0.9) {
+    return camera;
+  }
+  return { ...camera, distance: camera.distance - u,
+    target: [camera.target[0] + dir[0] * u, y, camera.target[2] + dir[2] * u] };
+}
+
+/** Les huit coins d'une emprise × hauteur. */
+function boxCorners(e: ArchExtent, height: number): number[][] {
+  return [[e.x0, 0, e.z0], [e.x1, 0, e.z0], [e.x0, 0, e.z1], [e.x1, 0, e.z1], [e.x0, height, e.z0],
     [e.x1, height, e.z0], [e.x0, height, e.z1], [e.x1, height, e.z1]];
+}
+
+/**
+ * SF-238-15 — les points qui portent le dessin : coins de chaque plateau à son altitude et au sol (ses parois),
+ * icônes des services (pleine taille) et place de leur étiquette (devant l'icône).
+ */
+export function volumePoints(layout: ArchLayout, step: number): number[][] {
+  const out: number[][] = [];
+  for (const p of layout.plates) {
+    for (const y of [0, p.level * step]) {
+      out.push([p.x0, y, p.z0], [p.x0 + p.w, y, p.z0], [p.x0, y, p.z0 + p.d], [p.x0 + p.w, y, p.z0 + p.d]);
+    }
+  }
+  const half = ICON_SIZE / 2;
+  for (const n of layout.nodes) {
+    const y = (n.plate >= 0 ? layout.plates[n.plate].level * step : 0) + NODE_FLOAT;
+    out.push([n.x - half, y - half, n.z], [n.x + half, y - half, n.z], [n.x - half, y + half, n.z],
+      [n.x + half, y + half, n.z], [n.x, y, n.z + half + 0.3]);
+  }
+  return out;
+}
+
+/** Le volume (points) au centre et en grand pour une orientation donnée. */
+function fitCamera(initial: ArchCamera, corners: number[][], viewport: Viewport): ArchCamera {
+  let camera = initial;
   const box = (c: ArchCamera): { x0: number; x1: number; y0: number; y1: number } => {
     let x0 = Infinity;
     let x1 = -Infinity;
@@ -302,7 +367,8 @@ function fitCamera(initial: ArchCamera, e: ArchExtent, height: number, viewport:
     }
     return { x0, x1, y0, y1 };
   };
-  const mx = viewport.width * ENSEMBLE_MARGIN;
+  // SF-238-15 — au moins 24 px de côté : l'étiquette d'un service au bord (« Utilisateurs ») reste entière.
+  const mx = Math.max(viewport.width * ENSEMBLE_MARGIN, LABEL_MARGIN_PX);
   const my = viewport.height * ENSEMBLE_MARGIN;
   const tan = Math.tan((ARCH_FOV * Math.PI) / 360);
   const aspect = viewport.width / viewport.height;
@@ -333,6 +399,221 @@ function fitCamera(initial: ArchCamera, e: ArchExtent, height: number, viewport:
     };
   }
   return camera;
+}
+
+/** SF-238-15 — zoom de l'architecture : ×1 (vue d'ensemble) à ×4 (au-delà, on ne lit plus le schéma). */
+export const ARCH_MAX_ZOOM = 4;
+/** SF-238-15 — marge entre la caméra et la boîte de la scène (une icône) : jamais dans un plateau. */
+const CAMERA_CLEARANCE = ICON_SIZE;
+
+/** La direction de la cible vers la caméra (unitaire). */
+function viewDir(camera: ArchCamera): number[] {
+  const ce = Math.cos(camera.elevation);
+  return [ce * Math.sin(camera.azimuth), Math.sin(camera.elevation), ce * Math.cos(camera.azimuth)];
+}
+
+/**
+ * SF-238-15 — la distance à laquelle le rayon parti de `target` dans la direction `dir` ressort de la boîte (méthode
+ * des tranches), que la cible soit dedans ou devant ; 0 si le rayon ne la traverse pas.
+ */
+export function exitDistance(box: { min: number[]; max: number[] }, target: number[], dir: number[]): number {
+  let enter = -Infinity;
+  let exit = Infinity;
+  for (let k = 0; k < 3; k++) {
+    if (Math.abs(dir[k]) < 1e-9) {
+      if (target[k] < box.min[k] || target[k] > box.max[k]) {
+        return 0;
+      }
+      continue;
+    }
+    const a = (box.min[k] - target[k]) / dir[k];
+    const b = (box.max[k] - target[k]) / dir[k];
+    enter = Math.max(enter, Math.min(a, b));
+    exit = Math.min(exit, Math.max(a, b));
+  }
+  return enter <= exit && exit > 0 ? exit : 0;
+}
+
+/** SF-238-15 — l'emprise des services (plan), où la cible décalée reste : un service au moins reste au cadre. */
+function nodeSpan(layout: ArchLayout): ArchExtent {
+  if (layout.nodes.length === 0) {
+    return { x0: -layout.width / 2, x1: layout.width / 2, z0: -layout.depth / 2, z1: layout.depth / 2 };
+  }
+  const xs = layout.nodes.map((n) => n.x);
+  const zs = layout.nodes.map((n) => n.z);
+  return { x0: Math.min(...xs), x1: Math.max(...xs), z0: Math.min(...zs), z1: Math.max(...zs) };
+}
+
+function clampTo(v: number, a: number, b: number): number {
+  return Math.min(Math.max(v, Math.min(a, b)), Math.max(a, b));
+}
+
+/** SF-238-15 — la cible décalée de `pan`, bornée à l'emprise des services (la cible de repos reste permise). */
+function pannedTarget(layout: ArchLayout, base: ArchCamera, pan: { x: number; z: number }): [number, number, number] {
+  const span = nodeSpan(layout);
+  const x = clampTo(base.target[0] + pan.x, Math.min(span.x0, base.target[0]), Math.max(span.x1, base.target[0]));
+  const z = clampTo(base.target[2] + pan.z, Math.min(span.z0, base.target[2]), Math.max(span.z1, base.target[2]));
+  return [x, base.target[1], z];
+}
+
+/** SF-238-15 — les volumes que la caméra ne traverse jamais : chaque plateau, du sol à son altitude. */
+export function sceneVolumes(layout: ArchLayout, step: number): { min: number[]; max: number[] }[] {
+  return layout.plates.map((p) => ({ min: [p.x0, 0, p.z0], max: [p.x0 + p.w, p.level * step, p.z0 + p.d] }));
+}
+
+/** SF-238-15 — une icône n'occupe jamais plus de cette part de la plus petite dimension du cadre. */
+export const ICON_MAX_SHARE = 0.4;
+
+/**
+ * SF-238-15 — le recul minimal devant une icône : à cette distance elle occupe au plus {@link ICON_MAX_SHARE} de la
+ * plus petite dimension du cadre (en portrait, la largeur).
+ */
+export function iconClearance(camera: ArchCamera, viewport: Viewport): number {
+  const tan = Math.tan((camera.fov * Math.PI) / 360);
+  const aspect = viewport.width / Math.max(1, viewport.height);
+  return ICON_SIZE / (2 * tan * Math.min(1, aspect) * ICON_MAX_SHARE);
+}
+
+/**
+ * SF-238-15 — la distance la plus courte permise pour cette cible : en rapprochant depuis le recul de repos, la
+ * caméra s'arrête avant d'entrer dans le premier plateau rencontré (marge d'une icône) et reste à distance de chaque
+ * icône, sur l'axe comme en bord de cadre ({@link iconClearance}) : jamais dans le schéma, jamais une icône géante.
+ */
+function minDistance(layout: ArchLayout, state: ArchState, camera: ArchCamera, viewport: Viewport): number {
+  const dir = viewDir(camera);
+  const t = camera.target;
+  const step = state.view === 'dessus' ? 0 : stepOf(state);
+  let floor = 0;
+  for (const v of sceneVolumes(layout, step)) {
+    const exit = exitDistance(v, t, dir);
+    if (exit > 0) {
+      floor = Math.max(floor, exit + CAMERA_CLEARANCE);
+    }
+  }
+  // Sphère de rayon r autour de chaque icône : |t + dir·D − c| ≥ r ⇒ D au-delà de la plus grande racine.
+  const r = iconClearance(camera, viewport);
+  for (const n of layout.nodes) {
+    const c = [n.x, (n.plate >= 0 ? layout.plates[n.plate].level * step : 0) + NODE_FLOAT, n.z];
+    const o = [t[0] - c[0], t[1] - c[1], t[2] - c[2]];
+    const b = o[0] * dir[0] + o[1] * dir[1] + o[2] * dir[2];
+    const disc = b * b - (o[0] * o[0] + o[1] * o[1] + o[2] * o[2] - r * r);
+    if (disc > 0) {
+      floor = Math.max(floor, -b + Math.sqrt(disc));
+    }
+  }
+  return Math.max(floor, CAMERA_CLEARANCE);
+}
+
+/** SF-238-15 — combien de services sont devant la caméra et dans le cadre (marge `inset`, fraction du cadre). */
+export function servicesInView(layout: ArchLayout, state: ArchState, camera: ArchCamera, viewport: Viewport,
+    inset = 0.04): number {
+  const b = cameraBasis(camera);
+  const step = state.view === 'dessus' ? 0 : stepOf(state);
+  const mx = viewport.width * inset;
+  const my = viewport.height * inset;
+  let n = 0;
+  for (const node of layout.nodes) {
+    const y = (node.plate >= 0 ? layout.plates[node.plate].level * step : 0) + NODE_FLOAT;
+    const ahead = (node.x - b.position[0]) * b.forward[0] + (y - b.position[1]) * b.forward[1]
+      + (node.z - b.position[2]) * b.forward[2];
+    if (ahead <= 0.05) {
+      continue;
+    }
+    const p = projectToScreen(camera, viewport, node.x, y, node.z);
+    if (p.x >= mx && p.x <= viewport.width - mx && p.y >= my && p.y <= viewport.height - my) {
+      n++;
+    }
+  }
+  return n;
+}
+
+/**
+ * SF-238-15 — zoom et décalage sur la caméra de repos : la cible glisse (bornée à l'emprise des services), la
+ * distance raccourcit d'autant, sans jamais entrer dans la boîte de la scène (ni dépasser le recul de repos). Si
+ * aucun service ne reste au cadre (zoom au milieu d'un vide), la cible se pose sur le service le plus proche.
+ */
+export function applyZoomPan(layout: ArchLayout, state: ArchState, base: ArchCamera, viewport: Viewport): ArchCamera {
+  const zoom = Math.min(ARCH_MAX_ZOOM, Math.max(1, state.zoom ?? 1));
+  const pan = state.pan ?? { x: 0, z: 0 };
+  if (zoom === 1 && pan.x === 0 && pan.z === 0) {
+    return base;
+  }
+  const place = (target: [number, number, number]): ArchCamera => {
+    const camera: ArchCamera = { ...base, target };
+    const floor = Math.min(base.distance, minDistance(layout, state, camera, viewport));
+    return { ...camera, distance: Math.max(base.distance / zoom, floor) };
+  };
+  const camera = place(pannedTarget(layout, base, pan));
+  if (layout.nodes.length === 0 || servicesInView(layout, state, camera, viewport) > 0) {
+    return camera;
+  }
+  const step = state.view === 'dessus' ? 0 : stepOf(state);
+  let best: [number, number, number] = camera.target;
+  let gap = Infinity;
+  for (const n of layout.nodes) {
+    const y = (n.plate >= 0 ? layout.plates[n.plate].level * step : 0) + NODE_FLOAT;
+    const d = Math.hypot(n.x - camera.target[0], y - camera.target[1], n.z - camera.target[2]);
+    if (d < gap) {
+      gap = d;
+      best = [n.x, y, n.z];
+    }
+  }
+  return place(best);
+}
+
+/** Le point du plan horizontal `y = planeY` sous un point de l'écran (px), ou `null` (rayon parallèle ou derrière). */
+export function groundAt(camera: ArchCamera, viewport: Viewport, sx: number, sy: number, planeY: number):
+    { x: number; z: number } | null {
+  const b = cameraBasis(camera);
+  const tan = Math.tan((camera.fov * Math.PI) / 360);
+  const aspect = viewport.width / viewport.height;
+  const nx = ((sx / viewport.width) * 2 - 1) * tan * aspect;
+  const ny = (1 - (sy / viewport.height) * 2) * tan;
+  const ray = [0, 1, 2].map((k) => b.forward[k] + b.right[k] * nx + b.up[k] * ny);
+  if (Math.abs(ray[1]) < 1e-6) {
+    return null;
+  }
+  const t = (planeY - b.position[1]) / ray[1];
+  return t > 0 ? { x: b.position[0] + ray[0] * t, z: b.position[2] + ray[2] * t } : null;
+}
+
+/**
+ * SF-238-15 — **zoomer vers le point visé** (molette au survol, milieu du pincement, centre pour « + / − ») : pur.
+ * En rapprochant, le point visé reste sous le doigt (la cible glisse vers lui à proportion) ; en éloignant, le
+ * décalage revient vers 0 à proportion (×1 = la vue d'ensemble exacte). Le zoom rendu est celui que la caméra peut
+ * réellement atteindre (borne de distance), pour qu'un dézoom réponde tout de suite.
+ */
+export function zoomToward(layout: ArchLayout, state: ArchState, base: ArchCamera, viewport: Viewport,
+    point: { x: number; y: number } | null, factor: number): { zoom: number; pan: { x: number; z: number } } {
+  const zoom = Math.min(ARCH_MAX_ZOOM, Math.max(1, state.zoom ?? 1));
+  const pan = state.pan ?? { x: 0, z: 0 };
+  let next = Math.min(ARCH_MAX_ZOOM, Math.max(1, zoom * factor));
+  if (next <= 1.0001) {
+    return { zoom: 1, pan: { x: 0, z: 0 } };
+  }
+  let nextPan: { x: number; z: number };
+  if (next < zoom) {
+    const k = (next - 1) / (zoom - 1);
+    nextPan = { x: pan.x * k, z: pan.z * k };
+  } else {
+    const current = applyZoomPan(layout, state, base, viewport);
+    const at = point ? groundAt(current, viewport, point.x, point.y, current.target[1]) : null;
+    const span = nodeSpan(layout);
+    const a = at ? { x: clampTo(at.x, span.x0, span.x1), z: clampTo(at.z, span.z0, span.z1) }
+      : { x: current.target[0], z: current.target[2] };
+    const k = zoom / next;
+    const tx = a.x + (current.target[0] - a.x) * k;
+    const tz = a.z + (current.target[2] - a.z) * k;
+    nextPan = { x: tx - base.target[0], z: tz - base.target[2] };
+  }
+  // Le décalage et le zoom rendus sont ceux que la caméra atteint vraiment (cible bornée, distance plancher, service
+  // au cadre) : pas de dérive au bord, et un dézoom répond tout de suite.
+  const shown = applyZoomPan(layout, { ...state, zoom: next, pan: nextPan }, base, viewport);
+  next = Math.min(next, base.distance / shown.distance);
+  if (next <= 1.0001) {
+    return { zoom: 1, pan: { x: 0, z: 0 } };
+  }
+  return { zoom: next, pan: { x: shown.target[0] - base.target[0], z: shown.target[2] - base.target[2] } };
 }
 
 /** SF-238-10 — la caméra entre deux plans (cible et distance linéaires, azimut par le plus court chemin). */
@@ -428,7 +709,7 @@ export function pickAt(layout: ArchLayout, frame: ArchFrame, camera: ArchCamera,
 
 /** SF-238-10 — durées des transitions de navigation (cadrage §10.1). */
 export const NAV_MOVES = {
-  view: 1600, focus: 1400, explode: 1200, fold: 700, unfold: 800, zoom: 600, orbit: 160,
+  view: 1600, focus: 1400, explode: 1200, fold: 700, unfold: 800, zoom: 320, orbit: 160,
 } as const;
 
 /** SF-238-14 — anti mal des transports (F-236 §7.3) : au plus un grand déplacement de caméra par 2,5 s. */
@@ -464,7 +745,9 @@ export function moveFor(prev: ArchState, next: ArchState): { ms: number; curve: 
     return (next.folded ?? []).length >= (prev.folded ?? []).length ? { ms: NAV_MOVES.fold, curve: 'entree' }
       : { ms: NAV_MOVES.unfold, curve: 'sortie' };
   }
-  if ((prev.zoom ?? 1) !== (next.zoom ?? 1)) {
+  const pp = prev.pan ?? { x: 0, z: 0 };
+  const np = next.pan ?? { x: 0, z: 0 };
+  if ((prev.zoom ?? 1) !== (next.zoom ?? 1) || pp.x !== np.x || pp.z !== np.z) {
     return { ms: NAV_MOVES.zoom, curve: 'glisse' };
   }
   const po = prev.orbit ?? { az: 0, el: 0 };
@@ -757,13 +1040,20 @@ export class ArchitectureStageDirector {
     return {
       state,
       nodeFold, nodeHome, plateHidden, plateCapsule, capsuleText, plateBadge,
-      camera: cameraFor(this.layout, state, viewport, extent),
+      ...this.cameras(state, viewport, extent),
       step: stepOf(state),
       lift: state.view === 'dessus' ? 0 : 1,
       plateFill, plateLine, plateRole, nodeAlpha, nodeRole, edgeAlpha, edgeRole, edgeFlow, nodeLabel, plateLabel,
       edgeInFlow, nodeLit,
       hero: state.lit[0] ?? state.flow?.[0] ?? focus,
     };
+  }
+
+  /** SF-238-15 — la caméra de repos de la vue (×1, sans décalage) et la caméra zoomée / décalée. */
+  private cameras(state: ArchState, viewport: Viewport, extent: ArchExtent | null): { camera: ArchCamera;
+      base: ArchCamera } {
+    const base = baseCameraFor(this.layout, state, viewport, extent);
+    return { base, camera: applyZoomPan(this.layout, state, base, viewport) };
   }
 
   /** Les tampons d'image à la taille du graphe (une fois, à la pose de la scène). */
