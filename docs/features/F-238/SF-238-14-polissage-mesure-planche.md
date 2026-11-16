@@ -36,7 +36,10 @@ transports) et livrer la planche finale des itérations 1 et 2 pour le visa du P
 3. **Planche finale** : captures headless (`--use-angle=swiftshader`, sans `--hide-scrollbars`, 1920 × 1080 et
    390 × 844) de `/jarvis` réel (API simulée) et du banc, dans `~/.local/share/claude-gateway/captures-f238/`, avec
    une page `planche-f238-iterations-1-2.html`.
-4. **Lecture J+7** : requête fournie (compteurs `a_*` de `jarvis_usage_days.render_counts`), à lire le 22/11.
+4. **Lecture J+7** (le 23/11, après déploiement) — en lecture seule :
+   `select usage_day, render_counts from jarvis_usage_days where render_counts like '%a_3d=%' and usage_day >= current_date - 7 order by usage_day;`
+   Signaux : `a_2d_p` / `a_3d` (la 3D tient-elle sur le téléphone du PO ?), `a_ai` vs ouvertures fermées vite
+   (`p_fclose`), `a_narr` (la narration allume-t-elle ?), `a_amb` (cibles ambiguës), gestes vs voix (`n_tch` / `n_loc`).
 
 ### Cas d'erreur
 | Situation | Comportement attendu | Code HTTP |
@@ -75,3 +78,9 @@ Non applicable (compteurs du compte, sans contenu, chemin existant).
 
 ## Préoccupations transversales
 Aucune (pas de consigne, pas de route, pas de quota).
+
+## Notes et décisions
+- **D-14-1** Rythme : un grand déplacement qui suit de près le précédent ralentit (il ne finit jamais avant 2,5 s après
+  le début du précédent) plutôt que d'être différé : la caméra ne « saute » jamais d'un élan à l'autre.
+- **D-14-2** Planches : itérations 1-2 (`captures-f238/iteration-1-2/`) et retours PO du 16/11 avant / après
+  (`captures-f238/retours-po-2026-11-16/`), refaites sur le code final.
