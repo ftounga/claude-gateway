@@ -26,6 +26,18 @@ export function proposalBlock(toolUseId: string, proposal: AtelierGovernanceProp
   };
 }
 
+/** Où vaut la proposition, en toutes lettres (F-266 : `COMPTE` = tous mes postes). */
+export function proposalScopeLabel(scope: string): string {
+  switch (scope) {
+    case 'COMPTE':
+      return 'Pour tous mes postes';
+    case 'POSTE':
+      return 'Pour tout le poste';
+    default:
+      return 'Pour ce sujet';
+  }
+}
+
 /** Libellé court du type proposé. */
 export function proposalKindLabel(type: string): string {
   switch (type) {
@@ -58,7 +70,7 @@ type CardState = 'loading' | 'PENDING' | 'APPLIED' | 'REFUSED' | 'unknown';
           {{ kind() }} proposé{{ proposal().type === 'REGLE' ? 'e' : '' }} · {{ proposal().name }}
         </p>
         <p class="proposal-card__where">
-          {{ proposal().scope === 'POSTE' ? 'Pour tout le poste' : 'Pour ce sujet' }} ·
+          {{ scopeLabel() }} ·
           <code>{{ proposal().path }}</code>{{ proposal().creates ? ' (nouveau fichier)' : '' }}
         </p>
         @if (proposal().reason) {
@@ -72,6 +84,17 @@ type CardState = 'loading' | 'PENDING' | 'APPLIED' | 'REFUSED' | 'unknown';
         @switch (state()) {
           @case ('APPLIED') {
             <p class="proposal-card__status proposal-card__status--applied">Appliqué — vaut dès le prochain message.</p>
+            @if (promotable()) {
+              @if (promoted()) {
+                <p class="proposal-card__status proposal-card__status--applied">Recopiée sur tous vos postes.</p>
+              } @else {
+                <div class="proposal-card__gestures">
+                  <button mat-stroked-button type="button" [disabled]="busy()" (click)="promote()">
+                    Valable sur tous mes postes
+                  </button>
+                </div>
+              }
+            }
           }
           @case ('REFUSED') {
             <p class="proposal-card__status">Refusé — rien n'a été écrit.</p>
@@ -210,6 +233,12 @@ export class ProposalCardComponent {
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
   readonly kind = computed(() => proposalKindLabel(this.proposal().type));
+  readonly scopeLabel = computed(() => proposalScopeLabel(this.proposal().scope));
+  /** F-266 : une règle de poste ou de sujet appliquée peut valoir sur tous mes postes. */
+  readonly promotable = computed(
+    () => !this.readOnly() && !!this.workspaceId() && this.proposal().type === 'REGLE' && this.proposal().scope !== 'COMPTE',
+  );
+  readonly promoted = signal(false);
 
   constructor() {
     // Le statut change après le tour : il se relit, il ne se fige pas dans la transcription.
@@ -237,6 +266,26 @@ export class ProposalCardComponent {
 
   refuse(): void {
     this.decide((ws, id) => this.proposals.refuse(ws, id));
+  }
+
+  /** F-266 : recopie la règle appliquée en portée « tous mes postes ». */
+  promote(): void {
+    const ws = this.workspaceId();
+    if (!ws || this.busy()) {
+      return;
+    }
+    this.busy.set(true);
+    this.error.set(null);
+    this.proposals.promote(ws, this.proposal().proposalId).subscribe({
+      next: () => {
+        this.busy.set(false);
+        this.promoted.set(true);
+      },
+      error: (err: HttpErrorResponse) => {
+        this.busy.set(false);
+        this.error.set(err?.error?.message ?? 'La recopie n’a pas abouti : réessaie.');
+      },
+    });
   }
 
   private decide(

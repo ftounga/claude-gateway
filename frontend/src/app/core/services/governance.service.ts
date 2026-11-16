@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 
 import {
   GovernanceDepositPlan,
+  AccountGovernanceRule,
   GovernanceEffective,
   GovernanceFileComparison,
   GovernanceHost,
@@ -71,6 +72,21 @@ export class GovernanceService {
   /** **Ce qui s'applique vraiment** sur ce poste (F-177 / SF-177-04) : règles, skills, retards de dépôt. */
   getEffective(hostRef: string): Observable<GovernanceEffective> {
     return this.http.get<GovernanceEffective>(`/api/governance/hosts/${hostRef}/effective`);
+  }
+
+  /** F-266 : les règles de tous mes postes. */
+  listAccountRules(): Observable<AccountGovernanceRule[]> {
+    return this.http.get<AccountGovernanceRule[]>('/api/governance/account-rules');
+  }
+
+  /** F-266 : retirer une règle de tous mes postes. */
+  deleteAccountRule(ruleId: string): Observable<void> {
+    return this.http.delete<void>(`/api/governance/account-rules/${ruleId}`);
+  }
+
+  /** F-266 : « Valable sur tous mes postes » — recopie la règle `title` du `GOUVERNANCE.md` du poste. */
+  promoteHostRule(hostRef: string, title: string): Observable<AccountGovernanceRule> {
+    return this.http.post<AccountGovernanceRule>(`/api/governance/hosts/${hostRef}/account-rules`, { title });
   }
 
   /** Ce qui s'applique à ce poste, ce qui pourrait s'y appliquer, et les dossiers concernés. */

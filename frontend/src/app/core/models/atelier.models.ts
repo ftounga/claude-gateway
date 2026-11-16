@@ -1561,7 +1561,8 @@ export interface AtelierProposalDiffLine {
 export interface AtelierGovernanceProposal {
   proposalId: string;
   type: 'REGLE' | 'SKILL' | 'GABARIT' | 'AGENT';
-  scope: 'POSTE' | 'SUJET';
+  /** F-266 : `COMPTE` = tous les postes du compte (règle rangée côté passerelle). */
+  scope: 'POSTE' | 'SUJET' | 'COMPTE';
   name: string;
   path: string;
   reason?: string | null;

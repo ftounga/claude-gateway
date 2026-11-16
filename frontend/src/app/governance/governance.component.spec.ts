@@ -110,6 +110,7 @@ describe('GovernanceComponent', () => {
       'apply',
       'deactivate',
       'getEffective',
+      'listAccountRules',
     ]);
     dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
 
@@ -121,6 +122,8 @@ describe('GovernanceComponent', () => {
     governance.getEffective.and.returnValue(
       of({ hostRef: 'h', hostRules: { state: 'ABSENT', excerpt: null, truncated: false }, subjects: [], skills: [], packages: [] }),
     );
+    // F-266 : aucune règle de tous mes postes ici.
+    governance.listAccountRules.and.returnValue(of([]));
     governance.preview.and.returnValue(of(plan));
     governance.activate.and.returnValue(of(emptyHost));
     governance.select.and.returnValue(of(selection));
