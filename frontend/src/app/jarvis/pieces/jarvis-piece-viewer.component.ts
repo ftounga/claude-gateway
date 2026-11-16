@@ -320,14 +320,14 @@ export class JarvisPieceViewerComponent implements OnDestroy {
         await this.loadImage(piece.open ?? piece.thumb ?? null, controller);
         break;
       case 'architecture-3d':
-      case 'schema-svg': {
-        await this.loadImage(piece.open ?? piece.thumb ?? null, controller);
-        const text = await this.client.text(piece.open, controller.signal);
-        if (!controller.signal.aborted && text && text.includes('<svg')) {
-          this.svg.set(svgTargets(text));
+        if (!this.allow3d()) {
+          this.store.count('a_2d_u'); // F-238 / SF-238-14 — l'univers est en 2D : le SVG cadré d'emblée
         }
+        await this.loadSvgSchema(piece, controller);
         break;
-      }
+      case 'schema-svg':
+        await this.loadSvgSchema(piece, controller);
+        break;
       case 'video':
       case 'audio': {
         const info = await this.client.json<VideoInfo>(videoInfoPath(piece.id), controller.signal);
@@ -369,6 +369,15 @@ export class JarvisPieceViewerComponent implements OnDestroy {
         break;
       default:
         break;
+    }
+  }
+
+  /** SF-237-07 — l'image du schéma et ses cibles nommées (le SVG analysé, jamais inséré). */
+  private async loadSvgSchema(piece: Piece, controller: AbortController): Promise<void> {
+    await this.loadImage(piece.open ?? piece.thumb ?? null, controller);
+    const text = await this.client.text(piece.open, controller.signal);
+    if (!controller.signal.aborted && text && text.includes('<svg')) {
+      this.svg.set(svgTargets(text));
     }
   }
 

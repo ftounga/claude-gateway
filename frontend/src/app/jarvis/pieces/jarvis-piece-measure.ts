@@ -28,6 +28,11 @@ export const PIECE_COUNT_KEYS = [
   // grand écran, comparaison, « et N autres », ordres voix / toucher, fermés < 2 s, « ancien », dégradés en 2D
   'c_set', 'c_n1', 'c_n2_6', 'c_n7p', 'c_tgt', 'c_cit', 'c_open', 'c_link', 'c_big', 'c_cmp', 'c_more',
   'c_voice', 'c_touch', 'c_close2s', 'c_old', 'c_2d',
+  // F-238 / SF-238-14 (cadrage §20) — l'architecture : scènes 3D posées, ouvertes d'initiative, secondes en 3D ;
+  // replis 2D par cause (univers 2D, graphe absent, WebGL, performance, « en 2D ») ; éclatements, replis, déplis,
+  // focus (zooms), flux allumés par un ordre, vues, phrases qui allument, cibles ambiguës (question posée)
+  'a_3d', 'a_ai', 'a_sec', 'a_2d_u', 'a_2d_g', 'a_2d_w', 'a_2d_p', 'a_2d_m',
+  'a_exp', 'a_fold', 'a_unf', 'a_foc', 'a_flow', 'a_view', 'a_narr', 'a_amb',
 ] as const;
 
 export type PieceCountKey = typeof PIECE_COUNT_KEYS[number];

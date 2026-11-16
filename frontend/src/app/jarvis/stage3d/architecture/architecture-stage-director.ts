@@ -431,6 +431,23 @@ export const NAV_MOVES = {
   view: 1600, focus: 1400, explode: 1200, fold: 700, unfold: 800, zoom: 600, orbit: 160,
 } as const;
 
+/** SF-238-14 — anti mal des transports (F-236 §7.3) : au plus un grand déplacement de caméra par 2,5 s. */
+export const CAMERA_PACE_MS = 2500;
+/** En deçà, un déplacement est un geste direct (orbite au doigt) : jamais ralenti. */
+export const MAJOR_MOVE_MS = 600;
+
+/**
+ * SF-238-14 — la durée d'un déplacement qui suit de près le précédent : il ne finit jamais avant 2,5 s après le début
+ * du précédent (la caméra ralentit au lieu d'enchaîner deux élans). Pur.
+ */
+export function paceMove(lastMajorAt: number | null, at: number, ms: number): number {
+  if (ms < MAJOR_MOVE_MS || lastMajorAt === null) {
+    return ms;
+  }
+  const since = at - lastMajorAt;
+  return since >= CAMERA_PACE_MS ? ms : Math.max(ms, CAMERA_PACE_MS - since);
+}
+
 /** SF-238-10 — la transition d'un changement d'état (T-A3 → T-A6, T-A9) ; 0 ms : seule la lumière change. */
 export function moveFor(prev: ArchState, next: ArchState): { ms: number; curve: MotionCurve | 'ressort' } {
   const folded = (s: ArchState): string => [...(s.folded ?? [])].sort().join();

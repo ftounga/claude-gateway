@@ -39,7 +39,11 @@ public final class RenderCounts {
             // F-248 / SF-248-01 (cadrage §7) — les pancartes : jeux montrés et leur taille, ciblés / cités, plein écran,
             // lien, grand écran, comparaison, « et N autres », ordres voix / toucher, fermées < 2 s, « ancien », 2D
             "c_set", "c_n1", "c_n2_6", "c_n7p", "c_tgt", "c_cit", "c_open", "c_link", "c_big", "c_cmp", "c_more",
-            "c_voice", "c_touch", "c_close2s", "c_old", "c_2d");
+            "c_voice", "c_touch", "c_close2s", "c_old", "c_2d",
+            // F-238 / SF-238-14 (cadrage §20) — l'architecture en 3D : scènes posées, d'initiative, secondes ; replis
+            // 2D par cause ; éclatements, replis, déplis, focus, flux, vues ; phrases qui allument ; cibles ambiguës
+            "a_3d", "a_ai", "a_sec", "a_2d_u", "a_2d_g", "a_2d_w", "a_2d_p", "a_2d_m",
+            "a_exp", "a_fold", "a_unf", "a_foc", "a_flow", "a_view", "a_narr", "a_amb");
 
     /** La colonne {@code jarvis_usage_days.render_counts} (varchar 2000 depuis F-248 / SF-248-01). */
     public static final int MAX_LENGTH = 2_000;
