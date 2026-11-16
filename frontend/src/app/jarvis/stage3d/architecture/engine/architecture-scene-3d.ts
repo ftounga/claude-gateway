@@ -46,7 +46,14 @@ export const LABELS_PHONE = 16;
 
 const PLATE_THICKNESS = 0.04;
 /** Intensité du bloom F-236 : liserés, filaments et particules brillent, sans noyer les icônes. */
-const BLOOM_STRENGTH = 0.75;
+/**
+ * Retour PO 2026-11-16 — « trop lumineux » : au repos la lumière est sobre (icônes AWS et libellés lisibles) ; la forte
+ * lueur est réservée à ce que Jarvis allume (narration, flux, héros).
+ */
+export const BLOOM_REST = 0.3;
+export const BLOOM_LIT = 0.65;
+/** Halo, socle et filaments d'un élément au repos : une fraction de la lueur d'un élément allumé. */
+export const REST_GLOW = 0.3;
 const SOCKET_RADIUS = 0.42;
 const HALO_RADIUS = 0.78;
 
@@ -419,7 +426,7 @@ export class ArchitectureSceneGraph {
     this.lengths = new Float32Array(layout.edges.length);
     const segments = layout.edges.reduce((sum, e) => sum + pathPoints(e) - 1, 0);
     this.filaments = this.buildLines(segments, { linewidth: options.phone ? 1.8 : 1.6 });
-    this.glows = this.buildLines(segments, { linewidth: options.phone ? 5 : 6, opacity: 0.4 });
+    this.glows = this.buildLines(segments, { linewidth: options.phone ? 4 : 5, opacity: 0.2 });
 
     // Particules : pool fixe.
     this.maxSparks = options.phone ? PARTICLES_PHONE : PARTICLES_PC;
@@ -455,8 +462,9 @@ export class ArchitectureSceneGraph {
     this.plateLabels = layout.plates.map((p) => (this.options.labelHost
       ? this.makeLabel(options.phone ? phoneZoneLabel(p.label) : p.label, 'zone', p.x0 + p.w / 2, p.z0 + p.d - 0.05,
         // SF-238-11 — au téléphone, les zones (courtes) passent avant les services au dé-chevauchement : le PO doit
-        // lire la structure ; un service masqué se lit à son icône et au toucher.
-        options.phone ? 0.5 + (p.w * p.d) / maxArea / 10 : 2 + (p.w * p.d) / maxArea) : null));
+        // lire la structure (la zone la plus large d'abord : l'AZ avant ses sous-réseaux) ; un service masqué se lit à
+        // son icône et au toucher.
+        options.phone ? 0.6 - (p.w * p.d) / maxArea / 10 : 2 + (p.w * p.d) / maxArea) : null));
     this.capsuleLabels = layout.plates.map((p) => this.makeLabel('', 'capsule', p.x0 + p.w / 2, p.z0 + p.d / 2, 0.5));
   }
 
@@ -569,15 +577,18 @@ export class ArchitectureSceneGraph {
       const z = f.nodeZ[i];
       const role = this.palette.get(plan.nodeRole[i]) as number[];
       this.disc(i * 3, x, alt + 0.001, z, HALO_RADIUS * 0.8 * s, a, 0, 0);
-      this.disc(i * 3 + 1, x, alt + 0.002, z, HALO_RADIUS * s, normal[0] * a, normal[1] * a,
-        normal[2] * a);
-      const k = 0.4 + 0.6 * a;
+      const on = plan.nodeLit[i] === 1;
+      const g = on ? a : a * REST_GLOW;
+      this.disc(i * 3 + 1, x, alt + 0.002, z, HALO_RADIUS * s, normal[0] * g, normal[1] * g,
+        normal[2] * g);
+      const k = on ? 0.4 + 0.6 * a : 0.15 + 0.25 * a;
       this.disc(i * 3 + 2, x, alt + 0.003, z, SOCKET_RADIUS * s, role[0] * k, role[1] * k, role[2] * k);
       const size = ICON_SIZE * s;
       this.matrix.makeScale(size, size, size);
       this.matrix.setPosition(x, alt + f.float, z);
       this.icons.setMatrixAt(i, this.matrix);
-      icon[i] = Math.min(1, s) * (a >= 0.45 ? 1 : 0.55);
+      // Icônes AWS à leurs couleurs officielles, pleinement lisibles ; seulement atténuées hors du focus.
+      icon[i] = Math.min(1, s) * (a >= HOLO_ALPHA.context ? 1 : 0.7);
     }
     this.discs.instanceMatrix.needsUpdate = true;
     if (this.discs.instanceColor) {
@@ -902,7 +913,8 @@ export class ArchitectureSceneGraph {
         const u = len > 0 ? Math.max(0, Math.min(1, (traced - walked) / len)) : (traced > walked ? 1 : 0);
         const hot = lit && s - 1 < swept;
         const role = hot ? white : cream;
-        const vis = traced > walked ? (hot || !lit ? a : Math.min(a, HOLO_ALPHA.active)) : 0;
+        const base = traced > walked ? (hot || !lit ? a : Math.min(a, HOLO_ALPHA.active)) : 0;
+        const vis = lit ? base : base * (0.35 + 0.65 * REST_GLOW);
         const x1 = path[o0] + (path[o1] - path[o0]) * u;
         const y1 = path[o0 + 1] + (path[o1 + 1] - path[o0 + 1]) * u;
         const z1 = path[o0 + 2] + (path[o1 + 2] - path[o0 + 2]) * u;
@@ -1035,6 +1047,8 @@ export class ArchitectureEngine {
   /** SF-238-10 — le déplacement en cours (T-A3 → T-A6, T-A9) et la caméra affichée (point de départ du suivant). */
   private move: ArchMove | null = null;
   private readonly cameraNow: ArchCamera;
+  /** Retour PO 2026-11-16 — intensité courante de la lueur (repos ⇄ allumé). */
+  private bloom = BLOOM_REST;
   /** SF-238-10 — l'état venu de la navigation, et ce que la narration y allume. */
   private base: ArchState;
   private narrated: { lit: readonly string[]; flow: readonly string[] } = { lit: [], flow: [] };
@@ -1256,7 +1270,10 @@ export class ArchitectureEngine {
       this.camera.lookAt(this.look);
     }
     this.renderer.info.reset();
-    this.post.render(BLOOM_STRENGTH, t);
+    // La lueur monte quand Jarvis allume quelque chose, redescend au repos (glissé, sans allocation).
+    const target = this.plan.state.lit.length > 0 || (this.plan.state.flow?.length ?? 0) > 0 ? BLOOM_LIT : BLOOM_REST;
+    this.bloom += (target - this.bloom) * 0.08;
+    this.post.render(this.bloom, t);
     // Les icônes par-dessus la lumière (hors bloom), comptées dans le budget d'appels.
     const before = this.renderer.info.render.calls;
     this.renderer.autoClear = false;

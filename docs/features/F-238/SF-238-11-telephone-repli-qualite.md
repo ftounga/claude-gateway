@@ -110,3 +110,14 @@ SF-238-10 (visionneuse, `PieceNav.arch`) : livrée juste avant. Questions ouvert
   reprises après).
 - **D-11-6** p50 ≥ 50 i/s au téléphone : non mesurable ici (rendu logiciel sans GPU) ; la qualité adaptative et la
   mesure `a_2d_p` (SF-238-14) le diront à J+7 sur le téléphone du PO.
+
+## Retours du PO (2026-11-16) intégrés avant fusion
+- **R1 — gestes obligatoires** (cadrage P4) : glisser (souris ou doigt) = pivoter ; molette et **pincement à deux
+  doigts** (écran tactile PC et téléphone) = zoomer / dézoomer ; boutons « + », « − », **« Recentrer »** (et la voix :
+  « recentre », « recadre ») = vue d'ensemble sans focus, orbite et zoom remis à zéro. Lecture des pointeurs pure
+  (`jarvis-piece-gestures.ts`, tests) ; banc `/jarvis` : rotation, pincement et recentrage simulés (souris, CDP
+  tactile à deux doigts), captures avant / après.
+- **R2 — trop lumineux** : au repos, lueur sobre — bloom 0,75 → 0,30 (0,65 seulement quand Jarvis allume quelque
+  chose, montée et descente glissées), halos et anneaux sous les icônes à 30 %, filaments au repos atténués, halo des
+  liaisons 0,4 → 0,2 ; icônes AWS toujours à pleine opacité (couleurs officielles, aucune lueur par-dessus) ;
+  libellés sur verre navy 92 %. La forte lueur est réservée à la narration, aux flux et au héros.

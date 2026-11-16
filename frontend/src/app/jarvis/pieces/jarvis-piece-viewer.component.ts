@@ -55,7 +55,7 @@ interface PageInfo {
             @if (show3d()) {
               <!-- F-238 / SF-238-10 — l'architecture en 3D, au centre ; le SVG cadré reste son repli. -->
               <app-jarvis-piece-architecture class="pv__arch pv__fade" [piece]="p" [nav]="nav()" [spoken]="spoken()"
-                                             [phone]="phone()" (fallback)="archFallback.set($event)" />
+                                             [phone]="phone()" [low]="low()" (fallback)="archFallback.set($event)" />
             } @else {
               <div class="pv__fade"><ng-container [ngTemplateOutlet]="svgSchema" /></div>
               @if (allow3d() && !archFallback()) {
@@ -189,6 +189,8 @@ export class JarvisPieceViewerComponent implements OnDestroy {
   readonly spoken = input<string>('');
   /** F-238 / SF-238-10 — téléphone : plateaux éclatés plus bas, étiquettes du focus (cadrage §14). */
   readonly phone = input(false);
+  /** SF-238-11 — qualité basse de l'écran : la scène d'architecture part au niveau bas. */
+  readonly low = input(false);
   /** F-238 / SF-238-11 — la 3D a renoncé pour cette pièce (graphe absent, WebGL, performance) : le SVG reprend. */
   readonly archFallback = signal<'graph' | 'webgl' | 'perf' | null>(null);
   /** F-238 / SF-238-11 — la table de vérité du rendu (cadrage §14) : 3D, ou le SVG cadré et pourquoi. */

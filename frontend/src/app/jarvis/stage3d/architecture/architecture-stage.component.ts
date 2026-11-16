@@ -63,7 +63,7 @@ import type { ArchitectureEngine } from './engine/architecture-scene-3d';
       color: var(--cg-holo-text, #F0954F); }
     /* Verre navy sous chaque libellé : une liaison qui passe dessous ne le rend jamais illisible (≥ 5,8:1). */
     :host ::ng-deep [class*='jv3d-label--arch-'] { padding: 1px 6px; border-radius: 2px; text-shadow: none;
-      background: color-mix(in srgb, var(--cg-navy, #0B1020) 78%, transparent); }
+      background: color-mix(in srgb, var(--cg-navy, #0B1020) 92%, transparent); }
     :host ::ng-deep .jv3d-label.is-masked { visibility: hidden; }
     :host ::ng-deep .jv3d-label--arch-zone { font-size: 10px; letter-spacing: 0.12em; }
     :host ::ng-deep .jv3d-label--arch-service { font-family: var(--cg-font-body); font-weight: 500;

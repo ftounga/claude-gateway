@@ -41,7 +41,7 @@ const files = http(async (req, res) => {
     res.end();
   }
 });
-await new Promise((r) => files.listen(4356, r));
+await new Promise((r) => files.listen(4366, r));
 await mkdir(out, { recursive: true });
 
 const now = Date.now();
@@ -119,13 +119,21 @@ async function run({ width, height, tag }) {
     }
     return req.continue();
   });
-  await page.goto(`http://localhost:4356/jarvis?sujet=${DATA_PLATFORM}`, { waitUntil: 'load' });
+  await page.goto(`http://localhost:4366/jarvis?sujet=${DATA_PLATFORM}`, { waitUntil: 'load' });
   await sleep(7000);
+  if (process.env.BANC_LOW === '1') {
+    // Qualité basse de l'écran (ce que la séance du PO a parfois) : la scène d'architecture part au niveau bas.
+    await page.evaluate(() => {
+      const stage = document.querySelector('app-jarvis-stage-3d');
+      const cmp = stage && window.ng.getComponent(stage);
+      cmp?.level.set('low');
+    });
+  }
   const app = () => window.ng.getComponent(document.querySelector('app-jarvis'));
   const say = (text) => page.evaluate((a, t) => (0, eval)(a)().handle(t), app.toString(), text);
   const shot = async (name, wait) => {
     await sleep(wait);
-    await page.screenshot({ path: join(out, `${name}-${tag}.png`) });
+    await page.screenshot({ path: join(out, `${name}-${tag}${process.env.BANC_LOW === '1' ? '-bas' : ''}.png`) });
     return measure(page);
   };
 
@@ -149,6 +157,42 @@ async function run({ width, height, tag }) {
     const seen = held.filter((z) => a.zones.some((l) => (l ?? '').toLowerCase() === z.toLowerCase()));
     note(seen.length === held.length, `${tag} libellés des zones porteuses visibles : ${seen.length}/${held.length} (${a.zones.join(' | ')})`);
   }
+
+  // Retour PO 2026-11-16 — gestes : pivoter (glisser), pincer à deux doigts, recentrer.
+  const cam = () => page.evaluate(() => {
+    const v = document.querySelector('app-jarvis-piece-architecture');
+    const nav = window.ng.getComponent(v).nav();
+    return { az: nav.arch.orbit.az, el: nav.arch.orbit.el, zoom: nav.zoom };
+  });
+  const box = await page.evaluate(() => {
+    const r = document.querySelector('app-jarvis-piece-architecture .pa').getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  });
+  const c0 = await cam();
+  await page.mouse.move(box.x, box.y);
+  await page.mouse.down();
+  for (let i = 1; i <= 12; i++) {
+    await page.mouse.move(box.x - i * 15, box.y + i * 3);
+  }
+  await page.mouse.up();
+  const r1 = await shot('sf11-g1-pivote', 900);
+  const c1 = await cam();
+  note(c1.az !== c0.az, `${tag} glisser fait pivoter (azimut ${c0.az.toFixed(2)} → ${c1.az.toFixed(2)})`);
+  const cdp = await page.createCDPSession();
+  const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map(([x, y], id) => ({ x, y, id })) });
+  await touch('touchStart', [[box.x - 40, box.y], [box.x + 40, box.y]]);
+  for (let i = 1; i <= 10; i++) {
+    await touch('touchMove', [[box.x - 40 - i * 12, box.y], [box.x + 40 + i * 12, box.y]]);
+  }
+  await touch('touchEnd', []);
+  const r2 = await shot('sf11-g2-pince', 900);
+  const c2 = await cam();
+  note(c2.zoom > c1.zoom, `${tag} pincer (écarter) zoome (×${c1.zoom} → ×${c2.zoom})`);
+  await page.evaluate(() => [...document.querySelectorAll('.pa__btn')].find((b) => b.textContent.trim() === 'Recentrer')?.click());
+  await shot('sf11-g3-recentre', 1800);
+  const c3 = await cam();
+  note(c3.zoom === 1 && c3.az === 0, `${tag} « Recentrer » remet la vue d'ensemble (×${c3.zoom}, azimut ${c3.az})`);
+  void r1; void r2;
 
   await say('Zoome sur la base');
   const b = await shot('sf10-2-focus-base', 2600);

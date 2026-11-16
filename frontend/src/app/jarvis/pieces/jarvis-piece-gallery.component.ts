@@ -173,7 +173,7 @@ const SWIPE_PX = 60;
             <h2 class="pg__panel-title">{{ nav().selected }}. {{ piece.title }}</h2>
             <!-- SF-237-06 — le contenu réel, par la visionneuse de son type ; F-238 / SF-238-10 : l'architecture en 3D. -->
             <app-jarvis-piece-viewer [piece]="piece" [nav]="nav()" [jarvisState]="jarvisState()" [allow3d]="arch3d()"
-                                     [spoken]="spoken()" [phone]="phone()" />
+                                     [spoken]="spoken()" [phone]="phone()" [low]="lowQuality()" />
             @if (piece.caption && piece.kind !== 'TEXT') {
               <p class="pg__caption">{{ piece.caption }}</p>
             }
