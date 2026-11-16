@@ -8,7 +8,7 @@ F-238 — Architecture en 3D (visionneuse three.js dans Jarvis) — correctif ap
 `retours-po-2026-11-16` (SF-238-10 navigation, SF-238-11 gestes)
 
 ## Statut
-in-progress
+done
 
 ## Date de création
 2026-11-16
