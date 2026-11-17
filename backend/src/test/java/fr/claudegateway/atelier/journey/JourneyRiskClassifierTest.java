@@ -200,4 +200,27 @@ class JourneyRiskClassifierTest {
         assertThat(JourneyRiskClassifier.classify("capturer_preuves", mapper.createObjectNode()))
                 .isEqualTo(Risk.REVERSIBLE);
     }
+
+    @Test
+    @DisplayName("F-268 : une preuve qui ne montre que des fichiers est une LECTURE ; une commande fixe la classe")
+    void fileProofIsARead() {
+        ObjectMapper mapper = new ObjectMapper();
+        ObjectNode files = mapper.createObjectNode();
+        files.putArray("fichiers").addObject().put("chemin", "infra/main.tf").putArray("surligner").add(12);
+        assertThat(JourneyRiskClassifier.classify("capturer_preuves", files)).isEqualTo(Risk.LECTURE);
+        ObjectNode filesEmptyCommands = files.deepCopy();
+        filesEmptyCommands.putArray("commandes");
+        assertThat(JourneyRiskClassifier.classify("capturer_preuves", filesEmptyCommands)).isEqualTo(Risk.LECTURE);
+        // Les fichiers ne blanchissent pas une commande qui modifie.
+        ObjectNode mixed = files.deepCopy();
+        mixed.putArray("commandes").add("terraform apply -auto-approve");
+        assertThat(JourneyRiskClassifier.classify("capturer_preuves", mixed))
+                .isIn(Risk.REVERSIBLE, Risk.EXTERNE);
+        ObjectNode emptyFiles = mapper.createObjectNode();
+        emptyFiles.putArray("fichiers");
+        assertThat(JourneyRiskClassifier.classify("capturer_preuves", emptyFiles)).isEqualTo(Risk.REVERSIBLE);
+        // Les écritures restent bloquées comme avant (la porte n'est pas affaiblie).
+        assertThat(JourneyRiskClassifier.classify("write_file", mapper.createObjectNode().put("path", "notes/rendu.png")))
+                .isEqualTo(Risk.REVERSIBLE);
+    }
 }

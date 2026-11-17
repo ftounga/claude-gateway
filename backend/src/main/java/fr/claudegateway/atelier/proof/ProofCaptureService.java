@@ -65,64 +65,307 @@ public class ProofCaptureService {
     }
 
     /**
+     * Un fichier à photographier (F-268 / SF-268-02) : son contenu RÉEL, lu sur le poste au moment de la
+     * capture, et ce que l'agent veut y montrer.
+     *
+     * @param path       chemin relatif au projet
+     * @param content    contenu lu ({@code null} si la lecture a échoué)
+     * @param truncated  vrai si le poste a tronqué la lecture
+     * @param from       première ligne demandée (facultative)
+     * @param to         dernière ligne demandée (facultative)
+     * @param highlights lignes à surligner
+     * @param note       annotation courte (facultative)
+     * @param error      raison de l'échec de lecture ({@code null} si lu)
+     */
+    public record FileSource(String path, String content, boolean truncated, Integer from, Integer to,
+            List<Integer> highlights, String note, String error) {
+    }
+
+    /**
      * Range les captures d'une session.
      *
      * @param report relevé JSON du runner ({@code proof_run})
      */
     public Result capture(UUID userId, UUID workspaceId, String callId, String title, String step,
             String report) {
-        JsonNode raw;
-        try {
-            raw = mapper.readTree(report == null ? "" : report);
-        } catch (JsonProcessingException e) {
-            raw = null;
-        }
-        if (raw == null || !raw.path("commands").isArray() || raw.path("commands").isEmpty()) {
-            return new Result(null, "Le poste n'a rendu aucun relevé exploitable : aucune capture.");
-        }
-        ObjectNode session = masked(raw);
+        return capture(userId, workspaceId, callId, title, step, report == null ? "" : report, List.of());
+    }
+
+    /**
+     * Range les captures d'un appel : la session de commandes (si {@code report} n'est pas {@code null})
+     * puis les extraits de fichiers (F-268), dans un même bloc, avec des identifiants de même nature.
+     *
+     * @param report relevé JSON du runner ({@code proof_run}), {@code null} s'il n'y a pas de commande
+     * @param files  fichiers lus sur le poste (vide s'il n'y en a pas)
+     */
+    public Result capture(UUID userId, UUID workspaceId, String callId, String title, String step,
+            String report, List<FileSource> files) {
         String cleanTitle = clip(title == null || title.isBlank() ? "Preuves" : title.strip(), MAX_TITLE);
         String cleanStep = step == null || step.isBlank() ? null : clip(step.strip(), MAX_STEP);
-
-        List<ProofBlock.Command> commands = commandsOf(session);
-        String commandsJson;
-        try {
-            commandsJson = mapper.writeValueAsString(commands);
-        } catch (JsonProcessingException e) {
-            commandsJson = "[]";
-        }
-        List<TerminalShotRenderer.Shot> shots;
-        String renderNote = null;
-        try {
-            shots = renderer.shoot(session);
-        } catch (DiagramRejectedException | DiagramRendererUnavailableException e) {
-            shots = List.of();
-            renderNote = "Les images n'ont pas pu être produites (" + e.getMessage()
-                    + ") ; les sorties ci-dessous sont celles du poste.";
-        }
-        String host = text(session, "host");
-        String os = text(session, "os");
-        String shell = text(session, "execShell").isBlank() ? text(session, "shell") : text(session, "execShell");
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         List<ProofBlock.Capture> captures = new ArrayList<>();
-        int position = 0;
-        for (TerminalShotRenderer.Shot shot : shots) {
-            UUID id = UUID.randomUUID();
-            String key = prefixOf(userId, workspaceId) + hex(id) + ".png";
-            storage.putFile(key, shot.png(), "image/png");
-            repository.save(ProofCapture.builder()
-                    .id(id).userId(userId).workspaceId(workspaceId).callId(clip(callId, 128))
-                    .title(cleanTitle).step(cleanStep).position(position++)
-                    .host(clip(host, 256)).os(clip(os, 16)).shell(clip(shell, 32))
-                    .width(shot.width()).height(shot.height())
-                    .commandsJson(clip(commandsJson, 200_000))
-                    .storageKey(key).capturedAt(now)
-                    .build());
-            captures.add(new ProofBlock.Capture(hex(id), shot.width(), shot.height()));
+        StringBuilder text = new StringBuilder();
+
+        // ---- la session de commandes (F-212)
+        ObjectNode session = null;
+        List<ProofBlock.Command> commands = List.of();
+        String host = "";
+        String os = "";
+        String shell = "";
+        List<ProofBlock.Capture> terminalCaptures = new ArrayList<>();
+        String renderNote = null;
+        if (report != null) {
+            JsonNode raw;
+            try {
+                raw = mapper.readTree(report);
+            } catch (JsonProcessingException e) {
+                raw = null;
+            }
+            if (raw == null || !raw.path("commands").isArray() || raw.path("commands").isEmpty()) {
+                text.append("Le poste n'a rendu aucun relevé exploitable : aucune capture de commande.\n");
+            } else {
+                session = masked(raw);
+                commands = commandsOf(session);
+                String commandsJson;
+                try {
+                    commandsJson = mapper.writeValueAsString(commands);
+                } catch (JsonProcessingException e) {
+                    commandsJson = "[]";
+                }
+                List<TerminalShotRenderer.Shot> shots;
+                try {
+                    shots = renderer.shoot(session);
+                } catch (DiagramRejectedException | DiagramRendererUnavailableException e) {
+                    shots = List.of();
+                    renderNote = "Les images n'ont pas pu être produites (" + e.getMessage()
+                            + ") ; les sorties ci-dessous sont celles du poste.";
+                }
+                host = text(session, "host");
+                os = text(session, "os");
+                shell = text(session, "execShell").isBlank() ? text(session, "shell") : text(session, "execShell");
+                for (TerminalShotRenderer.Shot shot : shots) {
+                    terminalCaptures.add(store(userId, workspaceId, callId, cleanTitle, cleanStep, captures.size(),
+                            host, os, shell, shot, commandsJson, now));
+                    captures.add(terminalCaptures.get(terminalCaptures.size() - 1));
+                }
+            }
         }
+
+        // ---- les fichiers (F-268)
+        List<ProofBlock.FileShot> fileShots = new ArrayList<>();
+        String fileText = files == null || files.isEmpty() ? ""
+                : captureFiles(userId, workspaceId, callId, cleanTitle, cleanStep, files, captures, fileShots, now);
+
         ProofBlock block = captures.isEmpty() ? null
-                : new ProofBlock(cleanTitle, cleanStep, host, os, shell, List.copyOf(captures), commands);
-        return new Result(block, modelText(cleanTitle, captures, session, renderNote));
+                : new ProofBlock(cleanTitle, cleanStep, host, os, shell, List.copyOf(captures), commands,
+                        fileShots.isEmpty() ? null : List.copyOf(fileShots));
+        if (session != null) {
+            text.append(modelText(cleanTitle, terminalCaptures, session, renderNote)).append('\n');
+        }
+        text.append(fileText);
+        if (!captures.isEmpty() && (session == null ? 0 : 1) + (fileShots.isEmpty() ? 0 : 1) > 1) {
+            text.append("Toutes les captures de cet appel : preuves=")
+                    .append(String.join(",", captures.stream().map(ProofBlock.Capture::id).toList())).append('\n');
+        }
+        return new Result(block, text.toString().strip());
+    }
+
+    /** Range une image et sa ligne {@code proof_captures} ; rend sa référence pour le bloc. */
+    private ProofBlock.Capture store(UUID userId, UUID workspaceId, String callId, String title, String step,
+            int position, String host, String os, String shell, TerminalShotRenderer.Shot shot, String detailsJson,
+            OffsetDateTime now) {
+        UUID id = UUID.randomUUID();
+        String key = prefixOf(userId, workspaceId) + hex(id) + ".png";
+        storage.putFile(key, shot.png(), "image/png");
+        repository.save(ProofCapture.builder()
+                .id(id).userId(userId).workspaceId(workspaceId).callId(clip(callId, 128))
+                .title(title).step(step).position(position)
+                .host(clip(host, 256)).os(clip(os, 16)).shell(clip(shell, 32))
+                .width(shot.width()).height(shot.height())
+                .commandsJson(clip(detailsJson, 200_000))
+                .storageKey(key).capturedAt(now)
+                .build());
+        return new ProofBlock.Capture(hex(id), shot.width(), shot.height());
+    }
+
+    // ------------------------------------------------------------------ fichiers (F-268)
+
+    /** Lignes montrées par image (borne du rendu). */
+    static final int MAX_FILE_LINES = 80;
+    /** Fenêtre par défaut sans plage ni surlignage. */
+    static final int DEFAULT_FILE_LINES = 40;
+    /** Contexte autour des lignes surlignées. */
+    static final int HIGHLIGHT_CONTEXT = 6;
+    /** Fichiers par appel. */
+    public static final int MAX_FILES = 4;
+    private static final int MAX_NOTE = 200;
+    private static final int MODEL_LINE_CHARS = 200;
+
+    /** Fenêtre montrée d'un fichier : [first, last] (1-based, inclusifs). */
+    record Window(int first, int last) {
+    }
+
+    /**
+     * La fenêtre montrée : la plage demandée (bornée à {@value #MAX_FILE_LINES} lignes), sinon les lignes
+     * surlignées et {@value #HIGHLIGHT_CONTEXT} lignes de contexte, sinon le début du fichier.
+     */
+    static Window windowOf(int total, Integer from, Integer to, List<Integer> highlights) {
+        int count = Math.max(1, total);
+        List<Integer> hl = highlights == null ? List.of()
+                : highlights.stream().filter(n -> n != null && n >= 1 && n <= count).sorted().toList();
+        int first;
+        int last;
+        if (from != null || to != null) {
+            first = Math.max(1, Math.min(count, from == null ? 1 : from));
+            last = Math.max(first, Math.min(count, to == null ? first + MAX_FILE_LINES - 1 : to));
+        } else if (!hl.isEmpty()) {
+            first = Math.max(1, hl.get(0) - HIGHLIGHT_CONTEXT);
+            last = Math.min(count, hl.get(hl.size() - 1) + HIGHLIGHT_CONTEXT);
+        } else {
+            first = 1;
+            last = Math.min(count, DEFAULT_FILE_LINES);
+        }
+        if (last - first + 1 > MAX_FILE_LINES) {
+            if (from == null && !hl.isEmpty()) {
+                first = Math.max(1, hl.get(0) - 3);
+            }
+            last = first + MAX_FILE_LINES - 1;
+        }
+        return new Window(first, Math.min(count, last));
+    }
+
+    /** Secrets d'un fichier masqués LIGNE À LIGNE (les numéros de ligne restent justes). */
+    List<String> maskedLines(String content) {
+        String normalized = content.replace("\r\n", "\n");
+        if (normalized.endsWith("\n")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        String[] raw = normalized.split("\n", -1);
+        List<String> lines = new ArrayList<>(raw.length);
+        boolean inKey = false;
+        for (String line : raw) {
+            if (line.contains("-----BEGIN") && line.contains("PRIVATE KEY-----")) {
+                inKey = !line.contains("-----END");
+                lines.add(McpSecretFilter.MASK);
+                continue;
+            }
+            if (inKey) {
+                inKey = !(line.contains("-----END") && line.contains("PRIVATE KEY-----"));
+                lines.add(McpSecretFilter.MASK);
+                continue;
+            }
+            lines.add(maskAssignment(secrets.maskString(line)));
+        }
+        return lines;
+    }
+
+    /** Clé sensible (mot de passe, secret, jeton, clé d'accès…) à laquelle on affecte une valeur. */
+    private static final java.util.regex.Pattern SECRET_KEY = java.util.regex.Pattern.compile(
+            "(?i)([\\w.-]*(?:password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key"
+                    + "|credentials?)[\\w.-]*[\"']?\\s*[=:]\\s*)(\"[^\"]{4,}\"|'[^']{4,}'|[^\\s\"'#{$][^\\s#]{3,})");
+
+    /**
+     * Valeur littérale d'une clé sensible masquée ({@code password = "x"}, {@code TOKEN=abc}) ; une
+     * référence ({@code var.db_password}, {@code ${...}}) reste visible : c'est elle qui prouve.
+     */
+    static String maskAssignment(String line) {
+        java.util.regex.Matcher m = SECRET_KEY.matcher(line);
+        StringBuilder out = new StringBuilder();
+        while (m.find()) {
+            String value = m.group(2);
+            boolean quoted = value.startsWith("\"") || value.startsWith("'");
+            String inner = quoted ? value.substring(1, value.length() - 1) : value;
+            boolean reference = inner.startsWith("${") || inner.matches("(?:var|local|module|data|each|self)\\..*")
+                    || McpSecretFilter.MASK.equals(inner);
+            String replacement = reference ? m.group(0)
+                    : m.group(1) + (quoted ? value.charAt(0) + McpSecretFilter.MASK + value.charAt(0) : McpSecretFilter.MASK);
+            m.appendReplacement(out, java.util.regex.Matcher.quoteReplacement(replacement));
+        }
+        m.appendTail(out);
+        return out.toString();
+    }
+
+    private String captureFiles(UUID userId, UUID workspaceId, String callId, String title, String step,
+            List<FileSource> files, List<ProofBlock.Capture> captures, List<ProofBlock.FileShot> fileShots,
+            OffsetDateTime now) {
+        StringBuilder text = new StringBuilder();
+        ArrayNode requests = mapper.createArrayNode();
+        List<FileSource> rendered = new ArrayList<>();
+        List<Window> windows = new ArrayList<>();
+        List<List<String>> shown = new ArrayList<>();
+        List<Integer> totals = new ArrayList<>();
+        List<List<Integer>> highlightsShown = new ArrayList<>();
+        for (FileSource file : files.subList(0, Math.min(files.size(), MAX_FILES))) {
+            if (file.error() != null || file.content() == null) {
+                text.append("Fichier « ").append(file.path()).append(" » non lu : ")
+                        .append(file.error() == null ? "lecture impossible" : file.error()).append('\n');
+                continue;
+            }
+            List<String> lines = maskedLines(file.content());
+            Window window = windowOf(lines.size(), file.from(), file.to(), file.highlights());
+            List<String> slice = lines.subList(window.first() - 1, window.last());
+            List<Integer> hl = file.highlights() == null ? List.of() : file.highlights().stream()
+                    .filter(n -> n != null && n >= window.first() && n <= window.last()).distinct().sorted().toList();
+            ObjectNode request = mapper.createObjectNode();
+            request.put("path", file.path());
+            request.put("firstLine", window.first());
+            ArrayNode linesNode = request.putArray("lines");
+            slice.forEach(linesNode::add);
+            ArrayNode hlNode = request.putArray("highlights");
+            hl.forEach(hlNode::add);
+            if (file.note() != null && !file.note().isBlank()) {
+                request.put("note", clip(secrets.maskString(file.note().strip()), MAX_NOTE));
+            }
+            request.put("totalLines", lines.size());
+            requests.add(request);
+            rendered.add(file);
+            windows.add(window);
+            shown.add(slice);
+            totals.add(lines.size());
+            highlightsShown.add(hl);
+        }
+        if (rendered.isEmpty()) {
+            return text.toString();
+        }
+        List<TerminalShotRenderer.Shot> shots;
+        try {
+            shots = renderer.shootFiles(mapper.createObjectNode().set("files", requests));
+        } catch (DiagramRejectedException | DiagramRendererUnavailableException e) {
+            return text.append("Les images des fichiers n'ont pas pu être produites (").append(e.getMessage())
+                    .append(").\n").toString();
+        }
+        List<String> ids = new ArrayList<>();
+        for (int i = 0; i < Math.min(shots.size(), rendered.size()); i++) {
+            FileSource file = rendered.get(i);
+            Window window = windows.get(i);
+            ObjectNode details = mapper.createObjectNode();
+            details.put("file", file.path());
+            details.put("firstLine", window.first());
+            details.put("lastLine", window.last());
+            ProofBlock.Capture capture = store(userId, workspaceId, callId, title, step, captures.size(), "", "",
+                    "", shots.get(i), details.toString(), now);
+            captures.add(capture);
+            ids.add(capture.id());
+            fileShots.add(new ProofBlock.FileShot(capture.id(), clip(file.path(), 512), window.first(), window.last(),
+                    totals.get(i), highlightsShown.get(i)));
+            text.append("Capture du fichier « ").append(file.path()).append(" », lignes ").append(window.first())
+                    .append("–").append(window.last()).append(" sur ").append(totals.get(i))
+                    .append(file.truncated() ? " (lecture tronquée par le poste)" : "")
+                    .append(" — identifiant ").append(capture.id()).append(".\n");
+            List<Integer> hl = highlightsShown.get(i);
+            if (hl.isEmpty()) {
+                text.append("  Aucune ligne surlignée.\n");
+            }
+            // Ce qui est surligné, pour que l'agent vérifie qu'il montre la bonne ligne (5 au plus).
+            for (Integer n : hl.subList(0, Math.min(5, hl.size()))) {
+                text.append("  surlignée ").append(n).append(" : ")
+                        .append(clip(shown.get(i).get(n - window.first()).strip(), MODEL_LINE_CHARS)).append('\n');
+            }
+        }
+        if (!ids.isEmpty()) {
+            text.append("Pour joindre ces fichiers à un message : preuves=").append(String.join(",", ids)).append('\n');
+        }
+        return text.toString();
     }
 
     /** L'image d'une capture de ce compte et de ce terminal, ou vide. */

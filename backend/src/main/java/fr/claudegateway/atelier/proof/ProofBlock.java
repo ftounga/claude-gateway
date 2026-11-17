@@ -16,14 +16,30 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
  * @param shell    shell qui a exécuté la session
  * @param captures les images, dans l'ordre
  * @param commands les commandes de la session et leurs relevés
+ * @param files    les extraits de fichiers photographiés (F-268), {@code null} sur un bloc antérieur
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record ProofBlock(String title, String step, String host, String os, String shell,
-        List<Capture> captures, List<Command> commands) {
+        List<Capture> captures, List<Command> commands, List<FileShot> files) {
 
     /** Une image : son identifiant (route {@code GET /workspaces/{id}/proofs/{captureId}}) et sa taille. */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Capture(String id, Integer width, Integer height) {
+    }
+
+    /**
+     * Un extrait de fichier photographié au rendu éditeur (F-268 / SF-268-02) : relevés pour l'interface.
+     *
+     * @param captureId  l'image qui le montre
+     * @param path       chemin relatif au projet
+     * @param firstLine  première ligne montrée
+     * @param lastLine   dernière ligne montrée
+     * @param totalLines lignes du fichier (lues)
+     * @param highlights lignes surlignées
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record FileShot(String captureId, String path, int firstLine, int lastLine, int totalLines,
+            List<Integer> highlights) {
     }
 
     /** Une commande de la session : relevés du poste. */

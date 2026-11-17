@@ -834,7 +834,8 @@ public class AtelierChatService implements RelayInterruptTarget {
                     + "« demandé ».\n"
                     // F-212 / SF-212-03 : les captures de preuve jointes à l'encart qu'elles prouvent.
                     + "- Si des captures de preuve (capturer_preuves) prouvent ce message, ajoute leurs "
-                    + "identifiants à la balise : ```message preuves=<id1>,<id2> (avec attente= au besoin).\n\n";
+                    + "identifiants à la balise : ```message preuves=<id1>,<id2> (avec attente= au besoin) ; "
+                    + "captures terminal et fichiers se mélangent, dans l'ordre voulu.\n\n";
     /**
      * Annonce de destination + demande si ambigu (F-141 / SF-141-01, cadrage §4.3 et §2). Ajouté au
      * rôle sur les <b>deux</b> cibles, à la suite des doctrines de carte. La nuance clé du cadrage :
@@ -6399,10 +6400,6 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (proofCaptureService == null) {
             return ToolOutcome.error("Les captures de preuve ne sont pas disponibles ici. Prouve par bash.");
         }
-        java.util.Set<String> caps = runnerHostService.declaredCapabilities(workspace.getHostId());
-        if (caps == null || !caps.contains(fr.claudegateway.atelier.proof.ProofToolCatalog.CAPABILITY)) {
-            return ToolOutcome.error(fr.claudegateway.atelier.proof.ProofToolCatalog.UPDATE_RUNNER_MESSAGE);
-        }
         JsonNode input = call.input();
         JsonNode list = input == null ? null : input.get("commandes");
         List<String> commands = new ArrayList<>();
@@ -6413,9 +6410,32 @@ public class AtelierChatService implements RelayInterruptTarget {
                 }
             }
         }
-        if (commands.isEmpty() || commands.size() > fr.claudegateway.atelier.proof.ProofToolCatalog.MAX_COMMANDS) {
-            return ToolOutcome.error("Donne 1 à " + fr.claudegateway.atelier.proof.ProofToolCatalog.MAX_COMMANDS
-                    + " commandes non vides dans « commandes ».");
+        // F-268 / SF-268-02 : les fichiers à montrer au rendu éditeur (une lecture, jamais une commande).
+        JsonNode fileList = input == null ? null : input.get("fichiers");
+        List<JsonNode> files = new ArrayList<>();
+        if (fileList != null && fileList.isArray()) {
+            for (JsonNode item : fileList) {
+                if (item != null && item.isObject() && !item.path("chemin").asText("").isBlank()) {
+                    files.add(item);
+                }
+            }
+        }
+        if (commands.isEmpty() && files.isEmpty()) {
+            return ToolOutcome.error("Donne au moins une commande dans « commandes » ou un fichier dans "
+                    + "« fichiers » (avec son « chemin »).");
+        }
+        if (commands.size() > fr.claudegateway.atelier.proof.ProofToolCatalog.MAX_COMMANDS
+                || files.size() > fr.claudegateway.atelier.proof.ProofToolCatalog.MAX_FILES) {
+            return ToolOutcome.error("Au plus " + fr.claudegateway.atelier.proof.ProofToolCatalog.MAX_COMMANDS
+                    + " commandes et " + fr.claudegateway.atelier.proof.ProofToolCatalog.MAX_FILES
+                    + " fichiers par appel.");
+        }
+        if (!commands.isEmpty()) {
+            // La session de commandes exige un runner F-212 ; un fichier se lit avec tout runner (read_file).
+            java.util.Set<String> caps = runnerHostService.declaredCapabilities(workspace.getHostId());
+            if (caps == null || !caps.contains(fr.claudegateway.atelier.proof.ProofToolCatalog.CAPABILITY)) {
+                return ToolOutcome.error(fr.claudegateway.atelier.proof.ProofToolCatalog.UPDATE_RUNNER_MESSAGE);
+            }
         }
         UUID workspaceId = workspace.getId();
         RunnerTarget runnerTarget = RunnerTargets.of(workspace);
@@ -6451,30 +6471,93 @@ public class AtelierChatService implements RelayInterruptTarget {
                 blanket = blanketAllowedTurns.contains(turnKey(userId, workspace));
             }
         }
-        long remaining = Math.max(RunnerToolGateway.MIN_BASH_TIMEOUT_MS, deadline - System.currentTimeMillis());
-        RunnerCallResult result = runnerToolGateway.proof(runnerTarget, callId, commands,
-                Math.min(RunnerToolGateway.MAX_BASH_TIMEOUT_MS, remaining));
-        markTurnMutation(userId, workspace, "bash", result);
-        noteMachine(userId, workspace, result);
-        if (!result.ok()) {
-            runnerAuditService.recordCall(userId, runnerTarget, callId, "bash",
-                    shorten(String.join(" ; ", commands), AUDIT_TARGET_CHARS), result);
-            if (RunnerErrorCodes.RUNNER_UNAVAILABLE.equals(result.errorCode())) {
-                listener.onRunnerOffline(runnerTarget.hostId());
+        // F-268 / SF-268-02 : chaque fichier passe la politique de lecture (refus, invite) comme un read_file.
+        for (int i = 0; i < files.size(); i++) {
+            String subId = callId + "-f" + (i + 1);
+            String path = files.get(i).path("chemin").asText("").strip();
+            AgentToolCall readCall = new AgentToolCall(subId, "read_file",
+                    TASK_MAPPER.createObjectNode().put("path", path));
+            PermissionEffect effect = resolveEffect(userId, workspace, "read_file", readCall);
+            if (effect == PermissionEffect.DENY) {
+                runnerAuditService.recordDenied(userId, runnerTarget, subId, "read_file", path,
+                        RunnerAuditOutcome.DENIED);
+                return ToolOutcome.error("Fichier « " + path + " » : " + denyRuleMessage("read_file")
+                        + " Rien n'a été exécuté ni lu.");
             }
-            if (RunnerErrorCodes.UNSUPPORTED_TOOL.equals(result.errorCode())) {
-                return ToolOutcome.error(fr.claudegateway.atelier.proof.ProofToolCatalog.UPDATE_RUNNER_MESSAGE);
+            if (effect == PermissionEffect.ASK && !blanket) {
+                RunnerConfirmationGate.Outcome decision =
+                        askPermission(userId, workspaceId, subId, "read_file", path, listener);
+                if (!decision.decision().allows()) {
+                    runnerAuditService.recordDenied(userId, runnerTarget, subId, "read_file", path,
+                            decision.decision() == RunnerConfirmationGate.Decision.TIMEOUT
+                                    ? RunnerAuditOutcome.TIMEOUT
+                                    : RunnerAuditOutcome.DENIED);
+                    return ToolOutcome.error("Fichier « " + path + " » : " + deniedMessage(decision)
+                            + " Rien n'a été exécuté ni lu.");
+                }
+                blanket = blanketAllowedTurns.contains(turnKey(userId, workspace));
             }
-            return ToolOutcome.error(inconclusiveNote(result));
         }
-        auditProofCommands(userId, runnerTarget, callId, commands, result.content());
+        String report = null;
+        if (!commands.isEmpty()) {
+            long remaining = Math.max(RunnerToolGateway.MIN_BASH_TIMEOUT_MS, deadline - System.currentTimeMillis());
+            RunnerCallResult result = runnerToolGateway.proof(runnerTarget, callId, commands,
+                    Math.min(RunnerToolGateway.MAX_BASH_TIMEOUT_MS, remaining));
+            markTurnMutation(userId, workspace, "bash", result);
+            noteMachine(userId, workspace, result);
+            if (!result.ok()) {
+                runnerAuditService.recordCall(userId, runnerTarget, callId, "bash",
+                        shorten(String.join(" ; ", commands), AUDIT_TARGET_CHARS), result);
+                if (RunnerErrorCodes.RUNNER_UNAVAILABLE.equals(result.errorCode())) {
+                    listener.onRunnerOffline(runnerTarget.hostId());
+                }
+                if (RunnerErrorCodes.UNSUPPORTED_TOOL.equals(result.errorCode())) {
+                    return ToolOutcome.error(fr.claudegateway.atelier.proof.ProofToolCatalog.UPDATE_RUNNER_MESSAGE);
+                }
+                return ToolOutcome.error(inconclusiveNote(result));
+            }
+            auditProofCommands(userId, runnerTarget, callId, commands, result.content());
+            report = result.content() == null ? "" : result.content();
+        }
+        List<fr.claudegateway.atelier.proof.ProofCaptureService.FileSource> sources =
+                readProofFiles(userId, runnerTarget, callId, files);
         fr.claudegateway.atelier.proof.ProofCaptureService.Result captured = proofCaptureService.capture(
-                userId, workspaceId, callId, arg(input, "titre"), arg(input, "etape"), result.content());
+                userId, workspaceId, callId, arg(input, "titre"), arg(input, "etape"), report, sources);
         if (captured.block() != null) {
             proofsOfTurn.put(callId, captured.block());
             listener.onProof(callId, captured.block());
         }
         return ToolOutcome.info(captured.modelText());
+    }
+
+    /**
+     * Lit sur le poste les fichiers d'une preuve (F-268 / SF-268-02) — {@code read_file}, contenu RÉEL au
+     * moment de la capture ; chaque lecture est tracée au journal du poste comme un {@code read_file}.
+     */
+    private List<fr.claudegateway.atelier.proof.ProofCaptureService.FileSource> readProofFiles(UUID userId,
+            RunnerTarget runnerTarget, String callId, List<JsonNode> files) {
+        List<fr.claudegateway.atelier.proof.ProofCaptureService.FileSource> sources = new ArrayList<>();
+        for (int i = 0; i < files.size(); i++) {
+            JsonNode file = files.get(i);
+            String subId = callId + "-f" + (i + 1);
+            String path = file.path("chemin").asText("").strip();
+            RunnerCallResult read = runnerToolGateway.readFile(runnerTarget, subId, path);
+            runnerAuditService.recordCall(userId, runnerTarget, subId, "read_file",
+                    shorten(path, AUDIT_TARGET_CHARS), read);
+            List<Integer> highlights = new ArrayList<>();
+            for (JsonNode n : file.path("surligner")) {
+                if (n.canConvertToInt()) {
+                    highlights.add(n.asInt());
+                }
+            }
+            sources.add(new fr.claudegateway.atelier.proof.ProofCaptureService.FileSource(path,
+                    read.ok() ? read.content() : null, read.truncated(),
+                    file.path("de").canConvertToInt() && file.has("de") ? file.path("de").asInt() : null,
+                    file.path("a").canConvertToInt() && file.has("a") ? file.path("a").asInt() : null,
+                    highlights, file.hasNonNull("note") ? file.path("note").asText("") : null,
+                    read.ok() ? null : inconclusiveNote(read)));
+        }
+        return sources;
     }
 
     /** Une ligne de journal par commande de la session, comme un {@code bash} (code et durée relevés). */

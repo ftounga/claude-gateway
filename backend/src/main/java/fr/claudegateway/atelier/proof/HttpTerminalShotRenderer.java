@@ -56,14 +56,31 @@ public class HttpTerminalShotRenderer implements TerminalShotRenderer {
         if (session == null || !session.path("commands").isArray() || session.path("commands").isEmpty()) {
             throw new DiagramRejectedException("Aucune commande à photographier.");
         }
+        return post("/terminal-shot", session);
+    }
+
+    @Override
+    public List<Shot> shootFiles(JsonNode request) {
+        if (!isAvailable()) {
+            throw new DiagramRendererUnavailableException(
+                    "Le rendu des captures n'est pas configuré sur cette installation.");
+        }
+        if (request == null || !request.path("files").isArray() || request.path("files").isEmpty()) {
+            throw new DiagramRejectedException("Aucun fichier à photographier.");
+        }
+        return post("/file-shot", request);
+    }
+
+    /** Appel d'une route de capture : les deux rendent {@code {images:[{png, width, height}]}}. */
+    private List<Shot> post(String route, JsonNode body) {
         String base = properties.getBaseUrl().endsWith("/")
                 ? properties.getBaseUrl().substring(0, properties.getBaseUrl().length() - 1)
                 : properties.getBaseUrl();
         Duration timeout = properties.getTimeout().compareTo(MIN_TIMEOUT) > 0 ? properties.getTimeout() : MIN_TIMEOUT;
-        HttpRequest request = HttpRequest.newBuilder(URI.create(base + "/terminal-shot"))
+        HttpRequest request = HttpRequest.newBuilder(URI.create(base + route))
                 .timeout(timeout)
                 .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(session.toString(), StandardCharsets.UTF_8))
+                .POST(HttpRequest.BodyPublishers.ofString(body.toString(), StandardCharsets.UTF_8))
                 .build();
         HttpResponse<byte[]> response;
         try {
