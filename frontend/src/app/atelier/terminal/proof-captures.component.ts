@@ -5,7 +5,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { firstValueFrom } from 'rxjs';
 
-import { AtelierProofBlock, AtelierProofCapture, AtelierProofCommand, AtelierTerminalBlock } from '../../core/models/atelier.models';
+import { AtelierProofBlock, AtelierProofCapture, AtelierProofCommand, AtelierProofFile, AtelierTerminalBlock } from '../../core/models/atelier.models';
 import { ClipboardImage } from '../../shared/message-clipboard';
 
 /** Le bloc de transcription de captures reçues au fil de l'eau (F-212) : rangé comme une carte. */
@@ -55,14 +55,24 @@ export function commandFacts(command: AtelierProofCommand): string {
   return facts.join(' · ');
 }
 
+/** « lignes 12–30 sur 64 · surlignées 15, 16 » — les relevés d'un extrait de fichier (F-268). */
+export function fileFacts(file: AtelierProofFile): string {
+  const facts = [`lignes ${file.firstLine}–${file.lastLine} sur ${file.totalLines}`];
+  if (file.highlights?.length) {
+    facts.push(`${file.highlights.length > 1 ? 'surlignées' : 'surlignée'} ${file.highlights.join(', ')}`);
+  }
+  return facts.join(' · ');
+}
+
 /**
  * Les captures d'un bloc, prêtes pour « Copier » de l'encart qu'elles prouvent (F-212 / SF-212-05) :
  * chargées par la route isolée du propriétaire, affichées à mi-largeur (rendu net), sans mention de
  * génération. Les images ne partent que vers le presse-papiers, jamais vers le modèle.
  */
 export function proofClipboardImages(proof: AtelierProofBlock, workspaceId: string | null, http: HttpClient): ClipboardImage[] {
+  const files = new Map((proof.files ?? []).map((file) => [file.captureId, file.path]));
   return proof.captures.map((capture, n) => ({
-    alt: `Capture ${n + 1}`,
+    alt: files.get(capture.id) ?? `Capture ${n + 1}`,
     width: capture.width ? Math.round(capture.width / 2) : null,
     load: () => firstValueFrom(http.get(proofImageUrl(workspaceId, capture.id), { responseType: 'blob' })),
   }));
@@ -109,11 +119,21 @@ export function proofClipboardImages(proof: AtelierProofBlock, workspaceId: stri
           </li>
         }
       </ul>
-      <ul class="proof__commands" aria-label="Commandes exécutées">
-        @for (command of proof().commands; track $index) {
-          <li><code>$ {{ command.command }}</code> <span class="proof__facts">{{ facts(command) }}</span></li>
-        }
-      </ul>
+      @if (proof().commands.length > 0) {
+        <ul class="proof__commands" aria-label="Commandes exécutées">
+          @for (command of proof().commands; track $index) {
+            <li><code>$ {{ command.command }}</code> <span class="proof__facts">{{ facts(command) }}</span></li>
+          }
+        </ul>
+      }
+      @if (files().length > 0) {
+        <ul class="proof__commands proof__files" aria-label="Fichiers montrés">
+          @for (file of files(); track file.captureId) {
+            <li><mat-icon class="proof__file-icon" aria-hidden="true">description</mat-icon><code>{{ file.path }}</code>
+              <span class="proof__facts">{{ fileFacts(file) }}</span></li>
+          }
+        </ul>
+      }
       <p class="proof__origin">{{ origin() }}</p>
     </section>
   `,
@@ -194,6 +214,19 @@ export function proofClipboardImages(proof: AtelierProofBlock, workspaceId: stri
       font-size: 13px;
     }
 
+    .proof__files li {
+      display: flex;
+      align-items: center;
+      gap: var(--cg-space-1);
+      flex-wrap: wrap;
+    }
+
+    .proof__file-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+    }
+
     .proof__commands code {
       font-family: var(--cg-font-mono);
       overflow-wrap: anywhere;
@@ -233,11 +266,22 @@ export class ProofCapturesComponent {
     return `Captures de preuve · ${proof.title}${step}`;
   });
 
+  /** F-268 : les extraits de fichiers (aucun sur un bloc antérieur). */
+  readonly files = computed(() => this.proof().files ?? []);
+
   readonly origin = computed(() => {
     const proof = this.proof();
     const where = [proof.host, proof.shell].filter((part) => !!part).join(' · ');
-    return (where ? where + ' — ' : '') + 'Capture générée à partir de la sortie réelle du poste.';
+    const hasCommands = proof.commands.length > 0;
+    const hasFiles = this.files().length > 0;
+    const source = hasFiles && !hasCommands ? 'du contenu réel des fichiers du poste'
+      : hasFiles ? 'de la sortie et des fichiers réels du poste' : 'de la sortie réelle du poste';
+    return (where ? where + ' — ' : '') + `Capture générée à partir ${source}.`;
   });
+
+  fileFacts(file: AtelierProofFile): string {
+    return fileFacts(file);
+  }
 
   imageUrl(capture: AtelierProofCapture): string {
     return proofImageUrl(this.workspaceId(), capture.id);

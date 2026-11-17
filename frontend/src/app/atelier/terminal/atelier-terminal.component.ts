@@ -3702,6 +3702,9 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
         shell: proofs[0]?.shell ?? null,
         captures: found.map((entry) => entry.capture),
         commands: proofs.flatMap((proof) => proof.commands),
+        // F-268 : les fichiers des captures désignées, dans l'ordre de la balise.
+        files: block.preuves.flatMap((id) => proofs.flatMap((proof) => proof.files ?? [])
+          .filter((file) => file.captureId === id)),
       };
     }
     if (!message) {
@@ -3727,6 +3730,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
       title: proofs.map((proof) => proof.title).join(' · '),
       captures: proofs.flatMap((proof) => proof.captures),
       commands: proofs.flatMap((proof) => proof.commands),
+      files: proofs.flatMap((proof) => proof.files ?? []),
     };
   }
 
