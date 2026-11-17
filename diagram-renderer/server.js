@@ -16,6 +16,7 @@ const path = require("node:path");
 const drawio = require("./drawio.js");
 const pdf = require("./pdf.js");
 const terminal = require("./terminal.js");
+const editor = require("./editor.js");
 const icons = require("./icons.js");
 const cadre = require("./cadre.js");
 const gardes = require("./gardes.js");
@@ -815,6 +816,33 @@ async function terminalShot(req, res) {
   }
 }
 
+// ------------------------------------------------------------------ preuve fichier (F-268)
+
+/** Un extrait réel de fichier rendu façon éditeur (F-268 / SF-268-01) : même photographe que le terminal. */
+async function fileShot(req, res) {
+  let payload;
+  try {
+    payload = JSON.parse(await readBody(req, editor.MAX_BODY_BYTES));
+  } catch (e) {
+    return e.message === "corps trop volumineux"
+      ? fail(res, 413, "Extrait trop volumineux (2 Mo au plus).")
+      : fail(res, 400, "Corps JSON invalide.");
+  }
+  let page;
+  try {
+    page = editor.renderHtml(editor.parseFiles(payload));
+  } catch (e) {
+    return fail(res, e.status || 400, e.message);
+  }
+  try {
+    const images = await withPdfSlot(() => shootTerminal(page.html));
+    return send(res, 200, JSON.stringify({ images }), "application/json; charset=utf-8");
+  } catch (e) {
+    const status = e.status || (e.name === "TimeoutError" ? 504 : 422);
+    return fail(res, status, (e.message || "La capture n'a pas pu être produite.").slice(0, 500));
+  }
+}
+
 // ------------------------------------------------------------------ icônes des cours vidéo (F-215)
 
 /** Recherche (`chercher`) ou lecture (`noms`) d'icônes officielles de la lib diagrams (F-215 / SF-215-03). */
@@ -849,6 +877,9 @@ const server = http.createServer((req, res) => {
   }
   if (req.method === "POST" && req.url === "/pdf") {
     return printPdf(req, res).catch((e) => fail(res, 500, "Erreur interne : " + e.message));
+  }
+  if (req.method === "POST" && req.url === "/file-shot") {
+    return fileShot(req, res).catch((e) => fail(res, 500, "Erreur interne : " + e.message));
   }
   if (req.method === "POST" && req.url === "/terminal-shot") {
     return terminalShot(req, res).catch((e) => fail(res, 500, "Erreur interne : " + e.message));
