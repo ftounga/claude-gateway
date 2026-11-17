@@ -175,6 +175,37 @@ class AtelierChatServiceAppRequestTest {
     }
 
     @Test
+    @org.junit.jupiter.api.DisplayName("F-269 : l'outil offre COMMANDE et sa description dit « mot pour mot » ; la doctrine système ne change pas")
+    void theToolOffersCommandeWithoutTouchingTheDoctrine() {
+        agentProvider.enqueueFinal("ok");
+        service.chat(userId, workspaceId, "bonjour");
+
+        AgentTool tool = agentProvider.lastRequest.tools().stream()
+                .filter(t -> AtelierChatService.APP_REQUEST_TOOL_NAME.equals(t.name())).findFirst().orElseThrow();
+        assertThat(tool.description()).contains("COMMANDE").contains("MOT POUR MOT");
+        assertThat(tool.inputSchema().toString()).contains("COMMANDE");
+        assertThat(AtelierChatService.APP_REQUEST_DOCTRINE).doesNotContain("COMMANDE");
+    }
+
+    @Test
+    @org.junit.jupiter.api.DisplayName("F-269 : une commande dictée passe à propose avec son texte intact")
+    void aCommandIsPassedVerbatim() {
+        UUID requestId = UUID.randomUUID();
+        String words = "Lance les bancs Jarvis (2 passages), puis dis-moi le score.";
+        when(appRequests.propose(eq(userId), eq(workspace), any(), eq("COMMANDE"), any(), eq(words), any(),
+                any(), any(), any()))
+                .thenReturn(new AppRequestBlock(requestId, "COMMANDE", "Lance les bancs Jarvis", words, null, null,
+                        List.of(), null));
+        agentProvider.enqueueToolCall(AtelierChatService.APP_REQUEST_TOOL_NAME, "type", "COMMANDE",
+                "description", words);
+        agentProvider.enqueueFinal("Carte posée.");
+
+        service.chatStreaming(userId, workspaceId, "enregistre une commande pour Claude Code : " + words, listener);
+
+        assertThat(relayed).extracting(AppRequestBlock::requestId).containsExactly(requestId);
+    }
+
+    @Test
     void aForcedCallByANonAdministratorIsRefused() {
         when(entitlement.isAdministrator(userId)).thenReturn(false);
         agentProvider.enqueueToolCall(AtelierChatService.APP_REQUEST_TOOL_NAME, "type", "BUG",

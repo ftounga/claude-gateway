@@ -337,4 +337,82 @@ class AppRequestServiceTest {
         assertThatThrownBy(() -> service.update(userId, complement.getId(), "CADRE", null))
                 .isInstanceOf(AppRequestConflictException.class).hasMessageContaining("complément");
     }
+
+    // ------------------------------------------------------------------ F-269 : les commandes
+
+    @Test
+    void aCommandProposedWithoutTitleKeepsItsWordsAndDerivesItsTitle() {
+        String words = "Lance les bancs Jarvis (2 passages) ;\npuis dis-moi le score, sans rien corriger.";
+        AppRequestBlock block = service.propose(userId, workspace, null, "commande", null, words, "Bancs Jarvis",
+                null, null);
+
+        assertThat(block.kind()).isEqualTo(AppRequest.COMMANDE);
+        assertThat(block.description()).isEqualTo(words);
+        assertThat(block.title()).isEqualTo("Lance les bancs Jarvis (2 passages) ;");
+        assertThat(block.reformulation()).isEqualTo("Bancs Jarvis");
+    }
+
+    @Test
+    void anUnknownKindNamesTheThreeKinds() {
+        assertThatThrownBy(() -> service.propose(userId, workspace, null, "TACHE", "t", "d", null, null, null))
+                .isInstanceOf(AppRequestInvalidException.class).hasMessageContaining("COMMANDE");
+    }
+
+    @Test
+    void aBugStillNeedsATitle() {
+        assertThatThrownBy(() -> service.propose(userId, workspace, null, "BUG", null, "d", null, null, null))
+                .isInstanceOf(AppRequestInvalidException.class).hasMessageContaining("titre");
+    }
+
+    @Test
+    void aDirectCommandIsPendingWithoutTerminalAndKeptVerbatim() {
+        String words = "Implémente F-999 : « le bouton X » — puis teste-le.";
+        AppRequestView view = service.recordCommand(userId, "  " + words + "\n", null);
+
+        org.mockito.ArgumentCaptor<AppRequest> saved = org.mockito.ArgumentCaptor.forClass(AppRequest.class);
+        verify(requests).save(saved.capture());
+        AppRequest row = saved.getValue();
+        assertThat(row.getKind()).isEqualTo(AppRequest.COMMANDE);
+        assertThat(row.getStatus()).isEqualTo(AppRequest.EN_ATTENTE);
+        assertThat(row.getUserId()).isEqualTo(userId);
+        assertThat(row.getWorkspaceId()).isNull();
+        assertThat(row.getRecordedAt()).isNotNull();
+        assertThat(row.getDescription()).isEqualTo(words);
+        assertThat(row.getReformulation()).isNull();
+        assertThat(view.kind()).isEqualTo(AppRequest.COMMANDE);
+        assertThat(view.title()).isEqualTo(words);
+    }
+
+    @Test
+    void anEmptyOrTooLongCommandIsRefused() {
+        assertThatThrownBy(() -> service.recordCommand(userId, "   ", null))
+                .isInstanceOf(AppRequestInvalidException.class);
+        assertThatThrownBy(() -> service.recordCommand(userId, null, null))
+                .isInstanceOf(AppRequestInvalidException.class);
+        assertThatThrownBy(() -> service.recordCommand(userId, "x".repeat(8_001), null))
+                .isInstanceOf(AppRequestInvalidException.class).hasMessageContaining("8000");
+        verify(requests, never()).save(any(AppRequest.class));
+    }
+
+    @Test
+    void aLongFirstLineIsCutForTheTitle() {
+        String title = AppRequestService.derivedTitle("a".repeat(200));
+        assertThat(title).hasSize(80).endsWith("…");
+        assertThat(AppRequestService.derivedTitle("\n\n  ok  \nsuite")).isEqualTo("ok");
+    }
+
+    @Test
+    void theListFiltersByKind() {
+        OffsetDateTime now = OffsetDateTime.now();
+        AppRequest bug = AppRequest.builder().id(UUID.randomUUID()).userId(userId).kind(AppRequest.BUG).title("b")
+                .description("b").status(AppRequest.EN_ATTENTE).createdAt(now).updatedAt(now).build();
+        AppRequest cmd = AppRequest.builder().id(UUID.randomUUID()).userId(userId).kind(AppRequest.COMMANDE)
+                .title("c").description("c").status(AppRequest.EN_ATTENTE).createdAt(now).updatedAt(now).build();
+        when(requests.findByUserIdAndAmendsRequestIdIsNullAndStatusInOrderByCreatedAtDesc(any(), any()))
+                .thenReturn(List.of(bug, cmd));
+
+        assertThat(service.list(userId, null, "commande")).extracting(AppRequestView::id).containsExactly(cmd.getId());
+        assertThat(service.list(userId, null, null)).hasSize(2);
+        assertThatThrownBy(() -> service.list(userId, null, "TACHE")).isInstanceOf(AppRequestInvalidException.class);
+    }
 }

@@ -41,6 +41,10 @@ public class AppRequestService {
     static final int MAX_TITLE_CHARS = 200;
     static final int MAX_TEXT_CHARS = 8_000;
     static final int MAX_PIECES = 10;
+    /** Longueur du titre tiré d'une commande sans titre (F-269). */
+    static final int DERIVED_TITLE_CHARS = 80;
+    /** Les types de besoin (F-205, F-269). */
+    static final Set<String> KINDS = Set.of(AppRequest.BUG, AppRequest.EVOLUTION, AppRequest.COMMANDE);
     static final Pattern FEATURE_REF = Pattern.compile("^F-\\d{1,4}$");
     /** Statuts qu'un administrateur peut poser. {@code PROPOSE} reste réservé à la carte. */
     static final Set<String> ADMIN_STATUSES = Set.of(AppRequest.EN_ATTENTE, AppRequest.CADRE, AppRequest.REJETE,
@@ -106,10 +110,13 @@ public class AppRequestService {
             title = origin.getTitle();
         } else {
             kind = rawKind == null ? "" : rawKind.strip().toUpperCase(Locale.ROOT);
-            if (!AppRequest.BUG.equals(kind) && !AppRequest.EVOLUTION.equals(kind)) {
-                throw new AppRequestInvalidException("type doit valoir BUG ou EVOLUTION.");
+            if (!KINDS.contains(kind)) {
+                throw new AppRequestInvalidException("type doit valoir BUG, EVOLUTION ou COMMANDE.");
             }
             title = strip(rawTitle);
+            if (title.isEmpty() && AppRequest.COMMANDE.equals(kind)) {
+                title = derivedTitle(strip(rawDescription));
+            }
             if (title.isEmpty() || title.length() > MAX_TITLE_CHARS) {
                 throw new AppRequestInvalidException("titre obligatoire, " + MAX_TITLE_CHARS
                         + " caractères au plus.");
@@ -328,12 +335,60 @@ public class AppRequestService {
     // ------------------------------------------------------------------ administration
 
     /**
-     * Les besoins de l'appelant, plus récents d'abord. Sans statut : tout sauf {@code PROPOSE}.
+     * Saisie directe d'une <b>commande pour Claude Code</b> (F-269) depuis l'administration : elle entre
+     * au registre {@code EN_ATTENTE}, sans terminal ni carte. Le texte est gardé mot pour mot (seuls les
+     * blancs de tête et de fin sont retirés) ; la reformulation éventuelle reste à part.
      *
-     * @throws AppRequestInvalidException statut inconnu
+     * @throws AppRequestInvalidException texte vide ou trop long
      */
+    @Transactional
+    public AppRequestView recordCommand(UUID userId, String rawText, String rawReformulation) {
+        String text = strip(rawText);
+        if (text.isEmpty()) {
+            throw new AppRequestInvalidException("commande obligatoire : le texte à exécuter, tel quel.");
+        }
+        if (text.length() > MAX_TEXT_CHARS) {
+            throw new AppRequestInvalidException("commande trop longue (" + MAX_TEXT_CHARS
+                    + " caractères au plus).");
+        }
+        OffsetDateTime now = OffsetDateTime.now();
+        AppRequest saved = requests.save(AppRequest.builder()
+                .userId(userId).workspaceId(null).messageId(null)
+                .kind(AppRequest.COMMANDE).title(derivedTitle(text)).description(text)
+                .reformulation(optional(rawReformulation))
+                .status(AppRequest.EN_ATTENTE).createdAt(now).updatedAt(now).recordedAt(now)
+                .build());
+        return AppRequestView.of(saved, List.of());
+    }
+
+    /** Le titre d'une commande : sa première ligne non vide, {@value #DERIVED_TITLE_CHARS} caractères au plus. */
+    static String derivedTitle(String text) {
+        String line = text == null ? "" : text.lines().map(String::strip).filter(l -> !l.isEmpty())
+                .findFirst().orElse("");
+        if (line.isEmpty()) {
+            return "Commande";
+        }
+        return line.length() > DERIVED_TITLE_CHARS ? line.substring(0, DERIVED_TITLE_CHARS - 1).strip() + "…" : line;
+    }
+
+    /** Les besoins de l'appelant, sans filtre de type. */
     @Transactional(readOnly = true)
     public List<AppRequestView> list(UUID userId, String rawStatus) {
+        return list(userId, rawStatus, null);
+    }
+
+    /**
+     * Les besoins de l'appelant, plus récents d'abord. Sans statut : tout sauf {@code PROPOSE}. Sans type :
+     * tous les types (F-269).
+     *
+     * @throws AppRequestInvalidException statut ou type inconnu
+     */
+    @Transactional(readOnly = true)
+    public List<AppRequestView> list(UUID userId, String rawStatus, String rawKind) {
+        String kind = rawKind == null || rawKind.isBlank() ? null : rawKind.strip().toUpperCase(Locale.ROOT);
+        if (kind != null && !KINDS.contains(kind)) {
+            throw new AppRequestInvalidException("type inconnu : " + kind);
+        }
         Set<String> statuses;
         if (rawStatus == null || rawStatus.isBlank()) {
             statuses = ADMIN_STATUSES;
@@ -346,6 +401,9 @@ public class AppRequestService {
         }
         List<AppRequest> found = requests.findByUserIdAndAmendsRequestIdIsNullAndStatusInOrderByCreatedAtDesc(
                 userId, statuses);
+        if (kind != null) {
+            found = found.stream().filter(r -> kind.equals(r.getKind())).toList();
+        }
         if (found.isEmpty()) {
             return List.of();
         }

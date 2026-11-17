@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-269 / SF-269-01 - LES COMMANDES POUR CLAUDE CODE.
+
+      app_requests.kind accepte desormais COMMANDE (aucune contrainte CHECK en base : rien a changer).
+      Une commande saisie directement dans l'administration n'a pas de terminal : workspace_id devient
+      nullable. Isolation inchangee : user_id obligatoire, toute lecture filtre user_id.
+
+      Rollback : remettre NOT NULL exige qu'aucune ligne n'ait workspace_id nul (supprimer d'abord les
+      commandes saisies directement : delete from app_requests where workspace_id is null).
+    -->
+
+    <changeSet id="269-01-app-requests-commande" author="claude-gateway">
+        <dropNotNullConstraint tableName="app_requests" columnName="workspace_id" columnDataType="uuid"/>
+        <rollback>
+            <addNotNullConstraint tableName="app_requests" columnName="workspace_id" columnDataType="uuid"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
