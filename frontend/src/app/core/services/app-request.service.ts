@@ -2,7 +2,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
-import { AppRequestStatus, AppRequestView } from '../models/atelier.models';
+import { AppRequestKind, AppRequestStatus, AppRequestView } from '../models/atelier.models';
 
 /**
  * **Le registre des besoins de l'application** (F-205 / SF-205-02) : la carte du fil ([Enregistrer],
@@ -29,10 +29,27 @@ export class AppRequestService {
     return this.http.post<AppRequestView>(`${this.url(workspaceId, requestId)}/dismiss`, {});
   }
 
-  /** Administration : les besoins de l'appelant, filtrés par statut (sans statut : tous les enregistrés). */
-  list(status: AppRequestStatus | null): Observable<AppRequestView[]> {
-    const params = status ? new HttpParams().set('status', status) : undefined;
+  /**
+   * Administration : les besoins de l'appelant, filtrés par statut (sans statut : tous les enregistrés) et
+   * par type (F-269 ; sans type : tous).
+   */
+  list(status: AppRequestStatus | null, kind: AppRequestKind | null = null): Observable<AppRequestView[]> {
+    let params = new HttpParams();
+    if (status) {
+      params = params.set('status', status);
+    }
+    if (kind) {
+      params = params.set('kind', kind);
+    }
     return this.http.get<AppRequestView[]>('/api/admin/app-requests', { params });
+  }
+
+  /**
+   * Administration (F-269) : enregistre une **commande pour Claude Code**, texte tel quel. Réservé à
+   * l'administrateur (403 sinon) ; elle entre au registre `EN_ATTENTE`.
+   */
+  createCommand(text: string): Observable<AppRequestView> {
+    return this.http.post<AppRequestView>('/api/admin/app-requests/commands', { text });
   }
 
   /** Administration : statut et/ou référence de feature (`''` efface la référence). */
@@ -59,7 +76,20 @@ export function sizeLabel(bytes: number): string {
 
 /** Libellé du type de besoin. */
 export function appRequestKindLabel(kind: string): string {
-  return kind === 'EVOLUTION' ? 'Évolution' : 'Bug';
+  switch (kind) {
+    case 'EVOLUTION': return 'Évolution';
+    case 'COMMANDE': return 'Commande';
+    default: return 'Bug';
+  }
+}
+
+/** Icône Material du type de besoin (F-269 : `terminal` pour une commande). */
+export function appRequestKindIcon(kind: string): string {
+  switch (kind) {
+    case 'EVOLUTION': return 'lightbulb';
+    case 'COMMANDE': return 'terminal';
+    default: return 'bug_report';
+  }
 }
 
 /** Libellé d'un statut de besoin. */

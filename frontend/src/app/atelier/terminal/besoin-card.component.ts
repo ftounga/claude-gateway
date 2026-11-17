@@ -10,7 +10,12 @@ import {
   AtelierAppRequest,
   AtelierTerminalBlock,
 } from '../../core/models/atelier.models';
-import { AppRequestService, appRequestKindLabel, sizeLabel } from '../../core/services/app-request.service';
+import {
+  AppRequestService,
+  appRequestKindIcon,
+  appRequestKindLabel,
+  sizeLabel,
+} from '../../core/services/app-request.service';
 
 /**
  * **Le bloc de transcription d'un besoin reçu au fil de l'eau** (F-205 / SF-205-02). Rangé comme une
@@ -40,10 +45,12 @@ type CardState = 'loading' | AppRequestStatus;
   imports: [MatButtonModule, MatIconModule],
   template: `
     <div class="besoin-card" role="group" [attr.aria-label]="(complement() ? 'Compléter le besoin : ' : 'Besoin de l’application : ') + besoin().title">
-      <mat-icon class="besoin-card__icon" aria-hidden="true">{{ besoin().kind === 'BUG' ? 'bug_report' : 'lightbulb' }}</mat-icon>
+      <mat-icon class="besoin-card__icon" aria-hidden="true">{{ icon() }}</mat-icon>
       <div class="besoin-card__body">
         @if (complement()) {
           <p class="besoin-card__headline">Compléter le besoin · {{ besoin().title }}</p>
+        } @else if (besoin().kind === 'COMMANDE') {
+          <p class="besoin-card__headline">Commande pour Claude Code · {{ besoin().title }}</p>
         } @else {
           <p class="besoin-card__headline">{{ kind() }} de l’application · {{ besoin().title }}</p>
         }
@@ -206,6 +213,7 @@ export class BesoinCardComponent {
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
   readonly kind = computed(() => appRequestKindLabel(this.besoin().kind));
+  readonly icon = computed(() => appRequestKindIcon(this.besoin().kind));
   /** F-205 / SF-205-04 : la carte propose un complément d'un besoin déjà enregistré. */
   readonly complement = computed(() => !!this.besoin().amendsRequestId);
 
