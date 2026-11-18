@@ -115,7 +115,8 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     mailClient = jasmine.createSpyObj<JarvisMailClient>('JarvisMailClient', ['list', 'link', 'test', 'revoke', 'brief', 'body']);
     mailClient.brief.and.returnValue(of({ text: '', items: [] } as MailBrief));
     // F-249 / SF-249-08 — les annonces : par défaut, aucune.
-    noticesClient = jasmine.createSpyObj<JarvisNoticesClient>('JarvisNoticesClient', ['open', 'seen', 'spoken']);
+    noticesClient = jasmine.createSpyObj<JarvisNoticesClient>('JarvisNoticesClient', ['open', 'seen', 'spoken', 'delegationSpoken']);
+    noticesClient.delegationSpoken.and.returnValue(of(undefined));
     noticesClient.open.and.returnValue(of([]));
     noticesClient.spoken.and.returnValue(of({} as JarvisNotice));
     fastBrain.warm.and.resolveTo(false);
@@ -234,6 +235,43 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     flushMicrotasks();
     expect(noticesClient.spoken).not.toHaveBeenCalled();
     jarvis.ngOnDestroy();
+  }));
+
+  it('F-272 / SF-272-05 — la réponse d’une délégation : tue en pause, dite à la reprise ; jamais celle que l’écran dit lui-même', fakeAsync(() => {
+    configure({});
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    const jarvis = fixture.componentInstance;
+    const delegationNotice = (id: string, delegationId: string): JarvisNotice => ({
+      id, kind: 'DELEGATION_DONE', text: 'Réponse prête · tickets LDIC', speech: `Réponse sur tickets LDIC ${id}.`,
+      link: null, count: 1, hostId: null, workspaceId: null, updatedAt: '2026-11-18T00:05:51Z',
+      expiresAt: '2099-01-01T00:00:00Z', spoken: false, delegationId,
+    });
+    noticesClient.spoken.calls.reset();
+    // En pause : rien n'est dit.
+    (jarvis as unknown as { conversation: { pause(): void } }).conversation.pause();
+    void jarvis.speakNotice([delegationNotice('n1', 'd-absent')]);
+    flushMicrotasks();
+    expect(noticesClient.spoken).not.toHaveBeenCalled();
+    // À la reprise : les annonces sont relues, la réponse est dite.
+    noticesClient.open.and.returnValue(of([delegationNotice('n1', 'd-absent')]));
+    noticesClient.open.calls.reset();
+    jarvis.startConversation();
+    flushMicrotasks();
+    expect(noticesClient.open).toHaveBeenCalled();
+    expect(noticesClient.spoken).toHaveBeenCalledWith('n1');
+    expect(voice.speak.calls.allArgs().some((args) => args[0] === 'Réponse sur tickets LDIC n1.')).toBeTrue();
+    // Une délégation lancée par cet écran n'est jamais dite par l'annonce de la passerelle.
+    noticesClient.spoken.calls.reset();
+    (jarvis as unknown as { localDelegations: Set<string> }).localDelegations.add('d-local');
+    (jarvis as unknown as { conversation: { pause(): void } }).conversation.pause();
+    jarvis.startConversation();
+    void jarvis.speakNotice([delegationNotice('n2', 'd-local')]);
+    flushMicrotasks();
+    expect(noticesClient.spoken).not.toHaveBeenCalledWith('n2');
+    jarvis.ngOnDestroy();
+    discardPeriodicTasks();
   }));
 
   it('F-250 / SF-250-07 — visage allumé par le serveur : alignement demandé ; « Jarvis : cœur » l’éteint et coupe l’alignement', fakeAsync(() => {

@@ -275,6 +275,42 @@ class AtelierChatServiceVoiceTurnTest {
     }
 
     @Test
+    void F_272_05_laFinDuTourDelegueDevientUneAnnonceAvecSaLigneDite() {
+        fr.claudegateway.jarvis.fastbrain.JarvisDelegationRegistry registry =
+                new fr.claudegateway.jarvis.fastbrain.JarvisDelegationRegistry(java.time.Clock.systemUTC(), null);
+        service.setJarvisDelegations(registry);
+        fr.claudegateway.jarvis.notices.JarvisNoticeService notices =
+                Mockito.mock(fr.claudegateway.jarvis.notices.JarvisNoticeService.class);
+        service.setJarvisNotices(notices);
+        UUID delegation = UUID.randomUUID();
+        registry.offer(userId, workspaceId, null, delegation, "Regarder les tickets LDIC", "tickets LDIC", null);
+        service.markVoiceTurn(userId, workspaceId, null);
+        agentProvider.enqueueFinal("🎙 Trois tickets LDIC sont bloqués, Monsieur.");
+
+        service.chat(userId, workspaceId, "regarde les tickets LDIC");
+
+        verify(notices).delegationDone(org.mockito.ArgumentMatchers.eq(userId), org.mockito.ArgumentMatchers.eq(delegation),
+                org.mockito.ArgumentMatchers.eq(workspaceId), org.mockito.ArgumentMatchers.eq("tickets LDIC"),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(
+                        "Trois tickets LDIC sont bloqués, Monsieur."), org.mockito.ArgumentMatchers.eq(false));
+    }
+
+    @Test
+    void F_272_05_unTourSansDelegationNAnnonceRien() {
+        fr.claudegateway.jarvis.notices.JarvisNoticeService notices =
+                Mockito.mock(fr.claudegateway.jarvis.notices.JarvisNoticeService.class);
+        service.setJarvisNotices(notices);
+        service.setJarvisDelegations(
+                new fr.claudegateway.jarvis.fastbrain.JarvisDelegationRegistry(java.time.Clock.systemUTC(), null));
+        service.markVoiceTurn(userId, workspaceId, null);
+        agentProvider.enqueueFinal("🎙 ok");
+
+        service.chat(userId, workspaceId, "bonjour");
+
+        Mockito.verifyNoInteractions(notices);
+    }
+
+    @Test
     void SF_245_03_unTourSansDelegationNeTermineAucuneLigneLien() {
         fr.claudegateway.jarvis.thread.JarvisLinkService links =
                 Mockito.mock(fr.claudegateway.jarvis.thread.JarvisLinkService.class);

@@ -44,6 +44,16 @@ public class JarvisNoticeController {
         return notices.spoken(currentUser.requireId(), id);
     }
 
+    /**
+     * F-272 / SF-272-05 — l'écran a dit lui-même la fin de la délégation {@code delegationId} : son annonce est close
+     * (ou close d'avance). Toujours sous le compte du principal : rien n'est jamais écrit chez autrui.
+     */
+    @PostMapping("/jarvis/notices/delegations/{delegationId}/spoken")
+    public ResponseEntity<Void> delegationSpoken(@PathVariable UUID delegationId) {
+        notices.delegationSpoken(currentUser.requireId(), delegationId);
+        return ResponseEntity.noContent().build();
+    }
+
     @ExceptionHandler(JarvisNoticeService.NoticeNotFoundException.class)
     public ResponseEntity<Map<String, String>> notFound(JarvisNoticeService.NoticeNotFoundException e) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "not_found", "message", e.getMessage()));
