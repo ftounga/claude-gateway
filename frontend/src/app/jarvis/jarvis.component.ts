@@ -63,6 +63,10 @@ import { MarkdownPipe } from '../shared/markdown.pipe';
 import { EndOfSpeech, MicMeter, SPEECH_LEVEL, silenceMs } from './jarvis-mic-meter';
 import { asksConfirmation, classifyConfirmation, confirmationQuestion } from './jarvis-confirm';
 import {
+  ArmedConfirmation, ArmedConfirmations, JarvisWorksClient, confirmationVerdict, isOtherRequest, names, newWorkId,
+  shortName, whichQuestion,
+} from './jarvis-works';
+import {
   ENROLL_COUNT, MIN_WORD_FRAMES, TemplateWakeWordEngine, WakeEvent, enrollThreshold, readWakeProfile,
   saveWakeProfile,
 } from './jarvis-wake';
@@ -93,6 +97,10 @@ export const ANNOUNCE_PAUSE_MS = 800;
 export const PARKED_CLOCK_MS = 10 * 60_000;
 /** SF-231-04 — ce que Jarvis dit quand personne ne répond. */
 export const NO_ANSWER_PHRASE = 'Sans réponse, je ne fais rien.';
+/** F-270 / SF-270-02 (D1) — ce que Jarvis dit avant qu'un tour vocal parte en fond (l'écoute se rouvre aussitôt). */
+export const YES_ACK = 'C’est parti.';
+export const NO_ACK = 'Entendu.';
+export const BACKGROUND_ACK = 'Je m’en occupe.';
 import {
   LONG_TURN_MS, OralStream, classifyInterruption, invitationOf, isStopCommand, oralLine, oralPhrase,
   stripInvitationLines, subjectSwitch, withEndAnnouncement,
@@ -390,8 +398,14 @@ export class JarvisComponent implements OnInit, OnDestroy {
   /** La file des fins de délégation à annoncer (D13). */
   private readonly announcements = new AnnouncementQueue();
   private announceTimer: ReturnType<typeof setInterval> | null = null;
-  /** Le sujet de la délégation qui attend « oui » : la réponse va directement au tour Opus (D8). */
-  private verbalSubject: string | null = null;
+  // ---- F-270 / SF-270-02 (D1, D2) : le tour vocal en fond, la confirmation rattachée à son travail ----
+  private readonly works = inject(JarvisWorksClient);
+  /** Les « Vous confirmez ? » en attente, chacun rattaché à son travail (sujet, chantier, nom). */
+  private readonly armed = new ArmedConfirmations();
+  /** « LDIC-325 ou agenor ? » a été demandé : la réponse choisit, avec le oui/non déjà dit. */
+  private choosing: { verdict: 'oui' | 'non'; text: string } | null = null;
+  /** Le sujet du dernier tour au premier plan (sa « Vous confirmez ? » s'y rattache). */
+  private directSubject: string | null = null;
   /** F-235 / SF-235-07 — l'instant de la dernière réponse rapide (classement des corrections). */
   private lastFastAnswerAt = 0;
 
@@ -2505,6 +2519,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
       if (!text && confirming) {
         // SF-231-04 — le silence ne vaut pas accord.
         this.awaitingVerbal = false;
+        // F-270 / SF-270-02 — la question restée sans réponse n'est plus armée (les autres le restent).
+        const last = this.armed.live().at(-1);
+        if (last) {
+          this.armed.disarm(last);
+        }
         await this.say(NO_ANSWER_PHRASE);
         return;
       }
@@ -2722,10 +2741,13 @@ export class JarvisComponent implements OnInit, OnDestroy {
       return;
     }
     // F-241 / SF-241-05 (D8) — « oui » à « Voulez-vous que je retienne… ? », ou « non, oublie ça » après une note.
-    if (!this.presentation() && !this.pendingConfirm && await this.answerPortrait(text)) {
+    // F-270 / SF-270-02 (D2) — un « oui » attendu par un travail lui revient : ni l'entretien proposé, ni le portrait
+    // ne le prennent.
+    const confirmationsArmed = this.awaitingVerbal || !!this.choosing || this.armed.size > 0;
+    if (!this.presentation() && !this.pendingConfirm && !confirmationsArmed && await this.answerPortrait(text)) {
       return;
     }
-    if (!this.presentation() && !this.pendingConfirm) {
+    if (!this.presentation() && !this.pendingConfirm && !confirmationsArmed) {
       if (isInterviewCommand(text)) {
         await this.startInterview(this.interviewOffer() ? 'INITIAL' : 'UPDATE');
         return;
@@ -2796,23 +2818,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
     // F-235 / SF-235-05 (D8) — une confirmation attendue court-circuite le cerveau rapide : la réponse va DIRECTEMENT
     // au tour Opus qui l'a demandée.
-    let directToOpus = false;
-    if (this.awaitingVerbal) {
-      // SF-231-04 — l'agent a demandé « Tu confirmes ? » : seul un « oui » ou un « non » nets repartent au cerveau ;
-      // une réponse ambiguë n'est jamais envoyée (une erreur de transcription ne déclenche rien).
-      this.awaitingVerbal = false;
-      const verdict = classifyConfirmation(text);
-      if (verdict === 'doute') {
-        await this.say(DOUBT_PHRASE);
-        return;
-      }
-      if (verdict === 'oui' && !(await this.unlockedForYes())) {
-        return;
-      }
-      directToOpus = true;
+    // F-270 / SF-270-02 (D2) — la réponse va au travail qui a posé la question, jamais au « dernier tour ».
+    if (await this.answerArmed(text)) {
+      return;
     }
-    const verbalSubject = this.verbalSubject;
-    this.verbalSubject = null;
+    const directToOpus = false;
     if (isRepeatCommand(text)) {
       // F-235 / SF-235-05 (D13) — « redis-moi » : la dernière annonce, telle quelle.
       const last = this.announcements.repeat();
@@ -2913,14 +2923,111 @@ export class JarvisComponent implements OnInit, OnDestroy {
       void this.converse(text);
       return;
     }
-    const subjectId = (directToOpus ? verbalSubject : null) ?? this.subjectId();
+    const subjectId = this.subjectId();
     if (!subjectId) {
       // F-235 / SF-235-05 (D19) — aucun sujet engagé : Jarvis demande, il ne choisit jamais au hasard.
       this.notice.set('Choisis d’abord un sujet.');
       await this.say(ASK_SUBJECT);
       return;
     }
+    if (this.conversation.active) {
+      // F-270 / SF-270-02 (D1) — cerveau rapide éteint, en conversation : le tour part en fond, l'écoute reste ouverte.
+      await this.backgroundTurn(subjectId, null, text, this.subjectName(subjectId), BACKGROUND_ACK);
+      return;
+    }
     this.send(subjectId, text);
+  }
+
+  /**
+   * F-270 / SF-270-02 (D2) — une parole face aux confirmations armées : « oui » / « non » vont au travail visé (le seul
+   * armé, ou celui que la parole nomme) ; plusieurs armés sans nom ⇒ Jarvis demande lequel, en nommant, sans rien
+   * lancer ; une autre demande (≥ 4 mots, ni oui ni non) suit le chemin normal, la confirmation reste armée. Rend vrai
+   * si la parole a été traitée ici.
+   */
+  private async answerArmed(text: string): Promise<boolean> {
+    const asked = this.awaitingVerbal;
+    this.awaitingVerbal = false;
+    const choosing = this.choosing;
+    this.choosing = null;
+    const items = this.armed.live();
+    if (items.length === 0) {
+      if (asked || choosing) {
+        await this.say(DOUBT_PHRASE);
+        return true;
+      }
+      return false;
+    }
+    if (choosing) {
+      // « LDIC-325 ou agenor ? » — seule une réponse qui en nomme exactement un tranche ; sinon rien n'est lancé.
+      const named = items.filter((i) => names(text, i.name));
+      if (named.length !== 1) {
+        await this.say(DOUBT_PHRASE);
+        return true;
+      }
+      await this.applyConfirmation(choosing.verdict, named[0], choosing.text);
+      return true;
+    }
+    const verdict = confirmationVerdict(text, items);
+    if (verdict === 'doute') {
+      if (asked && !isOtherRequest(text)) {
+        // SF-231-04 — une réponse ambiguë n'est jamais envoyée (une erreur de transcription ne déclenche rien).
+        await this.say(DOUBT_PHRASE);
+        return true;
+      }
+      return false;
+    }
+    const target = this.armed.target(text);
+    if (target.kind === 'ambiguous') {
+      this.choosing = { verdict, text };
+      this.trace.mark('confirm_which', `n=${target.items.length}`);
+      await this.say(whichQuestion(target.items));
+      void this.listen();
+      return true;
+    }
+    if (target.kind === 'none') {
+      return false;
+    }
+    await this.applyConfirmation(verdict, target.item, text);
+    return true;
+  }
+
+  /** F-270 / SF-270-02 — le oui/non part au fil (sujet + chantier) du travail qui l'a demandé. */
+  private async applyConfirmation(verdict: 'oui' | 'non', item: ArmedConfirmation, text: string): Promise<void> {
+    if (verdict === 'oui' && !(await this.unlockedForYes())) {
+      return;
+    }
+    this.armed.disarm(item);
+    this.trace.mark('confirm_answer', `${verdict} chantier=${item.chantier ?? '-'}`);
+    if (this.conversation.active || item.chantier !== null) {
+      await this.backgroundTurn(item.subjectId, item.chantier, text, item.name,
+        verdict === 'oui' ? YES_ACK : NO_ACK);
+      return;
+    }
+    this.send(item.subjectId, text);
+  }
+
+  /**
+   * F-270 / SF-270-02 (D1) — **un tour vocal en fond** : la phrase courte est dite (premier son du tour), le tour est
+   * annoncé à la passerelle puis ouvert comme une délégation (fin dans la file d'annonces) ; `turnRunning` reste faux,
+   * l'écoute se rouvre dès la phrase dite.
+   */
+  private async backgroundTurn(subjectId: string, chantier: number | null, text: string, label: string,
+                               ack: string): Promise<void> {
+    const heardBeforeCut = this.heardBeforeCut;
+    const id = newWorkId();
+    const started = this.works.announce({ id, subjectId, chantier, label }).then(() => this.zone.run(() =>
+      this.startDelegation({ delegationId: id, subjectId, chantier, label, announce: '', demande: text,
+        automatic: false, reason: null }, text, heardBeforeCut)));
+    this.trace.mark('background_turn', `chantier=${chantier ?? '-'}`);
+    this.startClock();
+    await this.say(ack, this.clockHooks());
+    this.parkClock();
+    await started;
+  }
+
+  /** Le nom d'un sujet du compte (vide s'il est inconnu). */
+  private subjectName(subjectId: string): string {
+    return this.subjects().find((s) => s.id === subjectId)?.name ?? '';
   }
 
   /**
@@ -3132,6 +3239,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
           await this.say(ASK_SUBJECT);
           return;
         }
+        if (this.conversation.active) {
+          // F-270 / SF-270-02 (D1) — le repli part en fond : l'écoute ne se ferme plus pendant le tour Opus.
+          await this.backgroundTurn(target, null, understood ?? text, this.subjectName(target), BACKGROUND_ACK);
+          return;
+        }
         this.send(target, understood ?? text);
         return;
       }
@@ -3267,7 +3379,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
       const line = failed ? { phrase: '', cut: false } : oralLine(reply);
       const phrase = failed ? 'La recherche n’a pas abouti ; le détail est au terminal.'
         : this.portraitSafe(line.phrase) || 'C’est fait. Le détail est à l’écran.';
-      this.announcements.push({ label, phrase, subjectId, confirm: !failed && asksConfirmation(phrase),
+      this.announcements.push({ label, phrase, subjectId, chantier: delegation.chantier ?? null,
+        confirm: !failed && asksConfirmation(phrase),
         delegationId: delegation.delegationId, cut: line.cut, invitation: failed ? null : invitationOf(reply) });
       this.flushAnnouncements();
     });
@@ -3305,13 +3418,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
         if (!toThread) {
           this.subjectId.set(subjectId);
         }
-        void this.askToolConfirmation(request);
+        void this.askToolConfirmation(request, { subjectId, chantier: delegation.chantier ?? null });
       }),
       onConfirmResolved: (resolved) => this.zone.run(() => {
         this.scenes.confirmResolved();
-        if (this.pendingConfirm?.toolUseId === resolved.toolUseId) {
-          this.pendingConfirm = null;
-        }
+        this.toolConfirmationResolved(resolved.toolUseId);
       }),
       onQuestionRequest: (request) => this.zone.run(() => {
         this.scenes.question(request.timeoutMs);
@@ -3373,9 +3484,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }).then(({ elapsed, invited }) => this.zone.run(() => {
       this.delegationSaid(item.delegationId, item.phrase, elapsed, { oralCut: !!item.cut, invitation: invited });
       if (item.confirm) {
-        // La délégation finit sur « Vous confirmez ? » : la réponse ira directement à son tour Opus (D8).
+        // La délégation finit sur « Vous confirmez ? » : la réponse ira à SON fil (D8 ; F-270 / SF-270-02 D2).
+        this.armed.arm({ workId: item.delegationId ?? null, subjectId: item.subjectId, chantier: item.chantier ?? null,
+          name: shortName(item.label, item.chantier, this.subjectName(item.subjectId)) });
         this.awaitingVerbal = true;
-        this.verbalSubject = item.subjectId;
         void this.listen();
         return;
       }
@@ -3385,6 +3497,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   /** Envoie dans le fil du sujet, marqué « via Jarvis » (SF-231-06). */
   send(subjectId: string, text: string): void {
+    this.directSubject = subjectId;
     this.state.set('reflexion');
     this.clearAnswer();
     this.spoken.set(null);
@@ -3461,15 +3574,13 @@ export class JarvisComponent implements OnInit, OnDestroy {
       onConfirmRequest: (request) => this.zone.run(() => {
         if (latest()) {
           this.scenes.confirm(request.detail, request.timeoutMs);
-          void this.askToolConfirmation(request);
+          void this.askToolConfirmation(request, { subjectId, chantier: null });
         }
       }),
       onConfirmResolved: (resolved) => this.zone.run(() => {
         // Tranchée ailleurs (terminal, autre appareil, délai) : la question n'a plus lieu d'être.
         this.scenes.confirmResolved();
-        if (this.pendingConfirm?.toolUseId === resolved.toolUseId) {
-          this.pendingConfirm = null;
-        }
+        this.toolConfirmationResolved(resolved.toolUseId);
       }),
       onQuestionRequest: (request) => this.zone.run(() => {
         if (latest()) {
@@ -4769,6 +4880,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.parkClock();
     // SF-231-04 — l'agent a reformulé une action qui engage et attend « oui » : Jarvis écoute la réponse.
     if (asksConfirmation(phrase)) {
+      const subject = this.directSubject ?? this.subjectId();
+      if (subject) {
+        this.armed.arm({ workId: null, subjectId: subject, chantier: null,
+          name: shortName(null, null, this.subjectName(subject)) });
+      }
       this.awaitingVerbal = true;
       await this.listen();
     }
@@ -4779,13 +4895,43 @@ export class JarvisComponent implements OnInit, OnDestroy {
   /** SF-231-04 — l'agent a demandé « Tu confirmes ? » : la prochaine réponse est filtrée. */
   private awaitingVerbal = false;
 
+  /** F-270 / SF-270-02 (D2) — le fil du tour qui demande l'autorisation en cours. */
+  private pendingConfirmTarget: { subjectId: string; chantier: number | null } | null = null;
+  /** F-270 / SF-270-02 (D2) — les autorisations arrivées pendant une autre : dites ensuite, jamais écrasées. */
+  private queuedConfirms: { request: AtelierConfirmRequest; target: { subjectId: string; chantier: number | null } }[] = [];
+
   /** Reformule l'autorisation demandée, puis écoute la réponse. */
-  private async askToolConfirmation(request: AtelierConfirmRequest): Promise<void> {
+  private async askToolConfirmation(request: AtelierConfirmRequest,
+                                    target: { subjectId: string; chantier: number | null } | null = null): Promise<void> {
+    const where = target ?? { subjectId: this.subjectId() ?? '', chantier: null };
+    if (this.pendingConfirm && this.pendingConfirm.toolUseId !== request.toolUseId) {
+      this.queuedConfirms.push({ request, target: where });
+      return;
+    }
     this.clearAck();
     this.pendingConfirm = request;
+    this.pendingConfirmTarget = where;
     await this.say(confirmationQuestion(request));
     if (this.pendingConfirm === request) {
       await this.listen();
+    }
+  }
+
+  /** F-270 / SF-270-02 — l'autorisation suivante, s'il y en a une en attente. */
+  private nextToolConfirmation(): void {
+    const next = this.queuedConfirms.shift();
+    if (next && !this.pendingConfirm) {
+      void this.askToolConfirmation(next.request, next.target);
+    }
+  }
+
+  /** F-270 / SF-270-02 — une autorisation tranchée ailleurs (terminal, délai) : retirée, en cours ou en attente. */
+  private toolConfirmationResolved(toolUseId: string): void {
+    this.queuedConfirms = this.queuedConfirms.filter((q) => q.request.toolUseId !== toolUseId);
+    if (this.pendingConfirm?.toolUseId === toolUseId) {
+      this.pendingConfirm = null;
+      this.pendingConfirmTarget = null;
+      this.nextToolConfirmation();
     }
   }
 
@@ -4794,9 +4940,21 @@ export class JarvisComponent implements OnInit, OnDestroy {
    * doute ⇒ rien — la demande reste ouverte au terminal, et le silence finit en refus côté passerelle.
    */
   private async answerToolConfirmation(request: AtelierConfirmRequest, text: string): Promise<void> {
-    const subjectId = this.subjectId();
+    const target = this.pendingConfirmTarget;
+    const subjectId = target?.subjectId || this.subjectId();
+    const chantier = target?.chantier ?? null;
     const answer = classifyConfirmation(text);
     this.pendingConfirm = null;
+    this.pendingConfirmTarget = null;
+    try {
+      await this.decideToolConfirmation(request, answer, subjectId, chantier);
+    } finally {
+      this.nextToolConfirmation();
+    }
+  }
+
+  private async decideToolConfirmation(request: AtelierConfirmRequest, answer: 'oui' | 'non' | 'doute',
+                                       subjectId: string | null, chantier: number | null): Promise<void> {
     if (!subjectId || answer === 'doute') {
       this.state.set('reflexion');
       await this.say(DOUBT_PHRASE);
@@ -4809,7 +4967,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const decision = answer === 'oui'
       ? { toolUseId: request.toolUseId, decision: 'allow' as const }
       : { toolUseId: request.toolUseId, decision: 'deny' as const, reason: 'Refusé à voix haute (Jarvis).' };
-    this.atelier.confirmChatToolUse(subjectId, decision).subscribe({
+    this.atelier.confirmChatToolUse(subjectId, decision, chantier).subscribe({
       error: () => this.notice.set('La réponse n’a pas pu être transmise : confirme depuis le terminal.'),
     });
     await this.say(answer === 'oui' ? 'C’est parti.' : 'D’accord, je n’y touche pas.');

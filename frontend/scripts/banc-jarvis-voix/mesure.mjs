@@ -61,7 +61,10 @@ const isConverse = (e) => e.method === 'POST' && /^\/api\/jarvis\/converse(\?|$)
 const isTiming = (e) => e.method === 'POST' && /^\/api\/jarvis\/timings/.test(e.path);
 const isSpeech = (e) => e.method === 'POST' && /^\/api\/jarvis\/speech/.test(e.path);
 const isTrace = (e) => e.method === 'POST' && /^\/api\/jarvis\/listen-trace/.test(e.path);
-const isOpusSend = (e) => e.method === 'POST' && /^\/api\/atelier\//.test(e.path) && e.body && typeof e.body.text === 'string';
+const isOpusSend = (e) => e.method === 'POST' && e.body
+  && ((/^\/api\/atelier\//.test(e.path) && typeof e.body.text === 'string')
+    // F-270 — le tour Opus du fil (`/chat/stream`, message) : simulé par le banc pour un sujet sans poste.
+    || (/^\/api\/workspaces\/[^/]+\/chat\/stream/.test(e.path) && typeof e.body.message === 'string'));
 
 /**
  * Les événements du journal d'écoute, remis à l'heure epoch. `origins` : l'ouverture du journal, un nombre, ou par page
@@ -82,7 +85,7 @@ export function analyseTurn(turn, { api, probes, traces, next, spokenBefore }) {
   const kept = converses.filter((e) => !e.sse.some((s) => s.event === 'dropped'));
   const final = kept.at(-1) ?? null;
   const opus = api.filter((e) => isOpusSend(e) && inWindow(e.t));
-  const heardText = final?.body?.text ?? opus.at(-1)?.body?.text ?? null;
+  const heardText = final?.body?.text ?? opus.at(-1)?.body?.text ?? opus.at(-1)?.body?.message ?? null;
   const timings = api.filter((e) => isTiming(e) && inWindow(e.t)).map((e) => e.body).filter(Boolean);
   const timing = timings.at(-1) ?? null;
   const ws = probes.filter((p) => p.kind === 'ws_close' && inWindow(p.t))
@@ -137,6 +140,10 @@ export function analyseTurn(turn, { api, probes, traces, next, spokenBefore }) {
     // F-265 / SF-265-01 — Jarvis a-t-il PARLÉ (voix jouée) dans ce tour, et a-t-il dit « je n'ai pas compris » ?
     tiers: !!turn.tiers,
     spokeAloud: !!firstVoice,
+    // F-270 — l'attente d'écoute avant la phrase (scénarios à poste simulé), et si un travail tournait en fond.
+    tag: turn.tag ?? null,
+    waitedMs: turn.waitedMs ?? null,
+    workRunning: turn.workRunning ?? null,
     pardonAloud: !!firstVoice && spoken.some(isPardon),
   };
 }
@@ -209,6 +216,11 @@ export function analyse(runs, costs = {}) {
       reloads: scenarios.reduce((n, s) => n + s.reloads, 0),
       reloadCauses: scenarios.flatMap((s) => s.reloadCauses),
       costEur,
+      // F-270 — scénarios à poste simulé : phrases dites pendant un travail en fond, et l'attente d'écoute des étapes repérées.
+      duringWork: all.filter((t) => t.workRunning).length,
+      duringWorkHeard: all.filter((t) => t.workRunning && t.heard).length,
+      tagged: all.filter((t) => t.tag).map((t) => ({ tag: t.tag, id: `${t.scenario}/${t.id}`, waitedMs: t.waitedMs,
+        heard: t.heard, workRunning: t.workRunning, firstSoundMs: t.firstSoundMs })),
     },
   };
 }
@@ -243,6 +255,11 @@ export function summary(report) {
     `Jarvis n'écoutait pas : ${t.notListening} fois au moment de jouer une phrase (40 s d'attente)`,
     `Page rechargée        : ${t.reloads} fois en plein scénario${t.reloadCauses.length ? ` (${t.reloadCauses.join(', ')})` : ''}`,
     `Coût du passage       : ${t.costEur === null ? '—' : `${t.costEur.toFixed(4)} €`} (compteur Jarvis de la passerelle)`,
+    ...(t.tagged?.length ? [
+      `Pendant un travail    : ${t.duringWorkHeard}/${t.duringWork} phrases dites pendant un travail en fond, entendues`,
+      ...t.tagged.map((g) => `  [${g.tag}] ${g.id} : attente d'écoute ${ms(g.waitedMs)}, ${g.heard ? 'entendue' : 'PERDUE'}`
+        + `${g.workRunning ? ', travail en fond' : ''}, son ${ms(g.firstSoundMs)}`),
+    ] : []),
     '',
   ];
   for (const s of report.scenarios) {
@@ -253,7 +270,8 @@ export function summary(report) {
         + ` wer ${turn.wer ?? '—'} « ${(turn.heardText ?? '').slice(0, 70)} »`
         + `${turn.handledLocally ? ' (traité sur place, sans cerveau)' : ''}${turn.repeated.length ? ' RÉPÉTÉ' : ''}${turn.voiciWithoutShow ? ' VOICI-SANS-IMAGE' : ''}`
         + `${turn.rejected.length ? ` rejet=${turn.rejected.join(',')}` : ''}`
-        + `${turn.tiers ? (turn.spokeAloud ? ' TIERS-RÉPONDU' : ' tiers-tu') : ''}${turn.pardonAloud ? ' PARDON' : ''}`);
+        + `${turn.tiers ? (turn.spokeAloud ? ' TIERS-RÉPONDU' : ' tiers-tu') : ''}${turn.pardonAloud ? ' PARDON' : ''}`
+        + `${turn.waitedMs !== null ? ` attente ${ms(turn.waitedMs)}` : ''}${turn.workRunning ? ' [fond]' : ''}`);
     }
   }
   return lines.join('\n');

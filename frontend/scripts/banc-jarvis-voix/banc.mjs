@@ -60,7 +60,57 @@ const TYPES = { '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/htm
 const api = [];
 const allowedAudio = new Set([...Object.values(index.synthetic), ...Object.values(index.captures)].map((e) => e.file));
 
-const KEEP_BODY = /^\/api\/jarvis\/(converse|timings|listen-trace|speech|utterance|transcri)|^\/api\/atelier\/.*(messages|send|stream)/;
+const KEEP_BODY = /^\/api\/jarvis\/(converse|timings|listen-trace|speech|utterance|transcri|works)|^\/api\/atelier\/.*(messages|send|stream)|^\/api\/workspaces\/[^/]+\/chat\/stream/;
+
+// F-270 — LE POSTE SIMULÉ : un sujet sans poste créé pour un scénario (`poste`), dont le tour Opus est JOUÉ par le banc
+// (durée et réponse scriptées) : on mesure l'écoute et le dialogue PENDANT qu'un travail tourne en fond, sans poste réel
+// ni vraie course. Le cerveau rapide, la voix, l'écoute et la passerelle restent réels.
+const simulated = new Map();
+/** Les tours simulés : début, fin, message, réponse (pour savoir si une phrase a été dite pendant un travail). */
+let simTurns = [];
+
+function simReply(message) {
+  const m = (message ?? '').toLowerCase();
+  if (/^\W*(oui|ok|vas-y|vas y|je confirme)\b/.test(m)) {
+    return { line: 'C’est fait : le pipeline de dev de facturation est relancé, il est vert.', confirm: false };
+  }
+  if (/\b(lance|relance|déploie|deploie)\b/.test(m)) {
+    return { line: 'Je relance le pipeline de dev de facturation, trois étapes. Vous confirmez ?', confirm: true };
+  }
+  return { line: 'Quatre tickets du sprint 9 vous sont assignés sur facturation, dont LDIC-325.', confirm: false };
+}
+
+function simulate(req, res, path, config) {
+  const chunks = [];
+  req.on('data', (c) => chunks.push(c));
+  req.on('end', () => {
+    let body = null;
+    try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { /* corps illisible */ }
+    const entry = { t: Date.now(), method: req.method, path, status: 200, ms: null, sse: [], body, sim: true };
+    api.push(entry);
+    const reply = simReply(body?.message);
+    const turn = { start: Date.now(), end: null, message: body?.message ?? '', reply: reply.line };
+    simTurns.push(turn);
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+    const send = (event, data) => {
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      entry.sse.push({ t: Date.now(), event, data });
+    };
+    send('started', { at: new Date().toISOString() });
+    const duration = /^\W*oui\b/i.test(body?.message ?? '') ? config.tourMs * 1.5 : config.tourMs;
+    setTimeout(() => send('text', { text: `🎙 Je m’en occupe.\n` }), 800);
+    setTimeout(() => {
+      const text = `🎙 ${reply.line}`;
+      send('text', { text });
+      send('done', { reply: text, actions: [], messageId: `sim-${turn.start}` });
+      turn.end = Date.now();
+      entry.ms = turn.end - entry.t;
+      res.end();
+    }, duration);
+    res.on('close', () => { turn.end ??= Date.now(); });
+  });
+}
+
 function relay(req, res, path) {
   const chunks = [];
   req.on('data', (c) => chunks.push(c));
@@ -121,6 +171,10 @@ function relay(req, res, path) {
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   const path = decodeURIComponent(url.pathname);
+  const sim = /^\/api\/workspaces\/([^/]+)\/chat\/stream$/.exec(path);
+  if (sim && simulated.has(sim[1]) && req.method === 'POST') {
+    return simulate(req, res, req.url, simulated.get(sim[1]));
+  }
   if (path.startsWith('/api/')) {
     return relay(req, res, req.url);
   }
@@ -291,7 +345,26 @@ async function temoinFile(scenario) {
   return { file, entry: e };
 }
 
+/** F-270 — le sujet sans poste du scénario (`poste`), créé pour lui et supprimé après ; son tour est simulé. */
+async function openSimulatedSubject(poste) {
+  const headers = { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' };
+  const r = await fetch(`${GATEWAY}/api/workspaces/local`, { method: 'POST', headers,
+    body: JSON.stringify({ name: poste.nom }) });
+  if (!r.ok) throw new Error(`sujet simulé non créé : ${r.status}`);
+  const id = (await r.json()).id;
+  simulated.set(id, { tourMs: poste.tourMs ?? 15_000 });
+  return id;
+}
+
+async function closeSimulatedSubject(id) {
+  simulated.delete(id);
+  await fetch(`${GATEWAY}/api/workspaces/${id}`, { method: 'DELETE',
+    headers: { Authorization: `Bearer ${TOKEN}` } }).catch(() => undefined);
+}
+
 async function runScenario(scenario) {
+  const simSubject = scenario.poste ? simSubjects.get(scenario.id) ?? null : null;
+  simTurns = [];
   const temoin = scenario.chromeMic ? await temoinFile(scenario) : null;
   const browser = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: true,
     args: [...(temoin ? [`--use-file-for-fake-audio-capture=${temoin.file}%noloop`] : []), '--no-sandbox', '--window-size=1366,768', '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream',
@@ -342,6 +415,17 @@ async function runScenario(scenario) {
   const list = temoin ? [] : recordings(scenario);
   for (const [i, rec] of list.entries()) {
     const after = rec.step.after;
+    const stepFrom = Date.now();
+    if (rec.step.pauseMs) await sleep(rec.step.pauseMs);
+    if (rec.step.waitSaid) {
+      // F-270 — attendre que Jarvis ait DIT une phrase (« Vous confirmez ? ») avant de répondre.
+      const said = new RegExp(rec.step.waitSaid, 'i');
+      const end = Date.now() + (rec.step.waitMs ?? 60_000);
+      while (Date.now() < end && !api.some((e) => e.t >= stepFrom - 30_000 && /\/api\/jarvis\/speech/.test(e.path)
+          && said.test(e.body?.text ?? ''))) {
+        await sleep(200);
+      }
+    }
     if (after === 'voix') {
       // Coupure : la phrase part `gapMs` après le début de la voix de Jarvis (réponse au tour précédent).
       await waitVoice(page, turns.at(-1)?.end ?? 0, 20_000);
@@ -349,9 +433,11 @@ async function runScenario(scenario) {
     } else if (after === 'fin') {
       await sleep(rec.step.gapMs ?? 800); // enchaînement : sans attendre la réponse
     } else {
-      const ok = await waitListening(page, 40_000);
+      const ok = await waitListening(page, rec.step.waitMs ?? 40_000);
       if (!ok) turns.push({ id: rec.id, note: 'jarvis_n_ecoutait_pas' });
     }
+    // F-270 — combien de temps la phrase a attendu que Jarvis écoute, et si un travail tournait en fond à ce moment.
+    const waitedMs = Date.now() - stepFrom;
     const url = `/__banc/audio?f=${encodeURIComponent(rec.file)}`;
     const played = await say(page, url, rec.id, rec.step.gain ?? 1);
     if (!played) {
@@ -361,7 +447,10 @@ async function runScenario(scenario) {
     turns.push({ id: rec.id, kind: rec.kind, expected: rec.expected, stream: rec.stream ?? null, show: !!rec.show,
       tiers: !!rec.tiers,
       after: after ?? 'ecoute', start: played.start, end: played.end,
-      speechEnd: rec.speechEndMs === null ? null : played.start + rec.speechEndMs, activeMs: rec.activeMs });
+      speechEnd: rec.speechEndMs === null ? null : played.start + rec.speechEndMs, activeMs: rec.activeMs,
+      tag: rec.step.tag ?? null, waitedMs: scenario.poste ? waitedMs - (rec.step.pauseMs ?? 0) : null,
+      workRunning: scenario.poste ? simTurns.some((w) => w.start <= played.start && (w.end === null || w.end > played.start))
+        : null });
     // Le tour doit pouvoir commencer : on attend que Jarvis QUITTE l'écoute (il a pris la phrase), au plus 8 s ; sinon
     // la phrase suivante partirait pendant que celle-ci est encore en fin de tour.
     if (list[i + 1]?.step.after !== 'fin') {
@@ -386,7 +475,8 @@ async function runScenario(scenario) {
   await page.screenshot({ path: join(OUT, `${scenario.id}.png`) }).catch(() => undefined);
   await browser.close();
   return { id: scenario.id, label: scenario.label ?? scenario.id, ready, started, ended: Date.now(), turns,
-    probes, api: api.slice(apiFrom), pageErrors, screen, traceOrigins: { ...traceOrigins } };
+    probes, api: api.slice(apiFrom), pageErrors, screen, traceOrigins: { ...traceOrigins },
+    simTurns: simSubject ? simTurns.map((w) => ({ ...w })) : undefined };
 }
 
 const only = args.scenarios?.split(',');
@@ -404,6 +494,13 @@ async function warmUp() {
     // la mesure dira ce qui ne marche pas
   }
 }
+// F-270 — les sujets simulés sont créés AVANT la mise en température : l'univers que lit le cerveau rapide est mis en
+// cache 30 s ; créé juste avant le scénario, le sujet n'y serait pas encore.
+const simSubjects = new Map();
+for (const scenario of scenarios.filter((s) => s.poste)) {
+  simSubjects.set(scenario.id, await openSimulatedSubject(scenario.poste));
+}
+if (simSubjects.size) await sleep(31_000);
 await warmUp();
 const before = await gatewayCosts();
 const runs = [];
@@ -411,6 +508,7 @@ for (const scenario of scenarios) {
   process.stderr.write(`scénario ${scenario.id}…\n`);
   runs.push(await runScenario(scenario));
 }
+for (const id of simSubjects.values()) await closeSimulatedSubject(id);
 const afterCosts = await gatewayCosts();
 const report = analyse(runs, { before, after: afterCosts });
 report.meta = { at: new Date().toISOString(), gateway: GATEWAY, dist: DIST, view: VIEW, scenarios: scenarios.map((s) => s.id),

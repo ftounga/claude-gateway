@@ -30,6 +30,12 @@ node --test frontend/scripts/banc-jarvis-voix/mesure.test.mjs                # t
 | `chrono.mjs` | chronologie d'un passage (sondes, appels, journal d'écoute) |
 | `relire.mjs` | relit un `rapport.json` avec la mesure et la porte actuelles (comparer sans rejouer ni repayer) |
 
+**Poste simulé (F-270)** : un scénario qui porte `poste: { nom, tourMs }` crée pour lui un sujet sans poste (`POST
+/api/workspaces/local`), dont le tour Opus est **joué par le banc** (`banc.mjs`, `simulate`) : durée scriptée, réponse
+scriptée (« Vous confirmez ? » pour « relance… », « c'est fait » pour « oui »). On mesure l'écoute et le dialogue pendant
+qu'un travail tourne en fond, sans poste réel ; le cerveau rapide, la voix et la passerelle restent réels. Étapes : `tag`
+(ligne « attente d'écoute » au résumé), `waitMs` (attente d'écoute), `pauseMs`.
+
 Vue **2D par défaut** (`--vue 3d` pour la 3D) : sans GPU, la 3D en rendu logiciel occupe le fil principal et gonfle
 les latences ; elle change aussi le comportement du flux (voir la référence dans le cadrage).
 
