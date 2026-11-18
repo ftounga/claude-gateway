@@ -6,7 +6,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { AtelierProofBlock } from '../../core/models/atelier.models';
 import { HttpClient } from '@angular/common/http';
 
-import { ProofCapturesComponent, commandFacts, proofBlock, proofClipboardImages, proofImageUrl } from './proof-captures.component';
+import { ProofCapturesComponent, commandFacts, fileFacts, proofBlock, proofClipboardImages, proofImageUrl } from './proof-captures.component';
 
 describe('ProofCapturesComponent (F-212 / SF-212-04)', () => {
   const proof: AtelierProofBlock = {
@@ -139,5 +139,55 @@ describe('ProofCapturesComponent (F-212 / SF-212-04)', () => {
     expect(proofImageUrl('w', 'x/y')).toBe('/api/workspaces/w/proofs/x%2Fy');
     expect(commandFacts(proof.commands[2])).toBe('non exécutée');
     expect(proofBlock('tu_1', proof).proof).toBe(proof);
+  });
+
+  describe('F-268 — la preuve fichier', () => {
+    const fileId = 'c'.repeat(32);
+    const fileProof: AtelierProofBlock = {
+      title: 'Bucket public', step: null, host: 'pc-dev', os: null, shell: null,
+      captures: [{ id: fileId, width: 1400, height: 600 }],
+      commands: [],
+      files: [{ captureId: fileId, path: 'infra/s3.tf', firstLine: 9, lastLine: 22, totalLines: 64, highlights: [15, 16] }],
+    };
+
+    function createWith(value: AtelierProofBlock): HTMLElement {
+      fixture = TestBed.createComponent(ProofCapturesComponent);
+      fixture.componentRef.setInput('proof', value);
+      fixture.componentRef.setInput('workspaceId', 'ws-1');
+      fixture.detectChanges();
+      return fixture.nativeElement as HTMLElement;
+    }
+
+    it('fichier seul : la vignette, le chemin et ses lignes sous la vignette, aucune liste de commandes vide', () => {
+      const el = createWith(fileProof);
+      expect(el.querySelector('img.proof__image')?.getAttribute('src')).toBe('/api/workspaces/ws-1/proofs/' + fileId);
+      expect(el.querySelector('.proof__files')?.textContent).toContain('infra/s3.tf');
+      expect(el.textContent).toContain('lignes 9–22 sur 64 · surlignées 15, 16');
+      expect(el.querySelector('ul[aria-label="Commandes exécutées"]')).toBeNull();
+      expect(el.textContent).toContain('Capture générée à partir du contenu réel des fichiers du poste.');
+    });
+
+    it('terminal et fichier mêlés : les deux relevés, origine commune', () => {
+      const el = createWith({ ...fileProof, shell: 'bash', commands: proof.commands.slice(0, 1),
+        captures: [proof.captures[0], fileProof.captures[0]] });
+      expect(el.querySelectorAll('img.proof__image').length).toBe(2);
+      expect(el.textContent).toContain('$ curl -s localhost/health');
+      expect(el.textContent).toContain('infra/s3.tf');
+      expect(el.textContent).toContain('de la sortie et des fichiers réels du poste');
+    });
+
+    it('bloc antérieur sans « files » : rendu inchangé', () => {
+      const el = createWith({ ...proof, files: undefined });
+      expect(el.querySelector('.proof__files')).toBeNull();
+      expect(el.textContent).toContain('Capture générée à partir de la sortie réelle du poste.');
+    });
+
+    it('fileFacts, et le texte alternatif de l’image copiée est le chemin du fichier', () => {
+      expect(fileFacts({ captureId: 'x', path: 'a', firstLine: 1, lastLine: 3, totalLines: 3, highlights: [2] }))
+        .toBe('lignes 1–3 sur 3 · surlignée 2');
+      const images = proofClipboardImages({ ...fileProof, captures: [proof.captures[0], fileProof.captures[0]] },
+        'ws-1', TestBed.inject(HttpClient));
+      expect(images.map((image) => image.alt)).toEqual(['Capture 1', 'infra/s3.tf']);
+    });
   });
 });

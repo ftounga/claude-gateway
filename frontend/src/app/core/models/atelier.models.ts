@@ -1670,7 +1670,18 @@ export interface AtelierProofCommand {
   truncated: boolean;
 }
 
-/** **Le bloc « Captures de preuve »** (F-212 / SF-212-03). */
+/** Un extrait de fichier photographié au rendu éditeur (F-268) : relevés pour l'interface. */
+export interface AtelierProofFile {
+  /** L'image qui le montre. */
+  captureId: string;
+  path: string;
+  firstLine: number;
+  lastLine: number;
+  totalLines: number;
+  highlights: number[];
+}
+
+/** **Le bloc « Captures de preuve »** (F-212 / SF-212-03 ; fichiers F-268). */
 export interface AtelierProofBlock {
   title: string;
   step: string | null;
@@ -1679,6 +1690,8 @@ export interface AtelierProofBlock {
   shell: string | null;
   captures: AtelierProofCapture[];
   commands: AtelierProofCommand[];
+  /** F-268 : extraits de fichiers ; absent (ou `null`) sur un bloc antérieur. */
+  files?: AtelierProofFile[] | null;
 }
 
 /** Un chapitre d'une vidéo (F-213) : `t` en secondes. */

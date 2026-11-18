@@ -175,4 +175,33 @@ describe('AtelierTerminalComponent — captures visibles partout (F-212 / SF-212
     expect(resolved?.commands.length).toBe(1);
     expect(resolved?.captures).toEqual([{ id: id1, width: 2002, height: 1132 }]);
   });
+
+  it('F-268 : preuves= mêle captures terminal et fichiers, dans l’ordre de la balise ; Copier emporte les trois', () => {
+    const fileId = 'c'.repeat(32);
+    const fileProof: AtelierProofBlock = {
+      title: 'Bucket public', step: null, host: 'poste', os: null, shell: null,
+      captures: [{ id: fileId, width: 1400, height: 600 }], commands: [],
+      files: [{ captureId: fileId, path: 'infra/s3.tf', firstLine: 1, lastLine: 20, totalLines: 20, highlights: [4] }],
+    };
+    component.messages = [{
+      id: messageId, role: 'ASSISTANT', content: 'x', actions: [],
+      terminal: [
+        { tool: 'capturer_preuves', toolUseId: 't1', threadId: null, output: '', hasOutput: false, error: false,
+          expanded: false, proof: proof(id1) },
+        { tool: 'capturer_preuves', toolUseId: 't2', threadId: null, output: '', hasOutput: false, error: false,
+          expanded: false, proof: fileProof },
+        { tool: 'capturer_preuves', toolUseId: 't3', threadId: null, output: '', hasOutput: false, error: false,
+          expanded: false, proof: proof(id2) },
+      ],
+    }];
+    const mixed = (splitMessageBlocks('```message preuves=' + [fileId, id1, id2].join(',') + '\nTrois défauts.\n```')
+      .find((segment) => segment.kind === 'block') as { block: CopyBlock }).block;
+    const resolved = component.attachedProof(component.messages[0], mixed);
+    expect(resolved?.captures.map((capture) => capture.id)).toEqual([fileId, id1, id2]);
+    expect(resolved?.files?.map((file) => file.path)).toEqual(['infra/s3.tf']);
+    expect(resolved?.commands.length).toBe(2);
+    const images = component.clipboardImagesOf(resolved!);
+    expect(images.length).toBe(3);
+    expect(images[0].alt).toBe('infra/s3.tf');
+  });
 });
