@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { dispatch } from '../jarvis-fast-brain';
 import { JarvisPieceClient, pieceQueryString } from './jarvis-piece-client';
 import { initialNav } from './jarvis-piece-nav';
-import { RECENT_MS, ShowCommand, ShowContext, showPlan } from './jarvis-piece-show';
+import { RECENT_MS, ShowCommand, ShowContext, askedSubjectOf, showPlan } from './jarvis-piece-show';
 import { JarvisPieceStore, refusalPhrase } from './jarvis-piece-store';
 import { Piece } from './jarvis-piece.models';
 
@@ -114,5 +114,23 @@ describe('Jarvis — l\'outil afficher du cerveau rapide (F-237 / SF-237-08)', (
       expect((await store.applyShow(PROOFS, ctx)).reason).toBe('PRESENTATION');
       expect(list).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe('Jarvis — le sujet montré devient le sujet en vue (F-272 / SF-272-03)', () => {
+  const subjects = [{ id: 'dp' }, { id: 'td' }];
+
+  it('une galerie demandée d’un sujet connu : ce sujet', () => {
+    expect(askedSubjectOf({ action: 'piece', pieces: ['diag:x'], scope: { subjectId: 'dp' }, reason: 'demande' },
+      subjects)).toBe('dp');
+    expect(askedSubjectOf({ action: 'galerie', scope: { subjectId: 'dp', type: 'architecture' } }, subjects)).toBe('dp');
+  });
+
+  it('jamais d’initiative, ni sans portée de sujet, ni pour un sujet inconnu, ni pour une navigation', () => {
+    expect(askedSubjectOf({ action: 'piece', pieces: ['diag:x'], scope: { subjectId: 'dp' }, reason: 'appui' },
+      subjects)).toBeNull();
+    expect(askedSubjectOf({ action: 'galerie', reason: 'demande' }, subjects)).toBeNull();
+    expect(askedSubjectOf({ action: 'galerie', scope: { subjectId: 'zz' } }, subjects)).toBeNull();
+    expect(askedSubjectOf({ action: 'vue', view: '3d', scope: { subjectId: 'dp' } }, subjects)).toBeNull();
   });
 });

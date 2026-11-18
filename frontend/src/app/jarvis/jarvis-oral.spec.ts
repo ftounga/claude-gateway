@@ -73,6 +73,31 @@ describe('Jarvis — « passe sur … » (F-231 / SF-231-02)', () => {
     expect(subjectSwitch('bascule vers CAGIP', real)).toBeNull();
   });
 
+  it('F-272 — les tournures de la démo du 17/11 changent de sujet quand la suite EST un nom de sujet', () => {
+    const real = [
+      { id: 'dp', name: 'data-platform' },
+      { id: 'ag', name: 'agenor' },
+      { id: 'td', name: 'Terminal du poste' },
+    ];
+    expect(subjectSwitch('Allons sur data-platform.', real)?.id).toBe('dp');
+    expect(subjectSwitch('Allons sur Data Platform', real)?.id).toBe('dp');
+    expect(subjectSwitch('On va sur agenor', real)?.id).toBe('ag');
+    expect(subjectSwitch('Jarvis, on passe sur data-platform s’il te plaît.', real)?.id).toBe('dp');
+    expect(subjectSwitch('Ouvre data-platform.', real)?.id).toBe('dp');
+    expect(subjectSwitch('ouvre le sujet agenor', real)?.id).toBe('ag');
+    expect(subjectSwitch('Revenons sur le terminal du poste', real)?.id).toBe('td');
+    expect(subjectSwitch('Mets-toi sur agenor', real)?.id).toBe('ag');
+  });
+
+  it('F-272 — ces tournures ne basculent jamais sur une demande (« ouvre le ticket 42 », « allons sur la prod »)', () => {
+    const real = [{ id: 'dp', name: 'data-platform' }, { id: 'ag', name: 'agenor' }];
+    expect(subjectSwitch('Ouvre le ticket 42', real)).toBeNull();
+    expect(subjectSwitch('Allons sur la prod de data-platform', real)).toBeNull();
+    expect(subjectSwitch('Affiche l’architecture de data-platform', real)).toBeNull();
+    expect(subjectSwitch('Allons-y.', real)).toBeNull();
+    expect(subjectSwitch('ouvre ag', [{ id: 'ag', name: 'ag' }])).toBeNull();
+  });
+
   it('ne devine pas : inconnu ou ambigu ⇒ null (la phrase part au cerveau)', () => {
     expect(subjectSwitch('passe sur Thales', subjects)).toBeNull();
     expect(subjectSwitch('passe sur e', subjects)).toBeNull();

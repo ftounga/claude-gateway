@@ -236,3 +236,18 @@ function galleryPlan(cmd: ShowCommand, ctx: ShowContext, origin: NavOrigin): Sho
   const select = cmd.action === 'piece' && ids.length === 1 ? 1 : cmd.index ?? (proactiveArchitecture ? 1 : null);
   return { kind: 'gallery', scope: navScope, query, ids, select, origin, mode };
 }
+
+/**
+ * F-272 / SF-272-03 — le sujet d'un ordre de galerie **demandé** dont la portée nomme un sujet connu (la passerelle y
+ * écrit le sujet où elle a trouvé les pièces, SF-272-02) : il devient le sujet en vue. `null` pour un ordre d'initiative,
+ * sans portée de sujet, ou d'un sujet inconnu de l'écran.
+ */
+export function askedSubjectOf(cmd: ShowCommand, subjects: readonly { id: string }[]): string | null {
+  if (cmd.reason === 'appui' || !GALLERY_ACTIONS.has(cmd.action)) {
+    return null;
+  }
+  const id = cmd.scope?.subjectId ?? null;
+  return id && subjects.some((s) => s.id === id) ? id : null;
+}
+
+const GALLERY_ACTIONS: ReadonlySet<ShowAction> = new Set<ShowAction>(['galerie', 'piece', 'comparer', 'raconter', 'planche']);
