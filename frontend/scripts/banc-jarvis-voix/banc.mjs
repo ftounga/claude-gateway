@@ -363,7 +363,7 @@ async function closeSimulatedSubject(id) {
 }
 
 async function runScenario(scenario) {
-  const simSubject = scenario.poste ? await openSimulatedSubject(scenario.poste) : null;
+  const simSubject = scenario.poste ? simSubjects.get(scenario.id) ?? null : null;
   simTurns = [];
   const temoin = scenario.chromeMic ? await temoinFile(scenario) : null;
   const browser = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: true,
@@ -417,6 +417,15 @@ async function runScenario(scenario) {
     const after = rec.step.after;
     const stepFrom = Date.now();
     if (rec.step.pauseMs) await sleep(rec.step.pauseMs);
+    if (rec.step.waitSaid) {
+      // F-270 — attendre que Jarvis ait DIT une phrase (« Vous confirmez ? ») avant de répondre.
+      const said = new RegExp(rec.step.waitSaid, 'i');
+      const end = Date.now() + (rec.step.waitMs ?? 60_000);
+      while (Date.now() < end && !api.some((e) => e.t >= stepFrom - 30_000 && /\/api\/jarvis\/speech/.test(e.path)
+          && said.test(e.body?.text ?? ''))) {
+        await sleep(200);
+      }
+    }
     if (after === 'voix') {
       // Coupure : la phrase part `gapMs` après le début de la voix de Jarvis (réponse au tour précédent).
       await waitVoice(page, turns.at(-1)?.end ?? 0, 20_000);
@@ -465,7 +474,6 @@ async function runScenario(scenario) {
   }, component.toString()).catch(() => null);
   await page.screenshot({ path: join(OUT, `${scenario.id}.png`) }).catch(() => undefined);
   await browser.close();
-  if (simSubject) await closeSimulatedSubject(simSubject);
   return { id: scenario.id, label: scenario.label ?? scenario.id, ready, started, ended: Date.now(), turns,
     probes, api: api.slice(apiFrom), pageErrors, screen, traceOrigins: { ...traceOrigins },
     simTurns: simSubject ? simTurns.map((w) => ({ ...w })) : undefined };
@@ -486,6 +494,13 @@ async function warmUp() {
     // la mesure dira ce qui ne marche pas
   }
 }
+// F-270 — les sujets simulés sont créés AVANT la mise en température : l'univers que lit le cerveau rapide est mis en
+// cache 30 s ; créé juste avant le scénario, le sujet n'y serait pas encore.
+const simSubjects = new Map();
+for (const scenario of scenarios.filter((s) => s.poste)) {
+  simSubjects.set(scenario.id, await openSimulatedSubject(scenario.poste));
+}
+if (simSubjects.size) await sleep(31_000);
 await warmUp();
 const before = await gatewayCosts();
 const runs = [];
@@ -493,6 +508,7 @@ for (const scenario of scenarios) {
   process.stderr.write(`scénario ${scenario.id}…\n`);
   runs.push(await runScenario(scenario));
 }
+for (const id of simSubjects.values()) await closeSimulatedSubject(id);
 const afterCosts = await gatewayCosts();
 const report = analyse(runs, { before, after: afterCosts });
 report.meta = { at: new Date().toISOString(), gateway: GATEWAY, dist: DIST, view: VIEW, scenarios: scenarios.map((s) => s.id),

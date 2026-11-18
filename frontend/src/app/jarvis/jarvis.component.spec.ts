@@ -3924,6 +3924,23 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       jarvis.ngOnDestroy();
     }));
 
+  it('F-270 / SF-270-02 — entretien proposé : le « oui » attendu par un travail lui revient, pas à l’entretien',
+    fakeAsync(() => {
+      interviewClient.offer.and.returnValue(of({ offer: true, offers: 0 }));
+      const jarvis = fastOn();
+      jarvis.conversation.start();
+      delegateAndAsk(jarvis, 'd-1', 'w-1', 4, 'LDIC-325', '🎙 Je lance LDIC-325. Vous confirmez ?');
+      atelier.streamChat.calls.reset();
+
+      void jarvis.handle('Oui.');
+      flushMicrotasks();
+      tick(1);
+      flushMicrotasks();
+      expect(atelier.streamChat.calls.mostRecent().args[0]).toBe('w-1');
+      expect(atelier.streamChat.calls.mostRecent().args[6]).toBe(4);
+      jarvis.ngOnDestroy();
+    }));
+
   it('F-270 / SF-270-02 — repli du cerveau rapide en conversation : « Je m’en occupe. », tour en fond', fakeAsync(() => {
     const jarvis = fastOn();
     jarvis.conversation.start();

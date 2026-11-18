@@ -2741,10 +2741,13 @@ export class JarvisComponent implements OnInit, OnDestroy {
       return;
     }
     // F-241 / SF-241-05 (D8) — « oui » à « Voulez-vous que je retienne… ? », ou « non, oublie ça » après une note.
-    if (!this.presentation() && !this.pendingConfirm && await this.answerPortrait(text)) {
+    // F-270 / SF-270-02 (D2) — un « oui » attendu par un travail lui revient : ni l'entretien proposé, ni le portrait
+    // ne le prennent.
+    const confirmationsArmed = this.awaitingVerbal || !!this.choosing || this.armed.size > 0;
+    if (!this.presentation() && !this.pendingConfirm && !confirmationsArmed && await this.answerPortrait(text)) {
       return;
     }
-    if (!this.presentation() && !this.pendingConfirm) {
+    if (!this.presentation() && !this.pendingConfirm && !confirmationsArmed) {
       if (isInterviewCommand(text)) {
         await this.startInterview(this.interviewOffer() ? 'INITIAL' : 'UPDATE');
         return;

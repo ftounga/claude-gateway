@@ -49,7 +49,7 @@
       "steps": [{ "say": "d01" }, { "say": "d02" }, { "say": "d03" }, { "say": "d04" }] },
     { "id": "oui-en-fond", "label": "F-270 S2 : le « oui » ne gèle plus l'écoute (poste simulé : facturation)", "voice": "george",
       "poste": { "nom": "facturation", "tourMs": 12000 },
-      "steps": [{ "say": "f02" }, { "say": "n07", "tag": "oui", "waitMs": 60000 }, { "say": "n05", "tag": "apres-oui", "waitMs": 60000 }] },
+      "steps": [{ "say": "f02" }, { "say": "n07", "tag": "oui", "waitSaid": "confirmez", "waitMs": 60000 }, { "say": "n05", "tag": "apres-oui", "waitMs": 60000 }] },
     { "id": "temoin", "label": "Témoin : micro factice de Chrome (fichier), sans le mélangeur du banc", "voice": "fr-1", "chromeMic": "n02" }
   ]
 }
