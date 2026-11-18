@@ -1591,10 +1591,16 @@ export interface AtelierAppRequestPiece {
   size: number;
 }
 
+/**
+ * Type d'un besoin (F-205) ; `COMMANDE` (F-269) = une instruction de l'administrateur que Claude Code
+ * exécute telle quelle à son prochain démarrage.
+ */
+export type AppRequestKind = 'BUG' | 'EVOLUTION' | 'COMMANDE';
+
 /** **La carte « Enregistrer ce besoin ? »** (F-205 / SF-205-01) — rien n'entre au registre avant le clic. */
 export interface AtelierAppRequest {
   requestId: string;
-  kind: 'BUG' | 'EVOLUTION';
+  kind: AppRequestKind;
   title: string;
   description: string;
   reformulation?: string | null;
@@ -1620,9 +1626,10 @@ export interface AppRequestAttachmentView {
 /** Un besoin relu (carte du fil, section Besoins) — F-205 / SF-205-01. */
 export interface AppRequestView {
   id: string;
-  workspaceId: string;
+  /** `null` pour une commande saisie dans l'administration (F-269). */
+  workspaceId: string | null;
   messageId?: string | null;
-  kind: 'BUG' | 'EVOLUTION';
+  kind: AppRequestKind;
   title: string;
   description: string;
   reformulation?: string | null;

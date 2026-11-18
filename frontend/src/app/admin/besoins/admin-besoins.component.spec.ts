@@ -5,7 +5,7 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { of, throwError } from 'rxjs';
 
 import { AppRequestView } from '../../core/models/atelier.models';
-import { AppRequestService, sizeLabel } from '../../core/services/app-request.service';
+import { AppRequestService, appRequestKindIcon, appRequestKindLabel, sizeLabel } from '../../core/services/app-request.service';
 import { AdminBesoinsComponent } from './admin-besoins.component';
 
 function item(over: Partial<AppRequestView> = {}): AppRequestView {
@@ -35,7 +35,7 @@ describe('AdminBesoinsComponent (F-205 / SF-205-02)', () => {
   let snackBar: jasmine.SpyObj<MatSnackBar>;
 
   beforeEach(() => {
-    service = jasmine.createSpyObj<AppRequestService>('AppRequestService', ['list', 'update', 'attachment']);
+    service = jasmine.createSpyObj<AppRequestService>('AppRequestService', ['list', 'update', 'attachment', 'createCommand']);
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
     service.list.and.returnValue(of([item()]));
     service.attachment.and.returnValue(of(new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' })));
@@ -56,7 +56,7 @@ describe('AdminBesoinsComponent (F-205 / SF-205-02)', () => {
   }
 
   it('charge les besoins en attente par défaut', () => {
-    expect(service.list).toHaveBeenCalledWith('EN_ATTENTE');
+    expect(service.list).toHaveBeenCalledWith('EN_ATTENTE', null);
     expect(el().textContent).toContain('Le terminal se fige');
     expect(el().textContent).toContain('En attente');
   });
@@ -64,7 +64,7 @@ describe('AdminBesoinsComponent (F-205 / SF-205-02)', () => {
   it('changer de filtre recharge', () => {
     component.filter = null;
     component.load();
-    expect(service.list).toHaveBeenCalledWith(null);
+    expect(service.list).toHaveBeenCalledWith(null, null);
   });
 
   it('ouvrir un besoin montre ses mots, ses pièces et l’état de leur copie, avec l’aperçu de la capture', () => {
@@ -140,5 +140,64 @@ describe('AdminBesoinsComponent (F-205 / SF-205-02)', () => {
     expect(sizeLabel(12)).toBe('12 o');
     expect(sizeLabel(2048)).toBe('2 Ko');
     expect(sizeLabel(5_000_000)).toBe('4,8 Mo');
+  });
+
+  // ------------------------------------------------------------------ F-269 : les commandes
+
+  it('le filtre Type « Commandes » recharge avec kind = COMMANDE (F-269)', () => {
+    expect(component.kindFilters.map((f) => f.label)).toEqual(['Tous', 'Bugs', 'Évolutions', 'Commandes']);
+    component.kindFilter = 'COMMANDE';
+    component.load();
+    expect(service.list).toHaveBeenCalledWith('EN_ATTENTE', 'COMMANDE');
+  });
+
+  it('une commande s’affiche « Commande », icône terminal, et son texte tel quel (F-269)', () => {
+    service.list.and.returnValue(of([item({ id: 'c-9', kind: 'COMMANDE', workspaceId: null,
+      title: 'Lance les bancs Jarvis', description: 'Lance les bancs Jarvis, 2 passages.', reformulation: null,
+      observedContext: null, attachments: [] })]));
+    component.load();
+    fixture.detectChanges();
+    const head = el().querySelector('.besoin__head')!;
+    expect(head.textContent).toContain('Commande');
+    expect(head.querySelector('mat-icon')!.textContent!.trim()).toBe('terminal');
+    (head as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el().textContent).toContain('La commande (telle quelle)');
+    expect(el().textContent).toContain('Lance les bancs Jarvis, 2 passages.');
+    expect(appRequestKindLabel('COMMANDE')).toBe('Commande');
+    expect(appRequestKindIcon('COMMANDE')).toBe('terminal');
+  });
+
+  it('[Enregistrer] envoie la commande telle quelle, vide le champ et recharge (F-269)', () => {
+    service.createCommand.and.returnValue(of(item({ kind: 'COMMANDE' })));
+    service.list.calls.reset();
+    component.commandText = '  teste X puis Y\n';
+    fixture.detectChanges();
+    (el().querySelector('.commande__save') as HTMLButtonElement).click();
+    expect(service.createCommand).toHaveBeenCalledOnceWith('  teste X puis Y\n');
+    expect(component.commandText).toBe('');
+    expect(service.list).toHaveBeenCalled();
+    expect(snackBar.open).toHaveBeenCalledWith(
+      'Commande enregistrée — Claude Code l’exécutera à son prochain démarrage.', 'Fermer', jasmine.any(Object));
+  });
+
+  it('un texte vide ne part pas : bouton désactivé (F-269)', async () => {
+    component.commandText = '   ';
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect((el().querySelector('.commande__save') as HTMLButtonElement).disabled).toBeTrue();
+    component.saveCommand();
+    expect(service.createCommand).not.toHaveBeenCalled();
+  });
+
+  it('un refus garde le texte et dit le message (F-269)', () => {
+    service.createCommand.and.returnValue(throwError(() => new HttpErrorResponse({
+      status: 403, error: { message: 'Réservé à l’administrateur.' },
+    })));
+    component.commandText = 'lance les bancs';
+    component.saveCommand();
+    expect(component.commandText).toBe('lance les bancs');
+    expect(snackBar.open).toHaveBeenCalledWith('Réservé à l’administrateur.', 'Fermer', jasmine.any(Object));
   });
 });

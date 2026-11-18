@@ -122,6 +122,18 @@ describe('BesoinCardComponent (F-205 / SF-205-02)', () => {
     expect(block.toolUseId).toBe('t-1');
   });
 
+  it('une commande s’annonce « Commande pour Claude Code », icône terminal (F-269)', () => {
+    service.get.and.returnValue(of(view('PROPOSE')));
+    fixture = TestBed.createComponent(BesoinCardComponent);
+    fixture.componentRef.setInput('besoin', { ...besoin, kind: 'COMMANDE', title: 'Lance les bancs Jarvis' });
+    fixture.componentRef.setInput('workspaceId', 'ws-1');
+    fixture.detectChanges();
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.textContent).toContain('Commande pour Claude Code · Lance les bancs Jarvis');
+    expect(el.querySelector('.besoin-card__icon')!.textContent!.trim()).toBe('terminal');
+  });
+
   it('un complément s’annonce comme tel : « Compléter le besoin », [Ajouter au besoin], puis « Ajouté » (SF-205-04)', () => {
     service.get.and.returnValue(of(view('PROPOSE')));
     fixture = TestBed.createComponent(BesoinCardComponent);

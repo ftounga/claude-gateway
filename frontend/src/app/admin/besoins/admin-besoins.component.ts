@@ -10,9 +10,15 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
-import { AppRequestAttachmentView, AppRequestStatus, AppRequestView } from '../../core/models/atelier.models';
+import {
+  AppRequestAttachmentView,
+  AppRequestKind,
+  AppRequestStatus,
+  AppRequestView,
+} from '../../core/models/atelier.models';
 import {
   AppRequestService,
+  appRequestKindIcon,
   appRequestKindLabel,
   appRequestStatusLabel,
   sizeLabel,
@@ -27,6 +33,17 @@ export const BESOIN_FILTERS: { value: AppRequestStatus | null; label: string }[]
   { value: null, label: 'Tous' },
 ];
 
+/** Filtres de type (F-269) : un type, ou tous (`null`). */
+export const BESOIN_KIND_FILTERS: { value: AppRequestKind | null; label: string }[] = [
+  { value: null, label: 'Tous' },
+  { value: 'BUG', label: 'Bugs' },
+  { value: 'EVOLUTION', label: 'Évolutions' },
+  { value: 'COMMANDE', label: 'Commandes' },
+];
+
+/** Longueur maximale d'une commande (même borne que le serveur). */
+export const COMMAND_MAX_CHARS = 8000;
+
 /** Statuts qu'un administrateur peut poser. */
 export const BESOIN_STATUSES: AppRequestStatus[] = ['EN_ATTENTE', 'CADRE', 'REJETE', 'LIVRE'];
 
@@ -34,7 +51,8 @@ const FEATURE_REF = /^F-\d{1,4}$/i;
 
 /**
  * Section **Besoins** de l'administration (F-205 / SF-205-02) : les bugs et évolutions de
- * l'application signalés depuis un terminal et enregistrés d'un clic. On les filtre, on relit les mots
+ * l'application signalés depuis un terminal et enregistrés d'un clic — et, depuis F-269, les
+ * **commandes pour Claude Code**, saisies ici ou dictées à l'agent, filtrables par type. On les filtre, on relit les mots
  * de l'utilisateur et ses pièces, on pose le statut et la feature qui les porte. Claude Code lit la même
  * chose par `GET /api/admin/app-requests?status=EN_ATTENTE`.
  */
@@ -47,20 +65,46 @@ const FEATURE_REF = /^F-\d{1,4}$/i;
       <mat-card-header>
         <mat-card-title>Besoins</mat-card-title>
         <mat-card-subtitle>
-          Bugs et évolutions de l’application signalés depuis un terminal. Claude Code les relit par
-          <code>/api/admin/app-requests</code>.
+          Bugs et évolutions de l’application signalés depuis un terminal, et commandes pour Claude Code.
+          Claude Code les relit par <code>/api/admin/app-requests</code> à chaque démarrage.
         </mat-card-subtitle>
       </mat-card-header>
 
       <mat-card-content>
-        <mat-form-field appearance="outline" class="besoins__filter">
-          <mat-label>Statut</mat-label>
-          <mat-select [(ngModel)]="filter" name="filter" (selectionChange)="load()">
-            @for (f of filters; track f.label) {
-              <mat-option [value]="f.value">{{ f.label }}</mat-option>
-            }
-          </mat-select>
-        </mat-form-field>
+        <!-- F-269 — UNE COMMANDE POUR CLAUDE CODE, saisie directement : exécutée telle quelle au prochain
+             démarrage de Claude Code. Le texte part mot pour mot. -->
+        <section class="commande" aria-labelledby="commande-title">
+          <h3 id="commande-title" class="besoin__subtitle">Nouvelle commande pour Claude Code</h3>
+          <mat-form-field appearance="outline" class="commande__field">
+            <mat-label>Commande, telle que Claude Code doit l’exécuter</mat-label>
+            <textarea matInput [(ngModel)]="commandText" name="commandText" rows="3"
+              [maxlength]="commandMax" placeholder="Ex. : lance les bancs Jarvis, 2 passages"></textarea>
+            <mat-hint align="end">{{ commandText.length }} / {{ commandMax }}</mat-hint>
+          </mat-form-field>
+          <button mat-flat-button color="primary" type="button" class="commande__save"
+            [disabled]="sendingCommand() || !commandText.trim()" (click)="saveCommand()">
+            <mat-icon>terminal</mat-icon> Enregistrer
+          </button>
+        </section>
+
+        <div class="besoins__filters">
+          <mat-form-field appearance="outline" class="besoins__filter">
+            <mat-label>Statut</mat-label>
+            <mat-select [(ngModel)]="filter" name="filter" (selectionChange)="load()">
+              @for (f of filters; track f.label) {
+                <mat-option [value]="f.value">{{ f.label }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <mat-form-field appearance="outline" class="besoins__filter">
+            <mat-label>Type</mat-label>
+            <mat-select [(ngModel)]="kindFilter" name="kindFilter" (selectionChange)="load()">
+              @for (f of kindFilters; track f.label) {
+                <mat-option [value]="f.value">{{ f.label }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+        </div>
 
         @if (loading()) {
           <p class="besoins__note">Chargement…</p>
@@ -71,7 +115,7 @@ const FEATURE_REF = /^F-\d{1,4}$/i;
         @for (item of items(); track item.id) {
           <article class="besoin" [class.besoin--open]="openId() === item.id">
             <button type="button" class="besoin__head" [attr.aria-expanded]="openId() === item.id" (click)="toggle(item)">
-              <mat-icon aria-hidden="true">{{ item.kind === 'BUG' ? 'bug_report' : 'lightbulb' }}</mat-icon>
+              <mat-icon aria-hidden="true">{{ icon(item.kind) }}</mat-icon>
               <span class="besoin__kind">{{ kind(item.kind) }}</span>
               <span class="besoin__title">{{ item.title }}</span>
               <span class="besoin__meta">
@@ -81,7 +125,7 @@ const FEATURE_REF = /^F-\d{1,4}$/i;
 
             @if (openId() === item.id) {
               <div class="besoin__detail">
-                <h3 class="besoin__subtitle">Ses mots</h3>
+                <h3 class="besoin__subtitle">{{ item.kind === 'COMMANDE' ? 'La commande (telle quelle)' : 'Ses mots' }}</h3>
                 <blockquote class="besoin__words">{{ item.description }}</blockquote>
                 @if (item.reformulation) {
                   <h3 class="besoin__subtitle">Reformulation</h3>
@@ -192,6 +236,37 @@ const FEATURE_REF = /^F-\d{1,4}$/i;
     </mat-card>
   `,
   styles: `
+    .commande {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      gap: var(--cg-space-2);
+      margin-bottom: var(--cg-space-3);
+      padding-bottom: var(--cg-space-2);
+      border-bottom: 1px solid var(--cg-divider);
+    }
+
+    .commande .besoin__subtitle {
+      flex-basis: 100%;
+      margin-top: 0;
+    }
+
+    .commande__field {
+      flex: 1 1 320px;
+      min-width: 0;
+    }
+
+    .commande__save {
+      min-height: 44px;
+      margin-top: var(--cg-space-1);
+    }
+
+    .besoins__filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--cg-space-2);
+    }
+
     .besoins__filter {
       width: 200px;
       max-width: 100%;
@@ -335,13 +410,19 @@ export class AdminBesoinsComponent implements OnInit, OnDestroy {
   readonly filters = BESOIN_FILTERS;
   readonly statuses = BESOIN_STATUSES;
 
+  readonly kindFilters = BESOIN_KIND_FILTERS;
+  readonly commandMax = COMMAND_MAX_CHARS;
+
   filter: AppRequestStatus | null = 'EN_ATTENTE';
+  kindFilter: AppRequestKind | null = null;
+  commandText = '';
   draftStatus: AppRequestStatus = 'EN_ATTENTE';
   draftFeature = '';
 
   readonly items = signal<AppRequestView[]>([]);
   readonly loading = signal(false);
   readonly saving = signal(false);
+  readonly sendingCommand = signal(false);
   readonly openId = signal<string | null>(null);
   /** Aperçus d'images, par « id/rang » : URL d'objet, libérées à la destruction. */
   readonly previews = signal<Record<string, string>>({});
@@ -356,7 +437,7 @@ export class AdminBesoinsComponent implements OnInit, OnDestroy {
 
   load(): void {
     this.loading.set(true);
-    this.requests.list(this.filter).subscribe({
+    this.requests.list(this.filter, this.kindFilter).subscribe({
       next: (items) => {
         this.items.set(items);
         this.loading.set(false);
@@ -389,6 +470,31 @@ export class AdminBesoinsComponent implements OnInit, OnDestroy {
         }
       }
     }
+  }
+
+  /**
+   * [Enregistrer] une commande pour Claude Code (F-269) : le texte part tel quel ; en cas de refus, il
+   * reste dans le champ.
+   */
+  saveCommand(): void {
+    const text = this.commandText;
+    if (!text.trim() || this.sendingCommand()) {
+      return;
+    }
+    this.sendingCommand.set(true);
+    this.requests.createCommand(text).subscribe({
+      next: () => {
+        this.sendingCommand.set(false);
+        this.commandText = '';
+        this.snackBar.open('Commande enregistrée — Claude Code l’exécutera à son prochain démarrage.', 'Fermer',
+          { duration: 4000 });
+        this.load();
+      },
+      error: (err: HttpErrorResponse) => {
+        this.sendingCommand.set(false);
+        this.snackBar.open(err?.error?.message ?? 'Commande refusée.', 'Fermer', { duration: 4000 });
+      },
+    });
   }
 
   featureValid(): boolean {
@@ -438,6 +544,10 @@ export class AdminBesoinsComponent implements OnInit, OnDestroy {
 
   kind(kind: string): string {
     return appRequestKindLabel(kind);
+  }
+
+  icon(kind: string): string {
+    return appRequestKindIcon(kind);
   }
 
   status(status: string): string {
