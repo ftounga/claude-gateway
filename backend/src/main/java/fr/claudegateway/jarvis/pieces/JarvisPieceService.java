@@ -216,6 +216,20 @@ public class JarvisPieceService {
         return built;
     }
 
+    /**
+     * F-272 / SF-272-02, SF-272-04 — toutes les pièces d'un sujet du compte, <b>relues sans cache</b> (un schéma tout
+     * juste rendu, éventuellement sur un autre pod, est trouvé) ; le cache est rafraîchi au passage. 404 si le sujet
+     * n'est pas au compte ({@code requireOwned}, toujours en premier).
+     */
+    public List<Piece> listFresh(UUID userId, UUID subjectId) {
+        Workspace w = workspaces.requireOwned(userId, subjectId);
+        List<Piece> built = List.copyOf(build(userId, w));
+        synchronized (cache) {
+            cache.put(new Key(userId, w.getId()), new Cached(clock.instant(), built));
+        }
+        return built;
+    }
+
     /** Oublie le cache d'un sujet (une pièce vient de naître). */
     public void invalidate(UUID userId, UUID workspaceId) {
         synchronized (cache) {

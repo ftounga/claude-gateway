@@ -878,6 +878,42 @@ public class JarvisFastBrainService {
         this.fastPieces = fastPieces;
     }
 
+    /** F-272 / SF-272-02 — la vérification des ordres de pièces et d'architecture (facultative : tests, banc). */
+    private JarvisShowVerifier showVerifier;
+
+    @Autowired(required = false)
+    public void setShowVerifier(JarvisShowVerifier showVerifier) {
+        this.showVerifier = showVerifier;
+    }
+
+    /**
+     * F-272 / SF-272-02 — l'ordre validé dans sa forme puis confronté aux pièces du compte : les ordres relayés à
+     * l'écran (dans l'ordre : un schéma ouvert avant sa vue) et le résultat rendu au modèle. Sans vérificateur, au banc
+     * ou en présentation : l'ordre tel que {@link #checkShow} l'a gardé.
+     */
+    JarvisShowVerifier.Verified verifyShow(JarvisShowCommand.Parsed parsed, Request request, UUID readSubject,
+            boolean bench) {
+        if (parsed.command() == null || showVerifier == null || bench || request.presentation()) {
+            return new JarvisShowVerifier.Verified(parsed.command() == null ? List.of() : List.of(parsed.command()),
+                    parsed.toolResult(), parsed.command() == null);
+        }
+        return showVerifier.verify(parsed, request.userId(),
+                request.workspace() == null ? null : request.workspace().getId(), readSubject, request.screen());
+    }
+
+    /** F-272 / SF-272-02 — le sujet que l'outil {@code pieces} lit : celui nommé, sinon le sujet en vue. */
+    static UUID readSubjectOf(Request request, JsonNode input) {
+        String asked = input == null ? "" : input.path("sujet").asText("").strip();
+        if (!asked.isEmpty()) {
+            try {
+                return UUID.fromString(asked);
+            } catch (IllegalArgumentException e) {
+                return null;
+            }
+        }
+        return request.workspace() == null ? null : request.workspace().getId();
+    }
+
     /** F-253 / SF-253-02 — l'univers du compte, pour vérifier une vue avant de la montrer (facultatif). */
     private fr.claudegateway.jarvis.universe.JarvisUniverseService universeService;
 
@@ -1532,6 +1568,10 @@ public class JarvisFastBrainService {
         int appuiLeft = JarvisShowCommand.MAX_APPUI;
         List<JarvisShowCommand> shown = new ArrayList<>();
         boolean hangingRetried = false;
+        // F-272 / SF-272-02 — le sujet lu par l'outil pieces (les pièces nommées ensuite y sont cherchées) et la
+        // relance unique après un ordre d'écran refusé par la passerelle.
+        UUID readSubject = null;
+        boolean refusalRetried = false;
         for (int n = 0; n < MAX_CALLS; n++) {
             AgentTurnRequest call = new AgentTurnRequest(model, system, List.copyOf(conversation),
                     JarvisFastBrainPrompt.tools(), apiKey, reasoning(),
@@ -1551,9 +1591,12 @@ public class JarvisFastBrainService {
                     for (AgentToolCall tc : turn.toolCalls()) {
                         if (JarvisFastBrainPrompt.SHOW_TOOL.equals(tc.name())) {
                             JarvisShowCommand.Parsed parsed = checkShow(tc.input(), appuiLeft, userId, bench, request.presentation());
-                            if (parsed.command() != null) {
-                                out.show(parsed.command());
-                                shown.add(parsed.command());
+                            JarvisShowVerifier.Verified verified = verifyShow(parsed, request, readSubject, bench);
+                            for (JarvisShowCommand c : verified.commands()) {
+                                out.show(c);
+                                shown.add(c);
+                            }
+                            if (!verified.refused()) {
                                 appuiLeft -= parsed.appuiUsed();
                             }
                         }
@@ -1565,22 +1608,34 @@ public class JarvisFastBrainService {
             List<fr.claudegateway.agent.AgentContentBlock> results = new ArrayList<>();
             boolean delegates = false;
             boolean freshRead = false;
+            boolean refusedShow = false;
+            for (AgentToolCall tc : turn.toolCalls()) {
+                if (JarvisFastBrainPrompt.PIECES_TOOL.equals(tc.name()) && !read) {
+                    readSubject = readSubjectOf(request, tc.input());
+                }
+            }
             for (AgentToolCall tc : turn.toolCalls()) {
                 if (JarvisFastBrainPrompt.TOOL_NAME.equals(tc.name())) {
                     delegates = true;
                 } else if (JarvisFastBrainPrompt.SHOW_TOOL.equals(tc.name())) {
                     JarvisShowCommand.Parsed parsed = checkShow(tc.input(), appuiLeft, userId, bench, request.presentation());
-                    if (parsed.command() != null) {
-                        out.show(parsed.command());
-                        shown.add(parsed.command());
+                    // F-272 / SF-272-02 — confronté aux pièces du compte AVANT d'être relayé : ce que le modèle reçoit
+                    // est ce qui va apparaître (un schéma ouvert avant sa vue), ou le vrai refus.
+                    JarvisShowVerifier.Verified verified = verifyShow(parsed, request, readSubject, bench);
+                    if (!verified.refused()) {
+                        for (JarvisShowCommand c : verified.commands()) {
+                            out.show(c);
+                            shown.add(c);
+                        }
                         appuiLeft -= parsed.appuiUsed();
                     } else {
+                        refusedShow = true;
                         // F-263 / SF-263-01 — un refus d'affichage laisse une trace : l'action et le motif rendu au modèle.
                         log.info("Ordre d'écran refusé (action={}) : {}", tc.input() == null ? ""
-                                : tc.input().path("action").asText(""), parsed.toolResult());
+                                : tc.input().path("action").asText(""), verified.toolResult());
                     }
-                    results.add(new fr.claudegateway.agent.AgentContentBlock.ToolResult(tc.id(), parsed.toolResult(),
-                            parsed.command() == null));
+                    results.add(new fr.claudegateway.agent.AgentContentBlock.ToolResult(tc.id(), verified.toolResult(),
+                            verified.refused()));
                 } else if (JarvisFastBrainPrompt.PIECES_TOOL.equals(tc.name())) {
                     String text = ALREADY_READ;
                     if (!read) {
@@ -1638,7 +1693,13 @@ public class JarvisFastBrainService {
             if (retryHanging) {
                 hangingRetried = true;
             }
-            if (delegates || results.isEmpty() || !(freshRead || needPhrase || retryHanging)) {
+            // F-272 / SF-272-02 — un ordre refusé par la passerelle : une relance, pour choisir dans la liste rendue ou
+            // dire le vrai refus (jamais « Voici » laissé seul).
+            boolean retryRefusal = refusedShow && shown.isEmpty() && !refusalRetried && n < MAX_CALLS - 1;
+            if (retryRefusal) {
+                refusalRetried = true;
+            }
+            if (delegates || results.isEmpty() || !(freshRead || needPhrase || retryHanging || retryRefusal)) {
                 break;
             }
             // F-257 / SF-257-13 — la réflexion du tour d'abord, telle quelle (le fournisseur exige ses blocs signés,
