@@ -25,7 +25,7 @@
     { "id": "d02", "kind": "ecran", "show": true, "segments": ["Présente-moi l'architecture."], "pauses": [] },
     { "id": "d03", "kind": "ecran", "show": true, "segments": ["Montre-moi l'architecture AWS en 3D."], "pauses": [] },
     { "id": "d04", "kind": "normale", "segments": ["Dessine l'architecture Airflow."], "pauses": [] },
-    { "id": "f01", "kind": "normale", "segments": ["Sur recette, relance le pipeline de dev."], "pauses": [] }
+    { "id": "f02", "kind": "normale", "segments": ["Sur le sujet facturation, relance le pipeline de dev."], "pauses": [] }
   ],
   "scenarios": [
     { "id": "conversation", "label": "Conversation suivie", "voice": "fr-1",
@@ -47,9 +47,9 @@
         { "say": "t03", "voice": "tiers", "gain": 0.3 }, { "say": "n07" }, { "say": "n06" }] },
     { "id": "demo-1711", "label": "Démo PO du 17/11 (F-272) : changer de sujet à la voix, l'architecture montrée, en 3D, dessinée sans confirmation", "voice": "george",
       "steps": [{ "say": "d01" }, { "say": "d02" }, { "say": "d03" }, { "say": "d04" }] },
-    { "id": "oui-en-fond", "label": "F-270 S2 : le « oui » ne gèle plus l'écoute (poste simulé : recette)", "voice": "george",
-      "poste": { "nom": "recette", "tourMs": 12000 },
-      "steps": [{ "say": "f01" }, { "say": "n07", "tag": "oui", "waitMs": 60000 }, { "say": "n05", "tag": "apres-oui", "waitMs": 60000 }] },
+    { "id": "oui-en-fond", "label": "F-270 S2 : le « oui » ne gèle plus l'écoute (poste simulé : facturation)", "voice": "george",
+      "poste": { "nom": "facturation", "tourMs": 12000 },
+      "steps": [{ "say": "f02" }, { "say": "n07", "tag": "oui", "waitMs": 60000 }, { "say": "n05", "tag": "apres-oui", "waitMs": 60000 }] },
     { "id": "temoin", "label": "Témoin : micro factice de Chrome (fichier), sans le mélangeur du banc", "voice": "fr-1", "chromeMic": "n02" }
   ]
 }

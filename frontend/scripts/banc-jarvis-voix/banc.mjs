@@ -72,12 +72,12 @@ let simTurns = [];
 function simReply(message) {
   const m = (message ?? '').toLowerCase();
   if (/^\W*(oui|ok|vas-y|vas y|je confirme)\b/.test(m)) {
-    return { line: 'C’est fait : le pipeline de dev de recette est relancé, il est vert.', confirm: false };
+    return { line: 'C’est fait : le pipeline de dev de facturation est relancé, il est vert.', confirm: false };
   }
   if (/\b(lance|relance|déploie|deploie)\b/.test(m)) {
-    return { line: 'Je relance le pipeline de dev de recette, trois étapes. Vous confirmez ?', confirm: true };
+    return { line: 'Je relance le pipeline de dev de facturation, trois étapes. Vous confirmez ?', confirm: true };
   }
-  return { line: 'Quatre tickets du sprint 9 vous sont assignés sur recette, dont LDIC-325.', confirm: false };
+  return { line: 'Quatre tickets du sprint 9 vous sont assignés sur facturation, dont LDIC-325.', confirm: false };
 }
 
 function simulate(req, res, path, config) {
