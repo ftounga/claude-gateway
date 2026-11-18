@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-272 / SF-272-01 — LES DELEGATIONS DE JARVIS, PARTAGEES ENTRE LES PODS.
+
+      Avant : JarvisDelegationRegistry en memoire. Le cerveau rapide (pod A) deposait la demande reformulee ;
+      le tour Opus du fil cible (souvent sur le pod B) ne la trouvait pas : Opus recevait la transcription brute,
+      la ligne-lien du fil Jarvis restait « en cours » (demo PO du 17/11 : 2 delegations sur 3).
+
+      Une ligne = une delegation : offerte (demande reformulee, ligne-lien), prise UNE fois par le tour Opus
+      (taken_at, prise atomique par UPDATE ... WHERE taken_at IS NULL), terminee (finished_at).
+
+      ISOLATION : toute lecture porte user_id. PAS DE CLE ETRANGERE (meme choix que account_governance_rules) :
+      purge explicite a la suppression du compte, purge des lignes de plus de 7 jours.
+    -->
+
+    <changeSet id="272-01-jarvis-delegations" author="claude-gateway">
+        <createTable tableName="jarvis_delegations">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <!-- L'identifiant de la delegation donne par le cerveau rapide (unique par compte). -->
+            <column name="delegation_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="subject_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="chantier" type="int"/>
+            <column name="subject_name" type="varchar(200)"/>
+            <column name="label" type="varchar(300)"/>
+            <!-- La demande reformulee, jointe au message du tour Opus ; null pour une delegation sans offre. -->
+            <column name="demande" type="varchar(4000)"/>
+            <!-- La ligne-lien « en cours » du fil Jarvis (atelier_messages.id), ou null. -->
+            <column name="link_id" type="uuid"/>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="taken_at" type="timestamp with time zone"/>
+            <column name="finished_at" type="timestamp with time zone"/>
+        </createTable>
+        <addUniqueConstraint tableName="jarvis_delegations" columnNames="user_id, delegation_id"
+                             constraintName="uq_jarvis_delegations_user_delegation"/>
+        <createIndex tableName="jarvis_delegations" indexName="idx_jarvis_delegations_user_subject">
+            <column name="user_id"/>
+            <column name="subject_id"/>
+            <column name="created_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="jarvis_delegations"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
