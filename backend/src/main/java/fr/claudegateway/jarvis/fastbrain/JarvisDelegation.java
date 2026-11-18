@@ -60,4 +60,19 @@ public class JarvisDelegation {
 
     @Column(name = "finished_at")
     private OffsetDateTime finishedAt;
+
+    /** F-270 / SF-270-01 — {@code DELEGATION} (cerveau rapide) ou {@code DIRECT} (tour né à la voix). */
+    @Column(name = "origin", nullable = false, length = 16)
+    private String origin = ORIGIN_DELEGATION;
+
+    /** F-270 / SF-270-01 — la phase du travail vivant ({@code null} : {@code THINKING}). */
+    @Column(name = "phase", length = 16)
+    private String phase;
+
+    /** F-270 / SF-270-01 — l'issue à la fin du tour ({@code DONE}, {@code FAILED}, {@code CANCELLED}, {@code WAITING_YES}). */
+    @Column(name = "outcome", length = 16)
+    private String outcome;
+
+    public static final String ORIGIN_DELEGATION = "DELEGATION";
+    public static final String ORIGIN_DIRECT = "DIRECT";
 }

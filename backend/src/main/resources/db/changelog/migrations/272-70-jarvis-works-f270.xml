@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-270 / SF-270-01 — L'ETAT DURABLE DES TRAVAUX VIVANTS DE JARVIS.
+      (Fichier nomme 272-70 : includeAll trie par nom, la table jarvis_delegations naît en 272-01.)
+
+      Le registre partage entre les pods existe (F-272 / SF-272-01, jarvis_delegations) : il est ETENDU, pas double.
+      - origin  : DELEGATION (cerveau rapide) ou DIRECT (tour ne a la voix, annonce par l'ecran) ;
+      - phase   : THINKING, EXECUTING (premier outil qui agit sur le poste), QUEUED (reserve SF-270-04) ;
+      - outcome : l'issue a la fin du tour (DONE, FAILED, CANCELLED, WAITING_YES).
+      Les courses autonomes (chantier_autonomy_runs) sont lues, jamais recopiees.
+    -->
+
+    <changeSet id="270-01-jarvis-works" author="claude-gateway">
+        <addColumn tableName="jarvis_delegations">
+            <column name="origin" type="varchar(16)" defaultValue="DELEGATION">
+                <constraints nullable="false"/>
+            </column>
+            <column name="phase" type="varchar(16)"/>
+            <column name="outcome" type="varchar(16)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="jarvis_delegations" columnName="outcome"/>
+            <dropColumn tableName="jarvis_delegations" columnName="phase"/>
+            <dropColumn tableName="jarvis_delegations" columnName="origin"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

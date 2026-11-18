@@ -162,6 +162,36 @@ public class JarvisDelegationRegistry {
         }
     }
 
+    // ------------------------------------------------------------------ F-270 / SF-270-01 : les travaux vivants
+
+    /** Le tour direct né à la voix ne vaut plus s'il n'est pas pris dans ce délai (même règle que l'offre). */
+    static final Duration DIRECT_TTL = REFORMULATION_TTL;
+
+    /** F-270 / SF-270-01 — le tour du travail est fini, avec son issue. Sans magasin : rien (comme {@link #finished}). */
+    public void finished(UUID userId, UUID delegationId, JarvisWorkPhase outcome) {
+        if (store != null) {
+            store.finished(userId, delegationId, outcome);
+        }
+    }
+
+    /**
+     * F-270 / SF-270-01 — prend le tour direct annoncé pour ce fil (tous pods) : identifiant et libellé (sans demande),
+     * ou {@code null} (sans magasin aussi).
+     */
+    public Reformulation takeDirect(UUID userId, UUID subjectId, Integer chantier) {
+        if (store == null || userId == null || subjectId == null) {
+            return null;
+        }
+        return store.takeDirect(userId, subjectId, chantier, DIRECT_TTL);
+    }
+
+    /** F-270 / SF-270-01 — la phase d'un travail vivant (sans magasin : rien). */
+    public void phase(UUID userId, UUID delegationId, JarvisWorkPhase phase) {
+        if (store != null) {
+            store.phase(userId, delegationId, phase);
+        }
+    }
+
     /** Vrai si le fil {@code (sujet, chantier)} du compte a un tour vivant (la délégation deviendra une précision). */
     public boolean live(UUID userId, UUID subjectId, Integer chantier) {
         try {
