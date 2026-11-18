@@ -10979,12 +10979,18 @@ public class AtelierChatService implements RelayInterruptTarget {
                             + "de l'utilisateur) au registre des besoins — ou, avec complete, de COMPLÉTER un "
                             + "besoin déjà enregistré. N'ENREGISTRE RIEN : pose une carte [Enregistrer] [Non] ; "
                             + "au clic, le besoin (ou le complément) et ses pièces sont rangés pour être cadrés "
-                            + "plus tard.",
+                            + "plus tard. Type COMMANDE : quand l'utilisateur dit en substance « enregistre une "
+                            + "commande pour Claude Code : … » (lancer des bancs, implémenter, tester…), "
+                            + "description = le texte de la commande MOT POUR MOT, sans rien reformuler ni "
+                            + "résumer ; ta compréhension éventuelle va dans reformulation ; titre facultatif. "
+                            + "Claude Code l'exécutera telle quelle à son prochain démarrage.",
                     Map.of("type", "object",
                             "properties", Map.of(
-                                    "type", Map.of("type", "string", "enum", List.of("BUG", "EVOLUTION")),
+                                    "type", Map.of("type", "string", "enum",
+                                            List.of("BUG", "EVOLUTION", "COMMANDE")),
                                     "titre", Map.of("type", "string",
-                                            "description", "Titre court (200 caractères au plus)."),
+                                            "description", "Titre court (200 caractères au plus) ; facultatif "
+                                                    + "pour une COMMANDE."),
                                     "description", Map.of("type", "string",
                                             "description", "Les mots de l'utilisateur, tels quels."),
                                     "reformulation", Map.of("type", "string",

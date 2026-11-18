@@ -32,6 +32,11 @@ public class AppRequest {
 
     public static final String BUG = "BUG";
     public static final String EVOLUTION = "EVOLUTION";
+    /**
+     * Une instruction de l'administrateur pour Claude Code (F-269), exécutée telle quelle à son prochain
+     * démarrage. {@code description} = la commande mot pour mot.
+     */
+    public static final String COMMANDE = "COMMANDE";
 
     public static final String PROPOSE = "PROPOSE";
     public static final String EN_ATTENTE = "EN_ATTENTE";
@@ -50,14 +55,17 @@ public class AppRequest {
     @Column(name = "user_id", nullable = false, updatable = false)
     private UUID userId;
 
-    /** Le terminal d'où vient le signalement (sans clé étrangère : le besoin lui survit). */
-    @Column(name = "workspace_id", nullable = false, updatable = false)
+    /**
+     * Le terminal d'où vient le signalement (sans clé étrangère : le besoin lui survit) ; {@code null} pour
+     * une commande saisie directement dans l'administration (F-269).
+     */
+    @Column(name = "workspace_id", updatable = false)
     private UUID workspaceId;
 
     @Column(name = "message_id", updatable = false)
     private UUID messageId;
 
-    /** {@code BUG} | {@code EVOLUTION}. */
+    /** {@code BUG} | {@code EVOLUTION} | {@code COMMANDE}. */
     @Column(name = "kind", nullable = false, length = 16, updatable = false)
     private String kind;
 

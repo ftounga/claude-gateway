@@ -53,6 +53,7 @@ class AppRequestApiIntegrationTest {
     @Autowired private AtelierDepositedFileRepository deposits;
     @Autowired private AppRequestService service;
     @Autowired private AppRequestAttachmentRepository attachments;
+    @Autowired private AppRequestRepository requestRepository;
     @Autowired private JwtService jwtService;
 
     private UUID adminId;
@@ -153,6 +154,60 @@ class AppRequestApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status", is("REJETE")))
                 .andExpect(jsonPath("$.attachments[0].copyStatus").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("F-269 : l'administrateur saisit une commande, elle est EN_ATTENTE, mot pour mot, filtrable par type")
+    void theAdministratorRecordsACommand() throws Exception {
+        String words = "Lance les bancs Jarvis — 2 passages, « sans rien corriger ».";
+        String body = new com.fasterxml.jackson.databind.ObjectMapper()
+                .writeValueAsString(java.util.Map.of("text", words));
+        mockMvc.perform(post("/admin/app-requests/commands").contentType(MediaType.APPLICATION_JSON).content(body)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.kind", is("COMMANDE")))
+                .andExpect(jsonPath("$.status", is("EN_ATTENTE")))
+                .andExpect(jsonPath("$.description", is(words)))
+                .andExpect(jsonPath("$.workspaceId").doesNotExist());
+
+        propose();
+        mockMvc.perform(get("/admin/app-requests").param("status", "EN_ATTENTE").param("kind", "COMMANDE")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()", is(1)))
+                .andExpect(jsonPath("$[0].description", is(words)));
+        mockMvc.perform(get("/admin/app-requests").param("kind", "TACHE")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(post("/admin/app-requests/commands").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"   \"}").header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", is("app_request_invalid")));
+    }
+
+    @Test
+    @DisplayName("F-269 : un non-administrateur ne peut PAS enregistrer de commande (403, rien n'est rangé)")
+    void aPlainUserCannotRecordACommand() throws Exception {
+        long before = requestRepository.count();
+        mockMvc.perform(post("/admin/app-requests/commands").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"rm -rf tout\"}").header("Authorization", "Bearer " + bobToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/admin/app-requests/commands").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"rm -rf tout\"}"))
+                .andExpect(status().is4xxClientError());
+        assertThat(requestRepository.count()).isEqualTo(before);
+    }
+
+    @Test
+    @DisplayName("F-269 ISOLATION : un autre administrateur ne voit pas les commandes du premier")
+    void anotherAdministratorDoesNotSeeTheCommand() throws Exception {
+        service.recordCommand(adminId, "teste X", null);
+        String other = jwtService.generateToken(save("admin2-besoins-" + UUID.randomUUID().toString()
+                .substring(0, 8) + "@ex.com", UserRole.ADMIN));
+
+        mockMvc.perform(get("/admin/app-requests").param("kind", "COMMANDE").header("Authorization", "Bearer " + other))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()", is(0)));
     }
 
     @Test

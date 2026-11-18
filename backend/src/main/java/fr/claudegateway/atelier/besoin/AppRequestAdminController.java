@@ -7,14 +7,17 @@ import java.util.UUID;
 
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import fr.claudegateway.admin.AdminService;
@@ -52,10 +55,27 @@ public class AppRequestAdminController {
     public record UpdateRequest(String status, String featureRef) {
     }
 
+    /** Corps de la saisie directe d'une commande (F-269) : le texte, tel quel ; reformulation facultative. */
+    public record CommandRequest(String text, String reformulation) {
+    }
+
     @GetMapping
-    public List<AppRequestView> list(@RequestParam(required = false) String status) {
+    public List<AppRequestView> list(@RequestParam(required = false) String status,
+            @RequestParam(required = false) String kind) {
         adminService.assertAdmin();
-        return service.list(currentUser.requireId(), status);
+        return service.list(currentUser.requireId(), status, kind);
+    }
+
+    /**
+     * Une <b>commande pour Claude Code</b> saisie directement (F-269) : strictement réservée à
+     * l'administrateur (403 sinon), rangée {@code EN_ATTENTE} sous son {@code user_id}.
+     */
+    @PostMapping("/commands")
+    @ResponseStatus(HttpStatus.CREATED)
+    public AppRequestView command(@RequestBody(required = false) CommandRequest body) {
+        adminService.assertAdmin();
+        return service.recordCommand(currentUser.requireId(), body == null ? null : body.text(),
+                body == null ? null : body.reformulation());
     }
 
     @GetMapping("/{requestId}")
