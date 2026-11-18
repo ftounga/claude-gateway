@@ -29,6 +29,10 @@ export interface FastDelegation {
    * « sujet en vue » ne change pas. Champ additif : absent d'un serveur antérieur ⇒ `false`.
    */
   jarvisThread?: boolean;
+  /** F-270 / SF-270-04 — la relation au travail vivant du fil, qualifiée par le cerveau rapide. */
+  relation?: 'precision' | 'nouvelle' | null;
+  /** F-270 / SF-270-04 — enchaînée derrière le travail vivant de son fil : l'écran la lance à sa fin. */
+  queued?: boolean;
 }
 
 /** La fin d'un échange rapide. */

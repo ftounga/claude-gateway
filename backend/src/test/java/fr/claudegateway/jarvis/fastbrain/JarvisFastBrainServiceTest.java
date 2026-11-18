@@ -1066,6 +1066,76 @@ class JarvisFastBrainServiceTest {
     }
 
     @Test
+    void f270ANewCommandOnALiveThreadIsQueuedNotFoldedIntoThePrecision() {
+        JarvisFastBrainService service = service(delegating("""
+                {"demande": "Relance le pipeline de dev de data-ingestion", "label": "pipeline de dev",
+                 "annonce": "Je relance le pipeline.", "sujet": "", "chantier": null, "relation": "nouvelle"}
+                """), null, null);
+        JarvisDelegationRegistry registry = mock(JarvisDelegationRegistry.class);
+        when(registry.live(alice, subject, 3)).thenReturn(true);
+        when(registry.runningLabel(alice, subject, 3)).thenReturn("la lecture du backlog");
+        service.setContext(null, null, registry);
+
+        JarvisFastBrainService.Outcome outcome = service.converse(ask("Et relance le pipeline de dev"), null);
+
+        assertThat(outcome.delegation().queued()).isTrue();
+        assertThat(outcome.delegation().relation()).isEqualTo("nouvelle");
+        assertThat(outcome.delegation().annonce()).isEqualTo("Je le lance dès que la lecture du backlog est fini.");
+        verify(registry).queue(eq(alice), eq(subject), eq(3), any(UUID.class), eq("Relance le pipeline de dev de "
+                + "data-ingestion"), eq("pipeline de dev"));
+        verify(registry, org.mockito.Mockito.never()).offer(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void f270OnlyOneCommandWaitsPerThread() {
+        JarvisFastBrainService service = service(delegating("""
+                {"demande": "Relance les tests", "label": "tests", "annonce": "Je relance les tests.", "sujet": "",
+                 "chantier": null, "relation": "nouvelle"}
+                """), null, null);
+        JarvisDelegationRegistry registry = mock(JarvisDelegationRegistry.class);
+        when(registry.live(alice, subject, 3)).thenReturn(true);
+        when(registry.hasQueued(alice, subject, 3)).thenReturn(true);
+        service.setContext(null, null, registry);
+
+        JarvisFastBrainService.Outcome outcome = service.converse(ask("Et relance les tests"), null);
+
+        assertThat(outcome.kind()).isEqualTo(JarvisFastBrainService.Kind.ANSWER);
+        assertThat(outcome.spokenText()).isEqualTo(JarvisFastBrainService.QUEUE_FULL);
+        verify(registry, org.mockito.Mockito.never()).queue(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void f270APrecisionOnALiveThreadStaysAPrecision() {
+        JarvisFastBrainService service = service(delegating("""
+                {"demande": "Regarde aussi le sprint 10", "label": "sprint 10", "annonce": "Je regarde.", "sujet": "",
+                 "chantier": null, "relation": "precision"}
+                """), null, null);
+        JarvisDelegationRegistry registry = mock(JarvisDelegationRegistry.class);
+        when(registry.live(alice, subject, 3)).thenReturn(true);
+        service.setContext(null, null, registry);
+
+        JarvisFastBrainService.Outcome outcome = service.converse(ask("Et regarde aussi le sprint 10"), null);
+
+        assertThat(outcome.delegation().queued()).isFalse();
+        assertThat(outcome.delegation().annonce()).isEqualTo("J'ajoute ça à la recherche en cours : sprint 10.");
+    }
+
+    @Test
+    void f270ANewCommandOnAnIdleThreadLeavesNormally() {
+        JarvisFastBrainService service = service(delegating("""
+                {"demande": "Relance les tests", "label": "tests", "annonce": "Je relance les tests.", "sujet": "",
+                 "chantier": null, "relation": "nouvelle"}
+                """), null, null);
+        JarvisDelegationRegistry registry = mock(JarvisDelegationRegistry.class);
+        service.setContext(null, null, registry);
+
+        JarvisFastBrainService.Outcome outcome = service.converse(ask("Relance les tests"), null);
+
+        assertThat(outcome.delegation().queued()).isFalse();
+        assertThat(outcome.delegation().annonce()).isEqualTo("Je relance les tests.");
+    }
+
+    @Test
     void aFastAnswerIsWrittenInTheThreadButADelegationIsNot() {
         JarvisFastExchangeWriter writer = mock(JarvisFastExchangeWriter.class);
         JarvisFastBrainService service = service(streaming("Le chantier en est aux tests."), null, null);

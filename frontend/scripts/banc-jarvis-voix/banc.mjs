@@ -372,6 +372,7 @@ async function closeSimulatedSubject(id) {
 
 async function runScenario(scenario) {
   const simSubject = scenario.poste ? simSubjects.get(scenario.id) ?? null : null;
+  if (simSubject) simulated.set(simSubject, { tourMs: scenario.poste.tourMs ?? 15_000 });
   simTurns = [];
   const temoin = scenario.chromeMic ? await temoinFile(scenario) : null;
   const browser = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: true,
@@ -456,7 +457,7 @@ async function runScenario(scenario) {
       tiers: !!rec.tiers,
       after: after ?? 'ecoute', start: played.start, end: played.end,
       speechEnd: rec.speechEndMs === null ? null : played.start + rec.speechEndMs, activeMs: rec.activeMs,
-      tag: rec.step.tag ?? null, waitedMs: scenario.poste ? waitedMs - (rec.step.pauseMs ?? 0) : null,
+      tag: rec.step.tag ?? null, expectRelation: rec.step.relation ?? null, waitedMs: scenario.poste ? waitedMs - (rec.step.pauseMs ?? 0) : null,
       workRunning: scenario.poste ? simTurns.some((w) => w.start <= played.start && (w.end === null || w.end > played.start))
         : null });
     // Le tour doit pouvoir commencer : on attend que Jarvis QUITTE l'écoute (il a pris la phrase), au plus 8 s ; sinon
@@ -505,8 +506,11 @@ async function warmUp() {
 // F-270 — les sujets simulés sont créés AVANT la mise en température : l'univers que lit le cerveau rapide est mis en
 // cache 30 s ; créé juste avant le scénario, le sujet n'y serait pas encore.
 const simSubjects = new Map();
+// Un seul sujet par nom : deux sujets homonymes rendraient la cible ambiguë (le cerveau rapide demanderait lequel).
+const byName = new Map();
 for (const scenario of scenarios.filter((s) => s.poste)) {
-  simSubjects.set(scenario.id, await openSimulatedSubject(scenario.poste));
+  if (!byName.has(scenario.poste.nom)) byName.set(scenario.poste.nom, await openSimulatedSubject(scenario.poste));
+  simSubjects.set(scenario.id, byName.get(scenario.poste.nom));
 }
 if (simSubjects.size) await sleep(31_000);
 await warmUp();
@@ -516,7 +520,7 @@ for (const scenario of scenarios) {
   process.stderr.write(`scénario ${scenario.id}…\n`);
   runs.push(await runScenario(scenario));
 }
-for (const id of simSubjects.values()) await closeSimulatedSubject(id);
+for (const id of byName.values()) await closeSimulatedSubject(id);
 const afterCosts = await gatewayCosts();
 const report = analyse(runs, { before, after: afterCosts });
 report.meta = { at: new Date().toISOString(), gateway: GATEWAY, dist: DIST, view: VIEW, scenarios: scenarios.map((s) => s.id),

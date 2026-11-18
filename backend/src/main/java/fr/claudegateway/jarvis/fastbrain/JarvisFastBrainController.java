@@ -243,7 +243,7 @@ public class JarvisFastBrainController {
                     JarvisFastBrainService.Delegation d = outcome.delegation();
                     send(emitter, "delegated", new DelegatedEvent(d.delegationId(), d.subjectId(), d.chantier(),
                             d.label(), d.annonce(), d.demande(), d.automatic(), d.reason(),
-                            isJarvisThread(call.userId(), d.subjectId()), d.diagnostic()));
+                            isJarvisThread(call.userId(), d.subjectId()), d.diagnostic(), d.relation(), d.queued()));
                 }
                 case ANSWER -> {
                     // La réponse a déjà été poussée au fil de l'eau.
@@ -323,7 +323,8 @@ public class JarvisFastBrainController {
      *                     vue » (le fil Jarvis n'en est pas un)
      */
     record DelegatedEvent(UUID delegationId, UUID subjectId, Integer chantier, String label, String announce,
-            String demande, boolean automatic, String reason, boolean jarvisThread, String diagnostic) {
+            String demande, boolean automatic, String reason, boolean jarvisThread, String diagnostic,
+            String relation, boolean queued) {
     }
 
     /** F-245 / SF-245-02 — le fil Jarvis du compte (facultatif). */

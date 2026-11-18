@@ -217,6 +217,81 @@ class JarvisWorksIntegrationTest {
                 .andExpect(jsonPath("$.works").isEmpty());
     }
 
+    @Test
+    @DisplayName("F-270 / SF-270-04 — enchaînée : jamais prise ni balayée avant d'être libérée ; libérée, le tour la prend")
+    void aQueuedCommandWaitsThenIsTaken() {
+        UUID id = UUID.randomUUID();
+        podA.queue(alice.getId(), subject, 4, id, "Relance le pipeline de dev", "pipeline de dev");
+        assertThat(podA.hasQueued(alice.getId(), subject, 4)).isTrue();
+        assertThat(podB.take(alice.getId(), subject, 4)).as("en attente : personne ne la prend").isNull();
+        now.set(now.get().plus(Duration.ofMinutes(5)));
+        store.sweep(JarvisDelegationRegistry.REFORMULATION_TTL, JarvisDelegationRegistry.MAX_AGE);
+        assertThat(podA.hasQueued(alice.getId(), subject, 4)).as("le balayage ne la touche pas").isTrue();
+        assertThat(works.list(alice.getId())).extracting(JarvisWorks.Work::phase).containsExactly(JarvisWorkPhase.QUEUED);
+
+        assertThat(works.release(alice.getId(), id).status()).isEqualTo(JarvisWorksService.Release.Status.RELEASED);
+        JarvisDelegationRegistry.Reformulation taken = podB.take(alice.getId(), subject, 4);
+        assertThat(taken).isNotNull();
+        assertThat(taken.demande()).isEqualTo("Relance le pipeline de dev");
+        assertThat(podA.hasQueued(alice.getId(), subject, 4)).isFalse();
+    }
+
+    @Test
+    @DisplayName("F-270 / SF-270-04 — enchaînée jamais libérée : abandonnée après 30 min ; annulée : plus rien n'attend")
+    void aQueuedCommandIsNeverKeptForLater() {
+        UUID stale = UUID.randomUUID();
+        podA.queue(alice.getId(), subject, 4, stale, "a", "a");
+        now.set(now.get().plus(Duration.ofMinutes(31)));
+        store.sweep(JarvisDelegationRegistry.REFORMULATION_TTL, JarvisDelegationRegistry.MAX_AGE);
+        assertThat(podA.hasQueued(alice.getId(), subject, 4)).isFalse();
+
+        UUID cancelled = UUID.randomUUID();
+        podA.queue(alice.getId(), subject, 5, cancelled, "b", "b");
+        assertThat(works.cancel(bob.getId(), cancelled)).as("isolation").isFalse();
+        assertThat(works.cancel(alice.getId(), cancelled)).isTrue();
+        assertThat(podA.hasQueued(alice.getId(), subject, 5)).isFalse();
+        assertThat(works.release(alice.getId(), cancelled).status()).isEqualTo(JarvisWorksService.Release.Status.NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("F-270 / SF-270-04 — API : libérer (200), libérer d'un autre compte (404), annuler (204)")
+    void releaseAndCancelApi() throws Exception {
+        String aliceToken = jwtService.generateToken(alice);
+        String bobToken = jwtService.generateToken(bob);
+        UUID id = UUID.randomUUID();
+        podA.queue(alice.getId(), subject, null, id, "Relance les tests", "tests");
+        mockMvc.perform(post("/api/jarvis/works/" + id + "/release").contextPath("/api")
+                .header("Authorization", "Bearer " + bobToken)).andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/jarvis/works/" + id + "/release").contextPath("/api")
+                .header("Authorization", "Bearer " + aliceToken)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("RELEASED"));
+        UUID other = UUID.randomUUID();
+        podA.queue(alice.getId(), subject, 2, other, "x", "x");
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .delete("/api/jarvis/works/" + other).contextPath("/api")
+                .header("Authorization", "Bearer " + aliceToken)).andExpect(status().isNoContent());
+    }
+
+    @Test
+    @DisplayName("F-270 / SF-270-04 (S7) — poste éteint au départ : la commande enchaînée est abandonnée, jamais gardée")
+    void aQueuedCommandIsDroppedWhenTheHostIsOff() {
+        UUID host = UUID.randomUUID();
+        UUID onHost = workspaceRepository.save(Workspace.builder().userId(alice.getId()).name("agenor").hostId(host)
+                .build()).getId();
+        fr.claudegateway.jarvis.state.JarvisStateTurnMeter meter =
+                org.mockito.Mockito.mock(fr.claudegateway.jarvis.state.JarvisStateTurnMeter.class);
+        org.mockito.Mockito.when(meter.hostOffline(org.mockito.ArgumentMatchers.eq(alice.getId()),
+                org.mockito.ArgumentMatchers.any())).thenReturn(true);
+        works.setHosts(meter);
+        UUID id = UUID.randomUUID();
+        podA.queue(alice.getId(), onHost, null, id, "Relance les tests", "tests");
+
+        assertThat(works.release(alice.getId(), id).status())
+                .isEqualTo(JarvisWorksService.Release.Status.HOST_OFFLINE);
+        assertThat(podA.hasQueued(alice.getId(), onHost, null)).isFalse();
+        assertThat(podB.take(alice.getId(), onHost, null)).isNull();
+    }
+
     private UUID offerAndTake(Integer chantier, String label) {
         UUID id = UUID.randomUUID();
         podA.offer(alice.getId(), subject, chantier, id, "demande " + label, label, null);

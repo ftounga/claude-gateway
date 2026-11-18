@@ -192,6 +192,27 @@ public class JarvisDelegationRegistry {
         }
     }
 
+    // ------------------------------------------------------------------ F-270 / SF-270-04 : l'enchaînement
+
+    /** Une commande enchaînée derrière le travail vivant de son fil (sans magasin : non gardée). */
+    public void queue(UUID userId, UUID subjectId, Integer chantier, UUID delegationId, String demande, String label) {
+        if (store != null && userId != null && subjectId != null && delegationId != null) {
+            store.queue(userId, subjectId, chantier, delegationId, demande, label);
+        }
+    }
+
+    /** Vrai si une commande attend déjà sur ce fil. */
+    public boolean hasQueued(UUID userId, UUID subjectId, Integer chantier) {
+        return store != null && userId != null && subjectId != null && store.hasQueued(userId, subjectId, chantier);
+    }
+
+    /** Le libellé du travail qui tourne sur ce fil (le plus récent), ou {@code null}. */
+    public String runningLabel(UUID userId, UUID subjectId, Integer chantier) {
+        return running(userId).stream()
+                .filter(r -> r.subjectId().equals(subjectId) && java.util.Objects.equals(r.chantier(), chantier))
+                .map(Running::label).filter(l -> l != null && !l.isBlank()).reduce((a, b) -> b).orElse(null);
+    }
+
     /** Vrai si le fil {@code (sujet, chantier)} du compte a un tour vivant (la délégation deviendra une précision). */
     public boolean live(UUID userId, UUID subjectId, Integer chantier) {
         try {

@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Injectable, inject } from '@angular/core';
+import { InjectionToken, Injectable, inject } from '@angular/core';
 import { firstValueFrom, timeout } from 'rxjs';
 
 import { ConfirmationAnswer, classifyConfirmation } from './jarvis-confirm';
@@ -158,9 +158,79 @@ export interface JarvisWork {
 /** L'annonce d'un tour direct ne retarde jamais le tour au-delà de ce délai. */
 export const ANNOUNCE_TIMEOUT_MS = 1_500;
 
+/** F-270 / SF-270-04 — la relecture des travaux (ms) ; 0 : éteinte (tests). */
+export const JARVIS_WORKS_POLL_MS = new InjectionToken<number>('JARVIS_WORKS_POLL_MS', {
+  providedIn: 'root',
+  factory: () => 4_000,
+});
+
+/** L'issue d'une libération de commande enchaînée. */
+export type ReleaseOutcome = { status: 'RELEASED' } | { status: 'HOST_OFFLINE'; host: string | null } | { status: 'GONE' };
+
+/** Un travail vivant (ni fini, ni en échec, ni arrêté). */
+export function isLive(work: Pick<JarvisWork, 'phase'>): boolean {
+  return work.phase === 'THINKING' || work.phase === 'EXECUTING';
+}
+
+const STOP = /^(?:jarvis )?(?:arrete|arretez|stop|stoppe|annule|annulez|interromps)(?: (?:le|la|les|l))? (.+)$/;
+/** Ce qui suit « arrête » sans viser un travail (« arrête de parler », « arrête tout », « arrête ça »). */
+const NOT_A_NAME = /^(?:de |d |(?:tout|ca|toi|vous)(?: |$)|la recherche$|ce travail$)/;
+
+/** F-270 / SF-270-04 (D7) — « arrête facturation », « stop LDIC-325 » : le nom visé, ou `null` (arrêt sans nom). */
+export function stopTarget(text: string): string | null {
+  const m = STOP.exec(normalize(text));
+  if (!m || NOT_A_NAME.test(m[1])) {
+    return null;
+  }
+  return m[1].trim() || null;
+}
+
+/** Les candidats dont le nom court, le libellé ou le sujet contient le nom dit. */
+export function matchWorks<T extends { name: string; label?: string | null; subjectName?: string | null }>(
+  said: string, candidates: readonly T[]): T[] {
+  const target = normalize(said);
+  if (!target) {
+    return [];
+  }
+  return candidates.filter((c) => [c.name, c.label ?? '', c.subjectName ?? ''].some((v) => {
+    const n = normalize(v);
+    return n.length > 0 && (` ${n} `.includes(` ${target} `) || ` ${target} `.includes(` ${n} `));
+  }));
+}
+
 @Injectable({ providedIn: 'root' })
 export class JarvisWorksClient {
   private readonly http = inject(HttpClient);
+
+  /** F-270 / SF-270-04 — les travaux du compte (tous pods, courses comprises) ; `null` en échec. */
+  async list(): Promise<JarvisWork[] | null> {
+    try {
+      const r = await firstValueFrom(this.http.get<{ works: JarvisWork[] }>('/api/jarvis/works'));
+      return r?.works ?? [];
+    } catch {
+      return null;
+    }
+  }
+
+  /** F-270 / SF-270-04 — la commande enchaînée part ; poste éteint ⇒ abandonnée par la passerelle. */
+  async release(id: string): Promise<ReleaseOutcome> {
+    try {
+      await firstValueFrom(this.http.post(`/api/jarvis/works/${id}/release`, null));
+      return { status: 'RELEASED' };
+    } catch (error) {
+      const e = error as { status?: number; error?: { host?: string | null } };
+      return e?.status === 409 ? { status: 'HOST_OFFLINE', host: e.error?.host ?? null } : { status: 'GONE' };
+    }
+  }
+
+  /** F-270 / SF-270-04 — annule une commande enchaînée (best-effort). */
+  async cancel(id: string): Promise<void> {
+    try {
+      await firstValueFrom(this.http.delete(`/api/jarvis/works/${id}`));
+    } catch {
+      // Déjà partie ou balayée : rien à annuler.
+    }
+  }
 
   /** Annonce un tour direct né à la voix (best-effort : un échec n'empêche jamais le tour). */
   async announce(work: { id: string; subjectId: string; chantier: number | null; label: string }): Promise<boolean> {
