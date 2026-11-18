@@ -34,4 +34,27 @@ public final class NoticeTexts {
                 + (c.isEmpty() ? "" : ", chez " + c) + ".";
         return new JarvisNoticeService.Texts(display, speech);
     }
+
+    /** Une ligne dite au plus (la ligne 🎙 d'Opus, déjà courte). */
+    static final int ORAL_MAX = 240;
+
+    /**
+     * F-272 / SF-272-05 — la réponse d'une délégation : affichée en mots-clés (« Réponse prête · tickets LDIC ·
+     * data-platform », jamais une phrase), dite en une phrase courte.
+     */
+    public static JarvisNoticeService.Texts delegation(String label, String subject, String oral, boolean failed) {
+        String l = name(label);
+        String s = name(subject);
+        String display = (failed ? "Sans réponse" : "Réponse prête") + (l.isEmpty() ? "" : " · " + l)
+                + (s.isEmpty() ? "" : " · " + s);
+        String what = l.isEmpty() ? (s.isEmpty() ? "votre demande" : s) : l;
+        String o = oral == null ? "" : oral.strip().replaceAll("\\s+", " ");
+        if (o.length() > ORAL_MAX) {
+            o = o.substring(0, ORAL_MAX - 1) + "…";
+        }
+        String speech = failed ? "La recherche sur " + what + " n'a pas abouti."
+                : o.isEmpty() ? "La réponse sur " + what + " est prête, le détail est dans le fil."
+                : "Réponse sur " + what + " : " + o;
+        return new JarvisNoticeService.Texts(display, speech);
+    }
 }

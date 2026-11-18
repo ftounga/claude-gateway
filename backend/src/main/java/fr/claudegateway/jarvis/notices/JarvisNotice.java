@@ -32,6 +32,8 @@ public class JarvisNotice {
     public static final String DEPOSIT_REMINDER = "DEPOSIT_REMINDER";
     public static final String MEETING_SOON = "MEETING_SOON";
     public static final String IGNORE_OFFER = "IGNORE_OFFER";
+    /** F-272 / SF-272-05 — la réponse d'une délégation de Jarvis, à dire si l'écran ne l'a pas dite. */
+    public static final String DELEGATION_DONE = "DELEGATION_DONE";
 
     @Id
     @GeneratedValue

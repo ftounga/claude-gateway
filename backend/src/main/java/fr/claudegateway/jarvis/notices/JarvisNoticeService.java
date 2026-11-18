@@ -34,7 +34,71 @@ public class JarvisNoticeService implements JarvisMailPurge {
 
     /** Une annonce telle que l'écran la voit. */
     public record NoticeView(UUID id, String kind, String text, String speech, String link, int count, UUID hostId,
-            UUID workspaceId, OffsetDateTime updatedAt, OffsetDateTime expiresAt, boolean spoken) {
+            UUID workspaceId, OffsetDateTime updatedAt, OffsetDateTime expiresAt, boolean spoken,
+            UUID delegationId) {
+    }
+
+    /** F-272 / SF-272-05 — la clé de l'annonce d'une délégation. */
+    static final String DELEGATION_KEY = "delegation:";
+    /** F-272 / SF-272-05 — une réponse de délégation reste à dire au plus autant de temps. */
+    static final java.time.Duration DELEGATION_TTL = java.time.Duration.ofHours(12);
+
+    /**
+     * F-272 / SF-272-05 — <b>la réponse d'une délégation</b> (démo du 17/11 : réponse arrivée après la pause et la
+     * fermeture de l'écran, jamais dite) : posée à la fin du tour délégué, dite à la reprise par l'écran qui ne l'a pas
+     * dite lui-même. Jamais rouverte : si l'écran l'a déjà marquée dite ({@link #delegationSpoken}), rien.
+     */
+    public void delegationDone(UUID userId, UUID delegationId, UUID workspaceId, String label, String subjectName,
+            String oralLine, boolean failed) {
+        if (!enabled() || userId == null || delegationId == null) {
+            return;
+        }
+        String key = DELEGATION_KEY + delegationId;
+        try {
+            if (notices.existsByUserIdAndDedupKey(userId, key)) {
+                return;
+            }
+            Texts t = NoticeTexts.delegation(label, subjectName, oralLine, failed);
+            write(userId, JarvisNotice.DELEGATION_DONE, key, null, workspaceId, 1, false, n -> t, null,
+                    OffsetDateTime.now(clock).plus(DELEGATION_TTL));
+        } catch (RuntimeException e) {
+            // Posée au même instant par la marque de l'écran : elle l'emporte. Jamais vers le tour.
+            log.debug("Annonce de délégation non posée ({})", e.getClass().getSimpleName());
+        }
+    }
+
+    /**
+     * F-272 / SF-272-05 — l'écran a dit lui-même la fin de la délégation : l'annonce est close (dite, vue) ; arrivée
+     * avant la fin du tour, une annonce close la remplace d'avance, que {@link #delegationDone} ne rouvre pas.
+     */
+    public void delegationSpoken(UUID userId, UUID delegationId) {
+        if (!enabled() || userId == null || delegationId == null) {
+            return;
+        }
+        String key = DELEGATION_KEY + delegationId;
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        try {
+            JarvisNotice n = notices.findByUserIdAndDedupKey(userId, key).orElseGet(() -> {
+                JarvisNotice fresh = new JarvisNotice();
+                fresh.setUserId(userId);
+                fresh.setDedupKey(key);
+                fresh.setKind(JarvisNotice.DELEGATION_DONE);
+                fresh.setItemCount(1);
+                fresh.setDisplayText("");
+                fresh.setSpeechText("");
+                fresh.setCreatedAt(now);
+                fresh.setUpdatedAt(now);
+                fresh.setExpiresAt(now.plus(DELEGATION_TTL));
+                return fresh;
+            });
+            n.setSpokenAt(now);
+            n.setSeenAt(now);
+            notices.saveAndFlush(n);
+        } catch (DataIntegrityViolationException e) {
+            delegationSpoken(userId, delegationId); // posée au même instant par la fin du tour : on la ferme
+        } catch (RuntimeException e) {
+            log.debug("Annonce de délégation non close ({})", e.getClass().getSimpleName());
+        }
     }
 
     /** Les deux textes d'une annonce : affiché et dit. */
@@ -157,9 +221,18 @@ public class JarvisNoticeService implements JarvisMailPurge {
     }
 
     static NoticeView view(JarvisNotice n) {
+        String key = n.getDedupKey();
+        UUID delegationId = null;
+        if (key != null && key.startsWith(DELEGATION_KEY)) {
+            try {
+                delegationId = UUID.fromString(key.substring(DELEGATION_KEY.length()));
+            } catch (IllegalArgumentException e) {
+                delegationId = null;
+            }
+        }
         return new NoticeView(n.getId(), n.getKind(), n.getDisplayText(), n.getSpeechText(), n.getLink(),
                 n.getItemCount(), n.getHostId(), n.getWorkspaceId(), n.getUpdatedAt(), n.getExpiresAt(),
-                n.getSpokenAt() != null);
+                n.getSpokenAt() != null, delegationId);
     }
 
     private static String clip(String s) {

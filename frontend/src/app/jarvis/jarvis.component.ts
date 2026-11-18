@@ -606,6 +606,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   /** F-249 / SF-249-08 (D17) — les annonces d'interface, dites par Jarvis au repos (jamais en présentation). */
   private readonly noticesClient = inject(JarvisNoticesClient);
+  /** F-272 / SF-272-05 — les délégations lancées par cet écran (leur fin est dite ici, pas par l'annonce). */
+  private readonly localDelegations = new Set<string>();
   private readonly noticePollMs = inject(JARVIS_NOTICE_POLL_MS);
   private noticeTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -636,10 +638,13 @@ export class JarvisComponent implements OnInit, OnDestroy {
    * par passage. Marquée « dite » d'abord, pour qu'un second écran ouvert ne la répète pas. Jamais un message de fil.
    */
   async speakNotice(list: JarvisNotice[]): Promise<void> {
-    if (this.presentation() || this.turnRunning || this.state() !== 'repos') {
+    // F-272 / SF-272-05 — en pause, rien n'est dit : la reprise relit les annonces.
+    if (this.presentation() || this.turnRunning || this.state() !== 'repos' || this.conversation.mode() === 'paused') {
       return;
     }
-    const next = toSpeak(list)[0];
+    // F-272 / SF-272-05 — une délégation lancée par cet écran est dite par sa propre fin (file d'annonces), jamais
+    // une seconde fois par l'annonce de la passerelle.
+    const next = toSpeak(list).filter((n) => !n.delegationId || !this.localDelegations.has(n.delegationId))[0];
     if (!next || !next.speech) {
       return;
     }
@@ -3227,6 +3232,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
     const label = (delegation.label ?? '').trim() || 'votre demande';
     const entry = { id: delegation.delegationId, label, subjectId };
+    this.localDelegations.add(delegation.delegationId);
     this.delegations.update((list) => [...list, entry]);
     // Le sélecteur indique le dernier sujet engagé (D19) — F-245 / SF-245-02 : le fil Jarvis n'est pas un sujet, le
     // sujet en vue reste celui d'avant.
@@ -3319,7 +3325,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
    */
   private flushAnnouncements(): void {
     const state = this.state();
-    const free = state !== 'parole' && state !== 'reflexion' && !this.heardText() && !this.pendingConfirm;
+    // F-272 / SF-272-05 — en pause, la file attend la reprise (démo du 17/11 : la réponse arrivée après la pause).
+    const free = state !== 'parole' && state !== 'reflexion' && !this.heardText() && !this.pendingConfirm
+      && this.conversation.mode() !== 'paused';
     const item = this.announcements.next(free);
     if (!item) {
       if (this.announcements.size > 0 && !this.announceTimer) {
@@ -3339,6 +3347,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
     if (this.state() === 'ecoute') {
       this.trace.mark('announce_close_listen');
       this.cancelListening();
+    }
+    // F-272 / SF-272-05 — dite ici : son annonce de passerelle est close (elle ne sera pas redite à la reprise).
+    if (item.delegationId) {
+      this.noticesClient.delegationSpoken(item.delegationId).subscribe({ error: () => undefined });
     }
     // F-240 / SF-240-01 — la fin d'une délégation dite : sa longueur et sa durée entrent dans la mesure de l'échange.
     const timed = this.timedHooks();
@@ -4950,9 +4962,15 @@ export class JarvisComponent implements OnInit, OnDestroy {
 
   /** Démarre (ou reprend) la conversation ; l'écoute s'ouvre dès que Jarvis est au repos. */
   startConversation(): void {
+    const resumed = this.conversation.mode() === 'paused';
     this.wakeGate.set(false);
     this.started.set(true);
     this.conversation.start();
+    if (resumed) {
+      // F-272 / SF-272-05 — à la reprise : les fins de délégation retenues pendant la pause, puis les annonces.
+      this.flushAnnouncements();
+      this.pollNotices();
+    }
     // F-257 / SF-257-03 — le lien en flux ne s'ouvre qu'une fois la conversation engagée (F-231 D5).
     void this.voiceShadow.start(this.voiceLoop(), this.subjectId(), this.streamHooks());
   }

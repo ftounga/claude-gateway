@@ -1861,6 +1861,29 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.jarvisLinks = jarvisLinks;
     }
 
+    /** F-272 / SF-272-05 — l'annonce de la réponse d'une délégation, dite à la reprise si l'écran ne l'a pas dite. */
+    private fr.claudegateway.jarvis.notices.JarvisNoticeService jarvisNotices;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJarvisNotices(fr.claudegateway.jarvis.notices.JarvisNoticeService jarvisNotices) {
+        this.jarvisNotices = jarvisNotices;
+    }
+
+    /** F-272 / SF-272-05 — la fin d'un tour délégué par Jarvis devient une annonce (best-effort, jamais bloquant). */
+    private void announceDelegation(UUID userId, UUID delegationId, Workspace workspace, String label,
+            AtelierMessage reply, boolean failed) {
+        if (jarvisNotices == null || delegationId == null) {
+            return;
+        }
+        try {
+            jarvisNotices.delegationDone(userId, delegationId, workspace.isJarvisThread() ? null : workspace.getId(),
+                    label, workspace.isJarvisThread() ? null : workspace.getName(),
+                    reply == null ? null : fr.claudegateway.jarvis.JarvisReplies.oralLine(reply.getContent()), failed);
+        } catch (RuntimeException e) {
+            log.debug("Annonce de délégation non posée ({})", e.getClass().getSimpleName());
+        }
+    }
+
     /** F-239 / SF-239-12 — le compteur de Jarvis : le coût des tours nés de Jarvis. Facultatif. */
     private fr.claudegateway.jarvis.JarvisUsageService jarvisUsage;
 
@@ -3706,6 +3729,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         UUID jarvisLinkId = null;
         // F-272 / SF-272-01 — la délégation prise par ce tour : close à sa fin (réponse, échec), sur tous les pods.
         UUID jarvisDelegationId = null;
+        String jarvisDelegationLabel = null;
         if (viaJarvis && jarvisDelegations != null) {
             fr.claudegateway.jarvis.fastbrain.JarvisDelegationRegistry.Reformulation reformulation =
                     jarvisDelegations.take(userId, workspaceId, workspace.getTurnChantier());
@@ -3713,6 +3737,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                 delegated = true;
                 jarvisLinkId = reformulation.linkId();
                 jarvisDelegationId = reformulation.delegationId();
+                jarvisDelegationLabel = reformulation.label();
                 consigne = consigne + "\n[Jarvis — demande reformulée : « "
                         + reformulation.demande().replace('«', '"').replace('»', '"') + " »]";
             }
@@ -4886,6 +4911,7 @@ public class AtelierChatService implements RelayInterruptTarget {
             if (jarvisDelegations != null && jarvisDelegationId != null) {
                 jarvisDelegations.finished(userId, jarvisDelegationId);
             }
+            announceDelegation(userId, jarvisDelegationId, workspace, jarvisDelegationLabel, null, true);
             throw cut;
         }
         // F-195 / SF-195-05 : arrêté sur son budget alors que plusieurs demandes sont arrivées — on dit
@@ -5078,6 +5104,9 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (jarvisDelegations != null && jarvisDelegationId != null) {
             jarvisDelegations.finished(userId, jarvisDelegationId);
         }
+        // F-272 / SF-272-05 — la réponse posée en annonce AVANT la fin du flux (« done ») : l'écran qui la dit la clôt ;
+        // l'écran fermé ou en pause la dira à la reprise.
+        announceDelegation(userId, jarvisDelegationId, workspace, jarvisDelegationLabel, assistant, interrupted);
 
         // F-136 / SF-136-01 — la carte du client a pu changer pendant ce tour (promotion). On la
         // relit MAINTENANT, une fois la réponse prête : lire au début d'un tour coûterait six
