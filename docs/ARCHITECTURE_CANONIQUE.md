@@ -1552,7 +1552,14 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   `host_id`, `workspace_id`, `kind` (`MAILS_ON_SUBJECT|MORNING_RECAP|DEPOSIT_REMINDER|MEETING_SOON|IGNORE_OFFER`),
   `dedup_key` (unique par compte : une annonce par sujet qui cumule), `display_text`, `speech_text`, `link`,
   `item_count`, `created_at`, `updated_at`, `expires_at`, `seen_at`, `spoken_at`. **Jamais** un message de conversation.
-  Purge 7 jours après échéance.
+  Purge 7 jours après échéance. F-272 / SF-272-05 : genre `DELEGATION_DONE`, clé `delegation:<id>` — la réponse d'une
+  délégation de Jarvis, dite à la reprise si l'écran ne l'a pas dite (12 h).
+- **jarvis_delegations** — **les délégations de Jarvis, partagées entre les pods** (F-272 / SF-272-01, migration
+  `272-01`) : `id`, `user_id`, `delegation_id` (unique par compte), `subject_id`, `chantier`, `subject_name`, `label`,
+  `demande` (reformulation jointe au message du tour Opus), `link_id` (ligne-lien du fil Jarvis), `created_at`,
+  `taken_at` (prise atomique, un seul tour, tous pods), `finished_at`. Balayage chaque minute (offre non prise > 2 min,
+  prise non finie > 2 h : close, ligne-lien « échec » / « interrompu »), purge > 7 jours et à la suppression du compte.
+  Sans clé étrangère.
 - **jarvis_client_mail_settings / jarvis_client_mail_hosts / jarvis_client_mail_reminders** — **le rappel du soir**
   (F-249 / SF-249-05, migration `249-05`) : réglages par compte (`reminder_time` 18:30, `reminder_max` 3,
   `reminder_every_minutes` 45, `weekdays_only`, `meeting_alert_minutes` 10) ; clients actifs (`user_id`, `host_id`
