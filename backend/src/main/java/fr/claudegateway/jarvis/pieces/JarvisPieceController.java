@@ -42,12 +42,15 @@ public class JarvisPieceController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime since,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime until,
             @RequestParam(required = false) UUID series,
-            @RequestParam(required = false) Integer limit) {
+            @RequestParam(required = false) Integer limit,
+            @RequestParam(required = false, defaultValue = "false") boolean fresh) {
         atelierAccess.requireAccess();
         JarvisPieceService.Filter filter = new JarvisPieceService.Filter(chantier,
                 parse(Piece.Category.class, category, "category"), parse(Piece.Kind.class, kind, "kind"), since,
                 until, series, limit == null ? JarvisPieceService.DEFAULT_LIMIT : limit);
-        return service.list(currentUser.requireId(), subjectId, filter);
+        // F-272 / SF-272-04 — fresh : relu sans le cache de 60 s (un schéma tout juste rendu, peut-être sur l'autre pod).
+        return fresh ? service.listFresh(currentUser.requireId(), subjectId, filter)
+                : service.list(currentUser.requireId(), subjectId, filter);
     }
 
     private static <E extends Enum<E>> E parse(Class<E> type, String value, String name) {

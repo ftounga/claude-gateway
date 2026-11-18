@@ -41,7 +41,7 @@ class JarvisRepliesTest {
     @Test
     void SF_240_02_laConsigneOraleV2EstFigeeEtBorneeEnMots() {
         String text = JarvisOralNote.TEXT;
-        assertThat(JarvisOralNote.VERSION).isEqualTo("3");
+        assertThat(JarvisOralNote.VERSION).isEqualTo("4");
         // SF-240-06 — rédiger ⇒ « prêt » ; ENVOYER ⇒ objet + destinataire + « Vous confirmez ? », jamais envoyé soi-même.
         assertThat(text).contains("Demandé à ENVOYER, c'est une action").contains("nomme l'objet et le destinataire")
                 .contains("ne promets jamais de l'envoyer toi-même");
@@ -53,6 +53,17 @@ class JarvisRepliesTest {
         assertThat(text).doesNotContain("  ").doesNotContainPattern("\\d{1,2}:\\d{2}").doesNotContainPattern("20\\d\\d");
         assertThat(JarvisOralNote.appendTo("a")).isEqualTo(JarvisOralNote.appendTo("a"));
         assertThat(JarvisOralNote.appendTo("parole")).isEqualTo("parole\n\n" + text);
+    }
+
+    @Test
+    void F_269_04_laConsigneV4MontreLesSchemasEnTroisDSansConfirmation() {
+        String text = JarvisOralNote.TEXT;
+        assertThat(text).contains("diag:<id> rendu par render_diagram")
+                .contains("après render_diagram, par « 🖥 montrer: pieces diag:<id> »")
+                .contains("s'ouvre en 3D").contains("Dessiner un schéma")
+                .contains("sans demander de confirmation").doesNotContain("pas de 3D");
+        // L'action qui engage reste confirmée.
+        assertThat(text).contains("Avant toute action qui engage");
     }
 
     @Test

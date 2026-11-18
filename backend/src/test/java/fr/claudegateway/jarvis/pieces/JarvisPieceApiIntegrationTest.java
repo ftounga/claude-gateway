@@ -179,6 +179,26 @@ class JarvisPieceApiIntegrationTest {
         mockMvc.perform(get("/api/jarvis/pieces").contextPath("/api")).andExpect(status().isUnauthorized());
     }
 
+    @Autowired private fr.claudegateway.diagrams.DiagramRenderRepository diagramRenders;
+
+    @Test
+    @DisplayName("F-272 / SF-272-04 — fresh=true : un schéma rendu après la première lecture est vu tout de suite ; "
+            + "isolation inchangée")
+    void freshReadSeesANewDiagram() throws Exception {
+        call(aliceToken, "?subjectId=" + aliceSubject + "&kind=architecture").andExpect(jsonPath("$.total").value(0));
+        UUID alice = workspaces.findById(aliceSubject).orElseThrow().getUserId();
+        UUID id = UUID.randomUUID();
+        diagramRenders.save(fr.claudegateway.diagrams.DiagramRender.builder().id(id).userId(alice)
+                .workspaceId(aliceSubject).engine("cloud").title("Architecture Airflow")
+                .createdAt(OffsetDateTime.now()).build());
+
+        call(aliceToken, "?subjectId=" + aliceSubject + "&kind=architecture").andExpect(jsonPath("$.total").value(0));
+        call(aliceToken, "?subjectId=" + aliceSubject + "&kind=architecture&fresh=true")
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.pieces[0].id").value("diag:" + id));
+        call(bobToken, "?subjectId=" + aliceSubject + "&fresh=true").andExpect(status().isNotFound());
+    }
+
     @Test
     @DisplayName("un dépôt sur un poste hors ligne est dit hors ligne, jamais remplacé")
     void hostOffline() throws Exception {

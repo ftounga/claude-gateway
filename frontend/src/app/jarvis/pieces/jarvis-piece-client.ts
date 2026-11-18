@@ -13,6 +13,8 @@ export interface PieceQuery {
   /** F-237 / SF-237-08 — date (`AAAA-MM-JJ`, minuit local) ou instant ISO. */
   since?: string | null;
   limit?: number;
+  /** F-272 / SF-272-04 — relu sans le cache de la passerelle (une pièce tout juste produite). */
+  fresh?: boolean;
 }
 
 /** La requête de l'index, sans paramètre vide. Exporté pour les tests. */
@@ -41,6 +43,9 @@ export function pieceQueryString(query: PieceQuery): string {
     }
   }
   params.set('limit', String(query.limit ?? 50));
+  if (query.fresh) {
+    params.set('fresh', 'true');
+  }
   return params.toString();
 }
 

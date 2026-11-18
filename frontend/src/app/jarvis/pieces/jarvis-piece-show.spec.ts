@@ -112,7 +112,20 @@ describe('Jarvis — l\'outil afficher du cerveau rapide (F-237 / SF-237-08)', (
       expect((await store.applyShow({ action: 'piece', pieces: ['proof:zz'] }, ctx)).reason).toBe('NOT_FOUND');
       store.presentation.set(true);
       expect((await store.applyShow(PROOFS, ctx)).reason).toBe('PRESENTATION');
-      expect(list).toHaveBeenCalledTimes(1);
+      // F-272 / SF-272-04 — l'identifiant absent est relu une fois sans cache avant le refus.
+      expect(list).toHaveBeenCalledTimes(2);
+      expect(list.calls.mostRecent().args[0].fresh).toBeTrue();
+    });
+
+    it('F-272 — un schéma tout juste produit, absent du cache de la passerelle, est trouvé à la relecture fraîche', async () => {
+      list.and.callFake(async (query: { fresh?: boolean }) => query.fresh
+        ? { pieces: [piece('proof:a'), piece('diag:new')], total: 2, truncated: false }
+        : { pieces: [piece('proof:a')], total: 1, truncated: false });
+      const ctx = { subjectId: 's1', subjectName: 'Edenred', sober: false };
+      const shown = await store.applyShow({ action: 'piece', pieces: ['diag:new'], reason: 'demande' }, ctx);
+      expect(shown.ok).toBeTrue();
+      expect(store.nav().items.map((i) => i.id)).toEqual(['diag:new']);
+      expect(list).toHaveBeenCalledTimes(2);
     });
   });
 });

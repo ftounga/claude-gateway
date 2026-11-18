@@ -45,17 +45,32 @@ public class DiagramToolExecutor {
         this.renders = renders;
     }
 
-    /** Conserve un rendu réussi — au mieux : jamais une raison d'échouer le rendu. */
-    private void keep(UUID userId, Workspace workspace, String callId, String engine, JsonNode spec, String code,
+    /**
+     * Conserve un rendu réussi — au mieux : jamais une raison d'échouer le rendu. F-272 / SF-272-04 : rend la phrase
+     * qui donne l'identifiant de pièce {@code diag:<id>} (vide si rien n'est conservé).
+     */
+    private String keep(UUID userId, Workspace workspace, String callId, String engine, JsonNode spec, String code,
             String fileName, DiagramRenderService.Files files, JsonNode graph) {
         if (renders == null) {
-            return;
+            return "";
         }
         try {
-            renders.record(userId, workspace, callId, engine, spec, code, fileName, files, graph);
+            return renders.record(userId, workspace, callId, engine, spec, code, fileName, files, graph)
+                    .map(id -> pieceNote(id, !"mermaid".equalsIgnoreCase(engine))).orElse("");
         } catch (RuntimeException e) {
             // déjà journalisé côté service ; le schéma est livré dans le projet
+            return "";
         }
+    }
+
+    /**
+     * F-272 / SF-272-04 — l'identifiant de pièce du schéma conservé, pour l'écran Jarvis (démo du 17/11 : Opus ne
+     * savait pas montrer le schéma qu'il venait de dessiner, ni qu'une architecture s'ouvre en 3D). Résultat d'outil :
+     * la consigne système et les outils restent identiques à l'octet près.
+     */
+    static String pieceNote(UUID id, boolean architecture) {
+        return " Pièce diag:" + id + " : à l'écran Jarvis, la ligne « 🖥 montrer: pieces diag:" + id + " » l'ouvre"
+                + (architecture ? " (une architecture s'ouvre en 3D, l'écran sait aussi la montrer en 2D)." : ".");
     }
 
     /** Le résultat rendu à la boucle : un texte, et s'il est une erreur. */
@@ -119,7 +134,8 @@ public class DiagramToolExecutor {
             return Outcome.error("Diagramme rendu (" + rendered.bytes().length + " octets), mais son dépôt "
                     + "dans le projet a échoué : réessaie, ou livre le diagramme dans une page.");
         }
-        keep(userId, workspace, callId, cloud ? "cloud" : "mermaid", cloud ? spec : null, cloud ? null : code, name,
+        String piece = keep(userId, workspace, callId, cloud ? "cloud" : "mermaid", cloud ? spec : null,
+                cloud ? null : code, name,
                 format == Format.SVG ? new DiagramRenderService.Files(rendered.bytes(), null, null)
                         : new DiagramRenderService.Files(null, rendered.bytes(), null),
                 cloud ? rendered.graph() : null);
@@ -146,7 +162,7 @@ public class DiagramToolExecutor {
         return new Outcome("Diagramme rendu par la gateway et déposé dans le projet sous « " + deposited
                 + " ». Insère ce chemin : add_picture pour une slide, <img src=\"" + deposited + "\"> pour "
                 + "une page, image pour un document. " + inPage + " Rien n'a été installé sur la machine."
-                + warning + notice, false);
+                + piece + warning + notice, false);
     }
 
     /**
@@ -187,7 +203,7 @@ public class DiagramToolExecutor {
                     fileName(source, Format.PNG), rendered.png(), Format.PNG.contentType(),
                     DiagramToolCatalog.RENDER);
         }
-        keep(userId, workspace, callId, "drawio", spec, null, source,
+        String piece = keep(userId, workspace, callId, "drawio", spec, null, source,
                 new DiagramRenderService.Files(null, rendered.hasPreview() ? rendered.png() : null, rendered.drawio()),
                 rendered.graph());
         StringBuilder message = new StringBuilder();
@@ -206,7 +222,7 @@ public class DiagramToolExecutor {
                     .append(") : livre le fichier draw.io, dis que l'image manque, et ne fabrique pas "
                             + "d'image de remplacement.");
         }
-        message.append(" Rien n'a été installé sur la machine.");
+        message.append(" Rien n'a été installé sur la machine.").append(piece);
         return new Outcome(message.toString(), false);
     }
 

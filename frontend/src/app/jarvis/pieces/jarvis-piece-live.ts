@@ -114,3 +114,23 @@ export function proofDemand(chantier: number): string {
 
 /** Une proposition de preuve reste ouverte au plus autant de temps. */
 export const PROOF_OFFER_MS = 2 * 60_000;
+
+/** F-272 / SF-272-04 — la réponse d'Opus montre déjà un schéma (`🖥 montrer: pieces … diag:…`). */
+export function replyShowsDiagram(reply: string | null | undefined): boolean {
+  return /🖥\s*montrer\s*:\s*pi[eè]ces?\b[^\n]*\bdiag:/i.test(reply ?? '');
+}
+
+/** Marge d'horloge entre l'écran et la passerelle pour « produit pendant ce tour ». */
+export const PRODUCED_SLACK_MS = 5_000;
+
+/**
+ * F-272 / SF-272-04 — le schéma (architecture ou diagramme) produit pendant un tour commencé à `sinceMs` : le plus
+ * récent, ou `null`. Démo du 17/11 : le schéma dessiné par Opus (graphe 3D prêt) n'était jamais affiché.
+ */
+export function producedDiagram(pieces: readonly Piece[], sinceMs: number): Piece | null {
+  const produced = pieces
+    .filter((p) => (p.kind === 'ARCHITECTURE' || p.kind === 'DIAGRAM') && p.id.startsWith('diag:'))
+    .filter((p) => !p.at || Date.parse(p.at) >= sinceMs - PRODUCED_SLACK_MS)
+    .sort((a, b) => (b.at ?? '').localeCompare(a.at ?? ''));
+  return produced[0] ?? null;
+}

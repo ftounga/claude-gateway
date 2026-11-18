@@ -86,6 +86,29 @@ class DiagramToolExecutorTest {
     }
 
     @Test
+    @DisplayName("F-272 / SF-272-04 — schéma conservé : le résultat donne la pièce diag:<id> et la ligne montrer ; "
+            + "sans conservation, aucun identifiant")
+    void theKeptDiagramGivesItsPieceId() {
+        when(renderer.render(anyString(), eq(Format.PNG), any()))
+                .thenReturn(new Rendered("PNG".getBytes(StandardCharsets.UTF_8), Format.PNG));
+        when(deposit.deposit(any(), any(), anyString(), anyString(), any(), anyString(), anyString()))
+                .thenReturn("airflow.png");
+        DiagramRenderService renders = org.mockito.Mockito.mock(DiagramRenderService.class);
+        UUID id = UUID.randomUUID();
+        when(renders.record(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(java.util.Optional.of(id));
+
+        String without = executor.execute(userId, workspace, "c0", input("flowchart TD\n A-->B", null)).content();
+        executor.setRenders(renders);
+        String with = executor.execute(userId, workspace, "c1", input("flowchart TD\n A-->B", null)).content();
+
+        assertThat(without).doesNotContain("diag:");
+        assertThat(with).contains("Pièce diag:" + id).contains("🖥 montrer: pieces diag:" + id);
+        assertThat(DiagramToolExecutor.pieceNote(id, true)).contains("3D");
+        assertThat(DiagramToolExecutor.pieceNote(id, false)).doesNotContain("3D");
+    }
+
+    @Test
     @DisplayName("le SVG est proposé pour une page : format honoré, type de contenu qui va avec")
     void svgIsHonoured() {
         when(renderer.render(anyString(), eq(Format.SVG), any()))

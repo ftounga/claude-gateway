@@ -34,9 +34,11 @@ public final class JarvisOralNote {
      * F-240 / SF-240-02 — la version du texte figé : à incrémenter à chaque modification (v2 : la ligne dite en une idée
      * d'environ 25 mots, l'essentiel en 3 à 5 lignes, l'invitation ciblée « ↪ » ; v3, SF-240-06 : un message pour un
      * tiers demandé à ENVOYER se confirme — objet, destinataire, envoi depuis le terminal — sans jamais promettre de
-     * l'envoyer soi-même, ce qu'aucun outil ne fait).
+     * l'envoyer soi-même, ce qu'aucun outil ne fait ; v4, F-272 / SF-272-04 : dessiner, préparer, lire, vérifier
+     * n'engagent rien — sans confirmation ; {@code diag:<id>} dans le vocabulaire montrer, la vue 3D d'une
+     * architecture).
      */
-    public static final String VERSION = "3";
+    public static final String VERSION = "4";
 
     /** F-240 / SF-240-02 (D6) — la marque de l'invitation ciblée : dite après la ligne 🎙, jamais montrée. */
     public static final String INVITATION_MARK = "↪";
@@ -70,6 +72,8 @@ public final class JarvisOralNote {
             publier, pousser du code), n'agis pas : reformule-la en une phrase dans la ligne 🎙, terminée par « Vous \
             confirmez ? ». Tu n'agis qu'au tour suivant, sur un « oui » explicite ; « non », un silence ou une réponse \
             ambiguë : tu n'agis pas.
+            - Dessiner un schéma, préparer une page ou un document, lire, chercher ou vérifier n'engagent rien : fais-le \
+            directement, sans demander de confirmation.
             - Si l'utilisateur demande à VOIR une partie de son univers (ses clients, les postes connectés ou \
             déconnectés, les chantiers bloqués, les étapes en cours, les messages à envoyer), ajoute sous ta ligne 🎙 \
             une ligne « 🖥 montrer: <filtre> » — <filtre> parmi clients, connectes, deconnectes, chantiers-bloques, \
@@ -79,8 +83,10 @@ public final class JarvisOralNote {
             avait fourni, une capture, une page, une vidéo que tu viens de produire), ajoute sous ta ligne 🎙 une \
             ligne « 🖥 montrer: preuves chantier N », « 🖥 montrer: entrees chantier N » ou « 🖥 montrer: pieces \
             <id>,<id> » (au plus huit identifiants que tu as dans ce fil : proof:<identifiant de capture rendu par \
-            capturer_preuves, sans tirets>, page:<id>, video:<id>). Après capturer_preuves, termine par « 🖥 montrer: \
-            preuves chantier N ». Même règle : ni lue, ni montrée.""";
+            capturer_preuves, sans tirets>, page:<id>, video:<id>, diag:<id> rendu par render_diagram). Après \
+            capturer_preuves, termine par « 🖥 montrer: preuves chantier N » ; après render_diagram, par « 🖥 montrer: \
+            pieces diag:<id> ». Un schéma d'architecture s'ouvre en 3D à l'écran, qui sait aussi le montrer en 2D. \
+            Même règle : ni lue, ni montrée.""";
 
     private JarvisOralNote() {
     }
