@@ -1211,6 +1211,61 @@ class JarvisFastBrainServiceTest {
         assertThat(screen.said.toString()).contains("voici les preuves");
     }
 
+    // ------------------------------------------------------- F-272 / SF-272-02 : ordres d'écran vérifiés
+
+    private static final String SHOW_3D = """
+            {"action":"vue","pieces":[],"portee":{"sujet":"","chantier":null,"categorie":"","type":"",
+             "serie":"","depuis":""},"index":null,"temps":null,"chapitre":"","page":null,"zoom":"","cible":"",
+             "vue":"3d","client":"","raison":"demande"}""";
+
+    private JarvisShowVerifier verifierWith(List<fr.claudegateway.jarvis.pieces.Piece> list) {
+        fr.claudegateway.jarvis.pieces.JarvisPieceService pieceService =
+                mock(fr.claudegateway.jarvis.pieces.JarvisPieceService.class);
+        when(pieceService.listFresh(alice, subject)).thenReturn(list);
+        when(workspaces.findByIdAndUserId(subject, alice)).thenReturn(java.util.Optional.of(workspace));
+        return new JarvisShowVerifier(pieceService, workspaces);
+    }
+
+    @Test
+    void f269ThreeDWithoutAnOpenSchemaOpensTheArchitectureFirst() {
+        Screen screen = new Screen();
+        JarvisFastBrainService service = service(scripted(new AgentTurn("Voici l'architecture en 3D.",
+                List.of(tool("s1", "afficher", SHOW_3D)), true, 100, 10)), null, null);
+        service.setShowVerifier(verifierWith(List.of(new fr.claudegateway.jarvis.pieces.Piece("diag:a1",
+                fr.claudegateway.jarvis.pieces.Piece.Category.PRODUCTION,
+                fr.claudegateway.jarvis.pieces.Piece.Kind.ARCHITECTURE, "Architecture AWS", null, null,
+                java.time.OffsetDateTime.parse("2026-11-10T10:00:00Z"), subject, null,
+                fr.claudegateway.jarvis.pieces.Piece.ChantierLink.NONE, null, null, java.util.Map.of(),
+                fr.claudegateway.jarvis.pieces.Piece.Availability.ONLINE))));
+
+        JarvisFastBrainService.Outcome outcome = service.converse(ask("Montre-moi l'architecture AWS en 3D"), screen);
+
+        assertThat(calls).hasSize(1);
+        assertThat(screen.shows).extracting(JarvisShowCommand::action).containsExactly("piece", "vue");
+        assertThat(screen.shows.get(0).pieces()).containsExactly("diag:a1");
+        assertThat(outcome.shows()).hasSize(2);
+    }
+
+    @Test
+    void f269ARefusedShowIsRetriedOnceWithTheRealRefusal() {
+        Screen screen = new Screen();
+        JarvisFastBrainService service = service(scripted(
+                new AgentTurn("Voici.", List.of(tool("s1", "afficher", SHOW_3D)), false, 100, 10),
+                new AgentTurn("Ce sujet n'a pas encore de schéma ; je le dessine ?", List.of(), true, 100, 10)),
+                null, null);
+        service.setShowVerifier(verifierWith(List.of()));
+
+        JarvisFastBrainService.Outcome outcome = service.converse(ask("Montre-moi l'architecture en 3D"), screen);
+
+        assertThat(calls).hasSize(2);
+        assertThat(screen.shows).isEmpty();
+        AgentTurnRequest second = calls.get(1);
+        assertThat(second.messages().get(second.messages().size() - 1).content())
+                .anyMatch(b -> b instanceof fr.claudegateway.agent.AgentContentBlock.ToolResult r && r.isError()
+                        && r.content().contains("aucun schéma d'architecture"));
+        assertThat(outcome.spokenText()).contains("je le dessine");
+    }
+
     // ------------------------------------------------------- F-263 / SF-263-01 : pas d'annonce sans écran
 
     private static final String SHOW_REFUSED = """
