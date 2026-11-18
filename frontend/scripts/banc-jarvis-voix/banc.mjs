@@ -139,10 +139,15 @@ function relay(req, res, path) {
         return res.end();
       }
       const sse = /event-stream/.test(r.headers.get('content-type') ?? '');
+      // F-270 — le texte retranscrit d'un énoncé (réponse JSON de /utterance) : la phrase gardée pendant la réflexion
+      // n'a pas d'autre trace côté banc.
+      const keepResponse = /^\/api\/jarvis\/utterance/.test(path) && /json/.test(r.headers.get('content-type') ?? '');
+      const raw = [];
       let buffer = '';
       const decoder = new TextDecoder();
       for await (const chunk of r.body) {
         res.write(chunk);
+        if (keepResponse) raw.push(Buffer.from(chunk));
         if (sse) {
           buffer += decoder.decode(chunk, { stream: true });
           let sep;
@@ -158,6 +163,9 @@ function relay(req, res, path) {
         }
       }
       entry.ms = Date.now() - entry.t;
+      if (keepResponse) {
+        try { entry.response = JSON.parse(Buffer.concat(raw).toString('utf8')); } catch { /* illisible */ }
+      }
       res.end();
     }).catch((e) => {
       entry.status = 0;

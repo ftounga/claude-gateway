@@ -6,7 +6,7 @@ import { Subject, of, throwError } from 'rxjs';
 import { JarvisUtterance } from '../core/models/jarvis.models';
 
 import { JarvisWorksClient } from './jarvis-works';
-import { BUDGET_SOFT_NOTICE, JARVIS_USER_AGENT, JarvisComponent, UNLOCK_ASK_PHRASE, UNLOCK_REFUSED_PHRASE, companionMicMessage, companionOffer, dictationMessage, euros } from './jarvis.component';
+import { BUDGET_SOFT_NOTICE, JARVIS_USER_AGENT, JarvisComponent, joinUtterance, UNLOCK_ASK_PHRASE, UNLOCK_REFUSED_PHRASE, companionMicMessage, companionOffer, dictationMessage, euros } from './jarvis.component';
 import { JarvisSceneBus } from './scenes/jarvis-scene-bus.service';
 import { testUniverse } from './scenes/jarvis-universe.fixture';
 import { NotificationCenterService } from '../core/services/notification-center.service';
@@ -3979,6 +3979,160 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       expect(voice.speak.calls.allArgs().some((a) => String(a[0]).includes('git tag'))).toBeTrue();
       jarvis.ngOnDestroy();
     }));
+
+  // ---- F-270 / SF-270-03 : rien n'est jeté pendant qu'il pense ----
+
+  it('F-270 / SF-270-03 — en réflexion, la parole est captée, gardée, puis traitée après la réponse en cours',
+    fakeAsync(() => {
+      const { jarvis, fixture } = fastFixture();
+      jarvis.conversation.start();
+      void jarvis.handle('Où en est agenor ?');
+      flushMicrotasks();
+      fixture.detectChanges();
+      flushMicrotasks();
+      expect(jarvis.state()).toBe('reflexion');
+      expect(vadService.start).toHaveBeenCalled();
+
+      dictation.transcribe.and.resolveTo('Et sur le WAF, où en est le chantier 2 ?');
+      vad!.onSpeechStart();
+      vad!.onSpeechEnd(new Float32Array(24000));
+      flushMicrotasks();
+      expect(traced()).toContain('voice_turn_kept');
+      expect(fastBrain.converse).toHaveBeenCalledTimes(1);
+
+      fast!.onText('Agenor avance bien.');
+      fastDone!('ok');
+      flushMicrotasks();
+      tick(1_000);
+      flushMicrotasks();
+      expect(fastBrain.converse).toHaveBeenCalledTimes(2);
+      expect(fastBrain.converse.calls.mostRecent().args[0].text).toBe('Et sur le WAF, où en est le chantier 2 ?');
+      fastDone!('ok');
+      flushMicrotasks();
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-270 / SF-270-03 — « laisse tomber » en réflexion : la réponse en cours n’est pas dite, « Entendu. » l’est',
+    fakeAsync(() => {
+      const { jarvis, fixture } = fastFixture();
+      jarvis.conversation.start();
+      void jarvis.handle('Où en est agenor ?');
+      flushMicrotasks();
+      fixture.detectChanges();
+      flushMicrotasks();
+      dictation.transcribe.and.resolveTo('Laisse tomber.');
+      vad!.onSpeechStart();
+      vad!.onSpeechEnd(new Float32Array(16000));
+      flushMicrotasks();
+      expect(voice.speak.calls.allArgs().some((a) => a[0] === 'Entendu.')).toBeTrue();
+
+      fast!.onText('Agenor avance bien.');
+      fastDone!('ok');
+      flushMicrotasks();
+      tick(1_000);
+      flushMicrotasks();
+      expect(voice.enqueue.calls.allArgs().some((a) => a[0] === 'Agenor avance bien.')).toBeFalse();
+      expect(fastBrain.converse).toHaveBeenCalledTimes(1);
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-270 / SF-270-03 — deux phrases pendant la même réflexion : seule la dernière est traitée', fakeAsync(() => {
+    const { jarvis, fixture } = fastFixture();
+    jarvis.conversation.start();
+    void jarvis.handle('Où en est agenor ?');
+    flushMicrotasks();
+    fixture.detectChanges();
+      flushMicrotasks();
+    dictation.transcribe.and.resolveTo('Et sur CAGIP, quoi de neuf ?');
+    vad!.onSpeechStart();
+    vad!.onSpeechEnd(new Float32Array(16000));
+    flushMicrotasks();
+    dictation.transcribe.and.resolveTo('Non, plutôt sur EDENRED, quoi de neuf ?');
+    vad!.onSpeechStart();
+    vad!.onSpeechEnd(new Float32Array(16000));
+    flushMicrotasks();
+    fastDone!('ok');
+    flushMicrotasks();
+    tick(1_000);
+    flushMicrotasks();
+    expect(fastBrain.converse).toHaveBeenCalledTimes(2);
+    expect(fastBrain.converse.calls.mostRecent().args[0].text).toBe('Non, plutôt sur EDENRED, quoi de neuf ?');
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-270 / SF-270-03 — une phrase commencée à la fin de l’écoute et poursuivie en réflexion est gardée entière',
+    fakeAsync(() => {
+      const { jarvis, fixture } = fastFixture();
+      jarvis.conversation.start();
+      jarvis.state.set('ecoute');
+      fixture.detectChanges();
+      flushMicrotasks();
+      expect(vadService.start).toHaveBeenCalled();
+      vad!.onSpeechStart();
+      void jarvis.handle('Où en est agenor ?');
+      flushMicrotasks();
+      fixture.detectChanges();
+      flushMicrotasks();
+      dictation.transcribe.and.resolveTo('Qu’est-ce qui reste à faire sur data-platform ?');
+      vad!.onSpeechEnd(new Float32Array(32000));
+      flushMicrotasks();
+      expect(traced()).toContain('voice_turn_kept');
+      fastDone!('ok');
+      flushMicrotasks();
+      tick(1_000);
+      flushMicrotasks();
+      expect(fastBrain.converse.calls.mostRecent().args[0].text).toBe('Qu’est-ce qui reste à faire sur data-platform ?');
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-270 / SF-270-03 — une pause dans la phrase : la suite gardée complète la demande, traitée entière',
+    fakeAsync(() => {
+      const { jarvis, fixture } = fastFixture();
+      jarvis.conversation.start();
+      void jarvis.handle('Où en est le sujet agenor,');
+      flushMicrotasks();
+      fixture.detectChanges();
+      flushMicrotasks();
+      jarvis['lastListenEnd'] = performance.now();
+      dictation.transcribe.and.resolveTo('[00:00] chez CAGIP ?');
+      vad!.onSpeechStart();
+      vad!.onSpeechEnd(new Float32Array(16000));
+      flushMicrotasks();
+      fastDone!('ok');
+      flushMicrotasks();
+      tick(1_000);
+      flushMicrotasks();
+      expect(fastBrain.converse.calls.mostRecent().args[0].text).toBe('Où en est le sujet agenor chez CAGIP ?');
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-270 / SF-270-03 — la suite d’une phrase coupée par une pause : recouvrement retiré', () => {
+    expect(joinUtterance('Attends. En fait, parle-moi plutôt', 'En fait, parle-moi plutôt du waf'))
+      .toBe('Attends. En fait, parle-moi plutôt du waf');
+    expect(joinUtterance('Où en est le sujet agenor,', 'chez CAGIP ?')).toBe('Où en est le sujet agenor chez CAGIP ?');
+    expect(joinUtterance('Bonjour', 'Bonjour')).toBe('Bonjour');
+  });
+
+  it('F-270 / SF-270-03 — boucle en flux : un tour confirmé pendant la réflexion est gardé, plus jamais ignoré',
+    fakeAsync(() => {
+      const { jarvis } = fastFixture();
+      jarvis.conversation.start();
+      jarvis.state.set('reflexion');
+      void jarvis['onStreamTurn']({ state: 'confirmed', text: 'Et sur le WAF, où en est le chantier 2 ?' });
+      flushMicrotasks();
+      expect(jarvis['keptSpeech']?.text).toBe('Et sur le WAF, où en est le chantier 2 ?');
+      expect(traced()).not.toContain('voice_turn_ignored');
+      jarvis.ngOnDestroy();
+    }));
+
+  /** Comme `fastOn`, en gardant la fixture (les effets d'état s'appliquent à la détection de changements). */
+  function fastFixture() {
+    fastBrain.warm.and.resolveTo(true);
+    const fixture = TestBed.createComponent(JarvisComponent);
+    fixture.detectChanges();
+    flushMicrotasks();
+    return { jarvis: fixture.componentInstance, fixture };
+  }
 
   it('F-235 / SF-235-05 — « annule » arrête la dernière délégation vivante et le dit', fakeAsync(() => {
     const jarvis = fastOn();
