@@ -7,7 +7,7 @@
 `F-269` — Commandes pour Claude Code dans le registre des besoins
 
 ## Statut
-`draft`
+`done`
 
 ## Date de création
 2026-11-18
