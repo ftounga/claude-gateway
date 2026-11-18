@@ -5,6 +5,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Subject, of, throwError } from 'rxjs';
 import { JarvisUtterance } from '../core/models/jarvis.models';
 
+import { JarvisWorksClient } from './jarvis-works';
 import { BUDGET_SOFT_NOTICE, JARVIS_USER_AGENT, JarvisComponent, UNLOCK_ASK_PHRASE, UNLOCK_REFUSED_PHRASE, companionMicMessage, companionOffer, dictationMessage, euros } from './jarvis.component';
 import { JarvisSceneBus } from './scenes/jarvis-scene-bus.service';
 import { testUniverse } from './scenes/jarvis-universe.fixture';
@@ -77,6 +78,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
   let portraitClient: jasmine.SpyObj<JarvisPortraitClient>;
   let mailClient: jasmine.SpyObj<JarvisMailClient>;
   let noticesClient: jasmine.SpyObj<JarvisNoticesClient>;
+  let worksClient: jasmine.SpyObj<JarvisWorksClient>;
   let fast: FastBrainHandlers | null;
   let renderProbe: RenderProbe;
   let loader3d: jasmine.Spy<() => Promise<JarvisEngineFactory>>;
@@ -117,6 +119,9 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     // F-249 / SF-249-08 — les annonces : par défaut, aucune.
     noticesClient = jasmine.createSpyObj<JarvisNoticesClient>('JarvisNoticesClient', ['open', 'seen', 'spoken', 'delegationSpoken']);
     noticesClient.delegationSpoken.and.returnValue(of(undefined));
+    // F-270 / SF-270-02 — l'annonce d'un tour direct à la passerelle (best-effort).
+    worksClient = jasmine.createSpyObj<JarvisWorksClient>('JarvisWorksClient', ['announce']);
+    worksClient.announce.and.resolveTo(true);
     noticesClient.open.and.returnValue(of([]));
     noticesClient.spoken.and.returnValue(of({} as JarvisNotice));
     fastBrain.warm.and.resolveTo(false);
@@ -200,6 +205,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
         { provide: JarvisPortraitClient, useValue: portraitClient },
         { provide: JarvisMailClient, useValue: mailClient },
         { provide: JarvisNoticesClient, useValue: noticesClient },
+        { provide: JarvisWorksClient, useValue: worksClient },
         { provide: JARVIS_NOTICE_POLL_MS, useValue: 0 },
         { provide: JARVIS_LOOP_WATCHDOG_MS, useValue: 0 },
         { provide: JARVIS_GRACE_MS, useFactory: () => graceMs },
@@ -1276,7 +1282,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
 
     void jarvis.finishListening();
     flushMicrotasks();
-    expect(atelier.confirmChatToolUse).toHaveBeenCalledWith('w-2', { toolUseId: 't-1', decision: 'allow' });
+    expect(atelier.confirmChatToolUse).toHaveBeenCalledWith('w-2', { toolUseId: 't-1', decision: 'allow' }, null);
     jarvis.ngOnDestroy();
   }));
 
@@ -1330,7 +1336,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     flushMicrotasks();
 
     expect(bridge.unlock).toHaveBeenCalled();
-    expect(atelier.confirmChatToolUse).toHaveBeenCalledWith('w-2', { toolUseId: 't-1', decision: 'allow' });
+    expect(atelier.confirmChatToolUse).toHaveBeenCalledWith('w-2', { toolUseId: 't-1', decision: 'allow' }, null);
     expect(bridge.keepAlive).toHaveBeenCalled();
     jarvis.ngOnDestroy();
   }));
@@ -1351,7 +1357,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
 
     expect(bridge.unlock).not.toHaveBeenCalled();
     expect(atelier.confirmChatToolUse).toHaveBeenCalledWith('w-2',
-      { toolUseId: 't-1', decision: 'deny', reason: 'Refusé à voix haute (Jarvis).' });
+      { toolUseId: 't-1', decision: 'deny', reason: 'Refusé à voix haute (Jarvis).' }, null);
     jarvis.ngOnDestroy();
   }));
 
@@ -3822,6 +3828,140 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       'JARVIS', null, false);
     jarvis.ngOnDestroy();
   }));
+
+  // ---- F-270 / SF-270-02 : le « oui » et le tour direct ne ferment plus l'écoute ----
+
+  /** Une délégation du cerveau rapide qui finit sur « Vous confirmez ? », annoncée et armée. */
+  function delegateAndAsk(jarvis: JarvisComponent, id: string, subjectId: string, chantier: number | null,
+                          label: string, reply: string): void {
+    void jarvis.handle(`Prépare ${label}`);
+    flushMicrotasks();
+    fast!.onDelegated({ delegationId: id, subjectId, chantier, label, announce: '', demande: 'x', automatic: false,
+      reason: null });
+    fastDone!('ok');
+    flushMicrotasks();
+    handlers!.onDone({ reply, actions: [], messageId: 'm-' + id });
+    flushMicrotasks();
+    tick(2_000);
+    flushMicrotasks();
+  }
+
+  it('F-270 / SF-270-02 — conversation : « oui » ⇒ « C’est parti. », tour en fond sur le fil de la question, écoute rouverte',
+    fakeAsync(() => {
+      const jarvis = fastOn();
+      jarvis.conversation.start();
+      delegateAndAsk(jarvis, 'd-1', 'w-1', 4, 'LDIC-325', '🎙 Je lance LDIC-325 en autonome, sept étapes. Vous confirmez ?');
+      fastBrain.converse.calls.reset();
+      atelier.streamChat.calls.reset();
+
+      void jarvis.handle('Oui');
+      flushMicrotasks();
+      tick(1);
+      flushMicrotasks();
+
+      expect(fastBrain.converse).not.toHaveBeenCalled();
+      expect(voice.speak.calls.allArgs().some((a) => a[0] === 'C’est parti.')).toBeTrue();
+      expect(worksClient.announce).toHaveBeenCalledWith(jasmine.objectContaining({ subjectId: 'w-1', chantier: 4 }));
+      expect(atelier.streamChat).toHaveBeenCalledWith('w-1', 'Oui', jasmine.any(Object), 'ACT', false, [], 4, false,
+        'JARVIS', null, false);
+      expect(jarvis['turnRunning']).toBeFalse();
+      expect(jarvis.conversation.shouldRelisten('repos', jarvis['turnRunning'])).toBeTrue();
+      expect(jarvis.delegations().map((d) => d.label)).toEqual(['LDIC-325']);
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-270 / SF-270-02 — deux confirmations armées : « oui » ⇒ « LDIC-325 ou agenor ? » sans rien lancer ; le nom tranche',
+    fakeAsync(() => {
+      const jarvis = fastOn();
+      jarvis.conversation.start();
+      delegateAndAsk(jarvis, 'd-1', 'w-1', 4, 'LDIC-325', '🎙 Je lance LDIC-325. Vous confirmez ?');
+      delegateAndAsk(jarvis, 'd-2', 'w-2', null, 'tests', '🎙 Je relance les tests de CAGIP. Vous confirmez ?');
+      atelier.streamChat.calls.reset();
+
+      void jarvis.handle('Oui');
+      flushMicrotasks();
+      expect(voice.speak.calls.mostRecent().args[0]).toBe('LDIC-325 ou CAGIP ?');
+      expect(atelier.streamChat).not.toHaveBeenCalled();
+
+      void jarvis.handle('LDIC-325');
+      flushMicrotasks();
+      tick(1);
+      flushMicrotasks();
+      expect(atelier.streamChat).toHaveBeenCalledTimes(1);
+      expect(atelier.streamChat.calls.mostRecent().args[0]).toBe('w-1');
+      expect(atelier.streamChat.calls.mostRecent().args[6]).toBe(4);
+      expect(atelier.streamChat.calls.mostRecent().args[1]).toBe('Oui');
+
+      // La seconde reste armée : « oui pour CAGIP » la vise directement.
+      void jarvis.handle('Oui pour CAGIP');
+      flushMicrotasks();
+      tick(1);
+      flushMicrotasks();
+      expect(atelier.streamChat).toHaveBeenCalledTimes(2);
+      expect(atelier.streamChat.calls.mostRecent().args[0]).toBe('w-2');
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-270 / SF-270-02 — une autre demande pendant une confirmation armée suit le cerveau rapide ; la confirmation reste',
+    fakeAsync(() => {
+      const jarvis = fastOn();
+      jarvis.conversation.start();
+      delegateAndAsk(jarvis, 'd-1', 'w-1', 4, 'LDIC-325', '🎙 Je lance LDIC-325. Vous confirmez ?');
+      fastBrain.converse.calls.reset();
+      atelier.streamChat.calls.reset();
+
+      void jarvis.handle('Montre-moi mes rendez-vous de demain');
+      flushMicrotasks();
+      expect(fastBrain.converse).toHaveBeenCalledTimes(1);
+      fastDone!('ok');
+      flushMicrotasks();
+
+      void jarvis.handle('Oui');
+      flushMicrotasks();
+      tick(1);
+      flushMicrotasks();
+      expect(atelier.streamChat.calls.mostRecent().args[0]).toBe('w-1');
+      jarvis.ngOnDestroy();
+    }));
+
+  it('F-270 / SF-270-02 — repli du cerveau rapide en conversation : « Je m’en occupe. », tour en fond', fakeAsync(() => {
+    const jarvis = fastOn();
+    jarvis.conversation.start();
+    void jarvis.handle('Où en est agenor ?');
+    flushMicrotasks();
+    fastDone!('unavailable');
+    flushMicrotasks();
+    tick(1);
+    flushMicrotasks();
+    expect(voice.speak.calls.allArgs().some((a) => a[0] === 'Je m’en occupe.')).toBeTrue();
+    expect(atelier.streamChat).toHaveBeenCalledTimes(1);
+    expect(jarvis['turnRunning']).toBeFalse();
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-270 / SF-270-02 — autorisation d’outil d’une délégation : tranchée sur son chantier ; la seconde attend la première',
+    fakeAsync(() => {
+      const jarvis = fastOn();
+      void jarvis.handle('Pousse la branche');
+      flushMicrotasks();
+      fast!.onDelegated({ delegationId: 'd-1', subjectId: 'w-1', chantier: 4, label: 'push', announce: '',
+        demande: 'x', automatic: false, reason: null });
+      fastDone!('ok');
+      flushMicrotasks();
+      handlers!.onConfirmRequest!({ toolUseId: 't-1', tool: 'bash', detail: 'git push' });
+      flushMicrotasks();
+      handlers!.onConfirmRequest!({ toolUseId: 't-2', tool: 'bash', detail: 'git tag' });
+      flushMicrotasks();
+      expect(voice.speak.calls.allArgs().filter((a) => String(a[0]).includes('git tag')).length).toBe(0);
+
+      void jarvis.handle('oui');
+      flushMicrotasks();
+      expect(atelier.confirmChatToolUse).toHaveBeenCalledWith('w-1', { toolUseId: 't-1', decision: 'allow' }, 4);
+      tick(1);
+      flushMicrotasks();
+      expect(voice.speak.calls.allArgs().some((a) => String(a[0]).includes('git tag'))).toBeTrue();
+      jarvis.ngOnDestroy();
+    }));
 
   it('F-235 / SF-235-05 — « annule » arrête la dernière délégation vivante et le dit', fakeAsync(() => {
     const jarvis = fastOn();

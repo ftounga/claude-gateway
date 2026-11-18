@@ -1,0 +1,65 @@
+import {
+  ArmedConfirmations, CONFIRM_TTL_MS, confirmationVerdict, isOtherRequest, names, newWorkId, shortName, whichQuestion,
+} from './jarvis-works';
+
+describe('F-270 / SF-270-02 — les confirmations rattachées à leur travail', () => {
+  let now = 0;
+  const armed = () => new ArmedConfirmations(() => now);
+  const ldic = { workId: 'd-1', subjectId: 'w-1', chantier: 4, name: 'LDIC-325' };
+  const agenor = { workId: 'd-2', subjectId: 'w-2', chantier: null, name: 'agenor' };
+
+  beforeEach(() => now = 1_000_000);
+
+  it('une seule armée : « oui » la vise ; aucune : rien', () => {
+    const a = armed();
+    expect(a.target('oui').kind).toBe('none');
+    a.arm(ldic);
+    const t = a.target('oui');
+    expect(t.kind).toBe('one');
+    expect(t.kind === 'one' && t.item.name).toBe('LDIC-325');
+  });
+
+  it('deux armées : ambiguë sans nom, la nommée sinon (« ldic 325 » vaut « LDIC-325 »)', () => {
+    const a = armed();
+    a.arm(ldic);
+    a.arm(agenor);
+    expect(a.target('oui').kind).toBe('ambiguous');
+    const t = a.target('oui pour ldic 325');
+    expect(t.kind === 'one' && t.item.workId).toBe('d-1');
+    expect(whichQuestion(a.live())).toBe('LDIC-325 ou agenor ?');
+  });
+
+  it('une par fil : la plus récente remplace ; expirée après 2 min ; désarmée', () => {
+    const a = armed();
+    a.arm(ldic);
+    a.arm({ ...ldic, workId: 'd-3' });
+    expect(a.live().map((i) => i.workId)).toEqual(['d-3']);
+    now += CONFIRM_TTL_MS + 1;
+    expect(a.size).toBe(0);
+    a.arm(agenor);
+    a.disarm(a.live()[0]);
+    expect(a.size).toBe(0);
+  });
+
+  it('le verdict ignore le nom visé ; une négation reste un doute', () => {
+    const items = [{ ...ldic, at: 0 }, { ...agenor, at: 0 }];
+    expect(confirmationVerdict('Oui pour LDIC-325', items)).toBe('oui');
+    expect(confirmationVerdict('oui, agenor', items)).toBe('oui');
+    expect(confirmationVerdict('non', items)).toBe('non');
+    expect(confirmationVerdict('oui mais pas agenor', items)).toBe('doute');
+  });
+
+  it('une phrase de quatre mots ou plus est une autre demande', () => {
+    expect(isOtherRequest('Montre-moi mes rendez-vous de demain')).toBeTrue();
+    expect(isOtherRequest('euh attends')).toBeFalse();
+  });
+
+  it('nom court : clé de ticket, chantier, sujet', () => {
+    expect(shortName('Lancer LDIC-325', 4, 'data-platform')).toBe('LDIC-325');
+    expect(shortName('le backlog', 4, 'data-platform')).toBe('chantier 4');
+    expect(shortName('le backlog', null, 'data-platform')).toBe('data-platform');
+    expect(names('arrête le chantier 4', 'chantier 4')).toBeTrue();
+    expect(names('arrête agenorix', 'agenor')).toBeFalse();
+    expect(newWorkId()).toMatch(/^[0-9a-f-]{36}$/);
+  });
+});

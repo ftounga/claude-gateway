@@ -307,6 +307,8 @@ export interface Announcement {
   label: string;
   phrase: string;
   subjectId: string;
+  /** F-270 / SF-270-02 — le chantier du fil de la délégation (sa confirmation y retourne), ou `null`. */
+  chantier?: number | null;
   confirm: boolean;
   /** F-240 / SF-240-01 — la délégation d'origine (sa mesure attend que cette fin soit dite). */
   delegationId?: string;
