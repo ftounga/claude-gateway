@@ -101,8 +101,30 @@ export const NO_ANSWER_PHRASE = 'Sans réponse, je ne fais rien.';
 export const YES_ACK = 'C’est parti.';
 export const NO_ACK = 'Entendu.';
 export const BACKGROUND_ACK = 'Je m’en occupe.';
+/** F-270 / SF-270-03 — une parole qui reprend moins de 1,5 s après la fin de l'écoute continue la même phrase. */
+export const CONTINUATION_MS = 1_500;
+
+/**
+ * F-270 / SF-270-03 — la phrase entière à partir de sa première partie (écoute) et de sa suite (gardée) : la suite peut
+ * reprendre la fin de la première partie (la détection de voix l'a captée depuis son début) ; le recouvrement est retiré.
+ */
+export function joinUtterance(first: string, rest: string): string {
+  const a = first.trim().split(/\s+/).filter(Boolean);
+  const b = rest.trim().split(/\s+/).filter(Boolean);
+  const key = (w: string) => normalize(w);
+  let overlap = 0;
+  for (let k = Math.min(a.length, b.length); k > 0; k--) {
+    if (a.slice(a.length - k).map(key).join(' ') === b.slice(0, k).map(key).join(' ')) {
+      overlap = k;
+      break;
+    }
+  }
+  const head = a.join(' ').replace(/[\s.!?,…]+$/u, '');
+  const tail = b.slice(overlap).join(' ');
+  return tail ? `${head} ${tail}` : head;
+}
 import {
-  LONG_TURN_MS, OralStream, classifyInterruption, invitationOf, isStopCommand, oralLine, oralPhrase,
+  LONG_TURN_MS, OralStream, classifyInterruption, invitationOf, isStopCommand, normalize, oralLine, oralPhrase,
   stripInvitationLines, subjectSwitch, withEndAnnouncement,
 } from './jarvis-oral';
 import {
@@ -1006,6 +1028,13 @@ export class JarvisComponent implements OnInit, OnDestroy {
   private async onStreamTurn(event: Record<string, unknown>): Promise<void> {
     const state = String(event['state'] ?? '');
     if (!this.streamListening || this.state() !== 'ecoute') {
+      // F-270 / SF-270-03 — un tour confirmé pendant la réflexion est gardé, jamais jeté.
+      const said = typeof event['text'] === 'string' ? event['text'].trim() : '';
+      if (state === 'confirmed' && this.state() === 'reflexion' && this.conversation.active && said
+          && !speechGate(said, { voicedMs: null, preRoll: true })) {
+        this.keepText(said, null);
+        return;
+      }
       this.trace.mark('voice_turn_ignored', `${state} ${this.state()}`);
       return;
     }
@@ -1218,9 +1247,24 @@ export class JarvisComponent implements OnInit, OnDestroy {
             this.bargeIn.reset();
           }
           void this.startVad();
+          // F-270 / SF-270-03 — le PO parle encore quand Jarvis commence sa réponse : la coupure F-233 s'applique.
+          if (this.keeping && this.speechActive) {
+            this.keeping = false;
+            this.bargeIn.voiceStart();
+            this.bargeIn.voiceConfirmed();
+          }
           // F-251 / SF-251-02 — le ticket de la prochaine écoute, pendant que Jarvis parle.
           this.fetchTicketAhead();
-        } else if (!this.bargeIn.capturing) {
+        } else if ((state === 'reflexion' || state === 'ecoute') && this.keepsWhileThinking()) {
+          // F-270 / SF-270-03 (D3) — pendant qu'il pense, la parole est captée et gardée (jamais jetée) ; la détection
+          // tourne déjà pendant l'écoute (chaude), pour qu'une phrase commencée à la fin de l'écoute soit gardée entière.
+          void this.startVad();
+          if (state === 'reflexion' && this.speechActive && !this.keeping) {
+            this.keepStartedAt = performance.now();
+            this.keeping = true;
+            this.trace.mark('keep_start', 'en_cours');
+          }
+        } else if (!this.bargeIn.capturing && !this.keeping) {
           this.stopVad();
         }
       });
@@ -2276,19 +2320,38 @@ export class JarvisComponent implements OnInit, OnDestroy {
     try {
       const shared = this.streamOpener.keptStream();
       const vad = await this.vadService.start({
-        onSpeechStart: () => this.zone.run(() => this.bargeIn.voiceStart()),
+        onSpeechStart: () => this.zone.run(() => {
+          this.speechActive = true;
+          // F-270 / SF-270-03 — une parole qui commence pendant la réflexion est à garder.
+          if (this.state() === 'reflexion' && this.keepsWhileThinking()) {
+            this.keepStartedAt = performance.now();
+            this.keeping = true;
+            this.trace.mark('keep_start');
+          }
+          this.bargeIn.voiceStart();
+        }),
         onSpeechConfirmed: () => this.zone.run(() => this.bargeIn.voiceConfirmed()),
-        onMisfire: () => this.zone.run(() => this.bargeIn.misfire()),
+        onMisfire: () => this.zone.run(() => {
+          this.speechActive = false;
+          this.keeping = false;
+          this.bargeIn.misfire();
+        }),
         onSpeechEnd: (audio) => this.zone.run(() => {
+          this.speechActive = false;
           if (this.bargeIn.capturing) {
+            this.keeping = false;
             void this.onBargeInSpeech(audio);
+          } else if (this.keeping) {
+            this.keeping = false;
+            void this.onKeptSpeech(audio);
           }
         }),
       }, shared);
       this.vad = vad;
       this.vadFailures = 0;
       this.trace.mark('vad_ok', `shared=${shared ? 1 : 0}`);
-      if (this.state() !== 'parole' && !this.bargeIn.capturing) {
+      if (this.state() !== 'parole' && !this.bargeIn.capturing
+          && !((this.state() === 'reflexion' || this.state() === 'ecoute') && this.keepsWhileThinking())) {
         this.stopVad();
       }
     } catch (error) {
@@ -2304,6 +2367,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
   private stopVad(): void {
     const stopping = this.vad?.stop();
     this.vad = null;
+    this.speechActive = false;
     if (stopping) {
       this.vadStopping = Promise.resolve(stopping).catch(() => undefined);
     }
@@ -2348,6 +2412,98 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.pendingClock = clock;
     this.said.set(text);
     await this.handleInterruption(text);
+  }
+
+  // ---- F-270 / SF-270-03 (D3) : rien n'est jeté pendant qu'il pense ----
+  /** Une parole a commencé pendant la réflexion : sa fin sera gardée. */
+  private keeping = false;
+  /** La détection de voix entend une parole en ce moment (entre son début et sa fin). */
+  private speechActive = false;
+  /** La fin de la dernière écoute, et le début de la parole gardée (continuation d'une même phrase ?). */
+  private lastListenEnd = -Infinity;
+  private keepStartedAt = -Infinity;
+  /** La phrase dite pendant la réflexion, à traiter après la réponse en cours (une seule : la dernière). */
+  private keptSpeech: { text: string; clock: TurnClock | null } | null = null;
+
+  /** Garder la parole pendant la réflexion : conversation active, boucle d'avant, hors entretien, coupure allumée. */
+  private keepsWhileThinking(): boolean {
+    return this.conversation.active && !this.streamListening && !this.streamTakesOver() && !this.interview
+      && bargeInEnabled();
+  }
+
+  /** La parole captée pendant la réflexion : transcrite, filtrée, puis gardée (ou appliquée tout de suite si elle annule). */
+  private async onKeptSpeech(audio: Float32Array): Promise<void> {
+    const seconds = audio.length / 16_000;
+    const clock = new TurnClock(performance.now(), seconds * 1000);
+    clock.workspaceId = this.subjectId();
+    clock.ttsProvider = this.ttsProvider;
+    let text = '';
+    try {
+      const clip = encodeWav(audio);
+      text = (await this.transcribeClip(clip, seconds, 'pendant.wav', clock)).trim();
+      this.keepForBench(clip, seconds, 'KEPT', clock.sttProvider, '', text);
+    } catch (error) {
+      this.trace.mark('kept_transcribe_fail', errorName(error));
+      return;
+    }
+    // Un horodatage de tête rendu par la retranscription (« [00:00] ») n'est pas une parole.
+    text = text.replace(/^\s*(\[\d{1,2}:\d{2}(?::\d{2})?\]\s*)+/, '').trim();
+    const rejection = speechGate(text, { voicedMs: seconds * 1000, preRoll: true });
+    if (!text || rejection) {
+      this.trace.mark('speech_rejected', `${rejection ?? 'empty'} chars=${text.length} kept=1`);
+      return;
+    }
+    this.keepText(text, clock, this.keepStartedAt - this.lastListenEnd <= CONTINUATION_MS);
+  }
+
+  /**
+   * Garde `text` (remplace la précédente) ; une annulation est appliquée aussitôt. `continuation` : la parole a repris
+   * juste après la fin de l'écoute (une pause dans la même phrase) — elle complète la demande en cours : la réponse
+   * pas encore commencée est abandonnée, et la phrase entière est traitée.
+   */
+  private keepText(text: string, clock: TurnClock | null, continuation = false): void {
+    if (classifyInterruption(text) === 'cancel' || isStopCommand(text)) {
+      this.trace.mark('voice_turn_kept', 'cancel');
+      this.keptSpeech = null;
+      // La réponse en cours est abandonnée : plus rien d'elle n'est dit.
+      this.sendSeq++;
+      this.voice.interrupt();
+      this.dropSpeculation();
+      void this.say(NO_ACK);
+      return;
+    }
+    const previous = this.lastHeard?.text ?? '';
+    if (continuation && previous && !isStopCommand(previous)) {
+      this.trace.mark('voice_turn_kept', `chars=${text.length} suite`);
+      this.keptSpeech = { text: joinUtterance(previous, text), clock };
+      if (this.state() === 'reflexion' && !this.jarvisSpeaking()) {
+        // La réponse à la moitié de phrase n'a pas commencé : elle est abandonnée, la phrase entière part.
+        this.sendSeq++;
+        this.dropSpeculation();
+        this.state.set('repos');
+      }
+      return;
+    }
+    this.trace.mark('voice_turn_kept', `chars=${text.length}${this.keptSpeech ? ' remplace' : ''}`);
+    this.keptSpeech = { text, clock };
+  }
+
+  /** La phrase gardée est traitée maintenant (la réponse en cours est dite). */
+  private async replayKept(): Promise<void> {
+    const kept = this.keptSpeech;
+    this.keptSpeech = null;
+    if (!kept || this.conversation.mode() !== 'active') {
+      return;
+    }
+    this.trace.newTurn();
+    this.trace.mark('kept_replay', `chars=${kept.text.length}`);
+    if (kept.clock) {
+      this.tagTurn(kept.clock);
+      kept.clock.mark('transcript');
+      this.pendingClock = kept.clock;
+    }
+    this.said.set(kept.text);
+    await this.handle(kept.text);
   }
 
   /** SF-233-09 — la part entendue de la réponse coupée, à joindre au prochain envoi (D10), ou `null`. */
@@ -2429,6 +2585,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       this.trace.mark('finish_skip', this.bargeIn.capturing ? 'capturing' : 'not_ecoute');
       return;
     }
+    this.lastListenEnd = performance.now();
     this.trace.mark('listen_end', `voiced=${this.voicedMs ?? -1} peak=${this.listenPeak.toFixed(2)} live=${
       this.live ? 1 : 0}`);
     this.stopMeter();
@@ -5265,6 +5422,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
       }
       if (this.conversation.idleExpired()) {
         void this.endConversation();
+        return;
+      }
+      if (this.keptSpeech) {
+        // F-270 / SF-270-03 — la phrase dite pendant la réflexion passe avant une nouvelle écoute.
+        void this.replayKept();
         return;
       }
       this.trace.mark('relisten_fire');

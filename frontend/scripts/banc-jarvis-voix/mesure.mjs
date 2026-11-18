@@ -110,9 +110,14 @@ export function analyseTurn(turn, { api, probes, traces, next, spokenBefore }) {
   const fallback = timing?.streamFallback ?? null;
   // Une phrase peut être entendue puis traitée sur place, sans cerveau (réponse à un entretien, au budget, une
   // correction) : l'écran note alors `transcript chars=N` ; le texte est celui que le flux a validé.
-  const transcribed = tr.some((t) => t.ev === 'transcript' && /chars=[1-9]/.test(t.d ?? ''));
+  // F-270 / SF-270-03 — une phrase gardée pendant la réflexion (`voice_turn_kept`) : son texte est la retranscription
+  // de l'énoncé (réponse de /utterance) ; une annulation est traitée sur place.
+  const keptTurn = tr.some((t) => t.ev === 'voice_turn_kept');
+  const keptText = keptTurn ? api.filter((e) => /^\/api\/jarvis\/utterance/.test(e.path) && inWindow(e.t)
+    && typeof e.response?.text === 'string').map((e) => e.response.text).at(-1) ?? null : null;
+  const transcribed = keptTurn || tr.some((t) => t.ev === 'transcript' && /chars=[1-9]/.test(t.d ?? ''));
   const local = heardText === null && transcribed;
-  const text = heardText ?? (local ? committed.at(-1) ?? '' : null);
+  const text = heardText ?? (local ? keptText ?? committed.at(-1) ?? '' : null);
   return {
     id: turn.id, kind: turn.kind, after: turn.after, expected: turn.expected, note: turn.note ?? null,
     heard: text !== null,
@@ -142,6 +147,7 @@ export function analyseTurn(turn, { api, probes, traces, next, spokenBefore }) {
     spokeAloud: !!firstVoice,
     // F-270 — l'attente d'écoute avant la phrase (scénarios à poste simulé), et si un travail tournait en fond.
     tag: turn.tag ?? null,
+    kept: keptTurn,
     waitedMs: turn.waitedMs ?? null,
     workRunning: turn.workRunning ?? null,
     pardonAloud: !!firstVoice && spoken.some(isPardon),
@@ -271,7 +277,8 @@ export function summary(report) {
         + `${turn.handledLocally ? ' (traité sur place, sans cerveau)' : ''}${turn.repeated.length ? ' RÉPÉTÉ' : ''}${turn.voiciWithoutShow ? ' VOICI-SANS-IMAGE' : ''}`
         + `${turn.rejected.length ? ` rejet=${turn.rejected.join(',')}` : ''}`
         + `${turn.tiers ? (turn.spokeAloud ? ' TIERS-RÉPONDU' : ' tiers-tu') : ''}${turn.pardonAloud ? ' PARDON' : ''}`
-        + `${turn.waitedMs !== null ? ` attente ${ms(turn.waitedMs)}` : ''}${turn.workRunning ? ' [fond]' : ''}`);
+        + `${turn.waitedMs !== null ? ` attente ${ms(turn.waitedMs)}` : ''}${turn.workRunning ? ' [fond]' : ''}`
+        + `${turn.kept ? ' GARDÉE' : ''}`);
     }
   }
   return lines.join('\n');
