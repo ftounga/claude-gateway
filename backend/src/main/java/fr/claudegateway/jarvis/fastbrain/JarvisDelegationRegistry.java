@@ -19,7 +19,12 @@ import fr.claudegateway.atelier.live.LiveTurnRegistry;
  * <b>Les délégations en cours</b> (F-235 / SF-235-02, D5d) : ce que le cerveau rapide a confié à Opus, pour qu'il
  * sache dire « je regarde encore les tickets d'Edenred ». Une délégation est « en cours » tant que son fil a un tour
  * vivant, ou pendant 2 min après son lancement (le tour n'a peut-être pas encore démarré). Clefée par
- * {@code user_id}. En mémoire, comme l'état vivant des tours.
+ * {@code user_id}.
+ *
+ * <p><b>F-272 / SF-272-01</b> : avec le magasin en base ({@link JarvisDelegationStore}, branché en production), offre,
+ * prise et délégations en cours sont <b>partagées entre les pods</b> — le cerveau rapide offre sur un pod, le tour Opus
+ * prend sur un autre (démo du 17/11 : la reformulation était perdue). Sans magasin (tests unitaires), le registre
+ * reste en mémoire, comme avant.</p>
  */
 @Component
 public class JarvisDelegationRegistry {
@@ -42,10 +47,22 @@ public class JarvisDelegationRegistry {
         this.liveTurns = liveTurns;
     }
 
+    /** F-272 / SF-272-01 — le magasin partagé (en base) ; {@code null} : en mémoire (tests unitaires). */
+    private JarvisDelegationStore store;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setStore(JarvisDelegationStore store) {
+        this.store = store;
+    }
+
     /** Une délégation vient d'être lancée. */
     public void started(UUID userId, UUID delegationId, UUID subjectId, String subjectName, Integer chantier,
             String label) {
         if (userId == null || subjectId == null) {
+            return;
+        }
+        if (store != null && delegationId != null) {
+            store.started(userId, delegationId, subjectId, subjectName, chantier, label);
             return;
         }
         Deque<Running> deque = byUser.computeIfAbsent(userId, id -> new ArrayDeque<>());
@@ -59,6 +76,9 @@ public class JarvisDelegationRegistry {
 
     /** Les délégations encore en cours du compte, de la plus ancienne à la plus récente. */
     public List<Running> running(UUID userId) {
+        if (store != null && userId != null) {
+            return store.running(userId, GRACE, MAX_AGE, MAX_PER_USER);
+        }
         Deque<Running> deque = userId == null ? null : byUser.get(userId);
         if (deque == null) {
             return List.of();
@@ -109,6 +129,10 @@ public class JarvisDelegationRegistry {
         if (userId == null || subjectId == null || demande == null || demande.isBlank()) {
             return;
         }
+        if (store != null && delegationId != null && store.offer(userId, subjectId, chantier, delegationId, demande,
+                label, linkId)) {
+            return;
+        }
         reformulations.put(key(userId, subjectId, chantier),
                 new Reformulation(delegationId, demande.strip(), label, clock.instant(), linkId));
     }
@@ -118,8 +142,24 @@ public class JarvisDelegationRegistry {
         if (userId == null || subjectId == null) {
             return null;
         }
+        if (store != null) {
+            Reformulation shared = store.take(userId, subjectId, chantier, REFORMULATION_TTL);
+            if (shared != null) {
+                return shared;
+            }
+        }
         Reformulation r = reformulations.remove(key(userId, subjectId, chantier));
         return r != null && !r.at().isBefore(clock.instant().minus(REFORMULATION_TTL)) ? r : null;
+    }
+
+    /**
+     * F-272 / SF-272-01 — le tour de la délégation {@code delegationId} est fini (réponse, échec, interruption) : elle
+     * n'est plus « en cours », sur aucun pod.
+     */
+    public void finished(UUID userId, UUID delegationId) {
+        if (store != null) {
+            store.finished(userId, delegationId);
+        }
     }
 
     /** Vrai si le fil {@code (sujet, chantier)} du compte a un tour vivant (la délégation deviendra une précision). */

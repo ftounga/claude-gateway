@@ -3704,12 +3704,15 @@ public class AtelierChatService implements RelayInterruptTarget {
         boolean delegated = false;
         // F-245 / SF-245-03 (D5) — la ligne-lien du fil Jarvis que ce tour terminera (fait, échec), ou null.
         UUID jarvisLinkId = null;
+        // F-272 / SF-272-01 — la délégation prise par ce tour : close à sa fin (réponse, échec), sur tous les pods.
+        UUID jarvisDelegationId = null;
         if (viaJarvis && jarvisDelegations != null) {
             fr.claudegateway.jarvis.fastbrain.JarvisDelegationRegistry.Reformulation reformulation =
                     jarvisDelegations.take(userId, workspaceId, workspace.getTurnChantier());
             if (reformulation != null) {
                 delegated = true;
                 jarvisLinkId = reformulation.linkId();
+                jarvisDelegationId = reformulation.delegationId();
                 consigne = consigne + "\n[Jarvis — demande reformulée : « "
                         + reformulation.demande().replace('«', '"').replace('»', '"') + " »]";
             }
@@ -4880,6 +4883,9 @@ public class AtelierChatService implements RelayInterruptTarget {
             if (jarvisLinks != null && jarvisLinkId != null) {
                 jarvisLinks.finish(userId, jarvisLinkId, null, false);
             }
+            if (jarvisDelegations != null && jarvisDelegationId != null) {
+                jarvisDelegations.finished(userId, jarvisDelegationId);
+            }
             throw cut;
         }
         // F-195 / SF-195-05 : arrêté sur son budget alors que plusieurs demandes sont arrivées — on dit
@@ -5068,6 +5074,9 @@ public class AtelierChatService implements RelayInterruptTarget {
         // « interrompu », et pointe la réponse. Best-effort, jamais bloquant.
         if (jarvisLinks != null && jarvisLinkId != null) {
             jarvisLinks.finish(userId, jarvisLinkId, assistant, interrupted);
+        }
+        if (jarvisDelegations != null && jarvisDelegationId != null) {
+            jarvisDelegations.finished(userId, jarvisDelegationId);
         }
 
         // F-136 / SF-136-01 — la carte du client a pu changer pendant ce tour (promotion). On la
