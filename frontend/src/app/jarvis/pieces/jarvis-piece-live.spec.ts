@@ -5,7 +5,8 @@ import { isPieceShow, parseShowLine, resolveShow } from '../scenes/jarvis-show';
 import { JarvisUniverse } from '../scenes/jarvis-universe.models';
 import { JarvisPieceClient } from './jarvis-piece-client';
 import {
-  closedChantiers, pieceShowCommand, proofDemand, proofOfferPhrase, proofPieceId, proofPieces,
+  closedChantiers, pieceShowCommand, producedDiagram, proofDemand, proofOfferPhrase, proofPieceId, proofPieces,
+  replyShowsDiagram,
 } from './jarvis-piece-live';
 import { MAX_NAV_ITEMS, initialNav, reduceNav } from './jarvis-piece-nav';
 import { JarvisPieceStore } from './jarvis-piece-store';
@@ -106,5 +107,33 @@ describe('Jarvis — côté Opus et preuves (F-237 / SF-237-09)', () => {
     expect(proofOfferPhrase({ subjectId: 's1', subjectName: 'Edenred', number: 3, title: '' }))
       .toBe('Le chantier 3 de Edenred est clos sans preuve en image. Voulez-vous que je la génère, Monsieur ?');
     expect(proofDemand(3)).toContain('capturer_preuves');
+  });
+});
+
+describe('Jarvis — le schéma produit par Opus, ouvert d’office (F-272 / SF-272-04)', () => {
+  const at = (iso: string, id: string, kind: Piece['kind']): Piece => ({
+    id, kind, category: 'PRODUCTION', title: id, at: iso, subjectId: 's', chantier: null, chantierLink: 'NONE',
+  } as Piece);
+  const since = Date.parse('2026-11-18T00:05:00Z');
+
+  it('le plus récent schéma produit depuis le début du tour', () => {
+    const pieces = [
+      at('2026-11-10T10:00:00Z', 'diag:old', 'ARCHITECTURE'),
+      at('2026-11-18T00:05:30Z', 'diag:a', 'ARCHITECTURE'),
+      at('2026-11-18T00:05:40Z', 'diag:b', 'DIAGRAM'),
+      at('2026-11-18T00:05:50Z', 'page:p@v1', 'PAGE'),
+    ];
+    expect(producedDiagram(pieces, since)?.id).toBe('diag:b');
+  });
+
+  it('rien de produit pendant le tour : null', () => {
+    expect(producedDiagram([at('2026-11-10T10:00:00Z', 'diag:old', 'ARCHITECTURE')], since)).toBeNull();
+    expect(producedDiagram([], since)).toBeNull();
+  });
+
+  it('une réponse qui montre déjà un schéma n’en ouvre pas un second', () => {
+    expect(replyShowsDiagram('🎙 Voici l’architecture.\n🖥 montrer: pieces diag:abc')).toBeTrue();
+    expect(replyShowsDiagram('🎙 Voici.\n🖥 montrer: preuves chantier 3')).toBeFalse();
+    expect(replyShowsDiagram(null)).toBeFalse();
   });
 });

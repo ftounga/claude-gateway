@@ -230,6 +230,15 @@ public class JarvisPieceService {
         return built;
     }
 
+    /** F-272 / SF-272-04 — {@link #list} relu sans cache (sujet requis : sans sujet, la lecture ordinaire). */
+    public Result listFresh(UUID userId, UUID subjectId, Filter filter) {
+        if (subjectId == null) {
+            return list(userId, null, filter);
+        }
+        listFresh(userId, subjectId);
+        return list(userId, subjectId, filter);
+    }
+
     /** Oublie le cache d'un sujet (une pièce vient de naître). */
     public void invalidate(UUID userId, UUID workspaceId) {
         synchronized (cache) {

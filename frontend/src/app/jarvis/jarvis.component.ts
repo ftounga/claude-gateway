@@ -16,7 +16,8 @@ import {
 } from './pieces/jarvis-piece-comment';
 import { Piece } from './pieces/jarvis-piece.models';
 import {
-  ClosedChantier, PROOF_OFFER_MS, closedChantiers, pieceShowCommand, proofDemand, proofOfferPhrase, proofPieces,
+  ClosedChantier, PRODUCED_SLACK_MS, PROOF_OFFER_MS, closedChantiers, pieceShowCommand, producedDiagram, proofDemand,
+  proofOfferPhrase, proofPieces, replyShowsDiagram,
 } from './pieces/jarvis-piece-live';
 import { isPieceShow } from './scenes/jarvis-show';
 import { JarvisPieceClient } from './pieces/jarvis-piece-client';
@@ -3233,6 +3234,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const label = (delegation.label ?? '').trim() || 'votre demande';
     const entry = { id: delegation.delegationId, label, subjectId };
     this.localDelegations.add(delegation.delegationId);
+    const startedAt = Date.now();
     this.delegations.update((list) => [...list, entry]);
     // Le sélecteur indique le dernier sujet engagé (D19) — F-245 / SF-245-02 : le fil Jarvis n'est pas un sujet, le
     // sujet en vue reste celui d'avant.
@@ -3256,6 +3258,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
       this.delegations.update((list) => list.filter((d) => d.id !== entry.id));
       if (reply) {
         this.showAnswer(reply, this.delegationClocks.get(delegation.delegationId)?.clock ?? null);
+      }
+      // F-272 / SF-272-04 — un schéma produit pendant la délégation, que la réponse ne montre pas : ouvert d'office.
+      if (!failed && !replyShowsDiagram(reply)) {
+        void this.showProducedDiagram(subjectId, startedAt);
       }
       // F-240 / SF-240-02 — la phrase dite (garde des 35 mots) et l'invitation ciblée éventuelle.
       const line = failed ? { phrase: '', cut: false } : oralLine(reply);
@@ -4394,6 +4400,24 @@ export class JarvisComponent implements OnInit, OnDestroy {
       }
     });
   });
+
+  /**
+   * F-272 / SF-272-04 — le schéma (architecture ou diagramme) produit dans `subjectId` depuis `sinceMs` s'ouvre à
+   * l'écran (une architecture en 3D) ; rien sinon, ni en présentation. Lecture fraîche : il vient d'être rendu.
+   */
+  async showProducedDiagram(subjectId: string, sinceMs: number): Promise<boolean> {
+    if (this.presentation()) {
+      return false;
+    }
+    const found = await this.pieceClient.list({ subjectId, category: 'PRODUCTION', limit: 200, fresh: true,
+      since: new Date(sinceMs - PRODUCED_SLACK_MS).toISOString() });
+    const piece = found ? producedDiagram(found.pieces, sinceMs) : null;
+    if (!piece) {
+      return false;
+    }
+    this.trace.mark('diagram_produced', piece.kind);
+    return this.applyShow({ action: 'piece', pieces: [piece.id], scope: { subjectId }, reason: 'demande' });
+  }
 
   /** F-237 / SF-237-09 (T-G7) — une capture de preuve publiée pendant le tour rejoint la galerie, au fil de l'eau. */
   private liveProof(event: AtelierProofEvent, subjectId: string, chantier: number | null): void {

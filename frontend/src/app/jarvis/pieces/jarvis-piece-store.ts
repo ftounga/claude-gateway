@@ -312,11 +312,21 @@ export class JarvisPieceStore {
     if (controller.signal.aborted) {
       return { ok: false, reason: 'UNAVAILABLE' };
     }
-    this.loading = null;
     if (!response) {
+      this.loading = null;
       return { ok: false, reason: 'UNAVAILABLE' };
     }
     let pieces = response.pieces;
+    if (plan.ids.length && plan.query.subjectId && !plan.ids.every((id) => hasPiece(pieces, id))) {
+      // F-272 / SF-272-04 — une pièce nommée tout juste produite (schéma d'Opus) : relue sans le cache de la passerelle
+      // (l'écran reste « en chargement » : un ordre d'architecture arrivé entre-temps attend la visionneuse).
+      const fresh = await this.client.list({ ...plan.query, fresh: true }, controller.signal);
+      if (controller.signal.aborted) {
+        return { ok: false, reason: 'UNAVAILABLE' };
+      }
+      pieces = fresh?.pieces ?? pieces;
+    }
+    this.loading = null;
     if (plan.ids.length) {
       const byId = new Map(pieces.map((p) => [p.id, p]));
       // F-237 / SF-237-11 — une version antérieure (page v1 ↔ v3) : l'index ne tient que la courante.
@@ -594,4 +604,10 @@ export function offlinePiecesPhrase(pieces: readonly Piece[], hostName: string |
   }
   return hostName ? `Elles sont sur le poste ${hostName}, éteint : je ne peux pas les ouvrir.`
     : 'Elles sont sur un poste éteint : je ne peux pas les ouvrir.';
+}
+
+/** F-272 / SF-272-04 — la pièce est dans la liste (version comprise ou non : « page:e2@v3 » ≈ « page:e2 »). */
+export function hasPiece(pieces: readonly Piece[], id: string): boolean {
+  const base = id.split('@')[0];
+  return pieces.some((p) => p.id === id || p.id.split('@')[0] === base);
 }
