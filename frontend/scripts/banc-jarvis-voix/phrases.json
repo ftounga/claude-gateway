@@ -20,7 +20,11 @@
     { "id": "c01", "kind": "coupure", "segments": ["Non, attends, parle-moi plutôt d'agenor."], "pauses": [] },
     { "id": "t01", "kind": "tiers", "tiers": true, "voices": ["tiers"], "segments": ["Maman ? Maman ?"], "pauses": [] },
     { "id": "t02", "kind": "tiers", "tiers": true, "voices": ["tiers"], "segments": ["Ah bah, c'est pas dit non."], "pauses": [] },
-    { "id": "t03", "kind": "tiers", "tiers": true, "voices": ["tiers"], "segments": ["Tu viens manger ?"], "pauses": [] }
+    { "id": "t03", "kind": "tiers", "tiers": true, "voices": ["tiers"], "segments": ["Tu viens manger ?"], "pauses": [] },
+    { "id": "d01", "kind": "normale", "segments": ["Allons sur data-platform."], "pauses": [] },
+    { "id": "d02", "kind": "ecran", "show": true, "segments": ["Présente-moi l'architecture."], "pauses": [] },
+    { "id": "d03", "kind": "ecran", "show": true, "segments": ["Montre-moi l'architecture AWS en 3D."], "pauses": [] },
+    { "id": "d04", "kind": "normale", "segments": ["Dessine l'architecture Airflow."], "pauses": [] }
   ],
   "scenarios": [
     { "id": "conversation", "label": "Conversation suivie", "voice": "fr-1",
@@ -40,6 +44,8 @@
       "steps": [{ "say": "n04" }, { "say": "t01", "voice": "tiers", "gain": 0.3 }, { "say": "t02", "voice": "tiers", "gain": 0.3 },
         { "say": "n11" }, { "capture": "203e992b-7349-437c-896f-b53789995f57" }, { "capture": "29fdc4d1-9eb4-4f65-ae8a-7c640957f359" },
         { "say": "t03", "voice": "tiers", "gain": 0.3 }, { "say": "n07" }, { "say": "n06" }] },
+    { "id": "demo-1711", "label": "Démo PO du 17/11 (F-272) : changer de sujet à la voix, l'architecture montrée, en 3D, dessinée sans confirmation", "voice": "george",
+      "steps": [{ "say": "d01" }, { "say": "d02" }, { "say": "d03" }, { "say": "d04" }] },
     { "id": "temoin", "label": "Témoin : micro factice de Chrome (fichier), sans le mélangeur du banc", "voice": "fr-1", "chromeMic": "n02" }
   ]
 }

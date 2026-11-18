@@ -8,7 +8,7 @@ import { CardShowing } from './cards/jarvis-card-cite';
 import { CardsEvent } from './cards/jarvis-card.models';
 import { pieceVoiceCommand } from './pieces/jarvis-piece-voice';
 import { screenBlock } from './pieces/jarvis-piece-screen';
-import { ShowCommand } from './pieces/jarvis-piece-show';
+import { ShowCommand, askedSubjectOf } from './pieces/jarvis-piece-show';
 import { StoryRunner } from './pieces/jarvis-piece-story';
 import { isProofDemand, isProofOffer, latencyKey } from './pieces/jarvis-piece-measure';
 import {
@@ -4219,6 +4219,13 @@ export class JarvisComponent implements OnInit, OnDestroy {
         await this.say(phrase);
       }
       return false;
+    }
+    // F-272 / SF-272-03 — des pièces d'un autre sujet montrées à la demande : ce sujet devient le sujet en vue, et
+    // « sujet courant » des tours suivants (démo du 17/11 : la galerie suivante interrogeait l'ancien sujet).
+    const shownSubject = askedSubjectOf(command, this.subjects());
+    if (shownSubject && shownSubject !== this.subjectId()) {
+      this.chooseSubject(shownSubject);
+      this.trace.mark('subject_follow', 'show');
     }
     // F-263 / SF-263-02 — des pièces toutes sur un poste éteint ne s'ouvrent pas : Jarvis le dit.
     const offline = command.action === 'galerie' || command.action === 'piece' ? this.offlineShownPhrase() : '';

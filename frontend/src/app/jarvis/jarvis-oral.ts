@@ -222,10 +222,23 @@ const SWITCH = /^(?:jarvis\W+)?(?:passe|bascule|va|change)\s+(?:sur|à|au|vers|d
  * « Passe sur CAGIP » → le sujet nommé, s'il n'y en a qu'un qui correspond ; `null` sinon (la phrase part alors au
  * cerveau comme une demande ordinaire).
  */
+// F-272 / SF-272-03 — démo du 17/11 : « allons sur data-platform », « on va sur… », « ouvre data-platform » ne changeaient
+// pas de sujet (la galerie suivante interrogeait le mauvais). Ces tournures ne basculent que si la suite EST un nom de
+// sujet (au mot près, formule de politesse tolérée) : « ouvre le ticket 42 » reste une demande.
+const MOVE = /^(?:jarvis\W+)?(?:(?:allons|allez|passons|basculons|retournons|revenons|retourne|reviens|direction|on\s+(?:va|passe|bascule|retourne|revient|se\s+met)|mets[\s-]toi|mettez[\s-]vous|place[\s-]toi|je\s+veux\s+aller)\s+(?:sur|à|au|vers|dans|en)\s+|(?:ouvre|ouvrons|ouvrez|affiche|prends|prenons)\s+)(?:le\s+)?(?:sujet\s+)?(.+?)[\s.!?]*$/i;
+const POLITE = / (?:s il te plait|s il vous plait|stp|svp|jarvis|merci)$/;
+
 export function subjectSwitch<T extends { id: string; name: string }>(said: string, subjects: readonly T[]): T | null {
-  const match = SWITCH.exec(said.trim());
+  const trimmed = said.trim();
+  const match = SWITCH.exec(trimmed);
   if (!match) {
-    return null;
+    const moved = MOVE.exec(trimmed);
+    if (!moved) {
+      return null;
+    }
+    const target = normalize(moved[1]).replace(POLITE, '').trim();
+    const exact = subjects.filter((s) => target.length >= 3 && normalize(s.name) === target);
+    return exact.length === 1 ? exact[0] : null;
   }
   const wanted = normalize(match[1]);
   if (!wanted) {
