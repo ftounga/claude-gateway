@@ -64,11 +64,64 @@ public interface JarvisDelegationRepository extends JpaRepository<JarvisDelegati
             + "and d.createdAt < :before")
     List<JarvisDelegation> staleTaken(@Param("before") OffsetDateTime before, Pageable page);
 
-    /** Termine une ligne précise (balayage) ; 1 si c'est ce passage qui l'a terminée. */
+    /** Termine une ligne précise (balayage) ; 1 si c'est ce passage qui l'a terminée (issue : échec). */
     @Modifying
     @Transactional
-    @Query("update JarvisDelegation d set d.finishedAt = :now where d.id = :id and d.finishedAt is null")
+    @Query("update JarvisDelegation d set d.finishedAt = :now, d.outcome = 'FAILED' where d.id = :id "
+            + "and d.finishedAt is null")
     int close(@Param("id") UUID id, @Param("now") OffsetDateTime now);
+
+    // ------------------------------------------------------------------ F-270 / SF-270-01 : les travaux vivants
+
+    /** Les tours directs annoncés et pas encore pris d'un fil (chantier précis), les plus récents d'abord. */
+    @Query("select d from JarvisDelegation d where d.userId = :userId and d.subjectId = :subjectId "
+            + "and d.chantier = :chantier and d.origin = 'DIRECT' and d.takenAt is null and d.finishedAt is null "
+            + "and d.createdAt >= :since order by d.createdAt desc")
+    List<JarvisDelegation> openDirect(@Param("userId") UUID userId, @Param("subjectId") UUID subjectId,
+            @Param("chantier") Integer chantier, @Param("since") OffsetDateTime since, Pageable page);
+
+    /** Les tours directs annoncés et pas encore pris du fil commun du sujet, les plus récents d'abord. */
+    @Query("select d from JarvisDelegation d where d.userId = :userId and d.subjectId = :subjectId "
+            + "and d.chantier is null and d.origin = 'DIRECT' and d.takenAt is null and d.finishedAt is null "
+            + "and d.createdAt >= :since order by d.createdAt desc")
+    List<JarvisDelegation> openDirectCommon(@Param("userId") UUID userId, @Param("subjectId") UUID subjectId,
+            @Param("since") OffsetDateTime since, Pageable page);
+
+    /** La phase d'un travail vivant du compte ; 1 si elle a changé. */
+    @Modifying
+    @Transactional
+    @Query("update JarvisDelegation d set d.phase = :phase where d.userId = :userId "
+            + "and d.delegationId = :delegationId and d.finishedAt is null "
+            + "and (d.phase is null or d.phase <> :phase)")
+    int phase(@Param("userId") UUID userId, @Param("delegationId") UUID delegationId, @Param("phase") String phase);
+
+    /** Termine un travail du compte avec son issue (une fois). */
+    @Modifying
+    @Transactional
+    @Query("update JarvisDelegation d set d.finishedAt = :now, d.outcome = :outcome where d.userId = :userId "
+            + "and d.delegationId = :delegationId and d.finishedAt is null")
+    int finishWith(@Param("userId") UUID userId, @Param("delegationId") UUID delegationId,
+            @Param("outcome") String outcome, @Param("now") OffsetDateTime now);
+
+    /** Le « oui » attendu sur un fil (chantier précis) n'est plus attendu : un nouveau travail est parti. */
+    @Modifying
+    @Transactional
+    @Query("update JarvisDelegation d set d.outcome = 'DONE' where d.userId = :userId and d.subjectId = :subjectId "
+            + "and d.chantier = :chantier and d.outcome = 'WAITING_YES'")
+    int answered(@Param("userId") UUID userId, @Param("subjectId") UUID subjectId,
+            @Param("chantier") Integer chantier);
+
+    /** Même chose pour le fil commun du sujet. */
+    @Modifying
+    @Transactional
+    @Query("update JarvisDelegation d set d.outcome = 'DONE' where d.userId = :userId and d.subjectId = :subjectId "
+            + "and d.chantier is null and d.outcome = 'WAITING_YES'")
+    int answeredCommon(@Param("userId") UUID userId, @Param("subjectId") UUID subjectId);
+
+    /** Les travaux du compte depuis {@code since} (vivants ou finis), du plus ancien au plus récent. */
+    @Query("select d from JarvisDelegation d where d.userId = :userId and d.createdAt >= :since "
+            + "order by d.createdAt asc")
+    List<JarvisDelegation> recent(@Param("userId") UUID userId, @Param("since") OffsetDateTime since, Pageable page);
 
     @Modifying
     @Transactional

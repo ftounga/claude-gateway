@@ -1510,6 +1510,12 @@ public class AtelierChatService implements RelayInterruptTarget {
             java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     /**
+     * F-270 / SF-270-01 — le travail de Jarvis (délégation ou tour direct) porté par le tour vivant d'un fil, tant qu'il
+     * n'a pas encore agi sur le poste : la première action le fait passer en phase « exécute », puis il quitte la table.
+     */
+    private final java.util.Map<String, UUID> jarvisWorkOfTurn = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
      * Ce que chaque tour a constaté de la machine (F-93 / SF-93-04), clef {@code userId:workspaceId}.
      *
      * <p>Remis à zéro à l'ouverture de chaque message, comme les deux marques ci-dessus ; mis à jour
@@ -3740,6 +3746,18 @@ public class AtelierChatService implements RelayInterruptTarget {
                 jarvisDelegationLabel = reformulation.label();
                 consigne = consigne + "\n[Jarvis — demande reformulée : « "
                         + reformulation.demande().replace('«', '"').replace('»', '"') + " »]";
+            } else {
+                // F-270 / SF-270-01 — un tour direct né à la voix, annoncé par l'écran : il devient un travail vivant
+                // partagé entre les pods (aucun texte ajouté au message : consigne inchangée à l'octet près).
+                fr.claudegateway.jarvis.fastbrain.JarvisDelegationRegistry.Reformulation direct =
+                        jarvisDelegations.takeDirect(userId, workspaceId, workspace.getTurnChantier());
+                if (direct != null) {
+                    jarvisDelegationId = direct.delegationId();
+                    jarvisDelegationLabel = direct.label();
+                }
+            }
+            if (jarvisDelegationId != null) {
+                jarvisWorkOfTurn.put(turnKey(userId, workspace), jarvisDelegationId);
             }
         }
         // F-235 / SF-235-04 (D12) — les échanges rapides tenus par Jarvis depuis le dernier tour de ce fil : jamais
@@ -4909,7 +4927,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                 jarvisLinks.finish(userId, jarvisLinkId, null, false);
             }
             if (jarvisDelegations != null && jarvisDelegationId != null) {
-                jarvisDelegations.finished(userId, jarvisDelegationId);
+                jarvisWorkOfTurn.remove(turnKey(userId, workspace));
+                jarvisDelegations.finished(userId, jarvisDelegationId,
+                        fr.claudegateway.jarvis.fastbrain.JarvisWorkPhase.FAILED);
             }
             announceDelegation(userId, jarvisDelegationId, workspace, jarvisDelegationLabel, null, true);
             throw cut;
@@ -5102,7 +5122,13 @@ public class AtelierChatService implements RelayInterruptTarget {
             jarvisLinks.finish(userId, jarvisLinkId, assistant, interrupted);
         }
         if (jarvisDelegations != null && jarvisDelegationId != null) {
-            jarvisDelegations.finished(userId, jarvisDelegationId);
+            // F-270 / SF-270-01 — l'issue du travail : interrompu, en attente d'un « oui », ou fait.
+            jarvisWorkOfTurn.remove(turnKey(userId, workspace));
+            jarvisDelegations.finished(userId, jarvisDelegationId, interrupted
+                    ? fr.claudegateway.jarvis.fastbrain.JarvisWorkPhase.CANCELLED
+                    : fr.claudegateway.jarvis.fastbrain.JarvisWorks.asksConfirmation(reply)
+                            ? fr.claudegateway.jarvis.fastbrain.JarvisWorkPhase.WAITING_YES
+                            : fr.claudegateway.jarvis.fastbrain.JarvisWorkPhase.DONE);
         }
         // F-272 / SF-272-05 — la réponse posée en annonce AVANT la fin du flux (« done ») : l'écran qui la dit la clôt ;
         // l'écran fermé ou en pause la dira à la reprise.
@@ -9097,6 +9123,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         boolean mutates = "bash".equals(tool) || (isFileWrite(tool) && result.ok());
         if (mutates) {
             mutatedTurns.add(turnKey(userId, workspace));
+            // F-270 / SF-270-01 — le travail de Jarvis de ce tour agit sur le poste : phase « exécute » (une fois).
+            UUID work = jarvisWorkOfTurn.remove(turnKey(userId, workspace));
+            if (work != null && jarvisDelegations != null) {
+                jarvisDelegations.phase(userId, work, fr.claudegateway.jarvis.fastbrain.JarvisWorkPhase.EXECUTING);
+            }
         }
     }
 
