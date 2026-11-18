@@ -21,6 +21,8 @@ public final class ProofToolCatalog {
     /** Capacité annoncée par un runner qui sait exécuter une session de preuve. */
     public static final String CAPABILITY = "proof";
     public static final int MAX_COMMANDS = 8;
+    /** Fichiers par appel (F-268). */
+    public static final int MAX_FILES = ProofCaptureService.MAX_FILES;
 
     /** Message rendu quand le poste n'annonce pas la capacité : un runner antérieur à F-212. */
     public static final String UPDATE_RUNNER_MESSAGE = "Ce poste ne sait pas encore produire de captures "
@@ -37,16 +39,28 @@ public final class ProofToolCatalog {
                     + "quand l'utilisateur demande une preuve, ou pour un point annoncé validé si des "
                     + "preuves ont été demandées dans ce sujet ; une fois par point, pas à chaque étape. "
                     + "Ne lance pas ces commandes en bash juste avant. Chaque commande passe par la même "
-                    + "autorisation que bash. Rend les identifiants des captures (à citer dans la preuve "
-                    + "de l'étape, ou à joindre à un message par preuves=).",
+                    + "autorisation que bash. Contenu d'un fichier : fichiers (lignes en cause "
+                    + "surlignées). "
+                    + "Rend les identifiants des captures (à citer dans l'étape, ou à joindre "
+                    + "à un message par preuves=).",
             Map.of("type", "object",
                     "properties", Map.of(
                             "titre", Map.of("type", "string"),
                             "commandes", Map.of("type", "array", "maxItems", MAX_COMMANDS,
                                     "items", Map.of("type", "string")),
+                            "fichiers", Map.of("type", "array", "maxItems", MAX_FILES,
+                                    "items", Map.of("type", "object",
+                                            "properties", Map.of(
+                                                    "chemin", Map.of("type", "string"),
+                                                    "de", Map.of("type", "integer"),
+                                                    "a", Map.of("type", "integer"),
+                                                    "surligner", Map.of("type", "array",
+                                                            "items", Map.of("type", "integer")),
+                                                    "note", Map.of("type", "string")),
+                                            "required", List.of("chemin"))),
                             "etape", Map.of("type", "string", "description",
-                                    "Étape du plan prouvée (facultatif).")),
-                    "required", List.of("titre", "commandes")));
+                                    "Étape prouvée (facultatif).")),
+                    "required", List.of("titre")));
 
     private ProofToolCatalog() {
     }

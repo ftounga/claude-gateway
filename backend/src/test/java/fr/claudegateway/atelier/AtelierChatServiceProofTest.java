@@ -105,6 +105,11 @@ class AtelierChatServiceProofTest {
             }
 
             @Override
+            public List<Shot> shootFiles(JsonNode request) {
+                return List.of(new Shot(new byte[] {(byte) 0x89, 'P', 'N', 'G'}, 1400, 600));
+            }
+
+            @Override
             public boolean isAvailable() {
                 return true;
             }
@@ -287,5 +292,77 @@ class AtelierChatServiceProofTest {
         callProof("[\"ls\"]");
         verify(runnerToolGateway, never()).proof(any(), anyString(), any(), anyLong());
         assertThat(lastToolResult().content()).contains("poste connecté");
+    }
+
+    // ------------------------------------------------------------------ F-268 : la preuve fichier
+
+    private void fileRead(String content) {
+        when(runnerToolGateway.readFile(any(), anyString(), eq("infra/s3.tf")))
+                .thenReturn(new RunnerCallResult(true, content, false, null, 3L, null, null, null, "", false));
+    }
+
+    private void callFileProof(String extra) {
+        agentProvider.enqueueToolCallWithObject(ProofToolCatalog.TOOL,
+                "{\"titre\":\"Bucket public\",\"fichiers\":[{\"chemin\":\"infra/s3.tf\",\"surligner\":[2],"
+                        + "\"note\":\"Lisible par tous\"}]" + extra + "}");
+        agentProvider.enqueueFinal("Voilà.");
+        service.chat(userId, workspaceId, "montre le fichier");
+    }
+
+    @Test
+    @DisplayName("F-268 : un fichier se lit sur le poste (read_file), sans session de commandes ni capacité proof")
+    void fileIsReadOnTheRunner() {
+        when(runnerHostService.declaredCapabilities(hostId)).thenReturn(Set.of("files", "bash"));
+        fileRead("resource \"aws_s3_bucket\" \"x\" {\n  acl = \"public-read\"\n}\n");
+        callFileProof("");
+
+        verify(runnerToolGateway).readFile(any(), anyString(), eq("infra/s3.tf"));
+        verify(runnerToolGateway, never()).proof(any(), anyString(), any(), anyLong());
+        verify(runnerAuditService).recordCall(eq(userId), any(), anyString(), eq("read_file"), eq("infra/s3.tf"), any());
+        assertThat(lastToolResult().isError()).isFalse();
+        assertThat(lastToolResult().content()).contains("surlignée 2 : acl = \"public-read\"").contains("preuves=");
+        ArgumentCaptor<AtelierMessage> saved = ArgumentCaptor.forClass(AtelierMessage.class);
+        verify(messageRepository, atLeastOnce()).save(saved.capture());
+        assertThat(saved.getAllValues().stream().map(AtelierMessage::getTerminalJson)
+                .filter(json -> json != null && json.contains("\"proof\":{")))
+                .anyMatch(json -> json.contains("\"files\":[{\"captureId\":") && json.contains("\"path\":\"infra/s3.tf\""));
+    }
+
+    @Test
+    @DisplayName("F-268 : en parcours guidé, phase Investigation, la preuve fichier PASSE la porte (lecture)")
+    void fileProofPassesTheInvestigationGate() {
+        when(journeyService.forTurn(userId, workspaceId)).thenReturn(SubjectJourney.builder()
+                .userId(userId).workspaceId(workspaceId).mode(JourneyMode.GUIDE).phase(JourneyPhase.INVESTIGATION)
+                .validatedVersion(null).planVersion(0).build());
+        fileRead("a\nacl = \"public-read\"\n");
+        callFileProof("");
+
+        verify(journeyService, never()).recordGateBlocked(any(), any(), eq(ProofToolCatalog.TOOL));
+        verify(runnerToolGateway).readFile(any(), anyString(), eq("infra/s3.tf"));
+        assertThat(lastToolResult().isError()).isFalse();
+    }
+
+    @Test
+    @DisplayName("F-268 : fichier + commande qui modifie, en Investigation : la porte bloque tout (rien n'est lu)")
+    void fileDoesNotWhitewashAModifyingCommand() {
+        when(journeyService.forTurn(userId, workspaceId)).thenReturn(SubjectJourney.builder()
+                .userId(userId).workspaceId(workspaceId).mode(JourneyMode.GUIDE).phase(JourneyPhase.INVESTIGATION)
+                .validatedVersion(null).planVersion(0).build());
+        fileRead("a\n");
+        callFileProof(",\"commandes\":[\"kubectl apply -f x.yaml\"]");
+
+        verify(runnerToolGateway, never()).readFile(any(), anyString(), eq("infra/s3.tf"));
+        verify(runnerToolGateway, never()).proof(any(), anyString(), any(), anyLong());
+    }
+
+    @Test
+    @DisplayName("F-268 : ni commande ni fichier — refus explicite, rien n'est émis")
+    void nothingToProve() {
+        agentProvider.enqueueToolCallWithObject(ProofToolCatalog.TOOL, "{\"titre\":\"Rien\",\"fichiers\":[{}]}");
+        agentProvider.enqueueFinal("ok");
+        service.chat(userId, workspaceId, "x");
+        assertThat(lastToolResult().isError()).isTrue();
+        assertThat(lastToolResult().content()).contains("fichiers");
+        verify(runnerAuditService, never()).recordCall(eq(userId), any(), anyString(), eq("read_file"), anyString(), any());
     }
 }

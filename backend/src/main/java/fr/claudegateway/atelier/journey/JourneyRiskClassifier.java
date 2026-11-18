@@ -115,8 +115,17 @@ public final class JourneyRiskClassifier {
         }
         // F-212 / SF-212-03 : une session de preuve vaut sa commande la plus risquée — la même porte que
         // si chacune passait en bash (une liste vide ou illisible est traitée en modification, prudence).
+        // F-268 / SF-268-02 : une preuve qui ne montre QUE des fichiers est une lecture (contenu lu sur le
+        // poste, rien n'y est exécuté ni écrit) ; dès qu'il y a des commandes, elles fixent la classe.
         if (fr.claudegateway.atelier.proof.ProofToolCatalog.isProofTool(tool)) {
-            return classifyCommands(input == null ? null : input.get("commandes"));
+            JsonNode commands = input == null ? null : input.get("commandes");
+            boolean noCommand = commands == null || commands.isNull()
+                    || (commands.isArray() && commands.isEmpty());
+            JsonNode files = input == null ? null : input.get("fichiers");
+            if (noCommand && files != null && files.isArray() && !files.isEmpty()) {
+                return JourneyPlan.Risk.LECTURE;
+            }
+            return classifyCommands(commands);
         }
         if ("task".equals(tool)) {
             // Une sous-tâche en lecture seule est une lecture ; une sous-tâche écrivaine édite (en branche).

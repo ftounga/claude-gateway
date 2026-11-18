@@ -100,4 +100,138 @@ class ProofCaptureServiceTest {
         assertThat(ProofCaptureService.parseId("../../etc")).isNull();
         assertThat(ProofCaptureService.parseId("0123456789abcdef0123456789ABCDEF")).isNotNull();
     }
+
+    // ------------------------------------------------------------------ F-268 : la preuve fichier
+
+    private static final String TF = String.join("\n",
+            "resource \"aws_s3_bucket\" \"logs\" {",          // 1
+            "  bucket = \"pbi-logs\"",                           // 2
+            "  acl    = \"public-read\"",                        // 3
+            "  password = \"S3cr3t-Value\"",                     // 4
+            "  token    = var.api_token",                         // 5
+            "  key = \"AKIAABCDEFGHIJKLMNOP\"",                  // 6
+            "}") + "\n";
+
+    /** Un rendu qui garde la demande et rend une image par fichier. */
+    private static final class FileShots implements TerminalShotRenderer {
+        JsonNode lastFiles;
+
+        @Override
+        public List<Shot> shoot(JsonNode session) {
+            return List.of(new Shot(new byte[] {7}, 900, 500));
+        }
+
+        @Override
+        public List<Shot> shootFiles(JsonNode request) {
+            lastFiles = request;
+            return java.util.stream.IntStream.range(0, request.path("files").size())
+                    .mapToObj(i -> new Shot(new byte[] {9}, 1200, 600)).toList();
+        }
+
+        @Override
+        public boolean isAvailable() {
+            return true;
+        }
+    }
+
+    private static ProofCaptureService.FileSource file(String path, String content, List<Integer> hl, String note) {
+        return new ProofCaptureService.FileSource(path, content, false, null, null, hl, note, null);
+    }
+
+    @Test
+    @DisplayName("F-268 : un fichier → une image rangée sous le compte, bloc « files », texte avec la ligne surlignée")
+    void fileNominal() {
+        FileShots renderer = new FileShots();
+        ProofCaptureService.Result result = service(renderer).capture(user, workspace, "toolu_f", "Bucket public",
+                null, null, List.of(file("infra/s3.tf", TF, List.of(3, 99), "Lisible par tous")));
+        assertThat(result.block()).isNotNull();
+        assertThat(result.block().captures()).hasSize(1);
+        assertThat(result.block().commands()).isEmpty();
+        ProofBlock.FileShot shot = result.block().files().get(0);
+        assertThat(shot.captureId()).isEqualTo(result.block().captures().get(0).id());
+        assertThat(shot.path()).isEqualTo("infra/s3.tf");
+        assertThat(shot.firstLine()).isEqualTo(1);
+        assertThat(shot.lastLine()).isEqualTo(7);
+        assertThat(shot.totalLines()).isEqualTo(7);
+        assertThat(shot.highlights()).containsExactly(3);
+        assertThat(storage.listKeys(ProofCaptureService.prefixOf(user, workspace))).hasSize(1);
+        JsonNode sent = renderer.lastFiles.path("files").get(0);
+        assertThat(sent.path("firstLine").asInt()).isEqualTo(1);
+        assertThat(sent.path("lines")).hasSize(7);
+        assertThat(sent.path("note").asText()).isEqualTo("Lisible par tous");
+        assertThat(result.modelText()).contains("surlignée 3 : acl    = \"public-read\"")
+                .contains("preuves=" + shot.captureId()).doesNotContain("S3cr3t");
+    }
+
+    @Test
+    @DisplayName("F-268 : secrets masqués ligne à ligne (numéros justes) ; une référence reste visible")
+    void fileSecretsMasked() {
+        FileShots renderer = new FileShots();
+        service(renderer).capture(user, workspace, "t", "x", null, null, List.of(file("s3.tf", TF, List.of(), null)));
+        String lines = renderer.lastFiles.path("files").get(0).path("lines").toString();
+        assertThat(lines).doesNotContain("S3cr3t-Value").doesNotContain("AKIAABCDEFGHIJKLMNOP")
+                .contains("var.api_token").contains("public-read");
+        String pem = "a\n-----BEGIN RSA PRIVATE KEY-----\nMIIEow\nxyz\n-----END RSA PRIVATE KEY-----\nb";
+        List<String> masked = new ProofCaptureService(repository, storage, renderer, new ObjectMapper()).maskedLines(pem);
+        assertThat(masked).hasSize(6);
+        assertThat(masked.get(0)).isEqualTo("a");
+        assertThat(masked.subList(1, 5)).allMatch(l -> l.equals(fr.claudegateway.mcp.McpSecretFilter.MASK));
+        assertThat(masked.get(5)).isEqualTo("b");
+    }
+
+    @Test
+    @DisplayName("F-268 : fenêtre — plage demandée, sinon contexte autour du surlignage, sinon le début ; 80 lignes au plus")
+    void fileWindow() {
+        assertThat(ProofCaptureService.windowOf(300, 10, 30, List.of())).isEqualTo(new ProofCaptureService.Window(10, 30));
+        assertThat(ProofCaptureService.windowOf(300, 10, 500, List.of())).isEqualTo(new ProofCaptureService.Window(10, 89));
+        assertThat(ProofCaptureService.windowOf(300, null, null, List.of(100, 104)))
+                .isEqualTo(new ProofCaptureService.Window(94, 110));
+        assertThat(ProofCaptureService.windowOf(300, null, null, List.of())).isEqualTo(new ProofCaptureService.Window(1, 40));
+        assertThat(ProofCaptureService.windowOf(300, null, null, List.of(10, 200)))
+                .isEqualTo(new ProofCaptureService.Window(7, 86));
+        assertThat(ProofCaptureService.windowOf(5, 50, 60, List.of())).isEqualTo(new ProofCaptureService.Window(5, 5));
+    }
+
+    @Test
+    @DisplayName("F-268 : terminal ET fichiers dans un même bloc, identifiants dans l'ordre, tous joignables")
+    void mixedTerminalAndFiles() {
+        ProofCaptureService.Result result = service(new FileShots()).capture(user, workspace, "t", "Mix", null, REPORT,
+                List.of(file("a.tf", "x = 1\n", List.of(1), null), file("b.yaml", "k: v\n", List.of(), null)));
+        assertThat(result.block().captures()).hasSize(3);
+        List<String> ids = result.block().captures().stream().map(ProofBlock.Capture::id).toList();
+        assertThat(result.block().files()).extracting(ProofBlock.FileShot::captureId).containsExactly(ids.get(1), ids.get(2));
+        assertThat(result.block().commands()).hasSize(3);
+        assertThat(result.modelText()).contains("preuves=" + String.join(",", ids));
+    }
+
+    @Test
+    @DisplayName("F-268 : fichier non lu ou rendu indisponible — dit en clair, rien de rangé")
+    void fileErrors() {
+        ProofCaptureService.Result unread = service(new FileShots()).capture(user, workspace, "t", "x", null, null,
+                List.of(new ProofCaptureService.FileSource("absent.tf", null, false, null, null, List.of(), null,
+                        "Fichier introuvable.")));
+        assertThat(unread.block()).isNull();
+        assertThat(unread.modelText()).contains("absent.tf").contains("non lu").contains("introuvable");
+        TerminalShotRenderer down = mock(TerminalShotRenderer.class);
+        when(down.shootFiles(any())).thenThrow(new DiagramRendererUnavailableException("muet"));
+        ProofCaptureService.Result failed = service(down).capture(user, workspace, "t", "x", null, null,
+                List.of(file("a.tf", "x = 1", List.of(), null)));
+        assertThat(failed.block()).isNull();
+        assertThat(failed.modelText()).contains("n'ont pas pu être produites");
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("F-268 : isolation — l'image d'un fichier n'est servie qu'à son compte et son terminal")
+    void fileIsolation() {
+        ProofCaptureService svc = service(new FileShots());
+        ProofCaptureService.Result result = svc.capture(user, workspace, "t", "x", null, null,
+                List.of(file("a.tf", "x = 1", List.of(), null)));
+        String id = result.block().captures().get(0).id();
+        UUID uuid = ProofCaptureService.parseId(id);
+        when(repository.findByIdAndUserIdAndWorkspaceId(uuid, user, workspace))
+                .thenReturn(java.util.Optional.of(new ProofCapture()));
+        assertThat(svc.image(user, workspace, id)).isPresent();
+        assertThat(svc.image(UUID.randomUUID(), workspace, id)).isEmpty();
+    }
 }

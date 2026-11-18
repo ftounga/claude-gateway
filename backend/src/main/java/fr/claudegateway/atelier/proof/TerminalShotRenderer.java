@@ -23,6 +23,18 @@ public interface TerminalShotRenderer {
      */
     List<Shot> shoot(JsonNode session);
 
+    /**
+     * <b>La preuve fichier</b> (F-268 / SF-268-02) : un extrait réel par image, au rendu éditeur
+     * (route {@code /file-shot}).
+     *
+     * @param request {@code {files:[{path, firstLine, lines[], highlights[], note, totalLines}]}}
+     * @return une image par fichier, dans l'ordre
+     */
+    default List<Shot> shootFiles(JsonNode request) {
+        throw new fr.claudegateway.diagrams.DiagramRendererUnavailableException(
+                "Le rendu des fichiers n'est pas disponible sur cette installation.");
+    }
+
     /** Vrai si le service de rendu est configuré. */
     boolean isAvailable();
 }

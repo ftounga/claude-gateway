@@ -28,7 +28,7 @@ class AtelierTurnReportProofTest {
         String captureId = "a5e23a3ae7e64d68be9266fe69080757";
         ProofBlock proof = new ProofBlock("DNS on-prem", "14", "poste", "macos", "zsh",
                 List.of(new ProofBlock.Capture(captureId, 2002, 1132)),
-                List.of(new ProofBlock.Command("date -u", "done", 0, 5L, "2026-10-31T11:54:23Z", false)));
+                List.of(new ProofBlock.Command("date -u", "done", 0, 5L, "2026-10-31T11:54:23Z", false)), null);
         String longOutput = "x".repeat(AtelierTurnReport.MAX_BLOCK_OUTPUT_CHARS + 10);
         AtelierTurnReport.Block block = new AtelierTurnReport.Block("capturer_preuves", null, "toolu_1", null,
                 longOutput, true, false, false, null, null, null, null, null, null, null, proof);
