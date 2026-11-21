@@ -3593,6 +3593,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         // BYOK). Le budget propre de Jarvis le garde (SF-244-03), sans jamais couper un tour en cours.
         VoiceMark voiceMark = consumeVoiceMark(userId, workspaceId, chantier);
         boolean viaJarvis = voiceMark != null;
+        workspace.setTurnViaJarvis(viaJarvis); // F-271 / SF-271-03 : un « oui » DIT se journalise comme tel
         // F-245 / SF-245-02 — un tour du FIL JARVIS est d'origine JARVIS (F-244), même tapé : budget de Jarvis, coût
         // étiqueté JARVIS / OPUS. La marque « via Jarvis » du message (et la mémoire du jour) reste réservée à la voix.
         boolean jarvisOrigin = viaJarvis || workspace.isJarvisThread();

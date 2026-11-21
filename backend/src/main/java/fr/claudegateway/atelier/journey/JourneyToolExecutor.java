@@ -88,7 +88,7 @@ public class JourneyToolExecutor {
                 case JourneyToolCatalog.UPDATE_STEP -> updateStep(userId, workspace, input);
                 case JourneyToolCatalog.REOPEN -> reopen(userId, workspace, input);
                 case JourneyToolCatalog.UPDATE_SUB_STEPS -> updateSubSteps(userId, workspace, input);
-                case JourneyToolCatalog.LAUNCH_AUTONOMOUS -> launchAutonomous(userId, workspace, input);
+                case JourneyToolCatalog.LAUNCH_AUTONOMOUS -> launchAutonomous(userId, workspace, input, context);
                 case JourneyToolCatalog.CONFIRM_DIAGNOSIS -> confirmDiagnosis(userId, workspace, input);
                 case JourneyToolCatalog.VALIDATE_PLAN -> validatePlan(userId, workspace, input, context);
                 case JourneyToolCatalog.CLOSE_CHANTIER -> closeChantier(userId, workspace, input, context);
@@ -119,7 +119,7 @@ public class JourneyToolExecutor {
                     + "personne n'y parle.", "laisse la proposition attendre son clic");
             if (refusal == null) {
                 SubjectJourneyService.OpenOnWords opened = service.openOnUserWords(userId, workspace.getId(), reason,
-                        ticket, channel(words));
+                        ticket, channel(words, workspace));
                 if (!opened.opened()) {
                     return Outcome.ok("Le chantier " + opened.number() + " (« " + opened.title() + " ») est déjà "
                             + "ouvert pour ce ticket : rien n'est ouvert de plus. Travaille sur lui (chantier: "
@@ -261,11 +261,31 @@ public class JourneyToolExecutor {
         });
     }
 
-    private Outcome launchAutonomous(UUID userId, Workspace workspace, JsonNode input) {
+    /**
+     * Le départ en autonome (F-219 / SF-219-04). <b>À l'oral</b> (F-271 / SF-271-03), il exige le « oui » explicite de
+     * l'utilisateur cité dans ce tour — jamais sur un accord d'un tour passé. Chaque départ programmé est journalisé avec
+     * son canal.
+     */
+    private Outcome launchAutonomous(UUID userId, Workspace workspace, JsonNode input, TurnContext turn) {
         Integer chantier = chantier(input); // explicite : jamais déduit du fil
         if (chantier == null) {
             return Outcome.error("chantier est requis : le numéro du chantier à lancer en autonome.");
         }
+        String words = text(input, "user_words");
+        boolean voice = workspace != null && workspace.isTurnViaJarvis();
+        if (voice) {
+            if (words.isEmpty()) {
+                return Outcome.error("À l'oral, un départ en autonome exige le « oui » explicite de l'utilisateur dans "
+                        + "ce tour (user_words). Sans lui : reformule le départ (ticket, nombre d'étapes, jusqu'où) et "
+                        + "termine par « Vous confirmez ? » ; rien n'est programmé.");
+            }
+            String refusal = writtenRefusal(words, turn, "Une course autonome (ou une routine) ne lance jamais un "
+                    + "chantier.", "ne lance rien : reformule et demande « Vous confirmez ? »");
+            if (refusal != null) {
+                return Outcome.error(refusal);
+            }
+        }
+        boolean cited = !words.isEmpty() && writtenRefusal(words, turn, "", "") == null;
         if (autonomy == null) {
             return Outcome.error("Le départ en autonome est indisponible ici : dis-le à l'utilisateur.");
         }
@@ -276,7 +296,13 @@ public class JourneyToolExecutor {
             return Outcome.error(e.getMessage());
         }
         ChantierAutonomyLauncher.Result result = autonomy.schedule(userId, workspace, chantier, mode);
-        return result.scheduled() ? Outcome.ok(result.message()) : Outcome.error(result.message());
+        if (!result.scheduled()) {
+            return Outcome.error(result.message() + (voice ? " À l'oral, dis en une phrase ce qui manque (« il manque… »), "
+                    + "sans relancer." : ""));
+        }
+        service.recordAutonomyRequested(userId, workspace.getId(), chantier, mode.name(),
+                cited ? channel(words, workspace) : null);
+        return Outcome.ok(result.message() + (voice ? " Ta ligne 🎙 : « C'est parti. »" : ""));
     }
 
     /**
@@ -326,9 +352,11 @@ public class JourneyToolExecutor {
             return Outcome.error("Ces mots ne figurent pas dans ce que l'utilisateur a écrit pendant ce tour : cite-le "
                     + "exactement. Sans validation écrite de sa part dans ce tour, laisse le plan en attente.");
         }
-        service.validatePlan(userId, workspace.getId(), chantier, version, channel(words));
+        service.validatePlan(userId, workspace.getId(), chantier, version, channel(words, workspace));
         return prefixed(chantier, Outcome.ok("Plan v" + version + " validé par l'utilisateur : le chantier passe en "
-                + "EXÉCUTION. Exécute ses étapes jusqu'au bout (update_plan_step après chacune)."));
+                + "EXÉCUTION. Exécute ses étapes jusqu'au bout (update_plan_step après chacune) — sauf s'il a aussi "
+                + "demandé de le LANCER en autonome (« valide et lance ») : alors lancer_chantier_autonome maintenant "
+                + "(chantier: " + chantier + ", user_words = ses mots), sans exécuter les étapes toi-même."));
     }
 
     /**
@@ -353,7 +381,8 @@ public class JourneyToolExecutor {
         if (refusal != null) {
             return Outcome.error(refusal);
         }
-        SubjectJourney focus = service.closeOnUserWords(userId, workspace.getId(), chantier, channel(words));
+        SubjectJourney focus = service.closeOnUserWords(userId, workspace.getId(), chantier,
+                channel(words, workspace));
         String after = focus.isGuided() && focus.getPhase() != JourneyPhase.CLOS
                 ? "Le chantier " + focus.getChantierNumber() + " est maintenant au focus."
                 : "C'était le dernier chantier ouvert : le terminal revient en Libre.";
@@ -429,7 +458,7 @@ public class JourneyToolExecutor {
             }
         }
         SubjectJourneyService.OutOfPlanRecord recorded =
-                service.recordOutOfPlan(userId, workspace.getId(), cited, objet, channel(words));
+                service.recordOutOfPlan(userId, workspace.getId(), cited, objet, channel(words, workspace));
         if (!recorded.guided()) {
             return Outcome.error("Le couloir hors chantier n'existe qu'en mode guidé, avec un chantier ouvert : ici, "
                     + "fais simplement ce que l'utilisateur demande.");
@@ -467,7 +496,19 @@ public class JourneyToolExecutor {
 
     /** Le canal journalisé d'un geste écrit : {@code écrit « citation »}, tronqué à 120 caractères. */
     public static String channel(String words) {
-        return "écrit « " + (words.length() > 120 ? words.substring(0, 120) + "…" : words) + " »";
+        return "écrit « " + cut(words) + " »";
+    }
+
+    /**
+     * Le canal d'un geste cité dans le tour (F-271 / SF-271-03) : {@code dit « oui »} quand le tour est né à la voix (la
+     * transcription est rangée au journal), sinon {@code écrit « … »}.
+     */
+    public static String channel(String words, Workspace workspace) {
+        return workspace != null && workspace.isTurnViaJarvis() ? "dit « " + cut(words) + " »" : channel(words);
+    }
+
+    private static String cut(String words) {
+        return words.length() > 120 ? words.substring(0, 120) + "…" : words;
     }
 
     /** La version donnée ({@code 3}, {@code "v3"}), ou {@code null}. */

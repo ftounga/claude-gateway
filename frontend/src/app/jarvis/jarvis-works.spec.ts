@@ -1,6 +1,6 @@
 import {
   matchWorks, stopTarget,
-  ArmedConfirmations, CONFIRM_TTL_MS, confirmationVerdict, isOtherRequest, names, newWorkId, shortName, whichQuestion,
+  ArmedConfirmations, CONFIRM_TTL_MS, asksLaunch, confirmationVerdict, isOtherRequest, names, newWorkId, shortName, whichQuestion,
 } from './jarvis-works';
 
 describe('F-270 / SF-270-02 — les confirmations rattachées à leur travail', () => {
@@ -40,6 +40,22 @@ describe('F-270 / SF-270-02 — les confirmations rattachées à leur travail', 
     a.arm(agenor);
     a.disarm(a.live()[0]);
     expect(a.size).toBe(0);
+  });
+
+  it('F-271 / SF-271-03 — une question de lancement expirée est rendue une fois ; remplacée ou désarmée, jamais', () => {
+    const a = armed();
+    a.arm({ ...ldic, launch: true });
+    a.arm({ ...agenor, launch: false });
+    now += CONFIRM_TTL_MS + 1;
+    expect(a.takeExpiredLaunches().map((i) => i.name)).toEqual(['LDIC-325']);
+    expect(a.takeExpiredLaunches()).toEqual([]);
+    a.arm({ ...ldic, launch: true });
+    a.arm({ ...ldic, workId: 'd-9', launch: false }); // remplacée sur le même fil
+    a.disarm(a.live()[0]);
+    now += CONFIRM_TTL_MS + 1;
+    expect(a.takeExpiredLaunches()).toEqual([]);
+    expect(asksLaunch('Je le lance en autonome. Vous confirmez ?')).toBeTrue();
+    expect(asksLaunch('Je valide le plan v1. Vous confirmez ?')).toBeFalse();
   });
 
   it('le verdict ignore le nom visé ; une négation reste un doute', () => {

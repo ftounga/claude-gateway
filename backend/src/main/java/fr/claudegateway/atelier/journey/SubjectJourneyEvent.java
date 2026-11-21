@@ -102,6 +102,12 @@ public class SubjectJourneyEvent {
     /** Le focus passe sur un autre chantier ouvert (F-206). */
     public static final String CHANTIER_FOCUSED = "CHANTIER_FOCUSED";
 
+    /**
+     * Un départ en autonome est demandé par l'outil {@code lancer_chantier_autonome} (F-271 / SF-271-03) — le détail
+     * garde le chantier, le mode et le canal (« dit « oui » » pour un tour né à la voix).
+     */
+    public static final String AUTONOMY_REQUESTED = "AUTONOMY_REQUESTED";
+
     @Id
     @GeneratedValue
     @UuidGenerator

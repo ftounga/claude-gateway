@@ -410,4 +410,11 @@ public class Workspace {
      */
     @Transient
     private boolean turnOutOfPlan;
+
+    /**
+     * Le tour en cours est né à la voix, sur l'écran Jarvis (F-271 / SF-271-03) : une citation de l'utilisateur y est
+     * une parole transcrite (journal « dit « … » ») et un départ en autonome y exige son « oui » cité. Transitoire.
+     */
+    @Transient
+    private boolean turnViaJarvis;
 }
