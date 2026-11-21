@@ -147,6 +147,10 @@ export function analyseTurn(turn, { api, probes, traces, next, spokenBefore }) {
     spokeAloud: !!firstVoice,
     // F-270 — l'attente d'écoute avant la phrase (scénarios à poste simulé), et si un travail tournait en fond.
     tag: turn.tag ?? null,
+    // F-270 / SF-270-04 — la relation qualifiée par le cerveau rapide (événement `delegated`), et celle attendue.
+    relation: (final?.sse ?? []).find((e) => e.event === 'delegated')?.data?.relation ?? null,
+    queued: !!(final?.sse ?? []).find((e) => e.event === 'delegated')?.data?.queued,
+    expectRelation: turn.expectRelation ?? null,
     kept: keptTurn,
     waitedMs: turn.waitedMs ?? null,
     workRunning: turn.workRunning ?? null,
@@ -223,6 +227,10 @@ export function analyse(runs, costs = {}) {
       reloadCauses: scenarios.flatMap((s) => s.reloadCauses),
       costEur,
       // F-270 — scénarios à poste simulé : phrases dites pendant un travail en fond, et l'attente d'écoute des étapes repérées.
+      relationChecked: all.filter((t) => t.expectRelation).length,
+      relationOk: all.filter((t) => t.expectRelation && t.relation === t.expectRelation).length,
+      relationWrong: all.filter((t) => t.expectRelation && t.relation !== t.expectRelation)
+        .map((t) => `${t.scenario}/${t.id}: ${t.relation ?? 'aucune'} au lieu de ${t.expectRelation}`),
       duringWork: all.filter((t) => t.workRunning).length,
       duringWorkHeard: all.filter((t) => t.workRunning && t.heard).length,
       tagged: all.filter((t) => t.tag).map((t) => ({ tag: t.tag, id: `${t.scenario}/${t.id}`, waitedMs: t.waitedMs,
@@ -263,6 +271,8 @@ export function summary(report) {
     `Coût du passage       : ${t.costEur === null ? '—' : `${t.costEur.toFixed(4)} €`} (compteur Jarvis de la passerelle)`,
     ...(t.tagged?.length ? [
       `Pendant un travail    : ${t.duringWorkHeard}/${t.duringWork} phrases dites pendant un travail en fond, entendues`,
+      ...(t.relationChecked ? [`Relation précision/nouvelle : ${t.relationOk}/${t.relationChecked} correctes`
+        + `${t.relationWrong.length ? ` (${t.relationWrong.join(' ; ')})` : ''}`] : []),
       ...t.tagged.map((g) => `  [${g.tag}] ${g.id} : attente d'écoute ${ms(g.waitedMs)}, ${g.heard ? 'entendue' : 'PERDUE'}`
         + `${g.workRunning ? ', travail en fond' : ''}, son ${ms(g.firstSoundMs)}`),
     ] : []),
@@ -278,7 +288,7 @@ export function summary(report) {
         + `${turn.rejected.length ? ` rejet=${turn.rejected.join(',')}` : ''}`
         + `${turn.tiers ? (turn.spokeAloud ? ' TIERS-RÉPONDU' : ' tiers-tu') : ''}${turn.pardonAloud ? ' PARDON' : ''}`
         + `${turn.waitedMs !== null ? ` attente ${ms(turn.waitedMs)}` : ''}${turn.workRunning ? ' [fond]' : ''}`
-        + `${turn.kept ? ' GARDÉE' : ''}`);
+        + `${turn.kept ? ' GARDÉE' : ''}${turn.relation ? ` relation=${turn.relation}${turn.queued ? ' (enchaînée)' : ''}` : ''}`);
     }
   }
   return lines.join('\n');

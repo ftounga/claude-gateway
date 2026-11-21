@@ -1,4 +1,5 @@
 import {
+  matchWorks, stopTarget,
   ArmedConfirmations, CONFIRM_TTL_MS, confirmationVerdict, isOtherRequest, names, newWorkId, shortName, whichQuestion,
 } from './jarvis-works';
 
@@ -61,5 +62,21 @@ describe('F-270 / SF-270-02 — les confirmations rattachées à leur travail', 
     expect(names('arrête le chantier 4', 'chantier 4')).toBeTrue();
     expect(names('arrête agenorix', 'agenor')).toBeFalse();
     expect(newWorkId()).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('F-270 / SF-270-04 — « arrête facturation » vise un nom ; « arrête tout », « arrête de parler » non', () => {
+    expect(stopTarget('Arrête facturation.')).toBe('facturation');
+    expect(stopTarget('Jarvis, stop LDIC-325')).toBe('ldic 325');
+    expect(stopTarget('Arrête le chantier 4')).toBe('chantier 4');
+    expect(stopTarget('Arrête tout')).toBeNull();
+    expect(stopTarget('Arrête ça')).toBeNull();
+    expect(stopTarget('Arrête CAGIP')).toBe('cagip');
+    expect(stopTarget('Arrête de parler')).toBeNull();
+    expect(stopTarget('stop')).toBeNull();
+    const works = [{ name: 'LDIC-325', label: 'Lancer LDIC-325', subjectName: 'data-platform' },
+      { name: 'agenor', label: 'tickets', subjectName: 'agenor' }];
+    expect(matchWorks('ldic 325', works).map((w) => w.name)).toEqual(['LDIC-325']);
+    expect(matchWorks('data platform', works).map((w) => w.name)).toEqual(['LDIC-325']);
+    expect(matchWorks('facturation', works)).toEqual([]);
   });
 });

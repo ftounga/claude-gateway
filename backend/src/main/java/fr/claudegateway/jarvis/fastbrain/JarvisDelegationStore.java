@@ -274,6 +274,58 @@ public class JarvisDelegationStore implements JarvisMailPurge {
         }
     }
 
+    // ------------------------------------------------------------------ F-270 / SF-270-04 : l'enchaînement
+
+    /** Une commande enchaînée attend au plus ce délai que le travail devant elle finisse. */
+    static final Duration QUEUE_MAX_WAIT = Duration.ofMinutes(30);
+
+    /** Range une commande ENCHAÎNÉE derrière le travail vivant de son fil (phase {@code QUEUED}) ; vrai si rangée. */
+    public boolean queue(UUID userId, UUID subjectId, Integer chantier, UUID delegationId, String demande,
+            String label) {
+        try {
+            JarvisDelegation d = row(userId, delegationId, subjectId, chantier);
+            d.setDemande(clip(demande, MAX_DEMANDE));
+            if (label != null && !label.isBlank()) {
+                d.setLabel(clip(label, MAX_LABEL));
+            }
+            d.setPhase(JarvisWorkPhase.QUEUED.name());
+            repository.saveAndFlush(d);
+            return true;
+        } catch (RuntimeException e) {
+            log.warn("Commande enchaînée non rangée ({})", e.getClass().getSimpleName());
+            return false;
+        }
+    }
+
+    /** Vrai si une commande attend déjà sur ce fil (au plus une par fil). */
+    public boolean hasQueued(UUID userId, UUID subjectId, Integer chantier) {
+        try {
+            return !(chantier == null ? repository.queuedCommon(userId, subjectId)
+                    : repository.queued(userId, subjectId, chantier)).isEmpty();
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /** La commande enchaînée part : elle redevient une offre fraîche ; vrai si elle était bien en attente. */
+    public boolean release(UUID userId, UUID delegationId) {
+        try {
+            return repository.release(userId, delegationId, now()) == 1;
+        } catch (RuntimeException e) {
+            log.warn("Commande enchaînée non libérée ({})", e.getClass().getSimpleName());
+            return false;
+        }
+    }
+
+    /** La ligne d'un travail du compte, ou {@code null}. */
+    public JarvisDelegation find(UUID userId, UUID delegationId) {
+        try {
+            return repository.findByUserIdAndDelegationId(userId, delegationId).orElse(null);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
     /** Un nouveau travail est parti sur ce fil : le « oui » qu'il attendait n'est plus attendu. */
     private void answered(UUID userId, UUID subjectId, Integer chantier) {
         try {
@@ -306,6 +358,14 @@ public class JarvisDelegationStore implements JarvisMailPurge {
                 if (repository.close(d.getId(), now) == 1) {
                     closed++;
                     closeLink(d, true);
+                }
+            }
+            // F-270 / SF-270-04 — une commande enchaînée jamais libérée (le travail devant elle n'a jamais fini) est
+            // abandonnée : jamais gardée pour plus tard.
+            for (JarvisDelegation d : repository.staleQueued(now.minus(QUEUE_MAX_WAIT), PageRequest.of(0, SWEEP_BATCH))) {
+                if (repository.finishWith(d.getUserId(), d.getDelegationId(), JarvisWorkPhase.CANCELLED.name(), now)
+                        == 1) {
+                    closed++;
                 }
             }
             repository.purgeBefore(now.minus(RETENTION));

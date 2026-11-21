@@ -423,10 +423,19 @@ public final class JarvisFastBrainPrompt {
                         + "« jarvis » pour une demande qui ne vise aucun sujet précis (fil Jarvis)."));
         properties.put("chantier", Map.of("type", List.of("integer", "null"),
                 "description", "Numéro du chantier visé s'il est nommé, sinon null."));
+        // F-270 / SF-270-04 (D4) — dans la description de l'outil (jamais dans la consigne système).
+        properties.put("relation", Map.of("type", "string", "enum", List.of("precision", "nouvelle"),
+                "description", "Face au travail qui tourne déjà sur ce même fil (même sujet, même chantier) : "
+                        + "« precision » si la demande élargit ou corrige CE travail, même action sur un objet voisin "
+                        + "(pendant « regarde les tickets du sprint 9 » : « regarde aussi ceux du sprint 10 ») ; "
+                        + "« nouvelle » si c'est une AUTRE action (relancer, lancer, déployer, tester, corriger, écrire "
+                        + "pendant une lecture, ou l'inverse), même introduite par « et » ou « aussi » (pendant « regarde "
+                        + "les tickets » : « et relance aussi le pipeline de dev »). Aucun travail en cours sur ce fil : "
+                        + "« precision »."));
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
         schema.put("properties", properties);
-        schema.put("required", List.of("demande", "label", "annonce", "sujet", "chantier"));
+        schema.put("required", List.of("demande", "label", "annonce", "sujet", "chantier", "relation"));
         schema.put("additionalProperties", false);
         return new AgentTool(TOOL_NAME,
                 "Confie la demande à l'agent Opus du terminal, qui a tous les outils et prend le temps qu'il faut. "

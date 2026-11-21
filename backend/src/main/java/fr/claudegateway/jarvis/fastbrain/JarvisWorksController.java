@@ -5,7 +5,9 @@ import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -51,6 +53,29 @@ public class JarvisWorksController {
     public WorksResponse list() {
         UUID userId = currentUser.requireId();
         return new WorksResponse(service.list(userId).stream().map(WorkView::of).toList());
+    }
+
+    /** F-270 / SF-270-04 — l'issue d'une libération : poste éteint ⇒ son nom, pour la phrase dite. */
+    public record ReleaseView(String status, String host) {
+    }
+
+    /** F-270 / SF-270-04 — la commande enchaînée part (le travail devant elle est fini). */
+    @PostMapping("/jarvis/works/{id}/release")
+    public ResponseEntity<ReleaseView> release(@PathVariable UUID id) {
+        UUID userId = currentUser.requireId();
+        JarvisWorksService.Release r = service.release(userId, id);
+        return switch (r.status()) {
+            case RELEASED -> ResponseEntity.ok(new ReleaseView("RELEASED", null));
+            case HOST_OFFLINE -> ResponseEntity.status(HttpStatus.CONFLICT).body(new ReleaseView("HOST_OFFLINE", r.host()));
+            case NOT_FOUND -> ResponseEntity.notFound().build();
+        };
+    }
+
+    /** F-270 / SF-270-04 — annule une commande enchaînée (ou un tour direct pas encore parti). */
+    @DeleteMapping("/jarvis/works/{id}")
+    public ResponseEntity<Void> cancel(@PathVariable UUID id) {
+        UUID userId = currentUser.requireId();
+        return service.cancel(userId, id) ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
     }
 
     @PostMapping("/jarvis/works")

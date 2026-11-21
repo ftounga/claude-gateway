@@ -26,7 +26,11 @@
     { "id": "d03", "kind": "ecran", "show": true, "segments": ["Montre-moi l'architecture AWS en 3D."], "pauses": [] },
     { "id": "d04", "kind": "normale", "segments": ["Dessine l'architecture Airflow."], "pauses": [] },
     { "id": "f02", "kind": "normale", "segments": ["Sur le sujet facturation, relance le pipeline de dev."], "pauses": [] },
-    { "id": "f03", "kind": "court", "segments": ["Laisse tomber."], "pauses": [] }
+    { "id": "f03", "kind": "court", "segments": ["Laisse tomber."], "pauses": [] },
+    { "id": "f04", "kind": "normale", "segments": ["Sur le sujet facturation, regarde s'il y a des tickets du backlog que je peux prendre."], "pauses": [] },
+    { "id": "f05", "kind": "normale", "segments": ["Et regarde aussi ceux du sprint 10."], "pauses": [] },
+    { "id": "f06", "kind": "normale", "segments": ["Et relance aussi le pipeline de dev de facturation."], "pauses": [] },
+    { "id": "f07", "kind": "normale", "segments": ["Arrête facturation."], "pauses": [] }
   ],
   "scenarios": [
     { "id": "conversation", "label": "Conversation suivie", "voice": "fr-1",
@@ -54,6 +58,10 @@
     { "id": "pendant-qu-il-pense", "label": "F-270 S4 : parler pendant qu'il pense (la phrase est gardée, puis traitée)", "voice": "george",
       "steps": [{ "say": "n02" }, { "say": "n08", "after": "fin", "gapMs": 1500, "tag": "pense" }, { "say": "n02" },
         { "say": "f03", "after": "fin", "gapMs": 1200, "tag": "laisse-tomber" }, { "say": "n11" }] },
+    { "id": "precision-ou-nouvelle", "label": "F-270 S3/S6 : précision ou nouvelle commande, puis arrêt nommé (poste simulé : facturation)", "voice": "george",
+      "poste": { "nom": "facturation", "tourMs": 30000 },
+      "steps": [{ "say": "f04" }, { "say": "f05", "tag": "precision", "relation": "precision" },
+        { "say": "f06", "tag": "nouvelle", "relation": "nouvelle" }, { "say": "f07", "tag": "arret" }] },
     { "id": "temoin", "label": "Témoin : micro factice de Chrome (fichier), sans le mélangeur du banc", "voice": "fr-1", "chromeMic": "n02" }
   ]
 }

@@ -33,6 +33,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 
 import { AtelierConfirmRequest, AtelierProofEvent, AtelierStreamDone, AtelierStreamHandlers, WorkspaceSummary } from '../core/models/atelier.models';
 import { AtelierService } from '../core/services/atelier.service';
+import { AutonomyService } from '../core/services/autonomy.service';
 import { LiveTerminalService } from '../core/services/live-terminal.service';
 import { NotificationCenterService } from '../core/services/notification-center.service';
 import { DictationError, DictationService } from '../core/services/dictation.service';
@@ -63,8 +64,8 @@ import { MarkdownPipe } from '../shared/markdown.pipe';
 import { EndOfSpeech, MicMeter, SPEECH_LEVEL, silenceMs } from './jarvis-mic-meter';
 import { asksConfirmation, classifyConfirmation, confirmationQuestion } from './jarvis-confirm';
 import {
-  ArmedConfirmation, ArmedConfirmations, JarvisWorksClient, confirmationVerdict, isOtherRequest, names, newWorkId,
-  shortName, whichQuestion,
+  ArmedConfirmation, ArmedConfirmations, JARVIS_WORKS_POLL_MS, JarvisWork, JarvisWorksClient, confirmationVerdict, isLive,
+  isOtherRequest, matchWorks, names, newWorkId, shortName, stopTarget, whichQuestion,
 } from './jarvis-works';
 import {
   ENROLL_COUNT, MIN_WORD_FRAMES, TemplateWakeWordEngine, WakeEvent, enrollThreshold, readWakeProfile,
@@ -416,12 +417,12 @@ export class JarvisComponent implements OnInit, OnDestroy {
   /** Le cerveau rapide est-il allumé (coupe-circuit D17) ? Éteint : l'écran fait exactement ce qu'il faisait. */
   readonly fastBrainOn = signal(false);
   /** Les délégations vivantes, visibles sous l'orbe. */
-  readonly delegations = signal<{ id: string; label: string; subjectId: string }[]>([]);
+  readonly delegations = signal<{ id: string; label: string; subjectId: string; chantier?: number | null }[]>([]);
   /** La file des fins de délégation à annoncer (D13). */
   private readonly announcements = new AnnouncementQueue();
   private announceTimer: ReturnType<typeof setInterval> | null = null;
   // ---- F-270 / SF-270-02 (D1, D2) : le tour vocal en fond, la confirmation rattachée à son travail ----
-  private readonly works = inject(JarvisWorksClient);
+  private readonly works_ = inject(JarvisWorksClient);
   /** Les « Vous confirmez ? » en attente, chacun rattaché à son travail (sujet, chantier, nom). */
   private readonly armed = new ArmedConfirmations();
   /** « LDIC-325 ou agenor ? » a été demandé : la réponse choisit, avec le oui/non déjà dit. */
@@ -647,6 +648,126 @@ export class JarvisComponent implements OnInit, OnDestroy {
   private readonly localDelegations = new Set<string>();
   private readonly noticePollMs = inject(JARVIS_NOTICE_POLL_MS);
   private noticeTimer: ReturnType<typeof setInterval> | null = null;
+
+  // ---- F-270 / SF-270-04 : les travaux relus, les commandes enchaînées, l'arrêt ciblé ----
+  private readonly worksPollMs = inject(JARVIS_WORKS_POLL_MS);
+  private readonly autonomy = inject(AutonomyService);
+  /** Les travaux du compte lus à la passerelle (tous pods, courses comprises). */
+  readonly works = signal<JarvisWork[]>([]);
+  /** Les commandes enchaînées derrière un travail vivant de leur fil : lancées à sa fin (D4). */
+  private queuedWorks: { delegation: FastDelegation; text: string; heardBeforeCut: string | null }[] = [];
+  private worksTick = 0;
+
+  /** La relecture des travaux : toutes les 4 s en conversation ou tant qu'un travail tourne, toutes les 16 s sinon. */
+  private startWorks(): void {
+    if (this.worksPollMs <= 0) {
+      return;
+    }
+    const timer = setInterval(() => this.zone.run(() => {
+      const busy = this.conversation.active || this.delegations().length > 0 || this.queuedWorks.length > 0
+        || this.works().some(isLive);
+      if (busy || this.worksTick++ % 4 === 0) {
+        void this.refreshWorks();
+      }
+    }), this.worksPollMs);
+    this.destroyRef.onDestroy(() => clearInterval(timer));
+    void this.refreshWorks();
+  }
+
+  private async refreshWorks(): Promise<void> {
+    if (this.presentation()) {
+      return;
+    }
+    const list = await this.works_.list();
+    if (list) {
+      this.works.set(list);
+    }
+    this.releaseQueued();
+  }
+
+  /** Vrai si le fil (sujet, chantier) a encore un travail vivant, lancé ici ou lu à la passerelle. */
+  private threadBusy(subjectId: string, chantier: number | null, except: string): boolean {
+    const local = this.delegations().some((d) => d.id !== except && d.subjectId === subjectId
+      && (d.chantier ?? null) === chantier);
+    const remote = this.works().some((w) => w.id !== except && isLive(w) && w.subjectId === subjectId
+      && (w.chantier ?? null) === chantier);
+    return local || remote;
+  }
+
+  /**
+   * D4 — une commande enchaînée part dès que le travail devant elle est fini : libérée à la passerelle (qui l'abandonne
+   * si le poste est éteint, S7), puis ouverte comme une délégation.
+   */
+  private releaseQueued(): void {
+    for (const q of [...this.queuedWorks]) {
+      const subjectId = q.delegation.subjectId;
+      if (!subjectId || this.threadBusy(subjectId, q.delegation.chantier ?? null, q.delegation.delegationId)) {
+        continue;
+      }
+      this.queuedWorks = this.queuedWorks.filter((x) => x !== q);
+      void this.works_.release(q.delegation.delegationId).then((outcome) => this.zone.run(() => {
+        const label = (q.delegation.label ?? '').trim() || 'cette commande';
+        if (outcome.status === 'RELEASED') {
+          this.trace.mark('queued_release');
+          this.startDelegation({ ...q.delegation, queued: false }, q.text, q.heardBeforeCut);
+        } else if (outcome.status === 'HOST_OFFLINE') {
+          this.trace.mark('queued_offline');
+          this.announcements.push({ label: '', subjectId, confirm: false,
+            phrase: `Le poste ${outcome.host ?? 'du sujet'} est éteint : je ne lance pas ${label}.` });
+          this.flushAnnouncements();
+        }
+      }));
+    }
+  }
+
+  /**
+   * D7 — « arrête facturation » : le travail nommé (délégation ou tour en fond sur SON fil, commande enchaînée, course
+   * autonome). Rend vrai si la parole visait un travail (arrêté, ou introuvable et dit).
+   */
+  private async stopNamed(text: string): Promise<boolean> {
+    const said = stopTarget(text);
+    if (!said) {
+      return false;
+    }
+    const subjects = new Map(this.subjects().map((w) => [w.id, w.name]));
+    const local = this.delegations().map((d) => ({ kind: 'local' as const, id: d.id, subjectId: d.subjectId,
+      chantier: d.chantier ?? null, name: shortName(d.label, d.chantier, subjects.get(d.subjectId)), label: d.label,
+      subjectName: subjects.get(d.subjectId) ?? '' }));
+    const queued = this.queuedWorks.map((q) => ({ kind: 'queued' as const, id: q.delegation.delegationId,
+      subjectId: q.delegation.subjectId ?? '', chantier: q.delegation.chantier ?? null,
+      name: shortName(q.delegation.label, q.delegation.chantier, subjects.get(q.delegation.subjectId ?? '')),
+      label: q.delegation.label ?? '', subjectName: subjects.get(q.delegation.subjectId ?? '') ?? '' }));
+    const known = new Set([...local, ...queued].map((c) => c.id));
+    const remote = this.works().filter((w) => (isLive(w) || w.phase === 'QUEUED') && !known.has(w.id))
+      .map((w) => ({ kind: w.origin === 'COURSE' ? 'course' as const : 'remote' as const, id: w.id,
+        subjectId: w.subjectId, chantier: w.chantier ?? null, name: w.name, label: w.label, subjectName: w.subjectName }));
+    const all = [...local, ...queued, ...remote];
+    if (all.length === 0) {
+      return false; // rien ne tourne : la parole suit son chemin (cerveau rapide)
+    }
+    const found = matchWorks(said, all);
+    if (found.length === 0) {
+      await this.say(`Je ne trouve pas ${said} parmi les travaux en cours.`);
+      return true;
+    }
+    for (const w of found) {
+      this.trace.mark('stop_named', w.kind);
+      if (w.kind === 'queued' || (w.kind === 'remote' && this.works().find((x) => x.id === w.id)?.phase === 'QUEUED')) {
+        this.queuedWorks = this.queuedWorks.filter((q) => q.delegation.delegationId !== w.id);
+        void this.works_.cancel(w.id);
+      } else if (w.kind === 'course') {
+        this.autonomy.stop(w.subjectId, w.chantier).subscribe({ error: () => undefined });
+      } else {
+        if (w.kind === 'local') {
+          this.brainEnd.set('cancel');
+          this.delegations.update((list) => list.filter((d) => d.id !== w.id));
+        }
+        this.atelier.interruptChat(w.subjectId, w.chantier).subscribe({ error: () => undefined });
+      }
+    }
+    await this.say(`J’arrête ${found.map((w) => w.name).filter((n, i, a) => a.indexOf(n) === i).join(' et ')}.`);
+    return true;
+  }
 
   /** Le sondage des annonces : au chargement, puis toutes les 60 s ; arrêté à la sortie de l'écran. */
   private startNotices(): void {
@@ -1389,6 +1510,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.loadInterviewOffer();
     this.loadMailBrief();
     this.startNotices();
+    this.startWorks();
     this.refreshCosts();
     this.atelier.listWorkspaces().subscribe({
       next: (all) => {
@@ -3046,6 +3168,9 @@ export class JarvisComponent implements OnInit, OnDestroy {
       this.state.set('repos');
       return;
     }
+    if (await this.stopNamed(text)) {
+      return;
+    }
     if (isStopCommand(text)) {
       // SF-231-03 — l'interruption par la parole : « stop » arrête le travail en cours, comme le bouton du terminal.
       const id = this.subjectId();
@@ -3055,7 +3180,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
         const last = running[running.length - 1];
         this.brainEnd.set('cancel');
         this.delegations.set(running.slice(0, -1));
-        this.atelier.interruptChat(last.subjectId).subscribe({ error: () => undefined });
+        this.atelier.interruptChat(last.subjectId, last.chantier ?? null).subscribe({ error: () => undefined });
         await this.say(`J’arrête la recherche sur ${last.label}.`);
       } else if (this.turnRunning && id) {
         this.brainEnd.set('cancel');
@@ -3172,7 +3297,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
                                ack: string): Promise<void> {
     const heardBeforeCut = this.heardBeforeCut;
     const id = newWorkId();
-    const started = this.works.announce({ id, subjectId, chantier, label }).then(() => this.zone.run(() =>
+    const started = this.works_.announce({ id, subjectId, chantier, label }).then(() => this.zone.run(() =>
       this.startDelegation({ delegationId: id, subjectId, chantier, label, announce: '', demande: text,
         automatic: false, reason: null }, text, heardBeforeCut)));
     this.trace.mark('background_turn', `chantier=${chantier ?? '-'}`);
@@ -3344,6 +3469,12 @@ export class JarvisComponent implements OnInit, OnDestroy {
           sayNow(delegation.announce);
         }
         delegatedId = delegation.delegationId;
+        if (delegation.queued) {
+          // F-270 / SF-270-04 (D4) — enchaînée : elle part à la fin du travail vivant de son fil.
+          this.trace.mark('queued');
+          this.queuedWorks.push({ delegation, text: understood ?? text, heardBeforeCut });
+          return;
+        }
         this.startDelegation(delegation, understood ?? text, heardBeforeCut);
       }),
       onFallback: () => {
@@ -3501,7 +3632,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       return;
     }
     const label = (delegation.label ?? '').trim() || 'votre demande';
-    const entry = { id: delegation.delegationId, label, subjectId };
+    const entry = { id: delegation.delegationId, label, subjectId, chantier: delegation.chantier ?? null };
     this.localDelegations.add(delegation.delegationId);
     const startedAt = Date.now();
     this.delegations.update((list) => [...list, entry]);
@@ -3536,6 +3667,8 @@ export class JarvisComponent implements OnInit, OnDestroy {
       const line = failed ? { phrase: '', cut: false } : oralLine(reply);
       const phrase = failed ? 'La recherche n’a pas abouti ; le détail est au terminal.'
         : this.portraitSafe(line.phrase) || 'C’est fait. Le détail est à l’écran.';
+      // F-270 / SF-270-04 — la commande enchaînée derrière ce travail peut partir.
+      this.releaseQueued();
       this.announcements.push({ label, phrase, subjectId, chantier: delegation.chantier ?? null,
         confirm: !failed && asksConfirmation(phrase),
         delegationId: delegation.delegationId, cut: line.cut, invitation: failed ? null : invitationOf(reply) });
@@ -3600,8 +3733,11 @@ export class JarvisComponent implements OnInit, OnDestroy {
   private flushAnnouncements(): void {
     const state = this.state();
     // F-272 / SF-272-05 — en pause, la file attend la reprise (démo du 17/11 : la réponse arrivée après la pause).
+    // F-270 / SF-270-04 — jamais par-dessus le PO : ni transcription en cours, ni voix détectée en ce moment (la
+    // transcription n'arrive qu'après ~1 s de parole : fermer l'écoute à cet instant perdait la phrase, banc du 18/11).
+    const speaking = this.speechActive || (state === 'ecoute' && (this.voicedMs ?? 0) >= MIN_VOICED_MS);
     const free = state !== 'parole' && state !== 'reflexion' && !this.heardText() && !this.pendingConfirm
-      && this.conversation.mode() !== 'paused';
+      && !speaking && this.conversation.mode() !== 'paused';
     const item = this.announcements.next(free);
     if (!item) {
       if (this.announcements.size > 0 && !this.announceTimer) {

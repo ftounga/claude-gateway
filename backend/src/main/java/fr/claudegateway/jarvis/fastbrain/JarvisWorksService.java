@@ -87,12 +87,83 @@ public class JarvisWorksService {
         };
     }
 
+    // ------------------------------------------------------------------ F-270 / SF-270-04 : l'enchaînement
+
+    /** Le poste du sujet est-il éteint ? Facultatif (sans lui : jamais éteint). */
+    private fr.claudegateway.jarvis.state.JarvisStateTurnMeter hosts;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setHosts(fr.claudegateway.jarvis.state.JarvisStateTurnMeter hosts) {
+        this.hosts = hosts;
+    }
+
+    /** L'issue d'une libération : partie, poste éteint (abandonnée), introuvable. */
+    public record Release(Status status, String host) {
+        public enum Status { RELEASED, HOST_OFFLINE, NOT_FOUND }
+    }
+
+    /**
+     * La commande enchaînée part (le travail devant elle est fini) : poste éteint ⇒ abandonnée et dite par l'écran,
+     * jamais gardée (décision PO du 15/11) ; sinon elle redevient une offre que le tour du fil prendra.
+     */
+    public Release release(UUID userId, UUID delegationId) {
+        JarvisDelegation d = store.find(userId, delegationId);
+        if (d == null || d.getFinishedAt() != null || !JarvisWorkPhase.QUEUED.name().equals(d.getPhase())) {
+            return new Release(Release.Status.NOT_FOUND, null);
+        }
+        Workspace subject = workspaces.findByIdAndUserId(d.getSubjectId(), userId).orElse(null);
+        if (subject == null) {
+            store.finished(userId, delegationId, JarvisWorkPhase.CANCELLED);
+            return new Release(Release.Status.NOT_FOUND, null);
+        }
+        if (offline(userId, subject)) {
+            store.finished(userId, delegationId, JarvisWorkPhase.CANCELLED);
+            return new Release(Release.Status.HOST_OFFLINE, hostName(subject));
+        }
+        return new Release(store.release(userId, delegationId) ? Release.Status.RELEASED : Release.Status.NOT_FOUND,
+                null);
+    }
+
+    /** Annule une commande enchaînée ou un tour direct pas encore pris (« arrête recette ») ; vrai si annulé. */
+    public boolean cancel(UUID userId, UUID delegationId) {
+        JarvisDelegation d = store.find(userId, delegationId);
+        if (d == null || d.getFinishedAt() != null || d.getTakenAt() != null) {
+            return false;
+        }
+        store.finished(userId, delegationId, JarvisWorkPhase.CANCELLED);
+        return true;
+    }
+
+    private boolean offline(UUID userId, Workspace subject) {
+        try {
+            return hosts != null && subject.getHostId() != null
+                    && Boolean.TRUE.equals(hosts.hostOffline(userId, subject));
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /** Le nom du poste du sujet, pour la phrase dite (« Le poste CAGIP est éteint »). */
+    private String hostName(Workspace subject) {
+        return hostNames == null || subject.getHostId() == null ? null
+                : hostNames.findById(subject.getHostId()).map(fr.claudegateway.runner.host.RunnerHost::getName)
+                        .orElse(null);
+    }
+
+    private fr.claudegateway.runner.host.RunnerHostRepository hostNames;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setHostNames(fr.claudegateway.runner.host.RunnerHostRepository hostNames) {
+        this.hostNames = hostNames;
+    }
+
     private JarvisWorks.Work ofDelegation(JarvisDelegation d, Instant now) {
         Instant since = d.getCreatedAt().toInstant();
         Instant ended = d.getFinishedAt() == null ? null : d.getFinishedAt().toInstant();
         JarvisWorkPhase phase;
         if (ended == null) {
-            if (d.getTakenAt() == null && since.isBefore(now.minus(JarvisDelegationRegistry.GRACE))) {
+            boolean queued = JarvisWorkPhase.QUEUED.name().equals(d.getPhase());
+            if (!queued && d.getTakenAt() == null && since.isBefore(now.minus(JarvisDelegationRegistry.GRACE))) {
                 return null; // jamais pris : le balayage la clôt (comme running())
             }
             phase = JarvisWorkPhase.of(d.getPhase(), JarvisWorkPhase.THINKING);

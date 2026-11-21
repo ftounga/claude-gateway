@@ -5,7 +5,10 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Subject, of, throwError } from 'rxjs';
 import { JarvisUtterance } from '../core/models/jarvis.models';
 
-import { JarvisWorksClient } from './jarvis-works';
+import { JARVIS_WORKS_POLL_MS, JarvisWorksClient } from './jarvis-works';
+import { FastDelegation } from './jarvis-fast-brain';
+import { AutonomyService } from '../core/services/autonomy.service';
+import { AutonomyRun } from '../core/models/autonomy.models';
 import { BUDGET_SOFT_NOTICE, JARVIS_USER_AGENT, JarvisComponent, joinUtterance, UNLOCK_ASK_PHRASE, UNLOCK_REFUSED_PHRASE, companionMicMessage, companionOffer, dictationMessage, euros } from './jarvis.component';
 import { JarvisSceneBus } from './scenes/jarvis-scene-bus.service';
 import { testUniverse } from './scenes/jarvis-universe.fixture';
@@ -79,6 +82,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
   let mailClient: jasmine.SpyObj<JarvisMailClient>;
   let noticesClient: jasmine.SpyObj<JarvisNoticesClient>;
   let worksClient: jasmine.SpyObj<JarvisWorksClient>;
+  let autonomyService: jasmine.SpyObj<AutonomyService>;
   let fast: FastBrainHandlers | null;
   let renderProbe: RenderProbe;
   let loader3d: jasmine.Spy<() => Promise<JarvisEngineFactory>>;
@@ -120,8 +124,13 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     noticesClient = jasmine.createSpyObj<JarvisNoticesClient>('JarvisNoticesClient', ['open', 'seen', 'spoken', 'delegationSpoken']);
     noticesClient.delegationSpoken.and.returnValue(of(undefined));
     // F-270 / SF-270-02 — l'annonce d'un tour direct à la passerelle (best-effort).
-    worksClient = jasmine.createSpyObj<JarvisWorksClient>('JarvisWorksClient', ['announce']);
+    worksClient = jasmine.createSpyObj<JarvisWorksClient>('JarvisWorksClient', ['announce', 'list', 'release', 'cancel']);
     worksClient.announce.and.resolveTo(true);
+    worksClient.list.and.resolveTo([]);
+    worksClient.release.and.resolveTo({ status: 'RELEASED' });
+    worksClient.cancel.and.resolveTo();
+    autonomyService = jasmine.createSpyObj<AutonomyService>('AutonomyService', ['stop']);
+    autonomyService.stop.and.returnValue(of({} as AutonomyRun));
     noticesClient.open.and.returnValue(of([]));
     noticesClient.spoken.and.returnValue(of({} as JarvisNotice));
     fastBrain.warm.and.resolveTo(false);
@@ -206,6 +215,8 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
         { provide: JarvisMailClient, useValue: mailClient },
         { provide: JarvisNoticesClient, useValue: noticesClient },
         { provide: JarvisWorksClient, useValue: worksClient },
+        { provide: JARVIS_WORKS_POLL_MS, useValue: 0 },
+        { provide: AutonomyService, useValue: autonomyService },
         { provide: JARVIS_NOTICE_POLL_MS, useValue: 0 },
         { provide: JARVIS_LOOP_WATCHDOG_MS, useValue: 0 },
         { provide: JARVIS_GRACE_MS, useFactory: () => graceMs },
@@ -4134,6 +4145,92 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     return { jarvis: fixture.componentInstance, fixture };
   }
 
+  // ---- F-270 / SF-270-04 : précision ou nouvelle commande, arrêt ciblé ----
+
+  /** Une délégation lancée par le cerveau rapide (sans question). */
+  function delegate(jarvis: JarvisComponent, d: Partial<FastDelegation> & { delegationId: string; subjectId: string }) {
+    void jarvis.handle(`Demande ${d.delegationId}`);
+    flushMicrotasks();
+    fast!.onDelegated({ chantier: null, label: 'tests', announce: '', demande: 'x', automatic: false, reason: null,
+      ...d });
+    fastDone!('ok');
+    flushMicrotasks();
+  }
+
+  it('F-270 / SF-270-04 — une commande enchaînée part à la fin du travail de son fil, pas avant', fakeAsync(() => {
+    const jarvis = fastOn();
+    delegate(jarvis, { delegationId: 'd-1', subjectId: 'w-1', label: 'lecture du backlog' });
+    const running = handlers!;
+    expect(atelier.streamChat).toHaveBeenCalledTimes(1);
+    delegate(jarvis, { delegationId: 'd-2', subjectId: 'w-1', label: 'pipeline de dev', queued: true,
+      relation: 'nouvelle' });
+    expect(atelier.streamChat).toHaveBeenCalledTimes(1);
+    expect(worksClient.release).not.toHaveBeenCalled();
+
+    running.onDone({ reply: '🎙 Quatre tickets du sprint 9.', actions: [], messageId: 'm' });
+    flushMicrotasks();
+    expect(worksClient.release).toHaveBeenCalledWith('d-2');
+    expect(atelier.streamChat).toHaveBeenCalledTimes(2);
+    expect(atelier.streamChat.calls.mostRecent().args[0]).toBe('w-1');
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-270 / SF-270-04 — une fin de travail n’est jamais annoncée pendant que le PO parle', fakeAsync(() => {
+    const jarvis = fastOn();
+    delegate(jarvis, { delegationId: 'd-1', subjectId: 'w-1', label: 'lecture du backlog' });
+    const running = handlers!;
+    jarvis.state.set('ecoute');
+    jarvis['speechActive'] = true;
+    voice.speak.calls.reset();
+    running.onDone({ reply: '🎙 Quatre tickets du sprint 9.', actions: [], messageId: 'm' });
+    flushMicrotasks();
+    tick(5_000);
+    expect(voice.speak.calls.allArgs().some((a) => String(a[0]).includes('Quatre tickets'))).toBeFalse();
+    jarvis['speechActive'] = false;
+    jarvis.state.set('repos');
+    tick(5_000);
+    flushMicrotasks();
+    expect(voice.speak.calls.allArgs().some((a) => String(a[0]).includes('Quatre tickets'))).toBeTrue();
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-270 / SF-270-04 (S7) — poste éteint au départ : la commande enchaînée est abandonnée et dite', fakeAsync(() => {
+    worksClient.release.and.resolveTo({ status: 'HOST_OFFLINE', host: 'CAGIP' });
+    const jarvis = fastOn();
+    delegate(jarvis, { delegationId: 'd-1', subjectId: 'w-1', label: 'lecture du backlog' });
+    const running = handlers!;
+    delegate(jarvis, { delegationId: 'd-2', subjectId: 'w-1', label: 'les tests', queued: true });
+    running.onDone({ reply: '🎙 Fini.', actions: [], messageId: 'm' });
+    flushMicrotasks();
+    tick(3_000);
+    flushMicrotasks();
+    expect(atelier.streamChat).toHaveBeenCalledTimes(1);
+    expect(voice.speak.calls.allArgs().some((a) => a[0] === 'Le poste CAGIP est éteint : je ne lance pas les tests.'))
+      .toBeTrue();
+    jarvis.ngOnDestroy();
+  }));
+
+  it('F-270 / SF-270-04 (D7) — « arrête CAGIP » arrête ce travail-là, sur son fil ; un nom inconnu est dit',
+    fakeAsync(() => {
+      const jarvis = fastOn();
+      delegate(jarvis, { delegationId: 'd-1', subjectId: 'w-1', label: 'tickets bloqués' });
+      delegate(jarvis, { delegationId: 'd-2', subjectId: 'w-2', label: 'les tests', chantier: 3 });
+      atelier.interruptChat.calls.reset();
+
+      void jarvis.handle('Arrête CAGIP.');
+      flushMicrotasks();
+      expect(atelier.interruptChat).toHaveBeenCalledOnceWith('w-2', 3);
+      expect(voice.speak).toHaveBeenCalledWith('J’arrête chantier 3.', jasmine.anything());
+      expect(jarvis.delegations().map((d) => d.id)).toEqual(['d-1']);
+
+      void jarvis.handle('Arrête facturation.');
+      flushMicrotasks();
+      expect(voice.speak).toHaveBeenCalledWith('Je ne trouve pas facturation parmi les travaux en cours.',
+        jasmine.anything());
+      expect(atelier.interruptChat).toHaveBeenCalledTimes(1);
+      jarvis.ngOnDestroy();
+    }));
+
   it('F-235 / SF-235-05 — « annule » arrête la dernière délégation vivante et le dit', fakeAsync(() => {
     const jarvis = fastOn();
     void jarvis.handle('Regarde les tickets');
@@ -4145,7 +4242,7 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
 
     void jarvis.handle('annule');
     flushMicrotasks();
-    expect(atelier.interruptChat).toHaveBeenCalledWith('w-1');
+    expect(atelier.interruptChat).toHaveBeenCalledWith('w-1', null);
     expect(voice.speak).toHaveBeenCalledWith('J’arrête la recherche sur tickets bloqués.', 'w-1');
     expect(jarvis.delegations()).toEqual([]);
     jarvis.ngOnDestroy();

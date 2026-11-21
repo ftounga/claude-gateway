@@ -95,13 +95,39 @@ public class JarvisFastBrainService {
 
     /** Une délégation : ce qu'Opus doit faire, et ce que Jarvis dit en la lançant. */
     public record Delegation(UUID delegationId, String demande, String label, String annonce, UUID subjectId,
-            Integer chantier, boolean automatic, String reason, String diagnostic) {
+            Integer chantier, boolean automatic, String reason, String diagnostic, String relation, boolean queued) {
+
+        public Delegation(UUID delegationId, String demande, String label, String annonce, UUID subjectId,
+                Integer chantier, boolean automatic, String reason, String diagnostic) {
+            this(delegationId, demande, label, annonce, subjectId, chantier, automatic, reason, diagnostic, null, false);
+        }
 
         public Delegation(UUID delegationId, String demande, String label, String annonce, UUID subjectId,
                 Integer chantier, boolean automatic, String reason) {
             this(delegationId, demande, label, annonce, subjectId, chantier, automatic, reason, null);
         }
+
+        /** F-270 / SF-270-04 — la même délégation, vers une autre cible (relation conservée). */
+        Delegation retarget(String annonce, UUID subjectId, Integer chantier) {
+            return new Delegation(delegationId, demande, label, annonce, subjectId, chantier, automatic, reason,
+                    diagnostic, relation, queued);
+        }
+
+        /** F-270 / SF-270-04 — enchaînée derrière le travail vivant de son fil (annonce qui le dit). */
+        Delegation queuedBehind(String annonce) {
+            return new Delegation(delegationId, demande, label, annonce, subjectId, chantier, automatic, reason,
+                    diagnostic, relation, true);
+        }
+
+        /** F-270 / SF-270-04 — « nouvelle » : un autre travail que celui qui tourne sur le fil. */
+        boolean isNew() {
+            return RELATION_NEW.equals(relation);
+        }
     }
+
+    /** F-270 / SF-270-04 — la relation qualifiée par le cerveau rapide dans {@code deleguer}. */
+    static final String RELATION_NEW = "nouvelle";
+    static final String RELATION_PRECISION = "precision";
 
     /** Le résultat d'un échange. */
     public record Outcome(Kind kind, String spokenText, Delegation delegation, String reason, String model,
@@ -829,8 +855,7 @@ public class JarvisFastBrainService {
         if (JARVIS_THREAD_TARGET.equals(d.subjectId())) {
             // F-245 / SF-245-02 (D2b, D4) — une demande générale va au fil Jarvis, sans question.
             UUID thread = jarvisThreadOf(request.userId());
-            d = new Delegation(d.delegationId(), d.demande(), d.label(), d.annonce(), thread, null, d.automatic(),
-                    d.reason());
+            d = d.retarget(d.annonce(), thread, null);
         }
         if (d.subjectId() == null) {
             return new Outcome(Kind.ANSWER, ASK_SUBJECT, null, "no_subject", outcome.model(), outcome.firstTokenMs(),
@@ -842,21 +867,49 @@ public class JarvisFastBrainService {
                     outcome.understood(), outcome.shows());
         }
         UUID linkId = null;
+        boolean queue = false;
         if (delegations.live(request.userId(), d.subjectId(), d.chantier())) {
-            String label = d.label() == null || d.label().isBlank() ? "" : " : " + d.label().strip()
-                    .replaceAll("[.!?…]+$", "");
-            d = new Delegation(d.delegationId(), d.demande(), d.label(), ADDED_TO_RUNNING + label + ".",
-                    d.subjectId(), d.chantier(), d.automatic(), d.reason());
+            if (d.isNew()) {
+                // F-270 / SF-270-04 (D4) — une AUTRE commande sur un fil vivant : enchaînée derrière le travail en
+                // cours (une au plus par fil), jamais fondue en précision.
+                if (delegations.hasQueued(request.userId(), d.subjectId(), d.chantier())) {
+                    return new Outcome(Kind.ANSWER, QUEUE_FULL, null, REASON_QUEUE_FULL, outcome.model(),
+                            outcome.firstTokenMs(), outcome.costUsd(), outcome.guards());
+                }
+                d = d.queuedBehind(queuedAnnounce(delegations.runningLabel(request.userId(), d.subjectId(),
+                        d.chantier())));
+                queue = true;
+            } else {
+                String label = d.label() == null || d.label().isBlank() ? "" : " : " + d.label().strip()
+                        .replaceAll("[.!?…]+$", "");
+                d = d.retarget(ADDED_TO_RUNNING + label + ".", d.subjectId(), d.chantier());
+            }
         } else if (links != null) {
             // F-245 / SF-245-03 (D5) — une délégation vers un sujet ou un chantier laisse une ligne-lien « en cours »
             // dans le fil Jarvis (aucune pour le fil Jarvis lui-même, ni pour une précision d'un tour vivant).
             linkId = links.open(request.userId(), d.subjectId(), d.chantier(),
                     d.label() == null || d.label().isBlank() ? d.demande() : d.label());
         }
-        delegations.offer(request.userId(), d.subjectId(), d.chantier(), d.delegationId(), d.demande(), d.label(),
-                linkId);
+        if (queue) {
+            delegations.queue(request.userId(), d.subjectId(), d.chantier(), d.delegationId(), d.demande(), d.label());
+        } else {
+            delegations.offer(request.userId(), d.subjectId(), d.chantier(), d.delegationId(), d.demande(), d.label(),
+                    linkId);
+        }
         return new Outcome(outcome.kind(), outcome.spokenText(), d, outcome.reason(), outcome.model(),
                 outcome.firstTokenMs(), outcome.costUsd(), outcome.guards());
+    }
+
+    /** F-270 / SF-270-04 — une commande attend déjà sur ce fil : la seconde n'est pas gardée (pas de file d'actions). */
+    static final String QUEUE_FULL = "Une commande attend déjà la fin de ce travail ; je ne peux pas en garder une "
+            + "deuxième.";
+    static final String REASON_QUEUE_FULL = "queue_full";
+
+    /** F-270 / SF-270-04 — l'annonce d'une commande enchaînée : elle part dès que le travail nommé est fini. */
+    static String queuedAnnounce(String running) {
+        String what = running == null || running.isBlank() ? "le travail en cours"
+                : running.strip().replaceAll("[.!?…]+$", "");
+        return "Je le lance dès que " + what + " est fini.";
     }
 
     /** F-245 / SF-245-02 — l'identifiant du fil Jarvis du compte (créé s'il manque), ou {@code null} sans service. */
@@ -2044,8 +2097,7 @@ public class JarvisFastBrainService {
         // anniversaire épouse. », banc prod du 04/11, T03) ; la seconde si la première vient d'être dite, sinon le
         // silence.
         String safe = SAFE_ANNOUNCES.stream().filter(a -> !gate.repeats(a)).findFirst().orElse(AUTO_ANNOUNCE);
-        return new Delegation(d.delegationId(), d.demande(), d.label(), safe, d.subjectId(), d.chantier(),
-                d.automatic(), d.reason());
+        return d.retarget(safe, d.subjectId(), d.chantier());
     }
 
     /** Les phrases des {@value #REPEAT_WINDOW} dernières réponses de la session (D11c). */
@@ -2915,7 +2967,10 @@ public class JarvisFastBrainService {
         if (annonce.isEmpty()) {
             annonce = AUTO_ANNOUNCE;
         }
-        return new Delegation(UUID.randomUUID(), demande, label, annonce, subject, chantier, false, null);
+        // F-270 / SF-270-04 — la relation au travail vivant du fil, telle que le cerveau rapide l'a qualifiée.
+        String relation = input == null ? "" : input.path("relation").asText("").strip().toLowerCase(java.util.Locale.ROOT);
+        return new Delegation(UUID.randomUUID(), demande, label, annonce, subject, chantier, false, null, null,
+                RELATION_NEW.equals(relation) || RELATION_PRECISION.equals(relation) ? relation : null, false);
     }
 
     /** F-255 / SF-255-04 — la valeur brute de « sujet » pour le journal : une ligne, 80 caractères au plus. */
