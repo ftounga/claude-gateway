@@ -30,7 +30,9 @@
     { "id": "f04", "kind": "normale", "segments": ["Sur le sujet facturation, regarde s'il y a des tickets du backlog que je peux prendre."], "pauses": [] },
     { "id": "f05", "kind": "normale", "segments": ["Et regarde aussi ceux du sprint 10."], "pauses": [] },
     { "id": "f06", "kind": "normale", "segments": ["Et relance aussi le pipeline de dev de facturation."], "pauses": [] },
-    { "id": "f07", "kind": "normale", "segments": ["Arrête facturation."], "pauses": [] }
+    { "id": "f07", "kind": "normale", "segments": ["Arrête facturation."], "pauses": [] },
+    { "id": "f08", "kind": "normale", "segments": ["Qu'est-ce qui tourne en ce moment ?"], "pauses": [] },
+    { "id": "f09", "kind": "normale", "segments": ["Relance le pipeline de dev d'agenor."], "pauses": [] }
   ],
   "scenarios": [
     { "id": "conversation", "label": "Conversation suivie", "voice": "fr-1",
@@ -62,6 +64,10 @@
       "poste": { "nom": "facturation", "tourMs": 30000 },
       "steps": [{ "say": "f04" }, { "say": "f05", "tag": "precision", "relation": "precision" },
         { "say": "f06", "tag": "nouvelle", "relation": "nouvelle" }, { "say": "f07", "tag": "arret" }] },
+    { "id": "s1-s5-s7", "label": "F-270 S1/S5/S6/S7 : un travail tourne, une autre question, « qu'est-ce qui tourne ? », arrêt nommé, poste éteint", "voice": "george",
+      "poste": { "nom": "facturation", "tourMs": 45000 },
+      "steps": [{ "say": "f04" }, { "say": "n03", "tag": "s1-autre-sujet" }, { "say": "f08", "tag": "s5-qui-tourne" },
+        { "say": "f07", "tag": "s6-arret" }, { "say": "f09", "tag": "s7-poste-eteint" }] },
     { "id": "temoin", "label": "Témoin : micro factice de Chrome (fichier), sans le mélangeur du banc", "voice": "fr-1", "chromeMic": "n02" }
   ]
 }
