@@ -450,6 +450,49 @@ class SubjectJourneyChantiersIntegrationTest {
     }
 
     @Test
+    @DisplayName("SF-274-02 : rattaché à chacun — rangé par chantier, servi à l'écran, Bob ne voit rien")
+    void outOfPlanAttachedToEach() throws Exception {
+        chantierOneExecuting();
+        post(aliceToken, "chantiers", "{\"title\":\"Migration DNS\"}");
+        JourneyToolExecutor.TurnContext said = JourneyToolExecutor.TurnContext.ofUser(
+                java.util.List.of("Régénère la page État des lieux puis clôture SIP-10567"));
+        tool(JourneyToolCatalog.OUT_OF_PLAN, "{\"user_words\":\"Régénère la page État des lieux\","
+                + "\"objet\":\"page État des lieux v7\",\"chantiers\":[1,2]}", said);
+        tool(JourneyToolCatalog.OUT_OF_PLAN,
+                "{\"user_words\":\"clôture SIP-10567\",\"objet\":\"clôture SIP-10567\"}", said);
+        java.util.Map<Integer, java.util.List<SubjectJourneyService.OutOfPlanGesture>> byChantier =
+                service.outOfPlanByChantier(aliceId, ws());
+        assertThat(byChantier.keySet()).containsExactly(0, 1, 2);
+        assertThat(byChantier.get(1)).extracting(SubjectJourneyService.OutOfPlanGesture::objet)
+                .containsExactly("page État des lieux v7");
+        assertThat(byChantier.get(0)).extracting(SubjectJourneyService.OutOfPlanGesture::objet)
+                .containsExactly("clôture SIP-10567");
+        getJourney(aliceToken)
+                .andExpect(jsonPath("$.chantiers[0].horsPlan[0].objet", is("page État des lieux v7")))
+                .andExpect(jsonPath("$.chantiers[1].horsPlan[0].objet", is("page État des lieux v7")));
+        assertThat(service.outOfPlanByChantier(userRepository.findByEmail("bob-chantiers@ex.com").orElseThrow()
+                .getId(), ws())).isEmpty();
+        getJourney(bobToken).andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("SF-274-02 : lire_plan_chantier rend le plan complet d'un autre chantier, au format de set_subject_plan")
+    void readPlanOfAnotherChantier() throws Exception {
+        chantierOneExecuting();
+        post(aliceToken, "chantiers", "{\"title\":\"Migration DNS\"}");
+        assertThat(tool(JourneyToolCatalog.READ_PLAN, "{}").content()).contains("chantier est requis");
+        assertThat(tool(JourneyToolCatalog.READ_PLAN, "{\"chantier\":9}").content())
+                .isEqualTo("Le chantier 9 n'est pas ouvert.");
+        assertThat(tool(JourneyToolCatalog.READ_PLAN, "{\"chantier\":2}").content()).contains("pas encore de plan");
+        JourneyToolExecutor.Outcome read = tool(JourneyToolCatalog.READ_PLAN, "{\"chantier\":1}");
+        assertThat(read.error()).isFalse();
+        assertThat(read.content()).startsWith("Chantier 1 — Ingress · phase Exécution · plan v1 validé · 1 étapes")
+                .contains("\"title\":\"Remplacer le certificat\"").contains("\"risk\":\"REVERSIBLE\"");
+        // Le focus n'a pas bougé : lire n'est pas basculer.
+        getJourney(aliceToken).andExpect(jsonPath("$.chantier.number", is(2)));
+    }
+
+    @Test
     @DisplayName("SF-222-04 : la citation est cherchée mot pour mot, casse, accents et ponctuation ignorés")
     void quotedWords() {
         java.util.List<String> said = java.util.List.of("Le plan me va. Validé, tu peux y aller !");

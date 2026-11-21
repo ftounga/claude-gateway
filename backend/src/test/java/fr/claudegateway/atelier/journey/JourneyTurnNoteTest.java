@@ -15,6 +15,27 @@ class JourneyTurnNoteTest {
     }
 
     @Test
+    @DisplayName("SF-274-02 : le fil de chaque chantier rattaché relit le geste ; le fil du sujet les voit tous")
+    void outOfPlanLineAttachedToEach() {
+        java.time.OffsetDateTime at = java.time.OffsetDateTime.parse("2026-11-18T10:13:00Z");
+        SubjectJourneyService.OutOfPlanGesture page = new SubjectJourneyService.OutOfPlanGesture(at, "page v7");
+        SubjectJourneyService.OutOfPlanGesture sip = new SubjectJourneyService.OutOfPlanGesture(
+                at.minusHours(1), "clôture SIP-10567");
+        java.util.Map<Integer, java.util.List<SubjectJourneyService.OutOfPlanGesture>> byChantier = java.util.Map.of(
+                0, java.util.List.of(sip), 1, java.util.List.of(page), 2, java.util.List.of(page));
+        assertThat(JourneyTurnNote.outOfPlanLine(byChantier, 1))
+                .isEqualTo("[Hors plan] Gestes faits hors du plan et rattachés à ce chantier (à prendre en compte) : "
+                        + "18/11 page v7.\n");
+        assertThat(JourneyTurnNote.outOfPlanLine(byChantier, 2)).contains("18/11 page v7");
+        assertThat(JourneyTurnNote.outOfPlanLine(byChantier, 3)).isEmpty();
+        assertThat(JourneyTurnNote.outOfPlanLine(byChantier, null))
+                .isEqualTo("[Hors plan] Gestes récents faits hors du plan des chantiers : 18/11 page v7 (chantiers 1, "
+                        + "2) ; 18/11 clôture SIP-10567 (hors chantier).\n");
+        assertThat(JourneyTurnNote.outOfPlanLine(java.util.Map.of(), null)).isEmpty();
+        assertThat(JourneyTurnNote.outOfPlanLine(null, 1)).isEmpty();
+    }
+
+    @Test
     @DisplayName("Libre : rien — la consigne est inchangée à l'octet près (Q4)")
     void libreSaysNothing() {
         assertThat(JourneyTurnNote.render(null)).isEmpty();

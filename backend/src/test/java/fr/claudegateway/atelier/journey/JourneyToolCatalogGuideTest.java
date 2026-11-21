@@ -53,4 +53,13 @@ class JourneyToolCatalogGuideTest {
         assertThat(JourneyToolCatalog.outOfPlanDefinition().inputSchema().get("required"))
                 .isEqualTo(java.util.List.of("user_words", "objet"));
     }
+
+    @Test
+    void readPlanOfAnotherChantier() {
+        // F-274 / SF-274-02 : le plan d'un autre chantier se lit pour l'amender, sans le recopier de mémoire.
+        assertThat(JourneyToolCatalog.GUIDE).contains("complet se lit avec lire_plan_chantier, pour l'amender");
+        assertThat(JourneyToolCatalog.NAMES).contains(JourneyToolCatalog.READ_PLAN);
+        assertThat(JourneyToolCatalog.readPlanDefinition().inputSchema().get("required"))
+                .isEqualTo(java.util.List.of("chantier"));
+    }
 }

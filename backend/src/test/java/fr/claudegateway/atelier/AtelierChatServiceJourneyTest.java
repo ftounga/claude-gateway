@@ -246,6 +246,21 @@ class AtelierChatServiceJourneyTest {
     }
 
     @Test
+    @DisplayName("SF-274-02 : les gestes hors plan du sujet vont dans le MESSAGE du tour, jamais au système")
+    void outOfPlanGesturesGoInTheMessage() {
+        journey(JourneyMode.GUIDE, JourneyPhase.EXECUTION, 1, 1);
+        when(journeyService.outOfPlanByChantier(userId, workspaceId)).thenReturn(java.util.Map.of(0, List.of(
+                new SubjectJourneyService.OutOfPlanGesture(java.time.OffsetDateTime.parse("2026-11-18T10:13:00Z"),
+                        "clôture SIP-10567"))));
+        agentProvider.enqueueFinal("Noté.");
+
+        service.chatStreaming(userId, workspaceId, "où en est-on ?", listener);
+
+        assertThat(agentProvider.messageSnapshots.get(0)).contains("[Hors plan]").contains("clôture SIP-10567");
+        assertThat(agentProvider.lastRequest.system()).doesNotContain("clôture SIP-10567");
+    }
+
+    @Test
     @DisplayName("SF-274-01 : la note du fil ne renvoie plus ailleurs ; elle nomme chantier: N et le couloir")
     void laneNoteNamesTheCorridor() {
         assertThat(AtelierChatService.laneNote(2)).contains("FIL DU CHANTIER 2").contains("chantier: N")

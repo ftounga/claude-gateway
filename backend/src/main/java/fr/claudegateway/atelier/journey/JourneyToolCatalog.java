@@ -59,9 +59,13 @@ public class JourneyToolCatalog {
     /** Le couloir hors chantier : un geste demandé par écrit hors de tout plan, ou transverse (F-274 / SF-274-01). */
     public static final String OUT_OF_PLAN = "geste_hors_chantier";
 
+    /** Lire le plan complet d'un chantier ouvert, depuis n'importe quel fil (F-274 / SF-274-02). */
+    public static final String READ_PLAN = "lire_plan_chantier";
+
     /** Tous les noms d'outils du parcours. */
     public static final Set<String> NAMES = Set.of(PROPOSE_GUIDED, SET_PLAN, SUBMIT_DIAGNOSIS, UPDATE_STEP, REOPEN,
-            UPDATE_SUB_STEPS, LAUNCH_AUTONOMOUS, CONFIRM_DIAGNOSIS, VALIDATE_PLAN, CLOSE_CHANTIER, OUT_OF_PLAN);
+            UPDATE_SUB_STEPS, LAUNCH_AUTONOMOUS, CONFIRM_DIAGNOSIS, VALIDATE_PLAN, CLOSE_CHANTIER, OUT_OF_PLAN,
+            READ_PLAN);
 
     /** Le guide ajouté à la consigne système quand les outils sont donnés (stable). */
     public static final String GUIDE = "--- Parcours du sujet (Libre / Guidé) ---\n"
@@ -158,7 +162,8 @@ public class JourneyToolCatalog {
             + "synthèse, preuves, message consolidé) se fait LÀ OÙ IL LA DEMANDE, dans ce fil, sans amendement : "
             + "appelle d'abord geste_hors_chantier (ses mots exacts, l'objet, les chantiers qu'elle sert), puis "
             + "exécute-la, ni plus ni moins que ce qu'il a demandé, et dis en une ligne qu'elle est hors chantier ou "
-            + "transverse. Une demande qui sert UN autre chantier ouvert se fait aussi ici, avec chantier: N. Ne "
+            + "transverse. Une demande qui sert UN autre chantier ouvert se fait aussi ici, avec chantier: N (son plan "
+            + "complet se lit avec lire_plan_chantier, pour l'amender). Ne "
             + "renvoie JAMAIS l'utilisateur vers un autre fil : il te parle ici, tu agis ici. Si la demande devrait "
             + "entrer dans un plan, propose-le APRÈS l'avoir faite.\n"
             + "ARRÊT : si tu ne fais pas ce qui est demandé, c'est TA décision : dis-la comme telle, avec sa vraie "
@@ -226,6 +231,7 @@ public class JourneyToolCatalog {
         tools.add(validatePlanDefinition());
         tools.add(closeChantierDefinition());
         tools.add(outOfPlanDefinition());
+        tools.add(readPlanDefinition());
         return tools;
     }
 
@@ -303,6 +309,18 @@ public class JourneyToolCatalog {
                                         "description", "Les mots EXACTS de l'utilisateur qui demandent la clôture, "
                                                 + "cités tels qu'il les a écrits dans ce tour.")),
                         "required", List.of("chantier", "user_words")));
+    }
+
+    static AgentTool readPlanDefinition() {
+        return new AgentTool(READ_PLAN,
+                "Lit le PLAN COMPLET d'un chantier ouvert (version, validé ou non, phase, et chaque étape avec son "
+                        + "statut, au format de set_subject_plan) — depuis n'importe quel fil, pour l'amender sans le "
+                        + "recopier de mémoire. Lecture : ne modifie rien.",
+                Map.of("type", "object",
+                        "properties", Map.of(
+                                "chantier", Map.of("type", "integer",
+                                        "description", "Le numéro du chantier dont tu lis le plan.")),
+                        "required", List.of("chantier")));
     }
 
     static AgentTool outOfPlanDefinition() {
