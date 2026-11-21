@@ -38,4 +38,19 @@ class JourneyToolCatalogGuideTest {
         assertThat(JourneyToolCatalog.closeChantierDefinition().inputSchema().get("required"))
                 .isEqualTo(java.util.List.of("chantier", "user_words"));
     }
+
+    @Test
+    void outOfPlanCorridorAndHonestStop() {
+        // F-274 / SF-274-01 : une demande explicite hors de tout plan, ou transverse, se fait ici, sans renvoi.
+        assertThat(JourneyToolCatalog.GUIDE).contains("HORS CHANTIER : une demande EXPLICITE de l'utilisateur")
+                .contains("appelle d'abord geste_hors_chantier")
+                .contains("Ne renvoie JAMAIS l'utilisateur vers un autre fil").contains("avec chantier: N")
+                .contains("ARRÊT : si tu ne fais pas ce qui est demandé, c'est TA décision")
+                .contains("N'écris jamais que le tour « s'est terminé »");
+        // L'amendement reste la règle pour ce que l'agent décide seul.
+        assertThat(JourneyToolCatalog.GUIDE).contains("Une modification hors plan que tu décides est un AMENDEMENT");
+        assertThat(JourneyToolCatalog.NAMES).contains(JourneyToolCatalog.OUT_OF_PLAN);
+        assertThat(JourneyToolCatalog.outOfPlanDefinition().inputSchema().get("required"))
+                .isEqualTo(java.util.List.of("user_words", "objet"));
+    }
 }

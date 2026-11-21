@@ -56,9 +56,12 @@ public class JourneyToolCatalog {
     /** Clore un chantier vérifié quand l'utilisateur le demande par écrit (F-261 / SF-261-01). */
     public static final String CLOSE_CHANTIER = "cloturer_chantier";
 
+    /** Le couloir hors chantier : un geste demandé par écrit hors de tout plan, ou transverse (F-274 / SF-274-01). */
+    public static final String OUT_OF_PLAN = "geste_hors_chantier";
+
     /** Tous les noms d'outils du parcours. */
     public static final Set<String> NAMES = Set.of(PROPOSE_GUIDED, SET_PLAN, SUBMIT_DIAGNOSIS, UPDATE_STEP, REOPEN,
-            UPDATE_SUB_STEPS, LAUNCH_AUTONOMOUS, CONFIRM_DIAGNOSIS, VALIDATE_PLAN, CLOSE_CHANTIER);
+            UPDATE_SUB_STEPS, LAUNCH_AUTONOMOUS, CONFIRM_DIAGNOSIS, VALIDATE_PLAN, CLOSE_CHANTIER, OUT_OF_PLAN);
 
     /** Le guide ajouté à la consigne système quand les outils sont donnés (stable). */
     public static final String GUIDE = "--- Parcours du sujet (Libre / Guidé) ---\n"
@@ -114,8 +117,8 @@ public class JourneyToolCatalog {
             + "qu'il a lue (vN) et ses mots EXACTS de ce tour ; jamais de ta propre initiative, jamais sur un accord "
             + "d'un tour passé, jamais dans une course autonome ni une routine (personne n'y écrit). Tant qu'il ne "
             + "l'a pas validé, ne modifie rien. Garde PLAN-ACTION.md cohérent avec ce plan.\n"
-            + "EXÉCUTION : n'exécute que des étapes du plan validé. Une modification hors plan est un "
-            + "AMENDEMENT : rappelle set_subject_plan avec le plan complet modifié. MÊME OBJECTIF (le chantier "
+            + "EXÉCUTION : n'exécute que des étapes du plan validé. Une modification hors plan que tu décides est "
+            + "un AMENDEMENT (celle que l'utilisateur demande explicitement : voir HORS CHANTIER) : rappelle set_subject_plan avec le plan complet modifié. MÊME OBJECTIF (le chantier "
             + "garde son but : une étape ajoutée, précisée, découpée ou réordonnée, une correction trouvée en "
             + "route) : same_objective=true — l'amendement s'applique SANS CLIC, il est journalisé, le plan reste "
             + "validé, et tu l'annonces en une phrase dans ta réponse (ce qui change et pourquoi). OBJECTIF "
@@ -149,7 +152,19 @@ public class JourneyToolCatalog {
             + "porte n'est pas une panne : ne cherche pas de contournement, dis où en est le plan. Avec "
             + "plusieurs chantiers ouverts, la porte s'ouvre dès qu'UN chantier est en Exécution sur son plan "
             + "validé : n'exécute pour autant que des étapes du plan validé du chantier que la modification "
-            + "sert ; un chantier encore en Investigation ou en Plan ne se modifie pas.";
+            + "sert ; un chantier encore en Investigation ou en Plan ne se modifie pas.\n"
+            + "HORS CHANTIER : une demande EXPLICITE de l'utilisateur, écrite dans ce tour, qui n'appartient au plan "
+            + "d'AUCUN chantier (un reliquat sans chantier, un geste ponctuel) ou qui en sert PLUSIEURS (page de "
+            + "synthèse, preuves, message consolidé) se fait LÀ OÙ IL LA DEMANDE, dans ce fil, sans amendement : "
+            + "appelle d'abord geste_hors_chantier (ses mots exacts, l'objet, les chantiers qu'elle sert), puis "
+            + "exécute-la, ni plus ni moins que ce qu'il a demandé, et dis en une ligne qu'elle est hors chantier ou "
+            + "transverse. Une demande qui sert UN autre chantier ouvert se fait aussi ici, avec chantier: N. Ne "
+            + "renvoie JAMAIS l'utilisateur vers un autre fil : il te parle ici, tu agis ici. Si la demande devrait "
+            + "entrer dans un plan, propose-le APRÈS l'avoir faite.\n"
+            + "ARRÊT : si tu ne fais pas ce qui est demandé, c'est TA décision : dis-la comme telle, avec sa vraie "
+            + "raison (règle, risque, information manquante). N'écris jamais que le tour « s'est terminé » ou « a "
+            + "été coupé » : une vraie coupure (porte, budget, plafond de sortie) t'est rendue par le harnais, et la "
+            + "gateway l'annonce elle-même.";
 
     /** Le paramètre {@code chantier} des outils du parcours (F-206) — littéral stable. */
     static final Map<String, Object> CHANTIER_PARAM = Map.of("type", "integer",
@@ -210,6 +225,7 @@ public class JourneyToolCatalog {
         tools.add(confirmDiagnosisDefinition());
         tools.add(validatePlanDefinition());
         tools.add(closeChantierDefinition());
+        tools.add(outOfPlanDefinition());
         return tools;
     }
 
@@ -287,6 +303,26 @@ public class JourneyToolCatalog {
                                         "description", "Les mots EXACTS de l'utilisateur qui demandent la clôture, "
                                                 + "cités tels qu'il les a écrits dans ce tour.")),
                         "required", List.of("chantier", "user_words")));
+    }
+
+    static AgentTool outOfPlanDefinition() {
+        return new AgentTool(OUT_OF_PLAN,
+                "Ouvre le COULOIR HORS CHANTIER pour ce tour, quand l'utilisateur demande explicitement dans son message "
+                        + "un geste qui n'appartient au plan d'aucun chantier (reliquat, geste ponctuel) ou qui en sert "
+                        + "plusieurs (synthèse, preuves, message consolidé) : le geste s'exécute dans ce fil, sans "
+                        + "amendement, et il est rattaché à chacun des chantiers qu'il sert. Jamais de ta propre "
+                        + "initiative, ni dans une course autonome ou une routine.",
+                Map.of("type", "object",
+                        "properties", Map.of(
+                                "user_words", Map.of("type", "string",
+                                        "description", "Les mots EXACTS de l'utilisateur qui demandent ce geste, cités "
+                                                + "tels qu'il les a écrits dans ce tour."),
+                                "objet", Map.of("type", "string",
+                                        "description", "Le geste, en quelques mots (200 caractères au plus)."),
+                                "chantiers", Map.of("type", "array", "items", Map.of("type", "integer"),
+                                        "description", "Les numéros des chantiers ouverts que le geste sert (vide : "
+                                                + "aucun chantier).")),
+                        "required", List.of("user_words", "objet")));
     }
 
     static AgentTool submitDiagnosisDefinition() {

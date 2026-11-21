@@ -19,6 +19,13 @@ public final class JourneyGate {
     }
 
     /**
+     * Le couloir hors chantier (F-274 / SF-274-01), rappelé à chaque refus : une demande explicite de l'utilisateur n'a
+     * pas à attendre un plan.
+     */
+    static final String OUT_OF_PLAN_HINT = " Si c'est l'utilisateur qui a demandé CE geste explicitement dans ce "
+            + "tour : geste_hors_chantier (ses mots exacts), puis refais-le.";
+
+    /**
      * Le motif du refus rendu au modèle, ou {@code null} si l'appel passe.
      *
      * @param journey le parcours du terminal ({@code null} = Libre)
@@ -56,7 +63,7 @@ public final class JourneyGate {
             case VERIFICATION -> "Phase Vérification : on vérifie, on ne modifie plus. Si une correction "
                     + "est nécessaire, amende le plan (set_subject_plan) ou reviens en investigation.";
             case CLOS -> ""; // jamais atteint : un sujet clos n'a plus de porte (SF-176-07)
-        };
+        } + OUT_OF_PLAN_HINT;
     }
 
     /**

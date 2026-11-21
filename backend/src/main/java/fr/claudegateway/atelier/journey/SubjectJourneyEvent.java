@@ -66,6 +66,12 @@ public class SubjectJourneyEvent {
     /** La porte a refusé une modification ({@code detail} = classe · outil, jamais la commande) (SF-176-04). */
     public static final String GATE_BLOCKED = "GATE_BLOCKED";
 
+    /**
+     * Un geste demandé par écrit hors du plan de tout chantier, ou transverse (F-274 / SF-274-01) : {@code detail} =
+     * « chantier N · objet · écrit « citation » » (un événement par chantier rattaché) ou « aucun chantier · … ».
+     */
+    public static final String OUT_OF_PLAN = "OUT_OF_PLAN";
+
     /** Diagnostic posé ({@code detail} = confiance) (SF-176-05). */
     public static final String DIAGNOSIS_PROPOSED = "DIAGNOSIS_PROPOSED";
 

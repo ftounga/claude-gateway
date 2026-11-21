@@ -92,6 +92,7 @@ public class JourneyToolExecutor {
                 case JourneyToolCatalog.CONFIRM_DIAGNOSIS -> confirmDiagnosis(userId, workspace, input);
                 case JourneyToolCatalog.VALIDATE_PLAN -> validatePlan(userId, workspace, input, context);
                 case JourneyToolCatalog.CLOSE_CHANTIER -> closeChantier(userId, workspace, input, context);
+                case JourneyToolCatalog.OUT_OF_PLAN -> outOfPlan(userId, workspace, input, context);
                 default -> Outcome.error("Outil du parcours inconnu : " + tool);
             };
         } catch (InvalidJourneyException e) {
@@ -325,6 +326,65 @@ public class JourneyToolExecutor {
                 : "C'était le dernier chantier ouvert : le terminal revient en Libre.";
         return prefixed(chantier, Outcome.ok("Clos sur la demande de l'utilisateur, comme sur un clic [Clore] ; il "
                 + "reste consultable. " + after + " Dis-le-lui en une phrase."));
+    }
+
+    /** Longueur maximale de l'objet d'un geste hors chantier. */
+    static final int MAX_OUT_OF_PLAN_OBJECT = 200;
+
+    /**
+     * <b>Le couloir hors chantier</b> (F-274 / SF-274-01) : l'utilisateur demande par écrit, dans ce tour, un geste qui
+     * n'appartient au plan d'aucun chantier — ou qui sert plusieurs chantiers. La citation est vérifiée comme un « go »
+     * (jamais dans une course autonome) ; la porte s'ouvre pour le reste de ce tour seulement, et le geste est
+     * journalisé une fois par chantier rattaché.
+     */
+    private Outcome outOfPlan(UUID userId, Workspace workspace, JsonNode input, TurnContext turn) {
+        String objet = text(input, "objet");
+        if (objet.isEmpty()) {
+            return Outcome.error("objet est requis : le geste demandé, en quelques mots (« clôture SIP-10567 », « page "
+                    + "État des lieux v7 »).");
+        }
+        if (objet.length() > MAX_OUT_OF_PLAN_OBJECT) {
+            objet = objet.substring(0, MAX_OUT_OF_PLAN_OBJECT - 1).strip() + "…";
+        }
+        String words = text(input, "user_words");
+        if (words.isEmpty()) {
+            return Outcome.error("user_words est requis : cite les mots de l'utilisateur qui demandent ce geste. Sans "
+                    + "demande écrite de sa part dans ce tour, ce n'est pas un geste hors chantier.");
+        }
+        String refusal = writtenRefusal(words, turn, "Une course autonome (ou une routine) n'a pas de couloir hors "
+                + "chantier : personne n'y écrit. Tiens-toi au plan du chantier.", "tiens-toi aux plans validés");
+        if (refusal != null) {
+            return Outcome.error(refusal);
+        }
+        java.util.List<Integer> cited = new java.util.ArrayList<>();
+        JsonNode list = input == null ? null : input.get("chantiers");
+        if (list != null && list.isArray()) {
+            for (JsonNode n : list) {
+                int number = n.isNumber() ? n.asInt(0) : n.isTextual() ? parse(n.asText()) : 0;
+                if (number >= 1) {
+                    cited.add(number);
+                }
+            }
+        }
+        SubjectJourneyService.OutOfPlanRecord recorded =
+                service.recordOutOfPlan(userId, workspace.getId(), cited, objet, channel(words));
+        if (!recorded.guided()) {
+            return Outcome.error("Le couloir hors chantier n'existe qu'en mode guidé, avec un chantier ouvert : ici, "
+                    + "fais simplement ce que l'utilisateur demande.");
+        }
+        workspace.setTurnOutOfPlan(true);
+        String where = recorded.attached().isEmpty() ? "hors de tout chantier"
+                : recorded.attached().size() == 1 ? "rattaché au chantier " + recorded.attached().get(0)
+                : "transverse, rattaché aux chantiers " + recorded.attached().stream().map(String::valueOf)
+                        .collect(java.util.stream.Collectors.joining(", "));
+        String ignored = recorded.ignored().isEmpty() ? "" : " Chantier(s) " + recorded.ignored().stream()
+                .map(String::valueOf).collect(java.util.stream.Collectors.joining(", "))
+                + " ignoré(s) : ni ouvert(s) ni connu(s) de ce sujet.";
+        return Outcome.ok("Couloir hors chantier ouvert pour ce tour (" + where + ") : la porte du parcours laisse "
+                + "passer les modifications de ce geste jusqu'à la fin du tour, sans amendement de plan. Exécute la "
+                + "demande telle que l'utilisateur l'a formulée, pas plus — ce qu'il n'a pas nommé suit les règles "
+                + "habituelles. Annonce-le en une ligne dans ta réponse (« hors chantier » ou « transverse »)."
+                + ignored);
     }
 
     /**
