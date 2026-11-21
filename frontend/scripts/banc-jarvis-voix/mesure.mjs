@@ -115,7 +115,9 @@ export function analyseTurn(turn, { api, probes, traces, next, spokenBefore }) {
   const keptTurn = tr.some((t) => t.ev === 'voice_turn_kept');
   const keptText = keptTurn ? api.filter((e) => /^\/api\/jarvis\/utterance/.test(e.path) && inWindow(e.t)
     && typeof e.response?.text === 'string').map((e) => e.response.text).at(-1) ?? null : null;
-  const transcribed = keptTurn || tr.some((t) => t.ev === 'transcript' && /chars=[1-9]/.test(t.d ?? ''));
+  // F-270 / SF-270-06 — un arrêt nommé (« Arrête facturation ») traité sur place, même après une coupure, est entendu.
+  const transcribed = keptTurn || tr.some((t) => (t.ev === 'transcript' && /chars=[1-9]/.test(t.d ?? ''))
+    || t.ev === 'stop_named');
   const local = heardText === null && transcribed;
   const text = heardText ?? (local ? keptText ?? committed.at(-1) ?? '' : null);
   return {
