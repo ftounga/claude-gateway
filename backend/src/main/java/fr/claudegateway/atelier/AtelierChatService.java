@@ -2676,6 +2676,30 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.watchToolExecutor = executor;
     }
 
+    /**
+     * L'outil des actions rapides (F-275 / SF-275-02) — par mutateur, comme les routines : sans exécuteur (formes
+     * historiques / tests), l'outil n'est jamais donné.
+     */
+    private fr.claudegateway.atelier.quickaction.QuickActionToolCatalog quickActionToolCatalog;
+    private fr.claudegateway.atelier.quickaction.QuickActionToolExecutor quickActionToolExecutor;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setQuickActionTools(fr.claudegateway.atelier.quickaction.QuickActionToolCatalog catalog,
+            fr.claudegateway.atelier.quickaction.QuickActionToolExecutor executor) {
+        this.quickActionToolCatalog = catalog;
+        this.quickActionToolExecutor = executor;
+    }
+
+    /** Exécute l'outil des actions rapides (F-275) : le terminal et le compte sont ceux du tour. */
+    private ToolOutcome applyQuickActionTool(UUID userId, Workspace workspace, AgentToolCall call) {
+        if (quickActionToolExecutor == null) {
+            return ToolOutcome.error("Les actions rapides ne sont pas disponibles dans ce terminal : réponds sans elles.");
+        }
+        fr.claudegateway.atelier.quickaction.QuickActionToolExecutor.Outcome outcome =
+                quickActionToolExecutor.execute(userId, workspace, call.name(), call.input());
+        return outcome.error() ? ToolOutcome.error(outcome.content()) : ToolOutcome.info(outcome.content());
+    }
+
     /** Exécute l'outil de proposition de veille (F-230) : le terminal et le compte sont ceux du tour. */
     private ToolOutcome applyWatchTool(UUID userId, Workspace workspace, AgentToolCall call) {
         if (watchToolExecutor == null) {
@@ -4756,6 +4780,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                 } else if (fr.claudegateway.atelier.veille.JarvisWatchToolCatalog.isWatchTool(call.name())) {
                     // F-230 / SF-230-01 : la proposition de veille est rangée par la gateway, inactive.
                     outcome = applyWatchTool(userId, workspace, call);
+                } else if (fr.claudegateway.atelier.quickaction.QuickActionToolCatalog.isQuickActionTool(call.name())) {
+                    // F-275 / SF-275-02 : les actions rapides sont rangées par la gateway (rien n'est lancé).
+                    outcome = applyQuickActionTool(userId, workspace, call);
                 } else if (fr.claudegateway.images.ImageToolCatalog.isImageTool(call.name())) {
                     // F-142 / SF-142-04 : l'image décorative est générée par la gateway (relais fournisseur),
                     // rangée, puis déposée dans le projet — jamais un schéma d'architecture.
@@ -11179,6 +11206,10 @@ public class AtelierChatService implements RelayInterruptTarget {
         // F-230 / SF-230-01 : poser une veille Jarvis, sous la même garde que les routines.
         if (watchToolExecutor != null && watchToolCatalog != null) {
             tools.addAll(watchToolCatalog.toolsFor(userId, workspace));
+        }
+        // F-275 / SF-275-02 : ranger les actions rapides du bouton de la saisie — tout terminal hors Teams et fil Jarvis.
+        if (quickActionToolExecutor != null && quickActionToolCatalog != null) {
+            tools.addAll(quickActionToolCatalog.toolsFor(userId, workspace));
         }
         // F-242 / SF-242-05 (D11) : le courrier du PO, dans le SEUL fil Jarvis et avec une boîte reliée ; jamais dans
         // le terminal d'un sujet. Définitions figées : la liste du fil reste identique d'un tour à l'autre.
