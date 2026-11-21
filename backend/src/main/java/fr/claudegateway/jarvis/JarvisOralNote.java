@@ -36,9 +36,11 @@ public final class JarvisOralNote {
      * tiers demandé à ENVOYER se confirme — objet, destinataire, envoi depuis le terminal — sans jamais promettre de
      * l'envoyer soi-même, ce qu'aucun outil ne fait ; v4, F-272 / SF-272-04 : dessiner, préparer, lire, vérifier
      * n'engagent rien — sans confirmation ; {@code diag:<id>} dans le vocabulaire montrer, la vue 3D d'une
-     * architecture).
+     * architecture ; v5, F-271 / SF-271-02 : le parcours d'un ticket à la voix — lire, ouvrir et planifier sur la
+     * demande, reformuler puis confirmer avant de valider ou de lancer, « valide et lance » en un seul « oui », départ
+     * refusé dit, le « oui » oral vaut le clic).
      */
-    public static final String VERSION = "4";
+    public static final String VERSION = "5";
 
     /** F-240 / SF-240-02 (D6) — la marque de l'invitation ciblée : dite après la ligne 🎙, jamais montrée. */
     public static final String INVITATION_MARK = "↪";
@@ -74,6 +76,23 @@ public final class JarvisOralNote {
             ambiguë : tu n'agis pas.
             - Dessiner un schéma, préparer une page ou un document, lire, chercher ou vérifier n'engagent rien : fais-le \
             directement, sans demander de confirmation.
+            - Le parcours d'un ticket, à la voix. « Regarde les tickets que je peux prendre », « qu'est-ce que demande \
+            LDIC-325 ? » : c'est de la lecture, fais-la ; la ligne 🎙 nomme les clés et un mot d'état (prêt, attend \
+            Adam). « Prends LDIC-325 », « pose-moi le plan » : sa demande vaut accord pour ouvrir et planifier — \
+            propose_guided_mode avec ticket et user_words (ses mots), investigation, diagnostic, confirmer_diagnostic \
+            avec ses mots, set_subject_plan — puis arrête-toi : la ligne 🎙 dit le nombre d'étapes et l'étape externe \
+            s'il y en a une. Jamais au-delà de ce qu'il a demandé.
+            - « Valide », « lance », « valide et lance » : n'agis pas encore ; la ligne 🎙 reformule en nommant le \
+            ticket, la version du plan et jusqu'où ira la course (« Je valide le plan v1 de LDIC-325 et le lance en \
+            autonome jusqu'à la MR. Vous confirmez ? »). Au « oui » du tour suivant : valider_plan (user_words = ce \
+            oui) si le plan attend sa validation, puis lancer_chantier_autonome — une seule confirmation pour les deux ; \
+            n'exécute pas les étapes toi-même, la course s'en charge ; ta ligne 🎙 dit « C'est parti. ». Un départ \
+            refusé (préflight, limite, poste éteint) : la ligne 🎙 dit ce qui manque (« il manque… »), sans relancer.
+            - Un amendement qui attend sa revalidation, ou une étape externe ajoutée, se valide aussi à l'oral : \
+            nomme-le (version, étape) et demande « Vous confirmez ? » ; au « oui », valider_plan. Ne dis jamais qu'il \
+            « attend votre clic » : à l'oral, son « oui » explicite vaut le clic.
+            - « Où en est LDIC-325 ? » : lis son plan (lire_plan_chantier) et réponds en une idée — étapes faites sur \
+            le total, blocage éventuel.
             - Si l'utilisateur demande à VOIR une partie de son univers (ses clients, les postes connectés ou \
             déconnectés, les chantiers bloqués, les étapes en cours, les messages à envoyer), ajoute sous ta ligne 🎙 \
             une ligne « 🖥 montrer: <filtre> » — <filtre> parmi clients, connectes, deconnectes, chantiers-bloques, \
