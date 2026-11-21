@@ -896,4 +896,110 @@ class SubjectJourneyChantiersIntegrationTest {
         service.submitDiagnosis(aliceId, ws(), "zone", "dig", "MOYENNE");
         assertThat(service.chantierWorktree(aliceId, ws(), 2)).isPresent();
     }
+
+    // ------------------------------------------------------------------ F-271 / SF-271-01 : ouvrir à la voix
+
+    private static JourneyToolExecutor.TurnContext saidNow(String words) {
+        return JourneyToolExecutor.TurnContext.ofUser(java.util.List.of(words));
+    }
+
+    @Test
+    @DisplayName("SF-271-01 : « prends LDIC-325 » dit dans ce tour ouvre le chantier sans clic, titré par la clé")
+    void openOnUserWordsFromLibre() throws Exception {
+        JourneyToolExecutor.Outcome out = tool(JourneyToolCatalog.PROPOSE_GUIDED,
+                "{\"reason\":\"Créer le topic SNS d'ingestion\",\"ticket\":\"ldic-325\","
+                        + "\"user_words\":\"prends LDIC-325 et pose-moi le plan\"}",
+                saidNow("Jarvis, prends LDIC-325 et pose-moi le plan."));
+        assertThat(out.error()).isFalse();
+        assertThat(out.content()).startsWith("Chantier 1 ouvert").contains("LDIC-325 — Créer le topic SNS");
+        getJourney(aliceToken).andExpect(jsonPath("$.mode", is("GUIDE")))
+                .andExpect(jsonPath("$.phase", is("INVESTIGATION")))
+                .andExpect(jsonPath("$.chantier.number", is(1)))
+                .andExpect(jsonPath("$.chantier.title", is("LDIC-325 — Créer le topic SNS d'ingestion")));
+        assertThat(eventRepository.findAll()).anyMatch(e -> SubjectJourneyEvent.GUIDED_ACCEPTED.equals(e.getType())
+                && e.getDetail().startsWith("chantier 1 · écrit « prends LDIC-325"));
+        // La même clé, redemandée : rien n'est doublé, le chantier existant est nommé.
+        JourneyToolExecutor.Outcome again = tool(JourneyToolCatalog.PROPOSE_GUIDED,
+                "{\"reason\":\"Topic SNS\",\"ticket\":\"LDIC-325\",\"user_words\":\"prends LDIC-325\"}",
+                saidNow("prends LDIC-325"));
+        assertThat(again.content()).contains("Le chantier 1").contains("déjà ouvert");
+        getJourney(aliceToken).andExpect(jsonPath("$.chantiers.length()", is(1)));
+    }
+
+    @Test
+    @DisplayName("SF-271-01 : sujet déjà guidé — un chantier DE PLUS s'ouvre sans clic, l'autre reste intact")
+    void openOnUserWordsAlongside() throws Exception {
+        chantierOneExecuting();
+        JourneyToolExecutor.Outcome out = tool(JourneyToolCatalog.PROPOSE_GUIDED,
+                "{\"reason\":\"Droits IAM du compte dev\",\"ticket\":\"LDIC-330\",\"user_words\":\"lance aussi "
+                        + "LDIC-330\"}", saidNow("Lance aussi LDIC-330."));
+        assertThat(out.content()).startsWith("Chantier 2 ouvert");
+        getJourney(aliceToken).andExpect(jsonPath("$.chantiers.length()", is(2)))
+                .andExpect(jsonPath("$.chantier.number", is(2)))
+                .andExpect(jsonPath("$.chantier.title", is("LDIC-330 — Droits IAM du compte dev")))
+                .andExpect(jsonPath("$.chantiers[0].phase", is("EXECUTION")));
+    }
+
+    @Test
+    @DisplayName("SF-271-01 : citation absente, inventée ou tour sans utilisateur ⇒ la proposition attend son clic")
+    void openOnUserWordsRefused() throws Exception {
+        // Citation inventée : rien n'est ouvert, la carte est posée.
+        JourneyToolExecutor.Outcome invented = tool(JourneyToolCatalog.PROPOSE_GUIDED,
+                "{\"reason\":\"Topic SNS\",\"ticket\":\"LDIC-325\",\"user_words\":\"ouvre le chantier\"}",
+                saidNow("Qu'est-ce que demande LDIC-325 ?"));
+        assertThat(invented.error()).isFalse();
+        assertThat(invented.content()).startsWith("Chantier NON ouvert").contains("ne figurent pas")
+                .contains("[Passer en guidé]");
+        getJourney(aliceToken).andExpect(jsonPath("$.mode", is("LIBRE")))
+                .andExpect(jsonPath("$.guidedProposal").exists());
+        // Le clic ouvre un chantier titré par la clé (la raison proposée la porte).
+        post(aliceToken, "guided-proposal/accept", null).andExpect(status().isOk())
+                .andExpect(jsonPath("$.chantier.title", is("LDIC-325 — Topic SNS")));
+        // Course autonome / routine : jamais d'ouverture, même avec de vrais mots.
+        JourneyToolExecutor.Outcome headless = tool(JourneyToolCatalog.PROPOSE_GUIDED,
+                "{\"reason\":\"IAM\",\"ticket\":\"LDIC-330\",\"user_words\":\"prends LDIC-330\"}");
+        assertThat(headless.content()).startsWith("Chantier NON ouvert").contains("course autonome");
+        getJourney(aliceToken).andExpect(jsonPath("$.chantiers.length()", is(1)));
+    }
+
+    @Test
+    @DisplayName("SF-271-01 : un « Rester libre » passé ne bloque pas une demande explicite d'ouvrir")
+    void openOnUserWordsAfterDecline() throws Exception {
+        tool(JourneyToolCatalog.PROPOSE_GUIDED, "{\"reason\":\"Chantier\"}");
+        post(aliceToken, "guided-proposal/decline", null).andExpect(status().isOk());
+        assertThat(tool(JourneyToolCatalog.PROPOSE_GUIDED, "{\"reason\":\"Encore\"}").content()).contains("RESTER LIBRE");
+        JourneyToolExecutor.Outcome out = tool(JourneyToolCatalog.PROPOSE_GUIDED,
+                "{\"reason\":\"Topic SNS\",\"ticket\":\"LDIC-325\",\"user_words\":\"ouvre un chantier pour "
+                        + "LDIC-325\"}", saidNow("ouvre un chantier pour LDIC-325"));
+        assertThat(out.content()).startsWith("Chantier 1 ouvert");
+        getJourney(aliceToken).andExpect(jsonPath("$.mode", is("GUIDE")));
+    }
+
+    @Test
+    @DisplayName("SF-271-01 : « LDIC-325 » → (sujet, chantier) parmi les chantiers OUVERTS du compte ; Bob ne voit rien")
+    void openChantiersWithTicket() throws Exception {
+        chantierOneExecuting();
+        tool(JourneyToolCatalog.PROPOSE_GUIDED, "{\"reason\":\"Topic SNS\",\"ticket\":\"LDIC-325\","
+                + "\"user_words\":\"prends LDIC-325\"}", saidNow("prends LDIC-325"));
+        tool(JourneyToolCatalog.PROPOSE_GUIDED, "{\"reason\":\"IAM\",\"ticket\":\"LDIC-330\","
+                + "\"user_words\":\"prends LDIC-330\"}", saidNow("prends LDIC-330"));
+        // Chantier 2 (LDIC-325) ouvert à côté, chantier 3 (LDIC-330) au focus.
+        assertThat(service.openChantiersWithTicket(aliceId, "ldic-325")).singleElement()
+                .satisfies(t -> {
+                    assertThat(t.workspaceId()).isEqualTo(ws());
+                    assertThat(t.number()).isEqualTo(2);
+                });
+        assertThat(service.openChantiersWithTicket(aliceId, "LDIC-330")).singleElement()
+                .satisfies(t -> assertThat(t.number()).isEqualTo(3));
+        assertThat(service.openChantiersWithTicket(aliceId, "LDIC-999")).isEmpty();
+        assertThat(service.openChantiersWithTicket(aliceId, "pas une clé")).isEmpty();
+        // Isolation : Bob ne trouve jamais les chantiers d'Alice.
+        UUID bobId = userRepository.findByEmail("bob-chantiers@ex.com").orElseThrow().getId();
+        assertThat(service.openChantiersWithTicket(bobId, "LDIC-325")).isEmpty();
+        // Un chantier clos n'est plus trouvé.
+        SubjectJourney focus = journeyRepository.findByUserIdAndWorkspaceId(aliceId, ws()).orElseThrow();
+        focus.setPhase(JourneyPhase.CLOS);
+        journeyRepository.save(focus);
+        assertThat(service.openChantiersWithTicket(aliceId, "LDIC-330")).isEmpty();
+    }
 }

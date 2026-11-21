@@ -82,7 +82,7 @@ public class JourneyToolExecutor {
         TurnContext context = turn == null ? TurnContext.UNKNOWN : turn;
         try {
             return switch (tool) {
-                case JourneyToolCatalog.PROPOSE_GUIDED -> proposeGuided(userId, workspace, input);
+                case JourneyToolCatalog.PROPOSE_GUIDED -> proposeGuided(userId, workspace, input, context);
                 case JourneyToolCatalog.SET_PLAN -> setPlan(userId, workspace, input);
                 case JourneyToolCatalog.SUBMIT_DIAGNOSIS -> submitDiagnosis(userId, workspace, input);
                 case JourneyToolCatalog.UPDATE_STEP -> updateStep(userId, workspace, input);
@@ -105,9 +105,41 @@ public class JourneyToolExecutor {
         }
     }
 
-    private Outcome proposeGuided(UUID userId, Workspace workspace, JsonNode input) {
+    /**
+     * Proposer le mode guidé — ou, sur la demande explicite de l'utilisateur citée dans ce tour, <b>ouvrir</b> le chantier
+     * sans clic (F-271 / SF-271-01, D2). Une citation refusée retombe sur la proposition au clic, avec la raison.
+     */
+    private Outcome proposeGuided(UUID userId, Workspace workspace, JsonNode input, TurnContext turn) {
+        String reason = text(input, "reason");
+        String ticket = text(input, "ticket");
+        String words = text(input, "user_words");
+        String refusal = null;
+        if (!words.isEmpty() && !reason.isEmpty()) {
+            refusal = writtenRefusal(words, turn, "Une course autonome (ou une routine) n'ouvre jamais un chantier : "
+                    + "personne n'y parle.", "laisse la proposition attendre son clic");
+            if (refusal == null) {
+                SubjectJourneyService.OpenOnWords opened = service.openOnUserWords(userId, workspace.getId(), reason,
+                        ticket, channel(words));
+                if (!opened.opened()) {
+                    return Outcome.ok("Le chantier " + opened.number() + " (« " + opened.title() + " ») est déjà "
+                            + "ouvert pour ce ticket : rien n'est ouvert de plus. Travaille sur lui (chantier: "
+                            + opened.number() + ").");
+                }
+                return Outcome.ok("Chantier " + opened.number() + " ouvert sur la demande de l'utilisateur (« "
+                        + opened.title() + " »), en INVESTIGATION. Investigue (lecture libre), pose ton diagnostic "
+                        + "(submit_diagnosis, chantier: " + opened.number() + ") ; s'il a demandé le plan, il a "
+                        + "demandé de planifier : confirmer_diagnostic avec ses mots, puis set_subject_plan, et "
+                        + "arrête-toi là. Ne modifie rien avant un plan validé.");
+            }
+        }
         SubjectJourneyService.ProposalOutcome outcome =
-                service.proposeGuided(userId, workspace.getId(), text(input, "reason"));
+                service.proposeGuided(userId, workspace.getId(), reason, ticket);
+        Outcome proposed = proposalText(outcome);
+        return refusal == null ? proposed : new Outcome("Chantier NON ouvert : " + refusal + " "
+                + proposed.content(), proposed.error());
+    }
+
+    private static Outcome proposalText(SubjectJourneyService.ProposalOutcome outcome) {
         return switch (outcome) {
             case PROPOSED -> Outcome.ok("Proposition affichée à l'utilisateur : [Passer en guidé] [Rester "
                     + "libre]. Le sujet reste en Libre tant qu'il n'a pas choisi : continue à comprendre "

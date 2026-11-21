@@ -273,6 +273,105 @@ public class SubjectJourneyService {
         return ProposalOutcome.PROPOSED;
     }
 
+    /** Même proposition, titrée par la clé du ticket qu'elle traite (F-271 / SF-271-01, D3) — clé illisible ignorée. */
+    @Transactional
+    public ProposalOutcome proposeGuided(UUID userId, UUID workspaceId, String reason, String ticket) {
+        String clean = reason == null ? "" : reason.strip();
+        return proposeGuided(userId, workspaceId, clean.isEmpty() ? clean : ChantierTicket.title(ticket, clean));
+    }
+
+    /** Ce qu'une ouverture demandée par l'utilisateur a produit (F-271 / SF-271-01). */
+    public record OpenOnWords(boolean opened, int number, String title) {
+    }
+
+    /**
+     * <b>Ouvre un chantier sur la demande explicite de l'utilisateur</b> (F-271 / SF-271-01, D2) — « prends LDIC-325 et
+     * pose-moi le plan » vaut le clic [Passer en guidé] (sujet en Libre) ou [Ouvrir le chantier] (sujet guidé). La
+     * citation a été vérifiée par l'appelant. Un chantier ouvert du sujet qui porte déjà la clé n'est pas doublé : il est
+     * rendu tel quel. Un « Rester libre » antérieur ne bloque pas une demande explicite. Terminal déjà possédé (le tour) ;
+     * la lecture filtre quand même {@code user_id}.
+     *
+     * @throws InvalidJourneyException raison vide
+     */
+    @Transactional
+    public OpenOnWords openOnUserWords(UUID userId, UUID workspaceId, String reason, String ticket, String channel) {
+        String cleanReason = reason == null ? "" : reason.strip();
+        if (cleanReason.isEmpty()) {
+            throw new InvalidJourneyException("reason est requise : pourquoi ce sujet est un chantier.");
+        }
+        if (cleanReason.length() > MAX_REASON) {
+            cleanReason = cleanReason.substring(0, MAX_REASON);
+        }
+        String title = ChantierTicket.title(ticket, cleanReason);
+        SubjectJourney journey = find(userId, workspaceId).orElseGet(() -> blank(userId, workspaceId));
+        String key = ChantierTicket.normalized(ticket);
+        if (key != null && journey.isGuided() && journey.hasOpenFocus()) {
+            if (ChantierTicket.carries(journey.getChantierTitle(), key)) {
+                return new OpenOnWords(false, journey.getChantierNumber(), journey.getChantierTitle());
+            }
+            for (SubjectJourneyChantier row : openRows(journey)) {
+                if (ChantierTicket.carries(row.getTitle(), key)) {
+                    return new OpenOnWords(false, row.getNumber(), row.getTitle());
+                }
+            }
+        }
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        SubjectJourney saved;
+        if (journey.isGuided() && journey.hasOpenFocus()) {
+            journey.setGuidedProposedAt(null);
+            journey.setGuidedProposalReason(null);
+            openChantier(journey, title, now);
+            saved = save(journey, now);
+        } else {
+            journey.setGuidedDeclinedAt(null); // la demande explicite l'emporte sur un « Rester libre » passé
+            saved = applyMode(journey, JourneyMode.GUIDE, now, title);
+        }
+        record(saved, SubjectJourneyEvent.GUIDED_ACCEPTED, "chantier " + saved.getChantierNumber() + " · "
+                + (channel == null || channel.isBlank() ? CHANNEL_CLICK : channel));
+        return new OpenOnWords(true, saved.getChantierNumber(), saved.getChantierTitle());
+    }
+
+    /** Un chantier ouvert du compte qui porte une clé de ticket (F-271 / SF-271-01). */
+    public record TicketChantier(UUID workspaceId, int number, String title) {
+    }
+
+    /**
+     * <b>« LDIC-325 » → (sujet, chantier)</b> (F-271 / SF-271-01, D3) : les chantiers <b>ouverts</b> du compte dont le titre
+     * porte la clé — le chantier au focus de chaque sujet guidé et ceux ouverts à côté. Tout est lu sous {@code user_id}.
+     * Best-effort : une panne rend une liste vide.
+     */
+    @Transactional(readOnly = true)
+    public java.util.List<TicketChantier> openChantiersWithTicket(UUID userId, String ticket) {
+        String key = ChantierTicket.normalized(ticket);
+        if (userId == null || key == null) {
+            return java.util.List.of();
+        }
+        try {
+            java.util.Map<String, TicketChantier> found = new java.util.LinkedHashMap<>();
+            java.util.Set<String> focuses = new java.util.HashSet<>(); // le focus fait foi sur sa ligne miroir
+            for (SubjectJourney j : repository.findByUserIdAndMode(userId, JourneyMode.GUIDE)) {
+                focuses.add(j.getWorkspaceId() + "/" + j.getChantierNumber());
+                if (j.hasOpenFocus() && ChantierTicket.carries(j.getChantierTitle(), key)) {
+                    found.put(j.getWorkspaceId() + "/" + j.getChantierNumber(),
+                            new TicketChantier(j.getWorkspaceId(), j.getChantierNumber(), j.getChantierTitle()));
+                }
+            }
+            if (chantiers != null) {
+                for (SubjectJourneyChantier row : chantiers.findByUserIdAndStatus(userId, SubjectJourneyChantier.OPEN)) {
+                    if (!focuses.contains(row.getWorkspaceId() + "/" + row.getNumber())
+                            && ChantierTicket.carries(row.getTitle(), key)) {
+                        found.putIfAbsent(row.getWorkspaceId() + "/" + row.getNumber(),
+                                new TicketChantier(row.getWorkspaceId(), row.getNumber(), row.getTitle()));
+                    }
+                }
+            }
+            return java.util.List.copyOf(found.values());
+        } catch (RuntimeException e) {
+            log.debug("Chantiers par clé illisibles ({})", e.getClass().getSimpleName());
+            return java.util.List.of();
+        }
+    }
+
     /**
      * Journalise un refus de la porte (SF-176-04) : la classe et l'outil, jamais la commande.
      * Best-effort.

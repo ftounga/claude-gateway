@@ -323,6 +323,36 @@ public class JarvisFastBrainService {
         this.sobriety = sobriety;
     }
 
+    // ---- F-271 / SF-271-01 : « LDIC-325 » → le fil de son chantier ----
+    private fr.claudegateway.atelier.journey.SubjectJourneyService journeys;
+
+    @Autowired(required = false)
+    public void setJourneys(@org.springframework.context.annotation.Lazy
+            fr.claudegateway.atelier.journey.SubjectJourneyService journeys) {
+        this.journeys = journeys;
+    }
+
+    /**
+     * Le chantier ouvert que désigne la clé de ticket citée dans la demande, s'il est <b>unique</b> : une seule clé citée,
+     * un seul chantier ouvert du compte qui la porte. Sinon {@code null}. Best-effort.
+     */
+    fr.claudegateway.atelier.journey.SubjectJourneyService.TicketChantier ticketTarget(UUID userId, String text) {
+        if (journeys == null || userId == null) {
+            return null;
+        }
+        java.util.Set<String> keys = fr.claudegateway.atelier.journey.ChantierTicket.keysIn(text);
+        if (keys.size() != 1) {
+            return null;
+        }
+        try {
+            List<fr.claudegateway.atelier.journey.SubjectJourneyService.TicketChantier> found =
+                    journeys.openChantiersWithTicket(userId, keys.iterator().next());
+            return found.size() == 1 ? found.get(0) : null;
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
     /** F-235 / SF-235-09 (D18) — la variante figée de la consigne système selon le réglage d'humour du compte. */
     String systemFor(UUID userId) {
         return JarvisFastBrainPrompt.system(preferences == null ? fr.claudegateway.jarvis.preferences.JarvisHumour
@@ -2963,6 +2993,16 @@ public class JarvisFastBrainService {
         }
         if (demande.isEmpty()) {
             demande = request.text() == null ? "" : request.text().strip();
+        }
+        // F-271 / SF-271-01 (D3) — « lance LDIC-325 » : sans numéro donné, la clé d'un SEUL chantier ouvert du compte
+        // désigne son fil (sujet + chantier). Un numéro donné prime ; une clé ambiguë ou inconnue ne change rien.
+        if ((site == null || !site.isIntegralNumber()) && !JARVIS_THREAD_TARGET.equals(subject)) {
+            fr.claudegateway.atelier.journey.SubjectJourneyService.TicketChantier ticket =
+                    ticketTarget(request.userId(), demande + " " + label);
+            if (ticket != null) {
+                subject = ticket.workspaceId();
+                chantier = ticket.number();
+            }
         }
         if (annonce.isEmpty()) {
             annonce = AUTO_ANNOUNCE;

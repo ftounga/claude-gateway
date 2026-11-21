@@ -460,12 +460,22 @@ public class JourneyToolCatalog {
                         + "d'infra, plusieurs étapes ou inconnues à lever avant d'agir. Il voit [Passer en "
                         + "guidé] [Rester libre] et choisit. Sur un sujet déjà guidé : propose un chantier DE "
                         + "PLUS, distinct (les chantiers ouverts restent ouverts). Jamais pour une question ou "
-                        + "un petit geste.",
+                        + "un petit geste. Si l'utilisateur te demande EXPLICITEMENT dans ce tour d'ouvrir ou de "
+                        + "prendre un chantier, ou de planifier un ticket (« prends LDIC-325 et pose-moi le plan »), "
+                        + "passe user_words = ses mots EXACTS de ce tour : le chantier s'ouvre directement, sans clic. "
+                        + "Jamais de ta propre initiative.",
                 Map.of("type", "object",
                         "properties", Map.of(
                                 "reason", Map.of("type", "string",
                                         "description", "Pourquoi c'est un chantier, en une phrase lisible par "
-                                                + "l'utilisateur (300 caractères au plus).")),
+                                                + "l'utilisateur (300 caractères au plus)."),
+                                "ticket", Map.of("type", "string",
+                                        "description", "La clé du ticket que traite ce chantier (« LDIC-325 »), s'il "
+                                                + "y en a un : le chantier est titré par elle."),
+                                "user_words", Map.of("type", "string",
+                                        "description", "Les mots EXACTS de l'utilisateur qui demandent d'ouvrir ce "
+                                                + "chantier, cités tels qu'il les a écrits ou dits dans ce tour. "
+                                                + "Absent : la proposition attend son clic.")),
                         "required", List.of("reason")));
     }
 }
