@@ -192,6 +192,8 @@ import {
 import { PushActivationService } from '../../core/services/push-activation.service';
 import { TerminalFilComponent } from './terminal-fil.component';
 import { AttenteCardComponent } from './attente-card.component';
+import { TerminalQuickActionsComponent } from './terminal-quick-actions.component';
+import { QuickAction } from '../../core/services/quick-actions.service';
 import { HandoffCardComponent, HandoffOriginComponent } from './handoff-card.component';
 import { ProposalCardComponent } from './proposal-card.component';
 import { BesoinCardComponent } from './besoin-card.component';
@@ -307,6 +309,7 @@ export function plumeErrorMessage(failure: HttpErrorResponse | null | undefined)
     TeamsLinkBadgeComponent, NgTemplateOutlet, TerminalEmailComponent, PageBlockComponent, PagePanelComponent,
     TerminalActionsPanelComponent, TerminalAttentesBandComponent, TerminalMorningBandComponent, TerminalFilComponent,
     AttenteCardComponent,
+    TerminalQuickActionsComponent,
     HandoffCardComponent, HandoffOriginComponent, ProposalCardComponent, BesoinCardComponent, ProofCapturesComponent, VideoBlockComponent, AudioBlockComponent,
     TerminalJourneyChipComponent, TerminalJourneyStripComponent, TerminalJourneyChantiersComponent,
     TerminalChantiersBoardComponent,
@@ -2057,6 +2060,15 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   @Output() depositRemove = new EventEmitter<string>();
   /** [Ouvrir le sujet] sur une carte de passation (F-179 / SF-179-02) : l'écran ouvre le sujet. */
   @Output() openSubject = new EventEmitter<AtelierSubjectHandoff>();
+
+  /**
+   * **Le bouton « Actions rapides »** (F-275 / SF-275-03) : présent seulement si l'écran le demande (volet principal de
+   * l'Atelier) — jamais en lecture seule, au volet d'un chantier ni au terminal Teams.
+   */
+  @Input() quickActions = false;
+
+  /** Une action rapide cliquée : l'écran la lance dans le bon terminal (F-275 / SF-275-03). */
+  @Output() quickAction = new EventEmitter<QuickAction>();
   /** Le terminal d'où vient ce sujet (F-179 / SF-179-02), ou `null` : la bande « Ouvert depuis… ». */
   @Input() handoffFromName: string | null = null;
   /** « Revenir » au terminal d'origine (F-179 / SF-179-02). */

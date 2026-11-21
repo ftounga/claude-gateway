@@ -1948,6 +1948,16 @@
           <button mat-button type="button" (click)="depositCancel.emit()">Annuler</button>
         </div>
       }
+      <!-- F-275 / SF-275-03 — ACTIONS RAPIDES : une seule icône (F-207), le menu déroule les workflows configurés.
+           La suggestion se relit à chaque fin de tour (routinesTick). -->
+      @if (quickActions && !readOnly && !teamsTerminal && projectId) {
+        <app-terminal-quick-actions
+          [workspaceId]="projectId"
+          [refresh]="routinesTick()"
+          [disabled]="publishing || liveLimitReached"
+          (launch)="quickAction.emit($event)"
+        ></app-terminal-quick-actions>
+      }
       <!-- TROMBONE (F-115 / SF-115-02, parité SF-28-13 étendue aux terminaux runner). -->
       <input
         #depositInput

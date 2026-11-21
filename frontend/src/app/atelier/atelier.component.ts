@@ -174,6 +174,7 @@ import { SessionBilanPanelComponent } from './terminal/session-bilan-panel.compo
 import { RADAR_DRAFT_STATE, radarDraftFrom } from '../shared/radar-draft';
 import { TerminalDraftBridge } from '../shared/videos/terminal-draft-bridge';
 import { draftWithMessage } from '../shared/videos/video-review';
+import { QuickAction, QuickActionsService } from '../core/services/quick-actions.service';
 import { guardHandlers } from './displayed-subject';
 import { currentClientRefOf } from './current-client-ref';
 import { CurrentClientService } from '../core/services/current-client.service';
@@ -295,6 +296,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
   /** Le client courant de toute l'application (F-199 / SF-199-01), que le terminal ouvert impose. */
   private readonly currentClient = inject(CurrentClientService);
   private readonly snackBar = inject(MatSnackBar);
+  private readonly quickActionsApi = inject(QuickActionsService);
   /** F-214 / SF-214-02 : la galerie (autre onglet) propose les retours d'une vidéo à la saisie de ce terminal. */
   private readonly draftBridge = inject(TerminalDraftBridge);
   private stopDraftBridge: (() => void) | null = null;
@@ -1328,8 +1330,10 @@ export class AtelierComponent implements OnInit, OnDestroy {
    * envoyée —, et l'adresse suit (rechargement, « précédent »). La phrase ne voyage pas dans l'adresse
    * ni dans l'état de navigation : un rechargement ne la redépose pas.
    */
-  openHandoff(handoff: AtelierSubjectHandoff): void {
-    if (this.submitting()) {
+  openHandoff(handoff: AtelierSubjectHandoff, options: { send?: boolean; explicit?: boolean } = {}): void {
+    // F-275 / SF-275-03 : un clic sur une action rapide est un geste explicite — il peut quitter un terminal où un tour
+    // tourne (le tour continue côté serveur, F-198). La passation automatique, elle, garde sa garde.
+    if (this.submitting() && !options.explicit) {
       // Jamais de navigation pendant un tour (D4) : la carte reste, le geste se refera.
       this.notifyError('Un tour est en cours : le sujet s\'ouvrira une fois le tour fini.');
       return;
@@ -1344,15 +1348,58 @@ export class AtelierComponent implements OnInit, OnDestroy {
           this.notifyError('Sujet introuvable.');
           return;
         }
+        // F-275 / SF-275-03 : l'envoi attend que le moteur du sujet ouvert soit relevé (loadEngine, déclenché par
+        // selectWorkspace) — sinon la phrase partirait par le chemin du terminal quitté. Posé AVANT la sélection.
+        this.pendingQuickSend = options.send ? { id: target.id, phrase: handoff.phrase } : null;
+        this.engineReadyFor = null;
         this.selectWorkspace(target);
         this.draft.set(handoff.phrase);
-        this.handoffOrigin.set(fromId && fromId !== target.id
+        if (this.pendingQuickSend && this.engineReadyFor === target.id) {
+          // Moteur déjà relevé pendant la sélection (réponse immédiate) : la phrase, déposée juste au-dessus, part.
+          this.pendingQuickSend = null;
+          if (!this.submitting()) {
+            this.send();
+          }
+        }
+        // F-275 / SF-275-03 : une phrase envoyée d'office n'est plus « prête dans la saisie » — pas de bandeau.
+        this.handoffOrigin.set(fromId && fromId !== target.id && !options.send
           ? { fromId, fromName, targetId: target.id, phrase: handoff.phrase }
           : null);
         void this.router.navigate(['/atelier', target.id]);
       },
       error: () => this.notifyError('Impossible d\'ouvrir le sujet.'),
     });
+  }
+
+  /**
+   * **Lancer une action rapide** (F-275 / SF-275-03, D5). Le lancement est enregistré (dernière exécution), sans
+   * bloquer. Un sujet cible autre que le terminal affiché s'ouvre comme une passation (phrase déposée, envoyée si
+   * l'action le dit). Ici : envoyée seulement si la saisie est vide et qu'aucun tour ne tourne — **jamais un brouillon
+   * écrasé** ; sinon la phrase est déposée devant le brouillon, et l'écran le dit.
+   */
+  launchQuickAction(action: QuickAction): void {
+    const id = this.activeWorkspaceId();
+    if (!id) {
+      return;
+    }
+    this.quickActionsApi.recordLaunch(id, action.key).subscribe({ error: () => undefined });
+    const send = action.clickMode === 'ENVOYER';
+    if (action.targetWorkspaceId && action.targetWorkspaceId !== id && !action.targetMissing) {
+      this.openHandoff({ workspaceId: action.targetWorkspaceId, name: action.targetName ?? action.label,
+        phrase: action.phrase }, { send, explicit: true });
+      return;
+    }
+    if (send && this.draft().trim().length === 0 && !this.submitting()) {
+      this.draft.set(action.phrase);
+      this.send();
+      return;
+    }
+    this.draft.set(draftWithMessage(action.phrase, this.draft()));
+    if (send) {
+      this.snackBar.open(this.submitting()
+        ? 'Un tour est en cours : la phrase est déposée dans la saisie, à envoyer ensuite.'
+        : 'Votre brouillon est gardé : la phrase est déposée devant, à envoyer.', 'OK', { duration: 5000 });
+    }
   }
 
   /** « Revenir » (F-179 / SF-179-02) : retour au terminal du poste ; une phrase non touchée est retirée. */
@@ -1829,14 +1876,37 @@ export class AtelierComponent implements OnInit, OnDestroy {
       next: (status) => {
         this.engine.set(status.engine);
         this.runnerHint.set(this.hintFor(detail.id, status));
+        this.flushQuickSend(detail.id);
       },
       error: () => {
         this.engine.set(engineFromTarget(detail));
         // Ne rien proposer vaut mieux que proposer au hasard : sans relevé, aucune bande.
         this.runnerHint.set(null);
+        this.flushQuickSend(detail.id);
       },
     });
   }
+
+  /** Le sujet ouvert par une action rapide « envoyer », dont la phrase part dès son moteur relevé (F-275). */
+  private pendingQuickSend: { id: string; phrase: string } | null = null;
+
+  /** Envoie la phrase de l'action rapide si ce sujet est celui qui l'attend, affiché, et sa saisie intacte. */
+  private flushQuickSend(id: string): void {
+    this.engineReadyFor = id;
+    const pending = this.pendingQuickSend;
+    // La phrase doit être celle déposée par l'action, intacte : jamais un autre brouillon (moteur relevé pendant la
+    // sélection, avant le dépôt ⇒ openHandoff rappelle juste après ; saisie retouchée entre-temps ⇒ rien ne part).
+    if (!pending || pending.id !== id || this.draft() !== pending.phrase) {
+      return;
+    }
+    this.pendingQuickSend = null;
+    if (this.isDisplayed(id) && !this.submitting()) {
+      this.send();
+    }
+  }
+
+  /** Le dernier terminal dont le moteur a été relevé (F-275 / SF-275-03). */
+  private engineReadyFor: string | null = null;
 
   /**
    * Motif à afficher, ou `null`. Un `recommendRunner` sans motif ne dit rien — le motif **est** le

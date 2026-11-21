@@ -235,6 +235,8 @@
     (depositCancel)="cancelDeposit()"
     (depositRemove)="onDepositRemove($event)"
     (openSubject)="openHandoff($event)"
+    [quickActions]="true"
+    (quickAction)="launchQuickAction($event)"
     [handoffFromName]="handoffOriginLabel()"
     (handoffReturn)="returnFromHandoff()"
   ></app-atelier-terminal>

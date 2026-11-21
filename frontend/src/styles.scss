@@ -369,3 +369,66 @@ code, pre { font-family: var(--cg-font-mono); }
   border: 1px solid color-mix(in srgb, var(--cg-accent) 35%, transparent);
   border-radius: 12px;
 }
+
+// F-275 / SF-275-03 — le menu « Actions rapides » : le panneau vit dans l'overlay, hors du composant. Libellé + ligne
+// d'aide sur deux lignes, sections titrées ; jetons --cg-* seulement.
+.quick-actions-menu.mat-mdc-menu-panel {
+  width: min(400px, calc(100vw - 32px));
+  max-width: min(400px, calc(100vw - 32px));
+  max-height: min(70vh, 560px);
+
+  .quick-actions__title {
+    margin: 0;
+    padding: var(--cg-space-2) var(--cg-space-3) var(--cg-space-1);
+    font-family: var(--cg-font-heading);
+    font-weight: 600;
+    color: var(--cg-text-primary);
+  }
+
+  .quick-actions__section {
+    margin: var(--cg-space-2) 0 0;
+    padding: var(--cg-space-1) var(--cg-space-3);
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--cg-text-secondary);
+  }
+
+  .quick-actions__note {
+    margin: 0;
+    padding: var(--cg-space-2) var(--cg-space-3);
+    font-size: 13px;
+    color: var(--cg-text-secondary);
+  }
+
+  .quick-actions__item.mat-mdc-menu-item {
+    min-height: 56px;
+    height: auto;
+    padding-top: var(--cg-space-1);
+    padding-bottom: var(--cg-space-1);
+  }
+
+  .quick-actions__item--suggest .quick-actions__icon {
+    color: var(--cg-orange);
+  }
+
+  .quick-actions__text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .quick-actions__label {
+    font-weight: 500;
+    color: var(--cg-text-primary);
+  }
+
+  .quick-actions__meta {
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--cg-text-secondary);
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
