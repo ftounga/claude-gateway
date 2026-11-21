@@ -53,12 +53,24 @@ import { VeilleService } from '../../core/services/veille.service';
         </button>
       </div>
     }
+    @for (watch of failingWatches(); track watch.id) {
+      <div class="veille-failing" role="status">
+        <mat-icon class="veille-failing__icon" aria-hidden="true">error_outline</mat-icon>
+        <span class="veille-failing__text">
+          {{ watch.purpose === 'STATE' ? 'Sonde de relevé' : 'Veille' }} « {{ watch.name }} » — dernier passage en
+          échec : {{ watch.lastErrorMessage }}
+        </span>
+      </div>
+    }
     @for (watch of brokenWatches(); track watch.id) {
       <div class="veille-broken" role="status">
         <mat-icon class="veille-broken__icon" aria-hidden="true">sensors_off</mat-icon>
         <span class="veille-broken__text">
           Veille « {{ watch.name }} » en panne : sa sonde a échoué {{ watch.consecutiveFailures }} fois de suite.
           Demandez à l'agent de la réparer.
+          @if (watch.lastErrorMessage) {
+            <span class="veille-broken__reason">Raison : {{ watch.lastErrorMessage }}</span>
+          }
         </span>
       </div>
     }
@@ -89,6 +101,8 @@ import { VeilleService } from '../../core/services/veille.service';
             }
           } @else if (watch.testSummary) {
             <p class="veille-card__result" role="status">Dernier test : {{ watch.testSummary }}</p>
+          } @else if (watch.lastErrorMessage) {
+            <p class="veille-card__error" role="alert">Dernier test en échec : {{ watch.lastErrorMessage }}</p>
           }
           @if (!readOnly()) {
             <div class="veille-card__gestures">
@@ -161,6 +175,13 @@ import { VeilleService } from '../../core/services/veille.service';
     .veille-card__result { font-weight: 600; }
     .veille-card__sample { margin: var(--cg-space-1) 0 0; padding-left: var(--cg-space-4); font-size: 13px; }
     .veille-card__error { color: var(--cg-orange-2); }
+    .veille-broken__reason { display: block; margin-top: var(--cg-space-1); font-size: 13px; }
+    .veille-failing {
+      display: flex; align-items: center; gap: var(--cg-space-2); margin: var(--cg-space-2) 0;
+      padding: var(--cg-space-2) var(--cg-space-3); border: 1px solid var(--cg-divider); border-radius: 8px;
+      font-family: var(--cg-font-body); font-size: 13px; overflow-wrap: anywhere;
+    }
+    .veille-failing__icon { flex: none; color: var(--cg-orange-2); }
     .veille-card__gestures { display: flex; flex-wrap: wrap; gap: var(--cg-space-2); margin-top: var(--cg-space-2); }
     .veille-card__gestures button { min-height: 44px; }
     .veille-card__gestures mat-progress-spinner { display: inline-block; margin-right: var(--cg-space-1); }
@@ -191,6 +212,12 @@ export class TerminalVeillesBandComponent {
   readonly proposals = computed(() => this.watches().filter((w) => w.proposed));
   /** SF-230-02 — les veilles en panne : une veille muette ne doit pas passer pour « rien de neuf » (D6). */
   readonly brokenWatches = computed(() => this.watches().filter((w) => w.broken && !w.proposed));
+  /**
+   * F-273 / SF-273-02 — une veille ou une sonde de relevé validée dont le dernier passage a échoué, sans être en
+   * panne : la raison réelle est dite (un poste muet ne met jamais « en panne »).
+   */
+  readonly failingWatches = computed(() => this.watches().filter((w) => !w.proposed && !w.broken
+    && w.lastRunStatus === 'FAILED' && !!w.lastErrorMessage));
   /** Les tests de cette visite, par veille. */
   readonly results = signal<Record<string, JarvisWatchTest>>({});
   readonly testing = signal<string | null>(null);
