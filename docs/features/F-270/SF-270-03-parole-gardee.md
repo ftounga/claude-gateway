@@ -7,7 +7,7 @@
 `F-270` — Parler à Jarvis pendant qu'il travaille
 
 ## Statut
-`in-progress`
+`done`
 
 ## Date de création
 2026-11-18

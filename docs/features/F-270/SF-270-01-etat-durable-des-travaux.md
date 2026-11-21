@@ -7,7 +7,7 @@
 `F-270` — Parler à Jarvis pendant qu'il travaille (cadrage `CADRAGE-F-270-parler-a-jarvis-pendant-qu-il-travaille.md`)
 
 ## Statut
-`in-progress`
+`done`
 
 ## Date de création
 2026-11-18

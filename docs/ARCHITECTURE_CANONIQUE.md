@@ -1571,6 +1571,10 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   `taken_at` (prise atomique, un seul tour, tous pods), `finished_at`. Balayage chaque minute (offre non prise > 2 min,
   prise non finie > 2 h : close, ligne-lien « échec » / « interrompu »), purge > 7 jours et à la suppression du compte.
   Sans clé étrangère.
+  **F-270 / SF-270-01 (migration `272-70`)** : `origin` (`DELEGATION` | `DIRECT` — tour vocal en fond annoncé par l'écran),
+  `phase` (`THINKING`, `EXECUTING` au premier outil qui agit sur le poste, `QUEUED` — commande enchaînée, SF-270-04),
+  `outcome` (`DONE`, `FAILED`, `CANCELLED`, `WAITING_YES`). Lu par `GET /api/jarvis/works` avec les courses de
+  `chantier_autonomy_runs` (lues, jamais recopiées) ; une commande `QUEUED` jamais libérée est abandonnée après 30 min.
 - **jarvis_client_mail_settings / jarvis_client_mail_hosts / jarvis_client_mail_reminders** — **le rappel du soir**
   (F-249 / SF-249-05, migration `249-05`) : réglages par compte (`reminder_time` 18:30, `reminder_max` 3,
   `reminder_every_minutes` 45, `weekdays_only`, `meeting_alert_minutes` 10) ; clients actifs (`user_id`, `host_id`
