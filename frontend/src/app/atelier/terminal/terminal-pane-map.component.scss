@@ -73,6 +73,14 @@
   white-space: nowrap;
 }
 
+/* F-274 : les gestes hors plan rattachés, un compteur discret, l'encre de la carte, aucune couleur nouvelle. */
+.pane-map__out {
+  padding: 0 var(--cg-space-1);
+  color: var(--cg-divider);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .pane-map__moves {
   display: inline-flex;
   flex: 0 0 auto;

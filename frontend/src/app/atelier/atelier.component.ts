@@ -415,6 +415,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
    */
   readonly paneLayout = signal<PaneLayout>(NO_PANES);
 
+  /** Le fil du sujet est épinglé dans le volet de gauche par l'utilisateur (F-274 / SF-274-03). */
+  readonly commonPinned = signal(false);
+
   /** Les chantiers en course autonome (en-tête « en autonome » du volet). */
   private readonly autonomousLanes = signal<number[]>([]);
 
@@ -563,7 +566,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
    */
   onFocusChantierChange(focus: number | null): void {
     const id = this.activeWorkspaceId();
-    if (!id || focus === null || this.paneLayout().left !== null) {
+    if (!id || focus === null || this.paneLayout().left !== null || this.commonPinned()) {
       return;
     }
     const open = this.paneChantiers().length > 0 ? this.paneChantiers().map((c) => c.number) : null;
@@ -599,6 +602,17 @@ export class AtelierComponent implements OnInit, OnDestroy {
   }
 
   /** La carte des volets : « mettre ce chantier à gauche / à droite ». */
+  /**
+   * **Le fil du sujet d'un clic** (F-274 / SF-274-03) : le volet de gauche montre le fil hors de tout chantier — il
+   * relit tout le sujet ; le volet de droite ne bouge pas. Épinglé jusqu'à ce qu'un chantier revienne à gauche : le
+   * focus du serveur ne l'en chasse pas.
+   */
+  onCommonShown(): void {
+    const layout = this.paneLayout();
+    this.commonPinned.set(true);
+    this.applyLayout({ left: null, right: layout.right }, true);
+  }
+
   onPanePlaced(event: { number: number; side: PaneSide }): void {
     this.applyLayout(place(this.paneLayout(), event.number, event.side), true);
   }
@@ -674,6 +688,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
     }
     this.paneLayout.set(next);
     writeLayout(id, next);
+    if (next.left !== null) {
+      this.commonPinned.set(false); // F-274 : un chantier revenu à gauche désépingle le fil du sujet
+    }
     if (next.right === null || (this.shownPane() === 'right' && previous.right !== next.right
         && sideOf(next, previous.right ?? -1) === 'left')) {
       this.shownPane.set('left');
@@ -697,6 +714,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
   private resetSplit(): void {
     this.chatLane.set(null);
     this.paneLayout.set(NO_PANES);
+    this.commonPinned.set(false);
     this.paneChantiers.set([]);
     this.activeLanes.set([]);
     this.autonomousLanes.set([]);

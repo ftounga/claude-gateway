@@ -2029,6 +2029,26 @@ describe('AtelierComponent', () => {
       expect(component.chatLane()).toBe(10);
     });
 
+    it('F-274 : le fil du sujet d\'un clic à gauche ; le focus du serveur ne l\'en chasse pas ; un chantier le remplace', () => {
+      arrive(both);
+      service.getHistory.calls.reset();
+
+      component.onCommonShown();
+
+      expect(component.paneLayout()).toEqual({ left: null, right: 11 });
+      expect(component.chatLane()).toBeNull();
+      expect(component.commonPinned()).toBeTrue();
+      expect(service.getHistory).toHaveBeenCalledWith('w1', null);
+      expect(focus).not.toHaveBeenCalled();
+
+      component.onFocusChantierChange(10);
+      expect(component.paneLayout()).withContext('le fil du sujet reste épinglé').toEqual({ left: null, right: 11 });
+
+      component.onPanePlaced({ number: 9, side: 'left' });
+      expect(component.paneLayout()).toEqual({ left: 9, right: 11 });
+      expect(component.commonPinned()).toBeFalse();
+    });
+
     it('ouvrir 9 à gauche : 11 reste à droite, le fil de gauche devient celui de 9, le focus suit', () => {
       arrive(both);
       service.getHistory.calls.reset();

@@ -74,6 +74,17 @@ export interface OpenChantier {
   stale?: boolean;
   /** Les attentes ouvertes rangées sous ce chantier qu'aucune étape n'attend déjà (F-227 / SF-227-01). */
   attentes?: LinkedAttente[];
+  /**
+   * Les gestes faits hors de son plan mais rattachés à lui (F-274 / SF-274-02), les plus récents d'abord — absent
+   * d'une gateway antérieure.
+   */
+  horsPlan?: OutOfPlanGesture[];
+}
+
+/** Un geste demandé hors du plan d'un chantier, ou transverse, rattaché à ce chantier (F-274 / SF-274-02). */
+export interface OutOfPlanGesture {
+  at: string | null;
+  objet: string;
 }
 
 /** Une attente rangée sous un chantier (F-227 / SF-227-01). */

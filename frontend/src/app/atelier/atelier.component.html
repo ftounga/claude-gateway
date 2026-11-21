@@ -108,7 +108,9 @@
       [chantiers]="paneChantiers()"
       [layout]="paneLayout()"
       [activeLanes]="activeLanes()"
+      [commonShown]="commonPinned()"
       (placed)="onPanePlaced($event)"
+      (commonPlaced)="onCommonShown()"
     ></app-terminal-pane-map>
   }
   @if (splitPane() !== null && narrowScreen()) {
