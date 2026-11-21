@@ -37,7 +37,8 @@ public final class JarvisWatchDtos {
             boolean active, boolean proposed, String origin, OffsetDateTime testedAt, Integer testItemCount,
             String testSummary, OffsetDateTime nextRunAt, OffsetDateTime createdAt, OffsetDateTime updatedAt,
             OffsetDateTime lastRunAt, String lastRunStatus, boolean broken, int consecutiveFailures,
-            BigDecimal monthlyBudgetEur, BigDecimal monthSpentEur, String purpose) {
+            BigDecimal monthlyBudgetEur, BigDecimal monthSpentEur, String purpose, String lastErrorCode,
+            String lastErrorMessage, OffsetDateTime lastErrorAt) {
 
         static JarvisWatchView of(JarvisWatch watch, OffsetDateTime now) {
             return of(watch, now, DEFAULT_USD_TO_EUR, null);
@@ -58,7 +59,8 @@ public final class JarvisWatchDtos {
                     watch.isBroken(), watch.getConsecutiveFailures(),
                     budget.multiply(rate).setScale(2, RoundingMode.HALF_UP),
                     spentUsd == null ? null : spentUsd.multiply(rate).setScale(2, RoundingMode.HALF_UP),
-                    watch.getPurpose() == null ? JarvisWatch.PURPOSE_ALERT : watch.getPurpose());
+                    watch.getPurpose() == null ? JarvisWatch.PURPOSE_ALERT : watch.getPurpose(),
+                    watch.getLastErrorCode(), watch.getLastErrorMessage(), watch.getLastErrorAt());
         }
     }
 

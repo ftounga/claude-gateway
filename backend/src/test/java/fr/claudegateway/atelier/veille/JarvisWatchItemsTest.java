@@ -33,6 +33,14 @@ class JarvisWatchItemsTest {
     }
 
     @Test
+    void toleratesANoiseLineThatHoldsABracket() {
+        // F-273 / SF-273-01 : « [WARN] … » écrit sur la sortie d'erreur avant la liste.
+        JarvisWatchItems.Parsed parsed = JarvisWatchItems.parse("[WARN] proxy non vérifié\n" + LIST + "\n");
+        assertThat(parsed.ok()).isTrue();
+        assertThat(parsed.items()).hasSize(3);
+    }
+
+    @Test
     void refusesWhatIsNotAList() {
         assertThat(JarvisWatchItems.parse("").ok()).isFalse();
         assertThat(JarvisWatchItems.parse("{\"id\":1}").error()).contains("liste JSON");

@@ -148,6 +148,16 @@ public class JarvisWatch {
     @Column(name = "purpose", nullable = false, length = 8)
     private String purpose = PURPOSE_ALERT;
 
+    /** F-273 / SF-273-01 — la dernière erreur (test ou passage), effacée au succès suivant ou à la reproposition. */
+    @Column(name = "last_error_code", length = 32)
+    private String lastErrorCode;
+
+    @Column(name = "last_error_message", length = 500)
+    private String lastErrorMessage;
+
+    @Column(name = "last_error_at")
+    private OffsetDateTime lastErrorAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
