@@ -131,6 +131,29 @@ class AtelierChatServiceVoiceTurnTest {
     }
 
     @Test
+    void SF_271_02_laDoctrineDuParcoursVaDansLeMessageLeSystemeResteIdentique() {
+        agentProvider.enqueueFinal("ok");
+        service.chat(userId, workspaceId, "bonjour");
+        String typedSystem = agentProvider.lastRequest.system();
+
+        service.markVoiceTurn(userId, workspaceId, null);
+        agentProvider.enqueueFinal("🎙 J'ouvre le chantier LDIC-325 et je prépare le plan.");
+        service.chat(userId, workspaceId, "Prends LDIC-325 et pose-moi le plan.");
+
+        assertThat(fr.claudegateway.jarvis.JarvisOralNote.VERSION).isEqualTo("5");
+        assertThat(sentToModel()).contains("Le parcours d'un ticket, à la voix")
+                .contains("propose_guided_mode avec ticket et user_words")
+                .contains("lancer_chantier_autonome — une seule confirmation pour les deux")
+                .contains("« il manque… »")
+                .contains("son « oui » explicite vaut le clic")
+                .contains("lire_plan_chantier");
+        assertThat(agentProvider.lastRequest.system()).isEqualTo(typedSystem).doesNotContain("parcours d'un ticket");
+        assertThat(saved()).filteredOn(m -> "USER".equals(m.getRole())).extracting(AtelierMessage::getContent)
+                .contains("Prends LDIC-325 et pose-moi le plan.")
+                .noneMatch(c -> c.contains("parcours d'un ticket"));
+    }
+
+    @Test
     void SF_235_09_laPersonnaliteEtLeTonSobreVontDansLeMessageLeSystemeResteIdentique() {
         agentProvider.enqueueFinal("ok");
         service.chat(userId, workspaceId, "bonjour");
