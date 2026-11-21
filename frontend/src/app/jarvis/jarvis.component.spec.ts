@@ -4210,6 +4210,34 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
     jarvis.ngOnDestroy();
   }));
 
+  it('F-271 / SF-271-03 — une question de lancement sans réponse 2 min est close à voix haute, une fois',
+    fakeAsync(() => {
+      const jarvis = fastOn();
+      delegate(jarvis, { delegationId: 'd-1', subjectId: 'w-1', label: 'plan du ticket', chantier: 13 });
+      const running = handlers!;
+      running.onDone({ reply: '🎙 Je valide le plan v1 de LDIC-325 et le lance en autonome. Vous confirmez ?',
+        actions: [], messageId: 'm' });
+      flushMicrotasks();
+      tick(3_000);
+      flushMicrotasks();
+      const armed = jarvis['armed'].live();
+      expect(armed.length).toBe(1);
+      expect(armed[0].name).toBe('LDIC-325'); // la clé de la phrase dite, le libellé n'en a pas
+      expect(armed[0].launch).toBeTrue();
+      armed[0].at -= 121_000; // deux minutes sans réponse
+      voice.speak.calls.reset();
+      jarvis['sayExpiredLaunches']();
+      jarvis.state.set('repos');
+      tick(5_000);
+      flushMicrotasks();
+      jarvis['sayExpiredLaunches']();
+      tick(5_000);
+      flushMicrotasks();
+      const said = voice.speak.calls.allArgs().filter((a) => a[0] === 'Sans réponse, je n’ai pas lancé LDIC-325.');
+      expect(said.length).toBe(1);
+      jarvis.ngOnDestroy();
+    }));
+
   it('F-270 / SF-270-04 (D7) — « arrête CAGIP » arrête ce travail-là, sur son fil ; un nom inconnu est dit',
     fakeAsync(() => {
       const jarvis = fastOn();

@@ -21,7 +21,14 @@ export interface ArmedConfirmation {
   chantier: number | null;
   /** Le nom dit pour la désigner (« LDIC-325 », « agenor »). */
   name: string;
+  /** F-271 / SF-271-03 — la question demandait de lancer : sans réponse, l'expiration est dite. */
+  launch?: boolean;
   at: number;
+}
+
+/** F-271 / SF-271-03 — la phrase dite demande-t-elle de lancer quelque chose ? */
+export function asksLaunch(phrase: string | null | undefined): boolean {
+  return /\blan[cç]/i.test(phrase ?? '');
 }
 
 /** F-271 §8 — une confirmation non reçue en 2 min expire. */
@@ -40,6 +47,8 @@ export type ConfirmationTarget =
  */
 export class ArmedConfirmations {
   private items: ArmedConfirmation[] = [];
+  /** F-271 / SF-271-03 — les confirmations de lancement expirées sans réponse, pas encore dites. */
+  private expiredLaunches: ArmedConfirmation[] = [];
 
   constructor(private readonly now: () => number = () => Date.now()) {}
 
@@ -59,8 +68,20 @@ export class ArmedConfirmations {
   /** Les confirmations encore valables, de la plus ancienne à la plus récente. */
   live(): ArmedConfirmation[] {
     const limit = this.now() - CONFIRM_TTL_MS;
+    this.expiredLaunches.push(...this.items.filter((i) => i.at < limit && i.launch));
     this.items = this.items.filter((i) => i.at >= limit);
     return [...this.items];
+  }
+
+  /**
+   * F-271 / SF-271-03 — les questions de lancement restées sans réponse 2 min, rendues une seule fois (« Sans réponse,
+   * je n'ai pas lancé LDIC-325. »). Une confirmation remplacée, désarmée ou effacée n'y figure jamais.
+   */
+  takeExpiredLaunches(): ArmedConfirmation[] {
+    this.live();
+    const out = this.expiredLaunches;
+    this.expiredLaunches = [];
+    return out;
   }
 
   get size(): number {

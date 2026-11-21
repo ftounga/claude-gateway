@@ -65,7 +65,7 @@ import { EndOfSpeech, MicMeter, SPEECH_LEVEL, silenceMs } from './jarvis-mic-met
 import { asksConfirmation, classifyConfirmation, confirmationQuestion } from './jarvis-confirm';
 import {
   ArmedConfirmation, ArmedConfirmations, JARVIS_WORKS_POLL_MS, JarvisWork, JarvisWorksClient, confirmationVerdict, isLive,
-  isOtherRequest, matchWorks, names, newWorkId, shortName, stopTarget, whichQuestion,
+  asksLaunch, isOtherRequest, matchWorks, names, newWorkId, shortName, stopTarget, whichQuestion,
 } from './jarvis-works';
 import {
   ENROLL_COUNT, MIN_WORD_FRAMES, TemplateWakeWordEngine, WakeEvent, enrollThreshold, readWakeProfile,
@@ -681,9 +681,26 @@ export class JarvisComponent implements OnInit, OnDestroy {
       if (busy || this.worksTick++ % 4 === 0) {
         void this.refreshWorks();
       }
+      this.sayExpiredLaunches();
     }), this.worksPollMs);
     this.destroyRef.onDestroy(() => clearInterval(timer));
     void this.refreshWorks();
+  }
+
+  /**
+   * F-271 / SF-271-03 — une question de lancement restée sans réponse 2 min est close à voix haute, à la pause : rien
+   * n'a été lancé, et le PO le sait sans regarder l'écran.
+   */
+  private sayExpiredLaunches(): void {
+    const expired = this.armed.takeExpiredLaunches();
+    if (!expired.length || this.presentation()) {
+      return;
+    }
+    for (const item of expired) {
+      this.announcements.push({ label: '', subjectId: item.subjectId, confirm: false,
+        phrase: `Sans réponse, je n’ai pas lancé ${item.name}.` });
+    }
+    this.flushAnnouncements();
   }
 
   private async refreshWorks(): Promise<void> {
@@ -3790,8 +3807,10 @@ export class JarvisComponent implements OnInit, OnDestroy {
       this.delegationSaid(item.delegationId, item.phrase, elapsed, { oralCut: !!item.cut, invitation: invited });
       if (item.confirm) {
         // La délégation finit sur « Vous confirmez ? » : la réponse ira à SON fil (D8 ; F-270 / SF-270-02 D2).
+        // F-271 / SF-271-03 — le nom est la clé du libellé ou de la phrase dite ; une question de lancement est suivie.
         this.armed.arm({ workId: item.delegationId ?? null, subjectId: item.subjectId, chantier: item.chantier ?? null,
-          name: shortName(item.label, item.chantier, this.subjectName(item.subjectId)) });
+          name: shortName(`${item.label} ${item.phrase}`, item.chantier, this.subjectName(item.subjectId)),
+          launch: asksLaunch(item.phrase) });
         this.awaitingVerbal = true;
         void this.listen();
         return;
@@ -5188,7 +5207,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
       const subject = this.directSubject ?? this.subjectId();
       if (subject) {
         this.armed.arm({ workId: null, subjectId: subject, chantier: null,
-          name: shortName(null, null, this.subjectName(subject)) });
+          name: shortName(phrase, null, this.subjectName(subject)), launch: asksLaunch(phrase) });
       }
       this.awaitingVerbal = true;
       await this.listen();

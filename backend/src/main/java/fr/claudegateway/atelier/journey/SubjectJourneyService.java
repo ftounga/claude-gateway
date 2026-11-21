@@ -373,6 +373,17 @@ public class SubjectJourneyService {
     }
 
     /**
+     * Journalise un départ en autonome programmé par l'outil (F-271 / SF-271-03) : chantier, mode, canal. Terminal du
+     * tour, déjà possédé. Best-effort.
+     */
+    @Transactional
+    public void recordAutonomyRequested(UUID userId, UUID workspaceId, int chantier, String mode, String channel) {
+        find(userId, workspaceId).ifPresent(journey -> record(journey, SubjectJourneyEvent.AUTONOMY_REQUESTED,
+                "chantier " + chantier + " · " + mode + " · " + (channel == null || channel.isBlank() ? "outil"
+                        : channel)));
+    }
+
+    /**
      * Journalise un refus de la porte (SF-176-04) : la classe et l'outil, jamais la commande.
      * Best-effort.
      */

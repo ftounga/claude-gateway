@@ -383,6 +383,51 @@ class AutonomyApiIntegrationTest {
     }
 
     @Test
+    @DisplayName("SF-271-03 : à l'oral, un départ exige le « oui » cité dans ce tour ; il est journalisé « dit »")
+    void voiceLaunchNeedsTheSaidYes() throws Exception {
+        executing(subject);
+        heldTurn = liveTurns.open(alice.getId(), subject.getId());
+        subject.setTurnViaJarvis(true);
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper json = new com.fasterxml.jackson.databind.ObjectMapper();
+            fr.claudegateway.atelier.journey.JourneyToolExecutor.TurnContext said =
+                    fr.claudegateway.atelier.journey.JourneyToolExecutor.TurnContext.ofUser(java.util.List.of("Oui."));
+            // Sans citation, ou avec une citation qui n'a pas été dite : rien n'est programmé.
+            fr.claudegateway.atelier.journey.JourneyToolExecutor.Outcome none = journeyTools.execute(alice.getId(),
+                    subject, fr.claudegateway.atelier.journey.JourneyToolCatalog.LAUNCH_AUTONOMOUS,
+                    json.readTree("{\"chantier\":1}"), said);
+            assertThat(none.error()).isTrue();
+            assertThat(none.content()).contains("« oui » explicite").contains("Vous confirmez ?");
+            fr.claudegateway.atelier.journey.JourneyToolExecutor.Outcome invented = journeyTools.execute(alice.getId(),
+                    subject, fr.claudegateway.atelier.journey.JourneyToolCatalog.LAUNCH_AUTONOMOUS,
+                    json.readTree("{\"chantier\":1,\"user_words\":\"vas-y lance\"}"), said);
+            assertThat(invented.error()).isTrue();
+            assertThat(service.hasDeferred(alice.getId(), subject.getId())).isFalse();
+            // Le « oui » dit dans ce tour : programmé, journalisé avec sa transcription.
+            fr.claudegateway.atelier.journey.JourneyToolExecutor.Outcome ok = journeyTools.execute(alice.getId(),
+                    subject, fr.claudegateway.atelier.journey.JourneyToolCatalog.LAUNCH_AUTONOMOUS,
+                    json.readTree("{\"chantier\":1,\"user_words\":\"oui\"}"), said);
+            assertThat(ok.error()).isFalse();
+            assertThat(ok.content()).startsWith("Départ programmé").contains("C'est parti.");
+            assertThat(service.hasDeferred(alice.getId(), subject.getId())).isTrue();
+            assertThat(eventRepository.findAll()).anyMatch(e -> "AUTONOMY_REQUESTED".equals(e.getType())
+                    && "chantier 1 · STRICT · dit « oui »".equals(e.getDetail()));
+        } finally {
+            subject.setTurnViaJarvis(false);
+        }
+    }
+
+    @Test
+    @DisplayName("SF-271-03 : au terminal, le départ reste sans citation exigée et se journalise « outil »")
+    void typedLaunchUnchanged() throws Exception {
+        executing(subject);
+        heldTurn = liveTurns.open(alice.getId(), subject.getId());
+        assertThat(launchTool("{\"chantier\":1}").error()).isFalse();
+        assertThat(eventRepository.findAll()).anyMatch(e -> "AUTONOMY_REQUESTED".equals(e.getType())
+                && "chantier 1 · STRICT · outil".equals(e.getDetail()));
+    }
+
+    @Test
     @DisplayName("SF-219-04 : pas prêt → erreur avec les raisons, rien de programmé ; sans numéro → erreur")
     void toolRefusesWhenNotReady() throws Exception {
         journeys.setMode(alice.getId(), subject.getId(), "GUIDE", "Ingress");

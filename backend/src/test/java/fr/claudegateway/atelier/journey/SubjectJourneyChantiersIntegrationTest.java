@@ -1002,4 +1002,25 @@ class SubjectJourneyChantiersIntegrationTest {
         journeyRepository.save(focus);
         assertThat(service.openChantiersWithTicket(aliceId, "LDIC-330")).isEmpty();
     }
+
+    @Test
+    @DisplayName("SF-271-03 : à la voix, le « oui » qui valide est journalisé « dit « … » » (la transcription)")
+    void validatePlanSaidIsJournaledAsSaid() throws Exception {
+        mockMvc.perform(put("/api/workspaces/" + workspaceId + "/journey/mode").contextPath("/api")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"mode\":\"GUIDE\",\"title\":\"LDIC-325\"}")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk());
+        service.submitDiagnosis(aliceId, ws(), "topic absent", "aws sns list-topics", "ELEVEE");
+        service.confirmDiagnosis(aliceId, ws());
+        service.setPlan(aliceId, ws(), plan("Créer le topic"));
+        fr.claudegateway.atelier.Workspace w = workspaceRepository.findById(ws()).orElseThrow();
+        w.setTurnViaJarvis(true);
+        JourneyToolExecutor.Outcome ok = journeyTools.execute(aliceId, w, JourneyToolCatalog.VALIDATE_PLAN,
+                new com.fasterxml.jackson.databind.ObjectMapper().readTree(
+                        "{\"chantier\":1,\"version\":1,\"user_words\":\"oui\"}"), saidNow("Oui."));
+        assertThat(ok.error()).isFalse();
+        assertThat(ok.content()).contains("lancer_chantier_autonome maintenant");
+        assertThat(eventRepository.findAll()).anyMatch(e -> SubjectJourneyEvent.PLAN_VALIDATED.equals(e.getType())
+                && e.getDetail().endsWith("· dit « oui »"));
+    }
 }

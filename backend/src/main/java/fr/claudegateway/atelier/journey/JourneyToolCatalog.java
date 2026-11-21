@@ -420,7 +420,11 @@ public class JourneyToolCatalog {
                                         "description", "Le numéro du chantier à lancer."),
                                 "mode", Map.of("type", "string", "enum", List.of("STRICT", "UNTIL_BLOCKED"),
                                         "description", "STRICT (défaut) : tout le chantier, préflight vert. "
-                                                + "UNTIL_BLOCKED : avancer jusqu'au blocage.")),
+                                                + "UNTIL_BLOCKED : avancer jusqu'au blocage."),
+                                "user_words", Map.of("type", "string",
+                                        "description", "Les mots EXACTS de l'utilisateur qui demandent ou confirment "
+                                                + "le départ, cités tels qu'il les a écrits ou dits dans ce tour "
+                                                + "(requis quand la demande a été dite à la voix).")),
                         "required", List.of("chantier")));
     }
 
