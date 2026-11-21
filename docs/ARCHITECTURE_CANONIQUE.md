@@ -427,6 +427,16 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   sujet ; une règle de poste/sujet de même titre l'emporte. Pas de clé étrangère ; purge nommée à la
   suppression du compte.
 
+- **quick_actions** / **quick_action_launches** — **les actions rapides du terminal** (F-275 / SF-275-01,
+  migration `275-01`). `quick_actions` : `id`, `user_id (NOT NULL)`, `scope (SUJET | POSTE | COMPTE)`,
+  `workspace_id` (portée SUJET), `host_id` (portée POSTE), `label (60)`, `label_key (60)`, `phrase (2000)`,
+  `target_workspace_id` (sujet où lancer, null = ici), `click_mode (DEPOSER | ENVOYER)`, `suggest_days`
+  (jours ISO « 1,5 »), `suggest_moment (MATIN | APRES_MIDI | JOURNEE)`, `created_at`, `updated_at`.
+  `quick_action_launches` : dernier lancement depuis le bouton par `(user_id, action_key)` unique — clé
+  `c:<uuid>` (perso) ou `s:<ancre>:<skill>:<déclencheur>` (déclencheur d'un skill, lu sans configuration dans
+  son en-tête). Visibilité : COMPTE partout, POSTE dans les terminaux du poste, SUJET dans ce terminal ;
+  jamais Teams ni fil Jarvis. Pas de clé étrangère ; purge nommée à la suppression du compte.
+
 - **subject_journeys** / **subject_journey_events** — **le parcours du sujet d'un terminal** (F-176,
   migration `145`) : mode **Libre** (défaut) ou **Guidé** — Investigation → Plan → Exécution →
   Vérification → Clos — avec une **porte** tenue par le harnais devant toute modification.

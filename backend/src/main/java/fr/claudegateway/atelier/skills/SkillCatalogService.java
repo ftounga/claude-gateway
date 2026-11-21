@@ -86,8 +86,9 @@ public class SkillCatalogService {
                 if (name == null || byName.containsKey(name) || byName.size() >= MAX_SKILLS) {
                     continue;
                 }
-                byName.put(name, new SkillEntry(name, path,
-                        describe(subjectDescriptionSource(userId, workspace, path, liveReads)), SkillEntry.SUJET));
+                String body = subjectDescriptionSource(userId, workspace, path, liveReads);
+                byName.put(name, new SkillEntry(name, path, describe(body), SkillEntry.SUJET,
+                        SkillTriggers.parse(body)));
             }
         }
         if (workspace.getHostId() != null && workspace.isRunnerTarget() && !workspace.isTeamsTerminal()) {
@@ -101,7 +102,7 @@ public class SkillCatalogService {
                     liveReads[0]++;
                     body = readHost(workspace, path).orElse(null);
                 }
-                byName.put(name, new SkillEntry(name, path, describe(body), SkillEntry.POSTE));
+                byName.put(name, new SkillEntry(name, path, describe(body), SkillEntry.POSTE, SkillTriggers.parse(body)));
             }
         }
         return List.copyOf(byName.values());
