@@ -313,4 +313,35 @@ class JarvisWatchApiIntegrationTest {
         assertThat(executor.execute(alice.getId(), hosted, "veille_poser", objectMapper.createObjectNode()).error())
                 .isTrue();
     }
+
+    @Autowired private JarvisWatchToolCatalog catalog;
+
+    @Test
+    void theAgentReadsTheRealStateOfItsSubjectWatchesOnly() {
+        // F-273 / SF-273-03 : l'agent lit l'état tenu par la passerelle au lieu de le supposer.
+        assertThat(catalog.toolsFor(alice.getId(), subject)).extracting(t -> t.name())
+                .containsExactly("veille_poser", "veille_etat");
+        assertThat(executor.execute(alice.getId(), subject, "veille_etat", objectMapper.createObjectNode()).content())
+                .contains("Aucune veille");
+
+        String id = propose().id().toString();
+        assertThat(executor.execute(alice.getId(), subject, "veille_etat", null).content())
+                .contains("« Agenor » (veille)").contains("proposée, jamais testée").contains("aucun passage");
+
+        when(gateway.bash(any(), anyString(), anyString(), isNull(), anyLong(), isNull()))
+                .thenReturn(new RunnerCallResult(true, "", false, 1, 50L, null, null, null, "HTTP Error 401", false));
+        service.test(alice.getId(), subject.getId(), UUID.fromString(id));
+        JarvisWatchToolExecutor.Outcome state = executor.execute(alice.getId(), subject, "veille_etat", null);
+        assertThat(state.error()).isFalse();
+        assertThat(state.content()).contains("dernière erreur").contains("(probe_exit)").contains("HTTP Error 401");
+
+        // Une veille d'un autre sujet du même compte n'apparaît pas.
+        Workspace other = workspaceRepository.save(Workspace.builder().userId(alice.getId()).name("autre")
+                .hostId(subject.getHostId()).projectPath("autre").executionTarget(WorkspaceExecutionTarget.RUNNER)
+                .build());
+        assertThat(executor.execute(alice.getId(), other, "veille_etat", null).content()).contains("Aucune veille")
+                .doesNotContain("Agenor");
+        // Un autre compte ne reçoit pas l'outil.
+        assertThat(executor.execute(UUID.randomUUID(), subject, "veille_etat", null).error()).isTrue();
+    }
 }

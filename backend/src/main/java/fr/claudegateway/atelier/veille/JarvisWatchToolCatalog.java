@@ -65,9 +65,22 @@ public class JarvisWatchToolCatalog {
                                             + "d'état silencieux pour le registre de Jarvis.")),
                     "required", List.of("nom", "plateforme", "perimetre", "commande")));
 
-    /** Vrai si ce nom est l'outil de ce catalogue. */
+    /** F-273 / SF-273-03 — lire l'état réel des veilles et sondes de relevé du sujet. */
+    public static final String STATUS = "veille_etat";
+
+    private static final AgentTool STATUS_TOOL = new AgentTool(STATUS,
+            "Lit l'ÉTAT RÉEL des veilles et sondes de relevé de CE sujet, telles que la passerelle les tient : "
+                    + "proposée (jamais testée, ou testée), active, en pause, en panne ; dernier passage ; DERNIÈRE "
+                    + "ERREUR avec son message réel (sortie de la sonde, poste muet, script introuvable…). Lecture "
+                    + "seule : rien ne part sur le poste. À appeler AVANT de parler de l'état d'une veille ou d'une "
+                    + "sonde (« elle est en erreur », « elle tourne ») : ne le suppose jamais. Une proposition ne "
+                    + "tourne pas tant que le PO ne l'a pas testée et validée ; pour réparer, corrige la sonde puis "
+                    + "rappelle veille_poser avec le MÊME nom.",
+            Map.of("type", "object", "properties", Map.of()));
+
+    /** Vrai si ce nom est l'un des outils de ce catalogue. */
     public static boolean isWatchTool(String name) {
-        return PROPOSE.equals(name);
+        return PROPOSE.equals(name) || STATUS.equals(name);
     }
 
     /** Vrai si l'outil est ouvert dans ce terminal : sujet sur poste, terminal de son propriétaire. */
@@ -78,6 +91,6 @@ public class JarvisWatchToolCatalog {
 
     /** Les outils à déclarer dans ce terminal (vide ailleurs). */
     public List<AgentTool> toolsFor(UUID userId, Workspace workspace) {
-        return isOpenFor(userId, workspace) ? List.of(PROPOSE_TOOL) : List.of();
+        return isOpenFor(userId, workspace) ? List.of(PROPOSE_TOOL, STATUS_TOOL) : List.of();
     }
 }

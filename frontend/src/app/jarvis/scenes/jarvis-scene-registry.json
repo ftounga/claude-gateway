@@ -75,7 +75,8 @@
     "radar_sujets": { "scene": "S15", "cible": "S15", "libelle": "Sujets du Radar" },
     "signaler_besoin": { "scene": "S16", "cible": "S16", "libelle": "Besoin noté" },
     "routine_proposer": { "scene": "S17", "cible": "S17", "libelle": "Routine proposée" },
-    "veille_poser": { "scene": "S17", "cible": "S17", "libelle": "Veille posée" }
+    "veille_poser": { "scene": "S17", "cible": "S17", "libelle": "Veille posée" },
+    "veille_etat": { "scene": "GENERIQUE", "cible": "GENERIQUE", "libelle": "Lecture de l'état des veilles" }
   },
   "prefixes": {
     "courriel_": {
