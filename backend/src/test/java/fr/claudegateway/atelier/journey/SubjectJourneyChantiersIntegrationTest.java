@@ -409,6 +409,47 @@ class SubjectJourneyChantiersIntegrationTest {
     }
 
     @Test
+    @DisplayName("SF-274-01 : le couloir hors chantier — citation vérifiée, un événement par chantier rattaché")
+    void outOfPlanCorridor() throws Exception {
+        JourneyToolExecutor.TurnContext said = JourneyToolExecutor.TurnContext.ofUser(
+                java.util.List.of("Régénère la page État des lieux (vague 1, vague 2, secrets) et republie-la"));
+        // En Libre : le couloir n'existe pas.
+        assertThat(tool(JourneyToolCatalog.OUT_OF_PLAN,
+                "{\"user_words\":\"Régénère la page\",\"objet\":\"page\"}", said).content())
+                .contains("n'existe qu'en mode guidé");
+        chantierOneExecuting();
+        post(aliceToken, "chantiers", "{\"title\":\"Migration DNS\"}");
+        // Objet ou citation absents, citation inventée, tour sans utilisateur : refusé, rien journalisé.
+        assertThat(tool(JourneyToolCatalog.OUT_OF_PLAN, "{\"user_words\":\"Régénère la page\"}", said).content())
+                .contains("objet est requis");
+        assertThat(tool(JourneyToolCatalog.OUT_OF_PLAN, "{\"objet\":\"page\"}", said).content())
+                .contains("user_words est requis");
+        assertThat(tool(JourneyToolCatalog.OUT_OF_PLAN,
+                "{\"user_words\":\"fais tout\",\"objet\":\"page\"}", said).content()).contains("ne figurent pas");
+        assertThat(tool(JourneyToolCatalog.OUT_OF_PLAN,
+                "{\"user_words\":\"Régénère la page\",\"objet\":\"page\"}").content()).contains("course autonome");
+        assertThat(eventRepository.findAll()).noneMatch(e -> SubjectJourneyEvent.OUT_OF_PLAN.equals(e.getType()));
+        // Transverse : un événement par chantier ouvert cité ; un chantier inconnu est signalé.
+        JourneyToolExecutor.Outcome ok = tool(JourneyToolCatalog.OUT_OF_PLAN,
+                "{\"user_words\":\"Régénère la page État des lieux\",\"objet\":\"page État des lieux v7\","
+                        + "\"chantiers\":[2,1,7]}", said);
+        assertThat(ok.error()).isFalse();
+        assertThat(ok.content()).contains("transverse, rattaché aux chantiers 1, 2")
+                .contains("Chantier(s) 7 ignoré(s)");
+        // Hors de tout chantier.
+        assertThat(tool(JourneyToolCatalog.OUT_OF_PLAN,
+                "{\"user_words\":\"republie-la\",\"objet\":\"republier\"}", said).content())
+                .contains("hors de tout chantier");
+        assertThat(eventRepository.findAll().stream()
+                .filter(e -> SubjectJourneyEvent.OUT_OF_PLAN.equals(e.getType()))
+                .map(SubjectJourneyEvent::getDetail).toList())
+                .containsExactlyInAnyOrder(
+                        "chantier 1 · page État des lieux v7 · écrit « Régénère la page État des lieux »",
+                        "chantier 2 · page État des lieux v7 · écrit « Régénère la page État des lieux »",
+                        "aucun chantier · republier · écrit « republie-la »");
+    }
+
+    @Test
     @DisplayName("SF-222-04 : la citation est cherchée mot pour mot, casse, accents et ponctuation ignorés")
     void quotedWords() {
         java.util.List<String> said = java.util.List.of("Le plan me va. Validé, tu peux y aller !");

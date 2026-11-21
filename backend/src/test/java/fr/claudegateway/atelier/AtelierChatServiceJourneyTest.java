@@ -192,6 +192,69 @@ class AtelierChatServiceJourneyTest {
     }
 
     @Test
+    @DisplayName("SF-274-01 : une demande écrite hors chantier ouvre la porte pour ce tour, même en Investigation")
+    void outOfPlanCorridorOpensTheGateForTheTurn() {
+        journey(JourneyMode.GUIDE, JourneyPhase.INVESTIGATION, null, 0);
+        when(journeyService.recordOutOfPlan(eq(userId), eq(workspaceId), any(), any(), any())).thenReturn(
+                new SubjectJourneyService.OutOfPlanRecord(true, List.of(), List.of()));
+        agentProvider.enqueueToolCallWithObject(JourneyToolCatalog.OUT_OF_PLAN,
+                "{\"user_words\":\"Clôture SIP-10567\",\"objet\":\"clôture SIP-10567\"}");
+        agentProvider.enqueueToolCall("bash", "command", "kubectl apply -f ingress.yaml");
+        agentProvider.enqueueFinal("Fait, hors chantier.");
+
+        service.chatStreaming(userId, workspaceId, "Clôture SIP-10567 selon la décision 7", listener);
+
+        assertThat(agentProvider.messageSnapshots.get(1)).contains("Couloir hors chantier ouvert pour ce tour");
+        assertThat(agentProvider.messageSnapshots.get(2)).doesNotContain("PORTE DU PARCOURS GUIDÉ");
+        verify(journeyService, never()).recordGateBlocked(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("SF-274-01 : une citation inventée n'ouvre rien — la porte refuse, et rappelle le couloir")
+    void inventedWordsKeepTheGateClosed() {
+        journey(JourneyMode.GUIDE, JourneyPhase.INVESTIGATION, null, 0);
+        agentProvider.enqueueToolCallWithObject(JourneyToolCatalog.OUT_OF_PLAN,
+                "{\"user_words\":\"fais tout\",\"objet\":\"tout\"}");
+        agentProvider.enqueueToolCall("bash", "command", "kubectl apply -f ingress.yaml");
+        agentProvider.enqueueFinal("Je ne peux pas : le plan n'est pas validé.");
+
+        service.chatStreaming(userId, workspaceId, "où en est le chantier ?", listener);
+
+        assertThat(agentProvider.messageSnapshots.get(1)).contains("ne figurent pas");
+        assertThat(agentProvider.messageSnapshots.get(2)).contains("PORTE DU PARCOURS GUIDÉ")
+                .contains("geste_hors_chantier");
+        verify(journeyService, never()).recordOutOfPlan(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("SF-274-01 : le couloir d'un tour ne survit pas au tour suivant")
+    void outOfPlanCorridorDiesWithTheTurn() {
+        journey(JourneyMode.GUIDE, JourneyPhase.INVESTIGATION, null, 0);
+        when(journeyService.recordOutOfPlan(eq(userId), eq(workspaceId), any(), any(), any())).thenReturn(
+                new SubjectJourneyService.OutOfPlanRecord(true, List.of(), List.of()));
+        agentProvider.enqueueToolCallWithObject(JourneyToolCatalog.OUT_OF_PLAN,
+                "{\"user_words\":\"Clôture SIP-10567\",\"objet\":\"clôture\"}");
+        agentProvider.enqueueFinal("Ouvert.");
+        service.chatStreaming(userId, workspaceId, "Clôture SIP-10567", listener);
+
+        agentProvider.enqueueToolCall("bash", "command", "kubectl apply -f ingress.yaml");
+        agentProvider.enqueueFinal("Refusé.");
+        service.chatStreaming(userId, workspaceId, "et maintenant ?", listener);
+
+        assertThat(agentProvider.messageSnapshots.get(agentProvider.messageSnapshots.size() - 1))
+                .contains("PORTE DU PARCOURS GUIDÉ");
+    }
+
+    @Test
+    @DisplayName("SF-274-01 : la note du fil ne renvoie plus ailleurs ; elle nomme chantier: N et le couloir")
+    void laneNoteNamesTheCorridor() {
+        assertThat(AtelierChatService.laneNote(2)).contains("FIL DU CHANTIER 2").contains("chantier: N")
+                .contains("geste_hors_chantier").contains("jamais de renvoi vers un autre fil")
+                .doesNotContain("dis-le");
+        assertThat(AtelierChatService.COMMON_LANE_NOTE).contains("FIL DU SUJET").contains("geste_hors_chantier");
+    }
+
+    @Test
     @DisplayName("SF-176-04 : en Exécution sur le plan validé, la modification passe")
     void validatedPlanOpensTheGate() {
         journey(JourneyMode.GUIDE, JourneyPhase.EXECUTION, 2, 2);

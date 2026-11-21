@@ -2476,6 +2476,9 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (lane != null) {
             note = laneNote(lane) + (workspace.isTurnSplitView() ? splitNote(lane) : "")
                     + isolationNote(workspace) + note;
+        } else if (toolsOpen && journey != null && journey.isGuided() && journey.hasOpenFocus()
+                && !journey.getOtherOpenChantiers().isEmpty()) {
+            note = COMMON_LANE_NOTE + note; // F-274 / SF-274-01
         }
         return note.isEmpty() ? consigne : note + consigne;
     }
@@ -2601,9 +2604,18 @@ public class AtelierChatService implements RelayInterruptTarget {
     static String laneNote(int chantier) {
         return "[Fil du chantier " + chantier + "] Ce tour est dans le FIL DU CHANTIER " + chantier
                 + " : tu relis le passé commun du sujet et ce chantier seulement, pas les autres chantiers en "
-                + "cours. Les outils du parcours visent le chantier " + chantier + " par défaut. Reste sur ce "
-                + "chantier ; si la demande relève d'un autre, dis-le.\n";
+                + "cours. Les outils du parcours visent le chantier " + chantier + " par défaut. Une demande qui "
+                + "sert un autre chantier se fait ici avec chantier: N ; une demande hors de tout chantier, ou "
+                + "transverse, par geste_hors_chantier — jamais de renvoi vers un autre fil.\n";
     }
+
+    /**
+     * Le fil du sujet d'un sujet guidé à plusieurs chantiers ouverts (F-274 / SF-274-01) : il relit tout le sujet ; ses
+     * demandes hors plan passent par le couloir. Dans le MESSAGE, jamais au système (F-134).
+     */
+    static final String COMMON_LANE_NOTE = "[Fil du sujet] Ce tour est dans le FIL DU SUJET, hors de tout chantier : "
+            + "tu relis tout le sujet. Une demande qui sert un chantier se fait ici avec chantier: N ; une demande hors "
+            + "de tout chantier, ou transverse, par geste_hors_chantier.\n";
 
     /**
      * <b>La porte du parcours guidé</b> (F-176 / SF-176-04) : le motif du refus, ou {@code null} si
@@ -2612,8 +2624,11 @@ public class AtelierChatService implements RelayInterruptTarget {
      * secret) : la classe et le nom de l'outil seulement.
      */
     String journeyGateRefusal(UUID userId, Workspace workspace, AgentToolCall call) {
-        if (journeyService == null || call == null) {
+        if (journeyService == null || call == null || workspace == null) {
             return null;
+        }
+        if (workspace.isTurnOutOfPlan()) {
+            return null; // F-274 / SF-274-01 : le couloir hors chantier, ouvert par une demande écrite de ce tour
         }
         fr.claudegateway.atelier.journey.JourneyPlan.Risk risk =
                 fr.claudegateway.atelier.journey.JourneyRiskClassifier.classify(call.name(), call.input());
@@ -3486,6 +3501,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         Workspace workspace = workspaceService.requireOwned(userId, workspaceId); // 404 si non possédé (isolation) — TOUJOURS en premier
         // F-221 / SF-221-01 : le fil du tour voyage avec l'instance chargée pour CE tour, jamais persisté.
         workspace.setTurnChantier(chantier);
+        workspace.setTurnOutOfPlan(false); // F-274 / SF-274-01 : le couloir ne vaut que pour le tour qui l'ouvre
         // F-221 / SF-221-05 : le fil est-il montré dans un volet du split ? (marque posée par l'écran)
         workspace.setTurnSplitView(chantier != null && splitLanes.contains(turnKey(userId, workspaceId, chantier)));
         // F-161 / SF-161-01 : LA PORTE. Un tour qui a besoin du poste et ne l'aura pas doit être

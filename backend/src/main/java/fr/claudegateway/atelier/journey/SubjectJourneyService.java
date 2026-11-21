@@ -285,6 +285,49 @@ public class SubjectJourneyService {
         record(journey, SubjectJourneyEvent.GATE_BLOCKED, (risk == null ? "?" : risk.name()) + " · " + tool);
     }
 
+    /**
+     * Ce que le couloir hors chantier a journalisé (F-274 / SF-274-01) : les chantiers ouverts rattachés, ceux qui
+     * ont été ignorés (inconnus ou clos), et si le sujet était en Guidé actif.
+     */
+    public record OutOfPlanRecord(boolean guided, java.util.List<Integer> attached, java.util.List<Integer> ignored) {
+    }
+
+    /**
+     * <b>Le couloir hors chantier</b> (F-274 / SF-274-01) : journalise un geste demandé par écrit qui n'appartient au
+     * plan d'aucun chantier, ou à plusieurs — un événement {@code OUT_OF_PLAN} par chantier ouvert cité, sinon un seul
+     * « aucun chantier ». Rien n'est écrit si le sujet n'est pas en Guidé actif. Lecture déjà possédée (le tour).
+     */
+    @Transactional
+    public OutOfPlanRecord recordOutOfPlan(UUID userId, UUID workspaceId, java.util.List<Integer> cited, String objet,
+            String channel) {
+        SubjectJourney journey = forTurn(userId, workspaceId);
+        if (journey == null || !journey.isGuided()
+                || (!journey.hasOpenFocus() && journey.getOtherOpenChantiers().isEmpty())) {
+            return new OutOfPlanRecord(false, java.util.List.of(), java.util.List.of());
+        }
+        java.util.Set<Integer> open = new java.util.TreeSet<>();
+        if (journey.hasOpenFocus()) {
+            open.add(journey.getChantierNumber());
+        }
+        for (SubjectJourneyChantier other : journey.getOtherOpenChantiers()) {
+            open.add(other.getNumber());
+        }
+        java.util.List<Integer> attached = new java.util.ArrayList<>();
+        java.util.List<Integer> ignored = new java.util.ArrayList<>();
+        for (Integer n : cited == null ? java.util.List.<Integer>of() : new java.util.TreeSet<>(cited)) {
+            (open.contains(n) ? attached : ignored).add(n);
+        }
+        String tail = " · " + objet + " · " + channel;
+        if (attached.isEmpty()) {
+            record(journey, SubjectJourneyEvent.OUT_OF_PLAN, "aucun chantier" + tail);
+        } else {
+            for (Integer n : attached) {
+                record(journey, SubjectJourneyEvent.OUT_OF_PLAN, "chantier " + n + tail);
+            }
+        }
+        return new OutOfPlanRecord(true, java.util.List.copyOf(attached), java.util.List.copyOf(ignored));
+    }
+
     /** Ce que l'agent apprend en posant son plan (SF-176-03). */
     public enum PlanOutcome {
         /** Le plan est posé, il attend la validation de l'utilisateur. */

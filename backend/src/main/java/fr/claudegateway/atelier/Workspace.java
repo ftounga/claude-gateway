@@ -402,4 +402,12 @@ public class Workspace {
     /** Un autre chantier travaille en même temps dans ce dossier sans isolation possible (F-221 / SF-221-06). */
     @Transient
     private boolean turnUnisolated;
+
+    /**
+     * Le <b>couloir hors chantier</b> est ouvert pour le tour en cours (F-274 / SF-274-01) : l'utilisateur a demandé
+     * par écrit, dans ce tour, un geste qui n'appartient au plan d'aucun chantier (ou à plusieurs). La porte du
+     * parcours guidé laisse alors passer ses modifications jusqu'à la fin du tour. Transitoire, jamais persisté.
+     */
+    @Transient
+    private boolean turnOutOfPlan;
 }
