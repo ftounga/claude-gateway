@@ -22,6 +22,7 @@ import { JourneyService } from '../core/services/journey.service';
 import { OpenChantier, SubjectJourney } from '../core/models/journey.models';
 import { AtelierComponent, delayLabel, toThreadItem } from './atelier.component';
 import { AtelierThreadItem } from './atelier.types';
+import { QuickAction } from '../core/services/quick-actions.service';
 import { AtelierService } from '../core/services/atelier.service';
 import { ApiKeyService } from '../core/services/api-key.service';
 import { LiveTerminalService } from '../core/services/live-terminal.service';
@@ -474,6 +475,116 @@ describe('AtelierComponent', () => {
 
       expect(component.activeWorkspaceId()).toBe('w1');
       expect(snackBar.open).toHaveBeenCalled();
+    });
+  });
+
+  // F-275 / SF-275-03 — une action rapide se lance dans le bon terminal, sans écraser un brouillon.
+  describe('actions rapides (F-275 / SF-275-03)', () => {
+    const subject: WorkspaceSummary = {
+      id: 's1', name: 'reporting-securite', createdAt: '2026-10-06T00:00:00Z', source: 'LOCAL', gitRepo: null,
+    } as WorkspaceSummary;
+
+    function action(over: Partial<QuickAction> = {}): QuickAction {
+      return {
+        key: 'c:1', source: 'PERSO', id: '1', label: 'Point hebdo', phrase: 'point hebdo', skill: null, scope: 'POSTE',
+        targetWorkspaceId: null, targetName: null, targetMissing: false, clickMode: 'DEPOSER', suggestDays: [],
+        suggestMoment: null, lastRunAt: null, ...over,
+      };
+    }
+
+    function launches(): string[] {
+      return TestBed.inject(HttpTestingController)
+        .match((r) => r.url.endsWith('/quick-actions/launches')).map((r) => r.request.body.key);
+    }
+
+    beforeEach(() => spyOnProperty(document, 'visibilityState', 'get').and.returnValue('visible'));
+
+    function streamOk(): void {
+      service.streamChat.and.callFake((_id, _message, handlers) => {
+        handlers.onDone({ reply: 'ok', actions: [], messageId: 'm1' });
+        return Promise.resolve();
+      });
+    }
+
+    it('ici, « déposer » met la phrase dans la saisie sans l\'envoyer et enregistre le lancement', () => {
+      setup();
+      component.selectWorkspace(summary);
+
+      component.launchQuickAction(action());
+
+      expect(component.draft()).toBe('point hebdo');
+      expect(service.streamChat).not.toHaveBeenCalled();
+      expect(launches()).toEqual(['c:1']);
+    });
+
+    it('ici, « envoyer » part directement quand la saisie est vide', () => {
+      setup();
+      component.selectWorkspace(summary);
+      component.engine.set('LOCAL_MACHINE');
+      streamOk();
+
+      component.launchQuickAction(action({ clickMode: 'ENVOYER' }));
+
+      expect(service.streamChat).toHaveBeenCalledTimes(1);
+      expect(service.streamChat.calls.mostRecent().args[1]).toBe('point hebdo');
+    });
+
+    it('« envoyer » n\'écrase jamais un brouillon : la phrase est déposée devant, et l\'écran le dit', () => {
+      setup();
+      component.selectWorkspace(summary);
+      component.draft.set('mon brouillon');
+
+      component.launchQuickAction(action({ clickMode: 'ENVOYER' }));
+
+      expect(service.streamChat).not.toHaveBeenCalled();
+      expect(component.draft()).toBe('point hebdo\n\nmon brouillon');
+      expect(snackBar.open).toHaveBeenCalled();
+    });
+
+    it('un autre sujet s\'ouvre avec la phrase, puis elle part si l\'action le dit', () => {
+      setup();
+      component.selectWorkspace(summary);
+      service.getEngine.and.returnValue(of({
+        engine: 'LOCAL_MACHINE' as const, runnerConnected: true, runnerLastSeenAt: null,
+        recommendRunner: false, recommendReason: null,
+      }));
+      service.listWorkspaces.and.returnValue(of([summary, subject]));
+      service.getWorkspace.and.callFake((id: string) => of({ ...detail, id }));
+      const navigate = spyOn(TestBed.inject(Router), 'navigate').and.returnValue(Promise.resolve(true));
+      streamOk();
+
+      component.launchQuickAction(action({ targetWorkspaceId: 's1', targetName: 'reporting-securite',
+        clickMode: 'ENVOYER' }));
+
+      expect(component.activeWorkspaceId()).toBe('s1');
+      expect(navigate).toHaveBeenCalledWith(['/atelier', 's1']);
+      expect(service.streamChat).toHaveBeenCalledTimes(1);
+      expect(service.streamChat.calls.mostRecent().args[0]).toBe('s1');
+      expect(component.handoffOriginLabel()).toBeNull();
+    });
+
+    it('un autre sujet en « déposer » s\'ouvre avec la phrase et le bandeau [Revenir]', () => {
+      setup();
+      component.selectWorkspace(summary);
+      service.listWorkspaces.and.returnValue(of([summary, subject]));
+      spyOn(TestBed.inject(Router), 'navigate').and.returnValue(Promise.resolve(true));
+
+      component.launchQuickAction(action({ targetWorkspaceId: 's1', targetName: 'reporting-securite' }));
+
+      expect(component.activeWorkspaceId()).toBe('s1');
+      expect(component.draft()).toBe('point hebdo');
+      expect(service.streamChat).not.toHaveBeenCalled();
+      expect(component.handoffOriginLabel()).toBe('projet');
+    });
+
+    it('un sujet cible introuvable : la phrase reste ici', () => {
+      setup();
+      component.selectWorkspace(summary);
+
+      component.launchQuickAction(action({ targetWorkspaceId: 'gone', targetMissing: true }));
+
+      expect(component.activeWorkspaceId()).toBe('w1');
+      expect(component.draft()).toBe('point hebdo');
     });
   });
 
