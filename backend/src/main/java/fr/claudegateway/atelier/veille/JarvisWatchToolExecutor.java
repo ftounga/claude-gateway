@@ -37,6 +37,9 @@ public class JarvisWatchToolExecutor {
             return new Outcome("Les veilles se posent dans le terminal d'un sujet sur poste : réponds sans cet "
                     + "outil.", true);
         }
+        if (JarvisWatchToolCatalog.STATUS.equals(tool)) {
+            return new Outcome(status(userId, workspace), false);
+        }
         try {
             Integer chantier = input != null && input.hasNonNull("chantier") && input.get("chantier").canConvertToInt()
                     ? input.get("chantier").asInt() : null;
@@ -54,6 +57,54 @@ public class JarvisWatchToolExecutor {
         } catch (JarvisWatchExceptions.WatchException e) {
             return new Outcome("Veille refusée : " + e.getMessage(), true);
         }
+    }
+
+    /**
+     * F-273 / SF-273-03 — l'état des veilles du SEUL sujet du tour ({@code user_id + workspace_id}, via
+     * {@link JarvisWatchService#list}), une ligne par veille. Lecture seule.
+     */
+    String status(UUID userId, Workspace workspace) {
+        List<JarvisWatchView> watches = service.list(userId, workspace.getId());
+        if (watches.isEmpty()) {
+            return "Aucune veille ni sonde de relevé dans ce sujet.";
+        }
+        StringBuilder out = new StringBuilder("Veilles et sondes de relevé de ce sujet (état tenu par la passerelle) :");
+        for (JarvisWatchView w : watches) {
+            out.append("\n- « ").append(w.name()).append(" » (")
+                    .append("STATE".equals(w.purpose()) ? "relevé" : "veille").append(") — ").append(state(w))
+                    .append(" · commande : ").append(w.command());
+            if (w.lastRunAt() != null) {
+                out.append(" · dernier passage ").append(DATE.format(w.lastRunAt())).append(' ')
+                        .append(w.lastRunStatus());
+            } else {
+                out.append(" · aucun passage");
+            }
+            if (w.lastErrorMessage() != null) {
+                out.append(" · dernière erreur");
+                if (w.lastErrorAt() != null) {
+                    out.append(' ').append(DATE.format(w.lastErrorAt()));
+                }
+                out.append(" (").append(w.lastErrorCode()).append(") : ").append(w.lastErrorMessage());
+            }
+        }
+        out.append("\nUne proposition ne tourne pas tant que le PO ne l'a pas testée et validée (carte du fil, ou "
+                + "« Tout valider » dans « Ce que je sais ») ; pour réparer, corrige la sonde et rappelle "
+                + "veille_poser avec le même nom.");
+        return out.toString();
+    }
+
+    private static final java.time.format.DateTimeFormatter DATE = java.time.format.DateTimeFormatter
+            .ofPattern("dd/MM HH:mm 'UTC'").withZone(java.time.ZoneOffset.UTC);
+
+    private static String state(JarvisWatchView w) {
+        if (w.proposed()) {
+            return w.testedAt() == null ? "proposée, jamais testée avec succès (ne tourne pas)"
+                    : "proposée, testée le " + DATE.format(w.testedAt()) + ", à valider par le PO (ne tourne pas)";
+        }
+        if (w.broken()) {
+            return "en panne (" + w.consecutiveFailures() + " échecs d'affilée)";
+        }
+        return w.active() ? "active" : "en pause";
     }
 
     private static List<String> times(JsonNode input) {
