@@ -187,6 +187,49 @@ class JarvisFastBrainServiceTest {
     }
 
     @Test
+    void aTicketKeyOfASingleOpenChantierTargetsItsThread() {
+        // F-271 / SF-271-01 (D3) — « lance LDIC-325 » sans numéro : le fil du seul chantier ouvert qui porte la clé.
+        UUID dataPlatform = UUID.randomUUID();
+        fr.claudegateway.atelier.journey.SubjectJourneyService journeys =
+                mock(fr.claudegateway.atelier.journey.SubjectJourneyService.class);
+        when(journeys.openChantiersWithTicket(alice, "LDIC-325")).thenReturn(List.of(
+                new fr.claudegateway.atelier.journey.SubjectJourneyService.TicketChantier(dataPlatform, 13,
+                        "LDIC-325 — topic SNS")));
+        when(journeys.openChantiersWithTicket(alice, "LDIC-330")).thenReturn(List.of(
+                new fr.claudegateway.atelier.journey.SubjectJourneyService.TicketChantier(dataPlatform, 14, "LDIC-330"),
+                new fr.claudegateway.atelier.journey.SubjectJourneyService.TicketChantier(subject, 2, "LDIC-330 bis")));
+
+        JarvisFastBrainService s = service(delegating("""
+                {"demande": "Valider et lancer LDIC-325", "label": "LDIC-325", "annonce": "Je regarde.", "sujet": "",
+                 "chantier": null}
+                """), null, null);
+        s.setJourneys(journeys);
+        JarvisFastBrainService.Outcome outcome = s.converse(ask("Lance LDIC-325"), null);
+        assertThat(outcome.delegation().subjectId()).isEqualTo(dataPlatform);
+        assertThat(outcome.delegation().chantier()).isEqualTo(13);
+
+        // Clé ambiguë (deux chantiers ouverts) : rien ne change.
+        s = service(delegating("""
+                {"demande": "Lancer LDIC-330", "label": "LDIC-330", "annonce": "Je regarde.", "sujet": "",
+                 "chantier": null}
+                """), null, null);
+        s.setJourneys(journeys);
+        outcome = s.converse(ask("Lance LDIC-330"), null);
+        assertThat(outcome.delegation().subjectId()).isEqualTo(subject);
+        assertThat(outcome.delegation().chantier()).isEqualTo(3);
+
+        // Un numéro donné par le cerveau rapide prime sur la clé.
+        s = service(delegating("""
+                {"demande": "Lancer LDIC-325", "label": "LDIC-325", "annonce": "Je regarde.", "sujet": "",
+                 "chantier": 5}
+                """), null, null);
+        s.setJourneys(journeys);
+        outcome = s.converse(ask("Lance LDIC-325 sur le chantier 5"), null);
+        assertThat(outcome.delegation().subjectId()).isEqualTo(subject);
+        assertThat(outcome.delegation().chantier()).isEqualTo(5);
+    }
+
+    @Test
     void aNamedSubjectOfTheSameAccountIsTargeted() {
         UUID other = UUID.randomUUID();
         when(workspaces.findByIdAndUserId(other, alice))

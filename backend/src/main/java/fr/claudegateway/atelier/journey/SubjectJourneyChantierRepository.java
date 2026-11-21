@@ -19,6 +19,9 @@ public interface SubjectJourneyChantierRepository extends JpaRepository<SubjectJ
     List<SubjectJourneyChantier> findByUserIdAndWorkspaceIdAndStatusOrderByNumberAsc(UUID userId, UUID workspaceId,
             String status);
 
+    /** Les chantiers d'un statut, tous sujets d'un utilisateur (F-271 / SF-271-01 : chantiers par clé de ticket). */
+    List<SubjectJourneyChantier> findByUserIdAndStatus(UUID userId, String status);
+
     long countByUserIdAndWorkspaceIdAndStatus(UUID userId, UUID workspaceId, String status);
 
     /** Le chantier d'un numéro, quel que soit son statut (F-206). */
