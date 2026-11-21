@@ -60,7 +60,8 @@ public record SubjectJourneyResponse(
                                boolean awaitingValidation, boolean diagnosisPending, boolean closeProposed,
                                boolean executing, int done, int total, Plan plan,
                                ChantierUnblocker.Mark unblocker, OffsetDateTime lastActivityAt, boolean stale,
-                               List<LinkedAttente> attentes) {
+                               List<LinkedAttente> attentes,
+                               List<SubjectJourneyService.OutOfPlanGesture> horsPlan) {
 
         /**
          * Le même chantier, daté de son dernier geste (F-222 / SF-222-03). {@code idle} = en Exécution sans geste
@@ -71,14 +72,21 @@ public record SubjectJourneyResponse(
             boolean stale = idle && (unblocker == null || unblocker.who() != ChantierUnblocker.Who.AUTRUI);
             return new OpenChantier(number, title, openedAt, phase, phaseLabel, focus, planVersion, validatedVersion,
                     awaitingValidation, diagnosisPending, closeProposed, executing, done, total, plan, unblocker,
-                    lastActivityAt, stale, attentes);
+                    lastActivityAt, stale, attentes, horsPlan);
         }
 
         /** Le même chantier, avec les attentes rangées sous lui (F-227 / SF-227-01). */
         OpenChantier withAttentes(List<LinkedAttente> linked) {
             return new OpenChantier(number, title, openedAt, phase, phaseLabel, focus, planVersion, validatedVersion,
                     awaitingValidation, diagnosisPending, closeProposed, executing, done, total, plan, unblocker,
-                    lastActivityAt, stale, linked == null ? List.of() : List.copyOf(linked));
+                    lastActivityAt, stale, linked == null ? List.of() : List.copyOf(linked), horsPlan);
+        }
+
+        /** Le même chantier, avec les gestes hors plan qui lui sont rattachés (F-274 / SF-274-02). */
+        OpenChantier withOutOfPlan(List<SubjectJourneyService.OutOfPlanGesture> gestures) {
+            return new OpenChantier(number, title, openedAt, phase, phaseLabel, focus, planVersion, validatedVersion,
+                    awaitingValidation, diagnosisPending, closeProposed, executing, done, total, plan, unblocker,
+                    lastActivityAt, stale, attentes, gestures == null ? List.of() : List.copyOf(gestures));
         }
 
         static OpenChantier of(int number, String title, OffsetDateTime openedAt, JourneyPhase phase, boolean focus,
@@ -107,7 +115,7 @@ public record SubjectJourneyResponse(
                             validatedPlanJson, phase, true, waits),
                     ChantierUnblocker.chantier(new ChantierUnblocker.Input(guided, phase, planJson, planVersion,
                             validatedVersion, diagnosisPending, closeProposedAt != null, focus && questionPending,
-                            waits)), null, false, List.of());
+                            waits)), null, false, List.of(), List.of());
         }
     }
 
@@ -129,6 +137,19 @@ public record SubjectJourneyResponse(
         List<OpenChantier> enriched = new ArrayList<>();
         for (OpenChantier c : chantiers) {
             enriched.add(c.withAttentes(byChantier.getOrDefault(c.number(), List.of())));
+        }
+        return new SubjectJourneyResponse(mode, phase, phaseLabel, phaseChangedAt, guidedProposal, guidedDeclined, plan,
+                diagnosis, closeProposed, gateClosed, gateMessage, chantier, closedChantiers, List.copyOf(enriched));
+    }
+
+    /** Le même parcours, chaque chantier ouvert portant ses gestes hors plan rattachés (F-274 / SF-274-02). */
+    public SubjectJourneyResponse withOutOfPlan(Map<Integer, List<SubjectJourneyService.OutOfPlanGesture>> byChantier) {
+        if (byChantier == null || byChantier.isEmpty() || chantiers == null || chantiers.isEmpty()) {
+            return this;
+        }
+        List<OpenChantier> enriched = new ArrayList<>();
+        for (OpenChantier c : chantiers) {
+            enriched.add(c.withOutOfPlan(byChantier.getOrDefault(c.number(), List.of())));
         }
         return new SubjectJourneyResponse(mode, phase, phaseLabel, phaseChangedAt, guidedProposal, guidedDeclined, plan,
                 diagnosis, closeProposed, gateClosed, gateMessage, chantier, closedChantiers, List.copyOf(enriched));

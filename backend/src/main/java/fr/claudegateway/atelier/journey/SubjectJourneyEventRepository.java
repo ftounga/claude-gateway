@@ -12,6 +12,10 @@ public interface SubjectJourneyEventRepository extends JpaRepository<SubjectJour
 
     long countByUserIdAndWorkspaceIdAndType(UUID userId, UUID workspaceId, String type);
 
+    /** Les derniers événements d'un type depuis une date, du plus récent au plus ancien (F-274 / SF-274-02). */
+    java.util.List<SubjectJourneyEvent> findTop50ByUserIdAndWorkspaceIdAndTypeAndCreatedAtAfterOrderByCreatedAtDesc(
+            UUID userId, UUID workspaceId, String type, java.time.OffsetDateTime after);
+
     /** Purge à la suppression du compte. */
     @Modifying
     @Query("delete from SubjectJourneyEvent e where e.userId = :userId")

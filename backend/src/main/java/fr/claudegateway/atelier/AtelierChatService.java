@@ -2433,6 +2433,20 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
     }
 
+    /** Les gestes hors plan du sujet, par chantier (F-274 / SF-274-02) ; vide si illisible ou non branché. */
+    private java.util.Map<Integer, java.util.List<fr.claudegateway.atelier.journey.SubjectJourneyService.OutOfPlanGesture>>
+            outOfPlanOf(UUID userId, Workspace workspace) {
+        try {
+            java.util.Map<Integer, java.util.List<
+                    fr.claudegateway.atelier.journey.SubjectJourneyService.OutOfPlanGesture>> byChantier =
+                    journeyService.outOfPlanByChantier(userId, workspace.getId());
+            return byChantier == null ? java.util.Map.of() : byChantier;
+        } catch (RuntimeException ex) {
+            log.debug("Gestes hors plan illisibles (best-effort) : {}", ex.getMessage());
+            return java.util.Map.of();
+        }
+    }
+
     /**
      * L'état des attentes dont dépendent les étapes des chantiers ouverts (F-209) : une étape dont l'attente
      * est ouverte est bloquée. Best-effort : illisible ⇒ vide (seules les dépendances du plan bloquent).
@@ -2479,6 +2493,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         } else if (toolsOpen && journey != null && journey.isGuided() && journey.hasOpenFocus()
                 && !journey.getOtherOpenChantiers().isEmpty()) {
             note = COMMON_LANE_NOTE + note; // F-274 / SF-274-01
+        }
+        if (toolsOpen && journey != null && journey.isGuided() && workspace != null) {
+            // F-274 / SF-274-02 : les gestes hors plan rattachés à ce fil — dans le MESSAGE, jamais au système.
+            note = fr.claudegateway.atelier.journey.JourneyTurnNote.outOfPlanLine(
+                    outOfPlanOf(userId, workspace), lane) + note;
         }
         return note.isEmpty() ? consigne : note + consigne;
     }

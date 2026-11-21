@@ -59,6 +59,67 @@ public final class JourneyTurnNote {
         return "";
     }
 
+    /** Gestes hors plan rappelés au tour, au plus (F-274 / SF-274-02). */
+    static final int MAX_OUT_OF_PLAN_LINE = 3;
+
+    /**
+     * <b>Les gestes hors plan rattachés à ce fil</b> (F-274 / SF-274-02) : pour le fil du chantier N, ceux qui lui
+     * sont rattachés ; pour le fil du sujet ({@code lane} nul), tous ceux du sujet. Les plus récents d'abord,
+     * {@link #MAX_OUT_OF_PLAN_LINE} au plus, datés jj/mm (heure de Paris). La chaîne vide s'il n'y en a pas.
+     */
+    public static String outOfPlanLine(
+            java.util.Map<Integer, java.util.List<SubjectJourneyService.OutOfPlanGesture>> byChantier, Integer lane) {
+        if (byChantier == null || byChantier.isEmpty()) {
+            return "";
+        }
+        java.util.List<String> items = new java.util.ArrayList<>();
+        if (lane != null) {
+            for (SubjectJourneyService.OutOfPlanGesture g : byChantier.getOrDefault(lane, java.util.List.of())) {
+                if (items.size() == MAX_OUT_OF_PLAN_LINE) {
+                    break;
+                }
+                items.add(day(g.at()) + g.objet());
+            }
+            return items.isEmpty() ? "" : "[Hors plan] Gestes faits hors du plan et rattachés à ce chantier (à "
+                    + "prendre en compte) : " + String.join(" ; ", items) + ".\n";
+        }
+        // Le fil du sujet : tous les gestes, un par (date, objet), avec les chantiers qu'ils servent.
+        java.util.Map<String, java.util.TreeSet<Integer>> where = new java.util.LinkedHashMap<>();
+        java.util.Map<String, java.time.OffsetDateTime> when = new java.util.HashMap<>();
+        java.util.List<java.util.Map.Entry<Integer, SubjectJourneyService.OutOfPlanGesture>> all =
+                new java.util.ArrayList<>();
+        byChantier.forEach((n, list) -> list.forEach(g -> all.add(java.util.Map.entry(n, g))));
+        all.sort((a, b) -> {
+            java.time.OffsetDateTime x = a.getValue().at();
+            java.time.OffsetDateTime y = b.getValue().at();
+            return x == null || y == null ? 0 : y.compareTo(x);
+        });
+        for (java.util.Map.Entry<Integer, SubjectJourneyService.OutOfPlanGesture> e : all) {
+            String key = e.getValue().objet() + "|" + e.getValue().at();
+            if (!where.containsKey(key) && where.size() == MAX_OUT_OF_PLAN_LINE) {
+                continue;
+            }
+            where.computeIfAbsent(key, k -> new java.util.TreeSet<>()).add(e.getKey());
+            when.put(key, e.getValue().at());
+        }
+        where.forEach((key, numbers) -> {
+            numbers.remove(0);
+            String objet = key.substring(0, key.lastIndexOf('|'));
+            items.add(day(when.get(key)) + objet + (numbers.isEmpty() ? " (hors chantier)" : " (chantier"
+                    + (numbers.size() > 1 ? "s " : " ") + numbers.stream().map(String::valueOf)
+                    .collect(java.util.stream.Collectors.joining(", ")) + ")"));
+        });
+        return items.isEmpty() ? "" : "[Hors plan] Gestes récents faits hors du plan des chantiers : "
+                + String.join(" ; ", items) + ".\n";
+    }
+
+    private static final java.time.format.DateTimeFormatter DAY =
+            java.time.format.DateTimeFormatter.ofPattern("dd/MM");
+
+    private static String day(java.time.OffsetDateTime at) {
+        return at == null ? "" : at.atZoneSameInstant(java.time.ZoneId.of("Europe/Paris")).format(DAY) + " ";
+    }
+
     /** Résumés d'autres chantiers rappelés au plus ; au-delà, comptés. */
     static final int MAX_OTHERS = 6;
 

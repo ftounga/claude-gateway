@@ -93,6 +93,7 @@ public class JourneyToolExecutor {
                 case JourneyToolCatalog.VALIDATE_PLAN -> validatePlan(userId, workspace, input, context);
                 case JourneyToolCatalog.CLOSE_CHANTIER -> closeChantier(userId, workspace, input, context);
                 case JourneyToolCatalog.OUT_OF_PLAN -> outOfPlan(userId, workspace, input, context);
+                case JourneyToolCatalog.READ_PLAN -> readPlan(userId, workspace, input);
                 default -> Outcome.error("Outil du parcours inconnu : " + tool);
             };
         } catch (InvalidJourneyException e) {
@@ -326,6 +327,35 @@ public class JourneyToolExecutor {
                 : "C'était le dernier chantier ouvert : le terminal revient en Libre.";
         return prefixed(chantier, Outcome.ok("Clos sur la demande de l'utilisateur, comme sur un clic [Clore] ; il "
                 + "reste consultable. " + after + " Dis-le-lui en une phrase."));
+    }
+
+    /**
+     * <b>Le plan complet d'un autre chantier</b> (F-274 / SF-274-02) : depuis le fil du chantier 11, amender le plan
+     * du chantier 9 sans le recopier de mémoire (data-platform, 04/11). Les étapes sont rendues au format de
+     * {@code set_subject_plan} ; les statuts des étapes gardées sont reportés par le service à l'amendement.
+     */
+    private Outcome readPlan(UUID userId, Workspace workspace, JsonNode input) {
+        Integer chantier = chantier(input);
+        if (chantier == null) {
+            return Outcome.error("chantier est requis : le numéro du chantier dont tu lis le plan.");
+        }
+        SubjectJourney view = service.forLane(userId, workspace.getId(), chantier);
+        if (view == null || !view.isGuided() || view.getChantierNumber() != chantier || !view.hasOpenFocus()) {
+            return Outcome.error("Le chantier " + chantier + " n'est pas ouvert.");
+        }
+        JourneyPlan plan = JourneyPlan.fromJson(view.getPlanJson());
+        String head = "Chantier " + chantier + (view.getChantierTitle() == null ? "" : " — "
+                + view.getChantierTitle().replace('\n', ' ').strip()) + " · phase " + view.getPhase().label();
+        if (plan.isEmpty()) {
+            return Outcome.ok(head + " : pas encore de plan.");
+        }
+        Integer validated = view.getValidatedVersion();
+        boolean current = validated != null && validated == view.getPlanVersion();
+        return Outcome.ok(head + " · plan v" + view.getPlanVersion() + (current ? " validé"
+                : validated != null ? " (amendement en attente ; v" + validated + " était validé)"
+                : " en attente de validation") + " · " + plan.steps().size() + " étapes. Étapes au format de "
+                + "set_subject_plan (pour l'amender, renvoie la liste complète avec chantier: " + chantier
+                + " ; les statuts des étapes gardées sont reportés) :\n" + plan.toJson());
     }
 
     /** Longueur maximale de l'objet d'un geste hors chantier. */

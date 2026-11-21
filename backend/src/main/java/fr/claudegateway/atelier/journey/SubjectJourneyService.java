@@ -328,6 +328,81 @@ public class SubjectJourneyService {
         return new OutOfPlanRecord(true, java.util.List.copyOf(attached), java.util.List.copyOf(ignored));
     }
 
+    /** Fenêtre des gestes hors plan relus par les chantiers (F-274 / SF-274-02), en jours. */
+    public static final int OUT_OF_PLAN_DAYS = 14;
+
+    /** Gestes hors plan gardés par chantier, au plus (F-274 / SF-274-02). */
+    public static final int MAX_OUT_OF_PLAN = 5;
+
+    /** Un geste hors plan rattaché à un chantier, tel que l'écran et le tour le relisent (F-274 / SF-274-02). */
+    public record OutOfPlanGesture(OffsetDateTime at, String objet) {
+    }
+
+    /**
+     * <b>Rattaché à chacun</b> (F-274 / SF-274-02) : les gestes hors plan des {@link #OUT_OF_PLAN_DAYS} derniers jours,
+     * rangés par chantier (clé 0 = « aucun chantier »), les plus récents d'abord, {@link #MAX_OUT_OF_PLAN} au plus par
+     * clé. Filtré par utilisateur ET sujet. Best-effort : un journal illisible rend une carte vide.
+     */
+    @Transactional(readOnly = true)
+    public java.util.Map<Integer, java.util.List<OutOfPlanGesture>> outOfPlanByChantier(UUID userId,
+            UUID workspaceId) {
+        java.util.Map<Integer, java.util.List<OutOfPlanGesture>> byChantier = new java.util.TreeMap<>();
+        if (events == null || userId == null || workspaceId == null) {
+            return byChantier;
+        }
+        try {
+            for (SubjectJourneyEvent e : events
+                    .findTop50ByUserIdAndWorkspaceIdAndTypeAndCreatedAtAfterOrderByCreatedAtDesc(userId, workspaceId,
+                            SubjectJourneyEvent.OUT_OF_PLAN, OffsetDateTime.now(clock).minusDays(OUT_OF_PLAN_DAYS))) {
+                OutOfPlanParsed parsed = OutOfPlanParsed.of(e.getDetail());
+                if (parsed == null) {
+                    continue;
+                }
+                java.util.List<OutOfPlanGesture> list =
+                        byChantier.computeIfAbsent(parsed.chantier(), k -> new java.util.ArrayList<>());
+                if (list.size() < MAX_OUT_OF_PLAN) {
+                    list.add(new OutOfPlanGesture(e.getCreatedAt(), parsed.objet()));
+                }
+            }
+        } catch (RuntimeException ex) {
+            log.debug("Gestes hors plan illisibles (best-effort) : {}", ex.getMessage());
+            return new java.util.TreeMap<>();
+        }
+        byChantier.replaceAll((k, v) -> java.util.List.copyOf(v));
+        return byChantier;
+    }
+
+    /** Le {@code detail} d'un événement {@code OUT_OF_PLAN} lu : le chantier (0 = aucun) et l'objet. */
+    record OutOfPlanParsed(int chantier, String objet) {
+        static OutOfPlanParsed of(String detail) {
+            if (detail == null) {
+                return null;
+            }
+            int chantier;
+            String rest;
+            if (detail.startsWith("aucun chantier · ")) {
+                chantier = 0;
+                rest = detail.substring("aucun chantier · ".length());
+            } else if (detail.startsWith("chantier ")) {
+                int dot = detail.indexOf(" · ");
+                if (dot < 0) {
+                    return null;
+                }
+                try {
+                    chantier = Integer.parseInt(detail.substring("chantier ".length(), dot).strip());
+                } catch (NumberFormatException ex) {
+                    return null;
+                }
+                rest = detail.substring(dot + 3);
+            } else {
+                return null;
+            }
+            int channel = rest.lastIndexOf(" · écrit « ");
+            String objet = (channel >= 0 ? rest.substring(0, channel) : rest).strip();
+            return objet.isEmpty() || chantier < 0 ? null : new OutOfPlanParsed(chantier, objet);
+        }
+    }
+
     /** Ce que l'agent apprend en posant son plan (SF-176-03). */
     public enum PlanOutcome {
         /** Le plan est posé, il attend la validation de l'utilisateur. */
