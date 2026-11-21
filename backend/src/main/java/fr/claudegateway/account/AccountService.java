@@ -131,6 +131,17 @@ public class AccountService {
     /** Les règles de tous mes postes (F-266 / SF-266-01) : purge nommée du compte. */
     private fr.claudegateway.atelier.proposal.AccountGovernanceRuleRepository accountGovernanceRuleRepository;
 
+    /** Les actions rapides et leurs lancements (F-275 / SF-275-01) : sans clé étrangère, purge nommée. */
+    private fr.claudegateway.atelier.quickaction.QuickActionRepository quickActionRepository;
+    private fr.claudegateway.atelier.quickaction.QuickActionLaunchRepository quickActionLaunchRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setQuickActionRepositories(fr.claudegateway.atelier.quickaction.QuickActionRepository quickActions,
+            fr.claudegateway.atelier.quickaction.QuickActionLaunchRepository quickActionLaunches) {
+        this.quickActionRepository = quickActions;
+        this.quickActionLaunchRepository = quickActionLaunches;
+    }
+
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setAccountGovernanceRuleRepository(
             fr.claudegateway.atelier.proposal.AccountGovernanceRuleRepository rules) {
@@ -580,6 +591,13 @@ public class AccountService {
         // Les règles de tous mes postes (F-266 / SF-266-01) : sans clé étrangère, purge nommée.
         if (accountGovernanceRuleRepository != null) {
             accountGovernanceRuleRepository.purgeUser(userId);
+        }
+        // Les actions rapides (F-275 / SF-275-01) : sans clé étrangère, purge nommée.
+        if (quickActionLaunchRepository != null) {
+            quickActionLaunchRepository.purgeUser(userId);
+        }
+        if (quickActionRepository != null) {
+            quickActionRepository.purgeUser(userId);
         }
         // Le registre des besoins (F-205 / SF-205-01) : sans clé étrangère vers le terminal, purge nommée.
         if (appRequestService != null) {

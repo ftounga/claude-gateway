@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-275 / SF-275-01 — LES ACTIONS RAPIDES.
+
+      quick_actions : une action personnalisee (libelle, phrase de demarrage, sujet cible facultatif, clic
+      DEPOSER / ENVOYER, suggestion jour + moment), visible selon sa portee : COMPTE partout, POSTE
+      (host_id) dans les terminaux de ce poste, SUJET (workspace_id) dans ce terminal.
+
+      quick_action_launches : le dernier lancement DEPUIS LE BOUTON de chaque action, perso (c:<uuid>) ou
+      declencheur de skill (s:<ancre>:<skill>:<declencheur>) — une ligne par (user_id, action_key).
+
+      ISOLATION : toute lecture porte user_id. PAS DE CLE ETRANGERE (meme choix que
+      account_governance_rules) : purge nommee a la suppression du compte (AccountService).
+    -->
+
+    <changeSet id="275-01-quick-actions" author="claude-gateway">
+        <createTable tableName="quick_actions">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <!-- SUJET | POSTE | COMPTE -->
+            <column name="scope" type="varchar(10)"><constraints nullable="false"/></column>
+            <!-- Portee SUJET : le terminal ou l'action est visible. -->
+            <column name="workspace_id" type="uuid"/>
+            <!-- Portee POSTE : le poste dont les terminaux voient l'action. -->
+            <column name="host_id" type="uuid"/>
+            <column name="label" type="varchar(60)"><constraints nullable="false"/></column>
+            <column name="label_key" type="varchar(60)"><constraints nullable="false"/></column>
+            <column name="phrase" type="varchar(2000)"><constraints nullable="false"/></column>
+            <!-- Le sujet ou lancer la phrase ; null = le terminal ou l'on clique. -->
+            <column name="target_workspace_id" type="uuid"/>
+            <!-- DEPOSER | ENVOYER -->
+            <column name="click_mode" type="varchar(10)"><constraints nullable="false"/></column>
+            <!-- Jours ISO de la suggestion, "1,5" ; null = pas de suggestion. -->
+            <column name="suggest_days" type="varchar(20)"/>
+            <!-- MATIN | APRES_MIDI | JOURNEE -->
+            <column name="suggest_moment" type="varchar(12)"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="quick_actions" indexName="idx_quick_actions_user">
+            <column name="user_id"/>
+        </createIndex>
+
+        <createTable tableName="quick_action_launches">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="action_key" type="varchar(200)"><constraints nullable="false"/></column>
+            <column name="last_launched_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="last_workspace_id" type="uuid"/>
+            <column name="launch_count" type="int"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="quick_action_launches" columnNames="user_id, action_key"
+                             constraintName="uq_quick_action_launches_user_key"/>
+        <rollback>
+            <dropTable tableName="quick_action_launches"/>
+            <dropTable tableName="quick_actions"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

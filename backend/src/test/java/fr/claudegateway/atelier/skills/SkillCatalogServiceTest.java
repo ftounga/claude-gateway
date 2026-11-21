@@ -98,6 +98,21 @@ class SkillCatalogServiceTest {
     }
 
     @Test
+    void theLaunchIsReadOnTheFullHeaderEvenWhenTheDescriptionIsCut() {
+        // F-275 / SF-275-01 : la description longue est coupée à 160 caractères, les déclencheurs en fin de phrase
+        // restent lus.
+        listings.put("data-platform", "");
+        listings.put(".claude/skills", "suivi-hebdo.md");
+        files.put("|.claude/skills/suivi-hebdo.md", SkillTriggersTest.SUIVI_HEBDO);
+
+        var catalog = service.catalog(userId, subject());
+
+        assertThat(catalog.get(0).description()).endsWith("…");
+        assertThat(catalog.get(0).launch().triggers())
+                .containsExactly("point hebdo", "suivi du jour", "prépare le comité");
+    }
+
+    @Test
     void unknownSkillLoadsNothing() {
         listings.put("data-platform", ".claude/skills/deploy.md");
         assertThat(service.load(userId, subject(), "inconnu")).isEmpty();
