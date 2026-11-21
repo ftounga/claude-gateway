@@ -153,6 +153,37 @@ describe('JarvisStatePanelComponent (F-247 / SF-247-15)', () => {
     http.expectOne('/api/jarvis/state/clients/h1/releve').flush({ setupAt: '2026-11-05T08:00:00Z', probes: [] });
   });
 
+  it('relevé : l’erreur réelle gardée est lue sous la sonde ; « Tout valider » hors ligne dit pourquoi (F-273)', () => {
+    const fixture = render();
+    const el: HTMLElement = fixture.nativeElement;
+    (el.querySelector('.js__rel') as HTMLButtonElement).click();
+    http.expectOne('/api/jarvis/state/clients/h1/releve').flush({ setupAt: '2026-11-05T08:00:00Z', probes: [
+      { id: 'p1', workspaceId: 'w1', workspaceName: 'SSO', name: 'Tickets', platform: 'Jira', scope: 'Mes tickets',
+        command: 'python3 .atelier/releve/jira.py', proposed: true, active: false, testedAt: null, testSummary: null,
+        lastRunAt: null, lastRunStatus: null, broken: false, lastErrorCode: 'host_offline',
+        lastErrorMessage: 'Le poste ne répond pas (runner déconnecté)', lastErrorAt: '2026-11-21T09:12:00Z' },
+      { id: 'p2', workspaceId: 'w1', workspaceName: 'SSO', name: 'Dépôts', platform: 'git', scope: 'Dépôts',
+        command: 'python3 .atelier/releve/git.py', proposed: false, active: true, testedAt: '2026-11-20T08:00:00Z',
+        testSummary: '6 éléments', lastRunAt: '2026-11-21T09:00:00Z', lastRunStatus: 'FAILED', broken: false,
+        lastErrorCode: 'probe_exit', lastErrorMessage: 'code 1. Dernière ligne : « fatal: not a git repository »',
+        lastErrorAt: '2026-11-21T09:00:00Z' }] });
+    fixture.detectChanges();
+    const errors = Array.from(el.querySelectorAll('.js__probe-error')).map((e) => e.textContent ?? '');
+    expect(errors.length).toBe(2);
+    expect(errors[0]).toContain('Échec du test');
+    expect(errors[0]).toContain('Le poste ne répond pas');
+    expect(errors[1]).toContain('Dernier passage en échec');
+    expect(errors[1]).toContain('fatal: not a git repository');
+    expect(el.textContent).toContain('À valider (test en échec)');
+    expect(el.textContent).toContain('En échec');
+
+    fixture.componentInstance.validateAll(client());
+    http.expectOne('/api/jarvis/state/clients/h1/releve/validate-all').flush(
+      { code: 'watch_host_offline', message: 'Le poste est hors ligne : les sondes se testent poste allumé.' },
+      { status: 409, statusText: 'Conflict' });
+    expect(snacks).toContain('Le poste est hors ligne : les sondes se testent poste allumé.');
+  });
+
   it('rétention : 1 à 365 jours, sinon rien n’est envoyé', () => {
     const fixture = render();
     fixture.componentInstance.retention(client(), 'captureRetentionDays', '400');

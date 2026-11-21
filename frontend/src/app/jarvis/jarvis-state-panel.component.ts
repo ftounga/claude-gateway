@@ -13,7 +13,8 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../chat/confirm-dialog/confirm-dialog.component';
 import {
   JarvisStateClient, ReleveView, STATE_FAMILIES, StateClient, StateConversation, StateFact, StateSettingsPatch,
-  StateSpend, StateSync, SyncEnvelope, SyncPhase, capturePlatformLabel, eur, releveProbeStatus, stateSourceLabel, syncPercent,
+  StateSpend, StateSync, SyncEnvelope, SyncPhase, capturePlatformLabel, eur, releveProbeErrorLabel, releveProbeStatus,
+  stateSourceLabel, syncPercent,
   syncPhaseLabel, syncPhaseText, syncSummary,
 } from './jarvis-state';
 
@@ -184,6 +185,9 @@ type StateView = 'facts' | 'conversations' | 'releve';
                           <span class="js__key">{{ p.platform }}</span>
                           <span class="js__value">{{ p.name }} — {{ p.scope }}</span>
                           <span class="js__meta">{{ probeStatus(p) }}{{ p.lastRunAt ? ' · ' + (p.lastRunAt | date: 'd/MM HH:mm') : '' }}</span>
+                          @if (probeError(p); as label) {
+                            <span class="js__probe-error" role="alert">{{ label }}{{ p.lastErrorAt ? ' · ' + (p.lastErrorAt | date: 'd/MM HH:mm') : '' }} — {{ p.lastErrorMessage }}</span>
+                          }
                         </li>
                       } @empty {
                         <li class="js__hint">Aucune sonde de relevé : « Mettre en place », poste allumé.</li>
@@ -239,6 +243,7 @@ type StateView = 'facts' | 'conversations' | 'releve';
     .js__family { color: var(--cg-cream); font-size: 12px; }
     .js__family--off { opacity: .45; text-decoration: line-through; }
     .js__facts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--cg-space-1); }
+    .js__probe-error { flex-basis: 100%; font-size: 12px; color: var(--cg-orange-2); }
     .js__fact { display: flex; flex-wrap: wrap; align-items: center; gap: var(--cg-space-1) var(--cg-space-2);
       font-size: 13px; border-top: 1px solid color-mix(in srgb, var(--cg-cream) 12%, transparent); padding-top: var(--cg-space-1); }
     .js__key { font-family: var(--cg-font-mono); font-size: 12px; }
@@ -286,6 +291,7 @@ export class JarvisStatePanelComponent implements OnInit, OnDestroy {
   readonly euro = eur;
   readonly platformLabel = capturePlatformLabel;
   readonly probeStatus = releveProbeStatus;
+  readonly probeError = releveProbeErrorLabel;
   readonly loading = signal(true);
   readonly busy = signal(false);
   readonly sourceLabel = stateSourceLabel;
@@ -559,9 +565,11 @@ export class JarvisStatePanelComponent implements OnInit, OnDestroy {
           + (ko ? ` · ${ko} en échec` : ''), undefined, { duration: 5000 });
         this.loadReleve(c.hostId);
       },
-      error: () => {
+      error: (e: HttpErrorResponse) => {
         this.busy.set(false);
-        this.snack.open('Validation impossible.', undefined, { duration: 4000 });
+        // F-273 / SF-273-02 : le refus du serveur (poste hors ligne…) est dit tel quel.
+        const message = typeof e?.error?.message === 'string' ? e.error.message : 'Validation impossible.';
+        this.snack.open(message, undefined, { duration: 5000 });
       },
     });
   }

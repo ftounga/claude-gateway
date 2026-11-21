@@ -35,6 +35,12 @@ export interface JarvisWatch {
   /** SF-230-03 — budget de la rédaction IA et dépense du mois, en euros. */
   monthlyBudgetEur: number | null;
   monthSpentEur: number | null;
+  /** F-247 — `ALERT` (veille) ou `STATE` (sonde de relevé). */
+  purpose?: 'ALERT' | 'STATE';
+  /** F-273 / SF-273-01 — la dernière erreur réelle (test ou passage), effacée au succès suivant. */
+  lastErrorCode?: string | null;
+  lastErrorMessage?: string | null;
+  lastErrorAt?: string | null;
 }
 
 /** Tenir une veille (SF-230-04) : un champ absent garde sa valeur. */

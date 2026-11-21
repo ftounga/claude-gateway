@@ -68,6 +68,10 @@ export interface ReleveProbe {
   lastRunAt: string | null;
   lastRunStatus: string | null;
   broken: boolean;
+  /** F-273 / SF-273-01 — la dernière erreur réelle, effacée au succès suivant. */
+  lastErrorCode?: string | null;
+  lastErrorMessage?: string | null;
+  lastErrorAt?: string | null;
 }
 
 export interface ReleveView {
@@ -96,12 +100,26 @@ export function capturePlatformLabel(p: StateConversation['platform']): string {
 /** Le statut d'une sonde de relevé, en clair. */
 export function releveProbeStatus(p: ReleveProbe): string {
   if (p.proposed) {
-    return p.testedAt ? 'Testée, à valider' : 'À valider';
+    if (p.testedAt) {
+      return 'Testée, à valider';
+    }
+    return p.lastErrorMessage ? 'À valider (test en échec)' : 'À valider';
   }
   if (p.broken) {
     return 'En panne';
   }
+  if (p.active && p.lastRunStatus === 'FAILED') {
+    return 'En échec';
+  }
   return p.active ? 'Active' : 'En pause';
+}
+
+/** F-273 / SF-273-02 — la ligne d'erreur d'une sonde : « Échec du test » ou « Dernier passage en échec ». */
+export function releveProbeErrorLabel(p: ReleveProbe): string | null {
+  if (!p.lastErrorMessage) {
+    return null;
+  }
+  return p.proposed ? 'Échec du test' : 'Dernier passage en échec';
 }
 
 /** Un montant en euros, à la française. */

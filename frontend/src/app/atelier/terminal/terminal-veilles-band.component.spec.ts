@@ -104,6 +104,26 @@ describe('La bande des veilles Jarvis (F-230 / SF-230-01)', () => {
     expect(button('Activer').disabled).toBeTrue();
   });
 
+  it('une proposition dit son dernier test en échec, gardé par la passerelle (F-273 / SF-273-02)', () => {
+    create([watch({ lastErrorCode: 'probe_exit', lastErrorMessage: 'code 1. Dernière ligne : « HTTP 401 »' })]);
+    expect(text()).toContain('Dernier test en échec : code 1. Dernière ligne : « HTTP 401 »');
+  });
+
+  it('une sonde de relevé active dont le passage échoue dit la raison, sans être « en panne » (F-273)', () => {
+    create([watch({ proposed: false, active: true, purpose: 'STATE', lastRunStatus: 'FAILED',
+      lastErrorCode: 'probe_transport', lastErrorMessage: 'Le poste n\'a pas répondu' })]);
+    expect(text()).toContain('Sonde de relevé « Agenor » — dernier passage en');
+    expect(text()).toContain('Le poste n\'a pas répondu');
+    expect(text()).not.toContain('en panne');
+  });
+
+  it('une veille en panne dit aussi sa raison (F-273)', () => {
+    create([watch({ proposed: false, active: true, broken: true, consecutiveFailures: 2, lastRunStatus: 'FAILED',
+      lastErrorMessage: 'jeton expiré' })]);
+    expect(text()).toContain('Raison : jeton expiré');
+    expect(text()).not.toContain('dernier passage en');
+  });
+
   it('[Refuser] supprime la proposition', () => {
     create([watch()]);
     service.remove.and.returnValue(of(void 0));
