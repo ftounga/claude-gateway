@@ -174,6 +174,82 @@ export interface JarvisWork {
   phase: 'THINKING' | 'EXECUTING' | 'WAITING_YES' | 'QUEUED' | 'DONE' | 'FAILED' | 'CANCELLED';
   since: string;
   endedAt: string | null;
+  /** F-271 / SF-271-04 — une course autonome : progression, issue brute, raison courte (dite, jamais montrée). */
+  course?: JarvisCourse | null;
+}
+
+/** F-271 / SF-271-04 — ce qu'une course autonome dit d'elle (passerelle). */
+export interface JarvisCourse {
+  stepsDone: number;
+  stepsTotal: number;
+  status: 'RUNNING' | 'DONE' | 'PARTIAL' | 'BLOCKED' | 'FAILED' | 'STOPPED';
+  reason: string | null;
+  byUser: boolean;
+}
+
+/** F-271 / SF-271-04 — « deux étapes sur six » : un nombre dit en lettres jusqu'à douze. */
+function spokenCount(n: number): string {
+  const words = ['zéro', 'une', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf', 'dix', 'onze', 'douze'];
+  return n >= 0 && n < words.length ? words[n] : String(n);
+}
+
+/** Une raison sans point final (la phrase en met un). */
+function reasonPart(reason: string | null | undefined): string {
+  const r = (reason ?? '').trim().replace(/[.…]+$/, '');
+  return r ? ` : ${r.charAt(0).toLowerCase()}${r.slice(1)}` : '';
+}
+
+/**
+ * F-271 / SF-271-04 (D6) — la phrase dite à la fin d'une course : fin, blocage, échec, arrêt. `null` quand rien n'est à
+ * dire (course toujours en cours, ou reprise en main par l'utilisateur : il le sait déjà).
+ */
+export function courseEndPhrase(work: JarvisWork): string | null {
+  const c = work.course;
+  if (!c || work.origin !== 'COURSE' || c.status === 'RUNNING' || c.byUser) {
+    return null;
+  }
+  const name = work.name || 'Le chantier';
+  const steps = `${spokenCount(c.stepsDone)} étape${c.stepsDone > 1 ? 's' : ''} sur ${spokenCount(c.stepsTotal)}`;
+  switch (c.status) {
+    case 'DONE':
+      return `${name} est fini.`;
+    case 'PARTIAL':
+      return `${name} a avancé jusqu’au blocage : ${steps}.`;
+    case 'BLOCKED':
+      return `${name} est bloqué${reasonPart(c.reason)}.`;
+    case 'FAILED':
+      return `${name} s’est arrêté en échec${reasonPart(c.reason)}.`;
+    case 'STOPPED':
+      return `${name} est arrêté, ${steps}.`;
+    default:
+      return null;
+  }
+}
+
+/**
+ * F-271 / SF-271-04 — les courses vues en cours puis finies, rendues une seule fois : une course déjà finie au premier
+ * regard (écran rouvert) n'est jamais annoncée.
+ */
+export class CourseWatch {
+  private readonly running = new Set<string>();
+  private readonly told = new Set<string>();
+
+  ended(list: JarvisWork[]): JarvisWork[] {
+    const out: JarvisWork[] = [];
+    for (const w of list) {
+      if (w.origin !== 'COURSE') {
+        continue;
+      }
+      if (isLive(w)) {
+        this.running.add(w.id);
+      } else if (this.running.has(w.id) && !this.told.has(w.id)) {
+        this.told.add(w.id);
+        this.running.delete(w.id);
+        out.push(w);
+      }
+    }
+    return out;
+  }
 }
 
 /** L'annonce d'un tour direct ne retarde jamais le tour au-delà de ce délai. */

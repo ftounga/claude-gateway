@@ -135,6 +135,8 @@ public class JarvisFastContextBuilder {
         }
         block(out, "À envoyer (état à " + at + ")", MAX_BLOCK, () -> toSend(userId));
         block(out, "Délégations en cours à Opus (état à " + at + ")", MAX_BLOCK, () -> running(userId));
+        // F-271 / SF-271-04 — « où en est LDIC-325 ? » : les courses autonomes qui tournent (bloc omis s'il n'y en a pas).
+        block(out, "Courses autonomes en cours (état à " + at + ")", MAX_BLOCK, () -> courses(userId));
         // F-245 / SF-245-02 (D11) — ce qui vient de se dire, où que ce soit : le fil Jarvis (6 au plus), puis le fil du
         // sujet en vue (6 au plus), toujours dans le message. Le fil Jarvis n'est relu que s'il existe (jamais créé ici).
         java.util.Optional<UUID> jarvisThread = jarvisThreadId(userId);
@@ -296,6 +298,58 @@ public class JarvisFastContextBuilder {
             }
             if (item.subject() != null) {
                 b.append(" — « ").append(cut(oneLine(item.subject()), 120)).append(" »");
+            }
+            b.append('\n');
+        }
+        return b.toString();
+    }
+
+    /** F-271 / SF-271-04 — les courses autonomes F-219 du compte, lues sous {@code user_id}. Facultatif. */
+    private fr.claudegateway.atelier.autonomy.ChantierAutonomyRunRepository runs;
+
+    @Autowired(required = false)
+    public void setRuns(fr.claudegateway.atelier.autonomy.ChantierAutonomyRunRepository runs) {
+        this.runs = runs;
+    }
+
+    /** Le nom d'un sujet du compte, lu dans l'univers déjà chargé (aucune lecture de plus) ; vide s'il est inconnu. */
+    private String workspaceName(UUID userId, UUID workspaceId) {
+        if (universe == null || workspaceId == null) {
+            return "";
+        }
+        for (JarvisUniverse.Client client : universeOf(userId).clients()) {
+            for (JarvisUniverse.Subject subject : client.subjects()) {
+                if (workspaceId.equals(subject.id())) {
+                    return subject.name() == null ? "" : subject.name();
+                }
+            }
+        }
+        return "";
+    }
+
+    /** Une ligne par course qui tourne : chantier (titre à clé), sujet, étapes faites sur le total, départ. */
+    String courses(UUID userId) {
+        if (runs == null) {
+            return "";
+        }
+        StringBuilder b = new StringBuilder();
+        int n = 0;
+        for (fr.claudegateway.atelier.autonomy.ChantierAutonomyRun r : runs.findByUserIdAndStatusOrderByStartedAtDesc(
+                userId, fr.claudegateway.atelier.autonomy.AutonomyRunStatus.RUNNING)) {
+            if (n++ >= MAX_ITEMS) {
+                break;
+            }
+            String subject = workspaceName(userId, r.getWorkspaceId());
+            b.append("- chantier ").append(r.getChantierNumber());
+            if (r.getChantierTitle() != null && !r.getChantierTitle().isBlank()) {
+                b.append(" — ").append(cut(oneLine(r.getChantierTitle()), 120));
+            }
+            if (!subject.isEmpty()) {
+                b.append(" — sujet ").append(subject);
+            }
+            b.append(" — ").append(r.getStepsDone()).append('/').append(r.getStepsTotal()).append(" étapes");
+            if (r.getStartedAt() != null) {
+                b.append(" — depuis ").append(HOUR.format(r.getStartedAt().atZoneSameInstant(ZONE)));
             }
             b.append('\n');
         }

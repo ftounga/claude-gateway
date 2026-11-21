@@ -34,11 +34,12 @@ public class JarvisWorksController {
 
     /** Un travail tel que l'écran le lit. */
     public record WorkView(String id, String origin, UUID subjectId, String subjectName, Integer chantier, String name,
-            String label, String phase, String since, String endedAt) {
+            String label, String phase, String since, String endedAt, JarvisWorks.Course course) {
 
         static WorkView of(JarvisWorks.Work w) {
             return new WorkView(w.id(), w.origin().name(), w.subjectId(), w.subjectName(), w.chantier(), w.name(),
-                    w.label(), w.phase().name(), w.since().toString(), w.endedAt() == null ? null : w.endedAt().toString());
+                    w.label(), w.phase().name(), w.since().toString(), w.endedAt() == null ? null : w.endedAt().toString(),
+                    w.course()); // F-271 / SF-271-04 — la course parle (null hors course)
         }
     }
 

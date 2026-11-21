@@ -65,7 +65,7 @@ import { EndOfSpeech, MicMeter, SPEECH_LEVEL, silenceMs } from './jarvis-mic-met
 import { asksConfirmation, classifyConfirmation, confirmationQuestion } from './jarvis-confirm';
 import {
   ArmedConfirmation, ArmedConfirmations, JARVIS_WORKS_POLL_MS, JarvisWork, JarvisWorksClient, confirmationVerdict, isLive,
-  asksLaunch, isOtherRequest, matchWorks, names, newWorkId, shortName, stopTarget, whichQuestion,
+  CourseWatch, asksLaunch, courseEndPhrase, isOtherRequest, matchWorks, names, newWorkId, shortName, stopTarget, whichQuestion,
 } from './jarvis-works';
 import {
   ENROLL_COUNT, MIN_WORD_FRAMES, TemplateWakeWordEngine, WakeEvent, enrollThreshold, readWakeProfile,
@@ -703,6 +703,33 @@ export class JarvisComponent implements OnInit, OnDestroy {
     this.flushAnnouncements();
   }
 
+  /** F-271 / SF-271-04 — les courses vues en cours, pour dire leur fin une fois. */
+  private readonly courseWatch = new CourseWatch();
+  /** Les courses arrêtées depuis l'écran (« arrête LDIC-330 ») : « J’arrête » est déjà dit. */
+  private readonly stoppedHere = new Set<string>();
+
+  /**
+   * F-271 / SF-271-04 (D6) — la course parle : fin, blocage, échec ou arrêt dits dans la file des annonces (à la pause,
+   * jamais par-dessus le PO). L'avancement d'étape ne se dit pas (scène seulement) ; une reprise en main non plus.
+   */
+  private tellEndedCourses(list: JarvisWork[]): void {
+    let told = false;
+    for (const w of this.courseWatch.ended(list)) {
+      const phrase = this.stoppedHere.has(w.id) ? null : courseEndPhrase(w);
+      this.stoppedHere.delete(w.id);
+      if (!phrase) {
+        continue;
+      }
+      this.trace.mark('course_end', w.course?.status ?? '');
+      this.announcements.push({ label: '', subjectId: w.subjectId, chantier: w.chantier ?? null, confirm: false,
+        phrase });
+      told = true;
+    }
+    if (told) {
+      this.flushAnnouncements();
+    }
+  }
+
   private async refreshWorks(): Promise<void> {
     if (this.presentation()) {
       return;
@@ -710,6 +737,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
     const list = await this.works_.list();
     if (list) {
       this.works.set(list);
+      this.tellEndedCourses(list);
     }
     this.releaseQueued();
   }
@@ -785,6 +813,7 @@ export class JarvisComponent implements OnInit, OnDestroy {
         this.queuedWorks = this.queuedWorks.filter((q) => q.delegation.delegationId !== w.id);
         void this.works_.cancel(w.id);
       } else if (w.kind === 'course') {
+        this.stoppedHere.add(w.id);
         this.autonomy.stop(w.subjectId, w.chantier).subscribe({ error: () => undefined });
       } else {
         if (w.kind === 'local') {

@@ -60,7 +60,7 @@ public class AutonomyTurnRunner {
     static final int MAX_STEP_TITLE = 160;
 
     /** La raison d'une reprise en main. */
-    static final String TAKEN_BACK = "Reprise en main.";
+    public static final String TAKEN_BACK = "Reprise en main.";
 
     private final AtelierChatService chatService;
     private final LiveTurnRegistry liveTurns;

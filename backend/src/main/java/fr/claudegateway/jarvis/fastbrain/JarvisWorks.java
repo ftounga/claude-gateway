@@ -22,7 +22,40 @@ public final class JarvisWorks {
      * phase ({@link JarvisWorkPhase}), départ et fin (ou {@code null}).
      */
     public record Work(String id, Origin origin, UUID subjectId, String subjectName, Integer chantier, String name,
-            String label, JarvisWorkPhase phase, Instant since, Instant endedAt) {
+            String label, JarvisWorkPhase phase, Instant since, Instant endedAt, Course course) {
+
+        /** Un travail sans course (délégation, tour direct). */
+        public Work(String id, Origin origin, UUID subjectId, String subjectName, Integer chantier, String name,
+                String label, JarvisWorkPhase phase, Instant since, Instant endedAt) {
+            this(id, origin, subjectId, subjectName, chantier, name, label, phase, since, endedAt, null);
+        }
+    }
+
+    /**
+     * F-271 / SF-271-04 — ce qu'une course autonome dit d'elle : étapes faites sur le total, issue brute
+     * ({@code RUNNING}, {@code DONE}, {@code PARTIAL}, {@code BLOCKED}, {@code FAILED}, {@code STOPPED}), et sa raison
+     * d'arrêt courte (dite par Jarvis, jamais affichée), {@code byUser} quand l'utilisateur a repris la main.
+     */
+    public record Course(int stepsDone, int stepsTotal, String status, String reason, boolean byUser) {
+    }
+
+    /** La raison d'arrêt d'une course, en une phrase dite : première phrase, {@value #MAX_REASON} caractères au plus. */
+    static final int MAX_REASON = 160;
+
+    public static String shortReason(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String flat = raw.replaceAll("[`*_#>]+", " ").replaceAll("\\s+", " ").replaceAll(" ([.,])", "$1").strip();
+        java.util.regex.Matcher end = java.util.regex.Pattern.compile("[.!?](\\s|$)").matcher(flat);
+        if (end.find()) {
+            flat = flat.substring(0, end.start() + 1);
+        }
+        if (flat.length() > MAX_REASON) {
+            int cut = flat.lastIndexOf(' ', MAX_REASON - 1);
+            flat = flat.substring(0, cut > 40 ? cut : MAX_REASON - 1).strip() + "…";
+        }
+        return flat;
     }
 
     /** Une clé de ticket (« LDIC-325 ») : majuscules, tiret, chiffres. */

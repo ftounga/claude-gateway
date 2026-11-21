@@ -201,7 +201,12 @@ public class JarvisWorksService {
                 out.add(new JarvisWorks.Work("course:" + r.getId(), JarvisWorks.Origin.COURSE, r.getWorkspaceId(),
                         subject, r.getChantierNumber(), JarvisWorks.shortName(title, r.getChantierNumber(), subject),
                         title, phase, r.getStartedAt().toInstant(),
-                        r.getStatus() == AutonomyRunStatus.RUNNING ? null : ended));
+                        r.getStatus() == AutonomyRunStatus.RUNNING ? null : ended,
+                        // F-271 / SF-271-04 — la course parle : progression, issue et raison courte.
+                        new JarvisWorks.Course(r.getStepsDone(), r.getStepsTotal(), r.getStatus().name(),
+                                JarvisWorks.shortReason(r.getStopReason()),
+                                fr.claudegateway.atelier.autonomy.AutonomyTurnRunner.TAKEN_BACK
+                                        .equals(r.getStopReason()))));
             }
             return out;
         } catch (RuntimeException e) {

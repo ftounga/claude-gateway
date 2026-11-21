@@ -182,6 +182,25 @@ class JarvisFastContextBuilderTest {
     }
 
     @Test
+    void f271RunningCoursesAreListedAndTheBlockIsOmittedWithoutAny() {
+        fr.claudegateway.atelier.autonomy.ChantierAutonomyRunRepository runs =
+                mock(fr.claudegateway.atelier.autonomy.ChantierAutonomyRunRepository.class);
+        builder.setRuns(runs);
+        when(runs.findByUserIdAndStatusOrderByStartedAtDesc(alice,
+                fr.claudegateway.atelier.autonomy.AutonomyRunStatus.RUNNING)).thenReturn(List.of());
+        assertThat(builder.build(alice, workspace, null, null)).doesNotContain("Courses autonomes");
+
+        when(runs.findByUserIdAndStatusOrderByStartedAtDesc(alice,
+                fr.claudegateway.atelier.autonomy.AutonomyRunStatus.RUNNING)).thenReturn(List.of(
+                fr.claudegateway.atelier.autonomy.ChantierAutonomyRun.builder().userId(alice).workspaceId(subject)
+                        .chantierNumber(13).chantierTitle("LDIC-325 — topic SNS").stepsDone(3).stepsTotal(6)
+                        .status(fr.claudegateway.atelier.autonomy.AutonomyRunStatus.RUNNING)
+                        .startedAt(OffsetDateTime.now(clock)).build()));
+        assertThat(builder.build(alice, workspace, null, null)).contains("## Courses autonomes en cours (état à 14:32)")
+                .contains("- chantier 13 — LDIC-325 — topic SNS — sujet Edenred — 3/6 étapes — depuis 14:32");
+    }
+
+    @Test
     void aDelegationWithoutLiveTurnIsForgottenAfterItsGrace() {
         MovingClock moving = new MovingClock(NOW);
         LiveTurnRegistry live = mock(LiveTurnRegistry.class);

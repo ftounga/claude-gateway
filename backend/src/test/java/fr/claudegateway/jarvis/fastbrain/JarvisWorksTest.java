@@ -39,4 +39,14 @@ class JarvisWorksTest {
         assertThat(JarvisWorksService.coursePhase(AutonomyRunStatus.BLOCKED)).isEqualTo(JarvisWorkPhase.FAILED);
         assertThat(JarvisWorksService.coursePhase(AutonomyRunStatus.STOPPED)).isEqualTo(JarvisWorkPhase.CANCELLED);
     }
+
+    @Test
+    @DisplayName("SF-271-04 : la raison d'arrêt dite tient en une phrase courte, sans Markdown")
+    void shortReason() {
+        assertThat(JarvisWorks.shortReason("**Bloqué** : il manque le `droit IAM`. Ensuite x."))
+                .isEqualTo("Bloqué : il manque le droit IAM.");
+        assertThat(JarvisWorks.shortReason("  ")).isNull();
+        assertThat(JarvisWorks.shortReason(null)).isNull();
+        assertThat(JarvisWorks.shortReason("mot ".repeat(80))).hasSizeLessThanOrEqualTo(161).endsWith("…");
+    }
 }

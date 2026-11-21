@@ -174,6 +174,32 @@ class JarvisWorksIntegrationTest {
     }
 
     @Test
+    @DisplayName("SF-271-04 : une course dit sa progression, son issue et sa raison courte ; la reprise en main se reconnaît")
+    void courseTellsItsProgressAndOutcome() {
+        ChantierAutonomyRun blocked = run(alice.getId(), subject, 7, "LDIC-325 — topic SNS", AutonomyRunStatus.BLOCKED);
+        blocked.setStepsDone(3);
+        blocked.setStepsTotal(6);
+        blocked.setStopReason("Il manque le droit IAM sur le compte data-ingestion dev. Détail : la policy x refuse.");
+        blocked.setFinishedAt(OffsetDateTime.ofInstant(now.get(), ZoneOffset.UTC));
+        runRepository.save(blocked);
+        ChantierAutonomyRun taken = run(alice.getId(), subject, 8, "LDIC-330", AutonomyRunStatus.STOPPED);
+        taken.setStopReason(fr.claudegateway.atelier.autonomy.AutonomyTurnRunner.TAKEN_BACK);
+        taken.setFinishedAt(OffsetDateTime.ofInstant(now.get(), ZoneOffset.UTC));
+        runRepository.save(taken);
+
+        List<JarvisWorks.Work> list = works.list(alice.getId());
+        JarvisWorks.Work b = list.stream().filter(w -> "LDIC-325".equals(w.name())).findFirst().orElseThrow();
+        assertThat(b.course().stepsDone()).isEqualTo(3);
+        assertThat(b.course().stepsTotal()).isEqualTo(6);
+        assertThat(b.course().status()).isEqualTo("BLOCKED");
+        assertThat(b.course().reason()).isEqualTo("Il manque le droit IAM sur le compte data-ingestion dev.");
+        assertThat(b.course().byUser()).isFalse();
+        JarvisWorks.Work t = list.stream().filter(w -> "LDIC-330".equals(w.name())).findFirst().orElseThrow();
+        assertThat(t.course().byUser()).isTrue();
+        assertThat(works.list(bob.getId())).isEmpty();
+    }
+
+    @Test
     @DisplayName("isolation : Bob ne prend, ne clôt ni ne lit rien d'Alice")
     void isolation() {
         UUID id = UUID.randomUUID();
@@ -184,6 +210,26 @@ class JarvisWorksIntegrationTest {
         assertThat(works.list(bob.getId())).isEmpty();
         assertThat(works.list(alice.getId())).extracting(JarvisWorks.Work::phase)
                 .containsExactly(JarvisWorkPhase.THINKING);
+    }
+
+    @Test
+    @DisplayName("SF-271-04 — API : une course rend « course » (progression, issue, raison) ; un autre travail, null")
+    void apiCarriesTheCourse() throws Exception {
+        OffsetDateTime at = OffsetDateTime.now();
+        ChantierAutonomyRun r = ChantierAutonomyRun.builder().userId(alice.getId()).workspaceId(subject)
+                .chantierNumber(7).chantierTitle("LDIC-325 — topic SNS").status(AutonomyRunStatus.BLOCKED)
+                .stepsDone(3).stepsTotal(6).stopReason("Il manque le droit IAM.").startedAt(at.minusMinutes(5))
+                .heartbeatAt(at).finishedAt(at).build();
+        runRepository.save(r);
+        mockMvc.perform(get("/api/jarvis/works").contextPath("/api")
+                        .header("Authorization", "Bearer " + jwtService.generateToken(alice)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.works[0].name").value("LDIC-325"))
+                .andExpect(jsonPath("$.works[0].course.stepsDone").value(3))
+                .andExpect(jsonPath("$.works[0].course.stepsTotal").value(6))
+                .andExpect(jsonPath("$.works[0].course.status").value("BLOCKED"))
+                .andExpect(jsonPath("$.works[0].course.reason").value("Il manque le droit IAM."))
+                .andExpect(jsonPath("$.works[0].course.byUser").value(false));
     }
 
     @Test

@@ -1,5 +1,5 @@
 import {
-  matchWorks, stopTarget,
+  CourseWatch, JarvisWork, courseEndPhrase, matchWorks, stopTarget,
   ArmedConfirmations, CONFIRM_TTL_MS, asksLaunch, confirmationVerdict, isOtherRequest, names, newWorkId, shortName, whichQuestion,
 } from './jarvis-works';
 
@@ -94,5 +94,35 @@ describe('F-270 / SF-270-02 — les confirmations rattachées à leur travail', 
     expect(matchWorks('ldic 325', works).map((w) => w.name)).toEqual(['LDIC-325']);
     expect(matchWorks('data platform', works).map((w) => w.name)).toEqual(['LDIC-325']);
     expect(matchWorks('facturation', works)).toEqual([]);
+  });
+});
+
+describe('F-271 / SF-271-04 — la course parle', () => {
+  const course = (status: string, extra: Partial<JarvisWork> = {}, c: Record<string, unknown> = {}): JarvisWork => ({
+    id: 'course:1', origin: 'COURSE', subjectId: 'w-1', subjectName: 'data-platform', chantier: 13, name: 'LDIC-325',
+    label: 'LDIC-325 — topic SNS', phase: status === 'RUNNING' ? 'EXECUTING' : status === 'DONE' ? 'DONE'
+      : status === 'STOPPED' ? 'CANCELLED' : 'FAILED', since: '2026-11-21T08:00:00Z',
+    endedAt: status === 'RUNNING' ? null : '2026-11-21T08:10:00Z',
+    course: { stepsDone: 3, stepsTotal: 6, status: status as never, reason: null, byUser: false, ...c }, ...extra,
+  });
+
+  it('fin, blocage (raison dite), échec, arrêt, jusqu’au blocage ; rien en cours ni sur une reprise en main', () => {
+    expect(courseEndPhrase(course('DONE'))).toBe('LDIC-325 est fini.');
+    expect(courseEndPhrase(course('BLOCKED', {}, { reason: 'Il manque le droit IAM sur le compte data-ingestion dev.' })))
+      .toBe('LDIC-325 est bloqué : il manque le droit IAM sur le compte data-ingestion dev.');
+    expect(courseEndPhrase(course('FAILED'))).toBe('LDIC-325 s’est arrêté en échec.');
+    expect(courseEndPhrase(course('STOPPED'))).toBe('LDIC-325 est arrêté, trois étapes sur six.');
+    expect(courseEndPhrase(course('PARTIAL'))).toBe('LDIC-325 a avancé jusqu’au blocage : trois étapes sur six.');
+    expect(courseEndPhrase(course('RUNNING'))).toBeNull();
+    expect(courseEndPhrase(course('STOPPED', {}, { byUser: true }))).toBeNull();
+    expect(courseEndPhrase({ ...course('DONE'), origin: 'DELEGATION' })).toBeNull();
+  });
+
+  it('une course vue en cours puis finie est rendue une fois ; finie au premier regard, jamais', () => {
+    const w = new CourseWatch();
+    expect(w.ended([course('DONE', { id: 'course:old' })])).toEqual([]);
+    expect(w.ended([course('RUNNING')])).toEqual([]);
+    expect(w.ended([course('DONE')]).map((x) => x.id)).toEqual(['course:1']);
+    expect(w.ended([course('DONE')])).toEqual([]);
   });
 });

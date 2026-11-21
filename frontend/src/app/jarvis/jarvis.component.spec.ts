@@ -4238,6 +4238,41 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       jarvis.ngOnDestroy();
     }));
 
+  it('F-271 / SF-271-04 — la fin d’une course vue en cours est dite à la pause ; arrêtée d’ici, elle ne l’est pas',
+    fakeAsync(() => {
+      const jarvis = fastOn();
+      const work = (id: string, status: string, phase: string, reason: string | null = null) => ({
+        id, origin: 'COURSE' as const, subjectId: 'w-1', subjectName: 'data-platform', chantier: 13, name: 'LDIC-325',
+        label: 'LDIC-325 — topic SNS', phase: phase as never, since: '2026-11-21T08:00:00Z',
+        endedAt: status === 'RUNNING' ? null : '2026-11-21T08:10:00Z',
+        course: { stepsDone: 3, stepsTotal: 6, status: status as never, reason, byUser: false } });
+      jarvis.state.set('repos');
+      voice.speak.calls.reset();
+      worksClient.list.and.resolveTo([work('course:1', 'RUNNING', 'EXECUTING')]);
+      void jarvis['refreshWorks']();
+      flushMicrotasks();
+      worksClient.list.and.resolveTo([work('course:1', 'BLOCKED', 'FAILED', 'Il manque le droit IAM.')]);
+      void jarvis['refreshWorks']();
+      flushMicrotasks();
+      tick(5_000);
+      flushMicrotasks();
+      expect(voice.speak.calls.allArgs().filter((a) => a[0] === 'LDIC-325 est bloqué : il manque le droit IAM.').length)
+        .toBe(1);
+      // Arrêtée depuis l'écran (« arrête LDIC-330 ») : « J’arrête » suffit, la fin n'est pas redite.
+      voice.speak.calls.reset();
+      worksClient.list.and.resolveTo([work('course:2', 'RUNNING', 'EXECUTING')]);
+      void jarvis['refreshWorks']();
+      flushMicrotasks();
+      jarvis['stoppedHere'].add('course:2');
+      worksClient.list.and.resolveTo([work('course:2', 'STOPPED', 'CANCELLED')]);
+      void jarvis['refreshWorks']();
+      flushMicrotasks();
+      tick(5_000);
+      flushMicrotasks();
+      expect(voice.speak.calls.allArgs().some((a) => String(a[0]).includes('est arrêté'))).toBeFalse();
+      jarvis.ngOnDestroy();
+    }));
+
   it('F-270 / SF-270-04 (D7) — « arrête CAGIP » arrête ce travail-là, sur son fil ; un nom inconnu est dit',
     fakeAsync(() => {
       const jarvis = fastOn();
