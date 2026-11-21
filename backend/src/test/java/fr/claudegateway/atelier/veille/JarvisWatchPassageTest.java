@@ -133,6 +133,45 @@ class JarvisWatchPassageTest {
     }
 
     @Test
+    void aSilentHostIsNotABrokenProbe() {
+        // F-273 / SF-273-01 : poste muet ou déconnecté — passage FAILED, erreur gardée, ni compté ni « en panne ».
+        watch.setConsecutiveFailures(1);
+        when(probes.run(watch, subject)).thenReturn(new JarvisWatchProbeRunner.Outcome(List.of(),
+                JarvisWatchProbeRunner.ERR_TRANSPORT, "Le poste n'a pas répondu", 10L));
+        JarvisWatchRun run = passage.run(watch, subject, null, JarvisWatchRun.SCHEDULED);
+        assertThat(run.getStatus()).isEqualTo(JarvisWatchRun.FAILED);
+        assertThat(run.getErrorCode()).isEqualTo(JarvisWatchProbeRunner.ERR_TRANSPORT);
+        verify(watches).recordOutcome(eq(watch.getId()), eq(userId), any(), eq(JarvisWatchRun.FAILED), eq(1), eq(false));
+        verify(watches).recordError(eq(watch.getId()), eq(userId), eq(JarvisWatchProbeRunner.ERR_TRANSPORT),
+                eq("Le poste n'a pas répondu"), any());
+        verify(note, never()).post(any(), anyString());
+        verify(push, never()).notify(any(), any(), any());
+    }
+
+    @Test
+    void aProbeFailureKeepsItsRealMessageAndASuccessClearsIt() {
+        when(probes.run(watch, subject)).thenReturn(new JarvisWatchProbeRunner.Outcome(List.of(),
+                JarvisWatchProbeRunner.ERR_EXIT, "code 1. Dernière ligne : « 401 »", 10L));
+        passage.run(watch, subject, null, JarvisWatchRun.SCHEDULED);
+        verify(watches).recordError(eq(watch.getId()), eq(userId), eq(JarvisWatchProbeRunner.ERR_EXIT),
+                eq("code 1. Dernière ligne : « 401 »"), any());
+
+        probe(ITEMS);
+        snapshot(ITEMS);
+        passage.run(watch, subject, null, JarvisWatchRun.SCHEDULED);
+        verify(watches).clearError(watch.getId(), userId);
+    }
+
+    @Test
+    void aYieldedPassageLeavesTheKeptErrorAlone() {
+        when(probes.run(watch, subject)).thenReturn(new JarvisWatchProbeRunner.Outcome(List.of(),
+                JarvisWatchProbeRunner.ERR_YIELDED + ":busy_deferred", "Le poste travaillait", 10L));
+        passage.run(watch, subject, null, JarvisWatchRun.SCHEDULED);
+        verify(watches, never()).recordError(any(), any(), any(), any(), any());
+        verify(watches, never()).clearError(any(), any());
+    }
+
+    @Test
     void aSuccessRepairsABrokenWatch() {
         watch.setBroken(true);
         watch.setConsecutiveFailures(3);

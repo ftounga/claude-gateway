@@ -156,6 +156,7 @@ public class JarvisWatchService {
         watch.setTestSummary(null);
         watch.setBroken(false);
         watch.setConsecutiveFailures(0);
+        clearError(watch);
         onReproposed(watch);
         return save(watch);
     }
@@ -179,11 +180,17 @@ public class JarvisWatchService {
             watch.setTestedAt(null);
             watch.setTestItemCount(null);
             watch.setTestSummary(null);
+            // F-273 / SF-273-01 : l'échec du test est gardé, lisible après coup (« Ce que je sais », terminal).
+            watch.setLastErrorCode(outcome.errorCode().length() > 32 ? outcome.errorCode().substring(0, 32)
+                    : outcome.errorCode());
+            watch.setLastErrorMessage(JarvisWatchProbeRunner.bounded(outcome.errorMessage()));
+            watch.setLastErrorAt(now);
             watch.setUpdatedAt(now);
             watches.save(watch);
             return new JarvisWatchTestView(false, null, null, List.of(), outcome.errorMessage());
         }
         String summary = JarvisWatchItems.summary(outcome.items());
+        clearError(watch);
         watch.setTestedAt(now);
         watch.setTestItemCount(outcome.items().size());
         watch.setTestSummary(summary);
@@ -191,6 +198,12 @@ public class JarvisWatchService {
         watches.save(watch);
         return new JarvisWatchTestView(true, outcome.items().size(), summary, JarvisWatchItems.sample(outcome.items()),
                 null);
+    }
+
+    private static void clearError(JarvisWatch watch) {
+        watch.setLastErrorCode(null);
+        watch.setLastErrorMessage(null);
+        watch.setLastErrorAt(null);
     }
 
     /** Le PO active une veille testée : elle partira au <b>prochain</b> créneau, jamais pour un créneau passé. */
@@ -416,11 +429,16 @@ public class JarvisWatchService {
         if (workspaces == null) {
             return out;
         }
-        for (JarvisWatchDtos.JarvisWatchSummaryView s : listForAccount(userId, hostId)) {
-            JarvisWatchView v = s.watch();
-            if (!"STATE".equals(v.purpose()) || !v.proposed()) {
-                continue;
-            }
+        List<JarvisWatchView> proposed = listForAccount(userId, hostId).stream()
+                .map(JarvisWatchDtos.JarvisWatchSummaryView::watch)
+                .filter(v -> "STATE".equals(v.purpose()) && v.proposed())
+                .toList();
+        // F-273 / SF-273-01 : poste hors ligne ⇒ un refus clair, une fois, plutôt que N échecs sans raison.
+        if (!proposed.isEmpty() && hostId != null && !liveness.isAlive(userId, hostId)) {
+            throw new WatchConflictException("watch_host_offline",
+                    "Le poste est hors ligne : les sondes se testent poste allumé. Rien n'a été modifié.");
+        }
+        for (JarvisWatchView v : proposed) {
             try {
                 JarvisWatchTestView test = test(userId, v.workspaceId(), v.id());
                 if (test.ok()) {

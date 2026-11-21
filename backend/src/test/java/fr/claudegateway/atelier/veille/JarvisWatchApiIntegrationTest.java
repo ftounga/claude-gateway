@@ -185,6 +185,68 @@ class JarvisWatchApiIntegrationTest {
     }
 
     @Test
+    void theRealErrorIsKeptOnTheWatchThenClearedBySuccess() throws Exception {
+        // F-273 / SF-273-01 : la dernière ligne de la sortie, masquée, est gardée et relue par la liste.
+        String id = propose().id().toString();
+        when(gateway.bash(any(), anyString(), anyString(), isNull(), anyLong(), isNull()))
+                .thenReturn(new RunnerCallResult(true, "", false, 1, 50L, null, null, null,
+                        "Traceback...\nPermissionError: ~/.config/edenred-jira/env token=abcd1234\n", false));
+        mockMvc.perform(as(post(base() + "/" + id + "/test"), aliceToken))
+                .andExpect(jsonPath("$.ok").value(false))
+                .andExpect(jsonPath("$.errorMessage").value(org.hamcrest.Matchers.containsString("PermissionError")));
+        mockMvc.perform(as(get(base()), aliceToken))
+                .andExpect(jsonPath("$[0].lastErrorCode").value("probe_exit"))
+                .andExpect(jsonPath("$[0].lastErrorMessage").value(org.hamcrest.Matchers.allOf(
+                        org.hamcrest.Matchers.containsString("Dernière ligne"),
+                        org.hamcrest.Matchers.containsString("token=***"),
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("abcd1234")))))
+                .andExpect(jsonPath("$[0].lastErrorAt").isNotEmpty());
+
+        when(gateway.bash(any(), anyString(), anyString(), isNull(), anyLong(), isNull())).thenReturn(bash(OUTPUT));
+        mockMvc.perform(as(post(base() + "/" + id + "/test"), aliceToken)).andExpect(jsonPath("$.ok").value(true));
+        mockMvc.perform(as(get(base()), aliceToken))
+                .andExpect(jsonPath("$[0].lastErrorCode").doesNotExist())
+                .andExpect(jsonPath("$[0].lastErrorMessage").doesNotExist());
+    }
+
+    @Test
+    void aSilentRunnerIsNotAMissingScript() throws Exception {
+        // F-273 / SF-273-01 : 184 « script introuvable » en prod étaient des runners muets à la relecture.
+        String id = propose().id().toString();
+        when(gateway.readFile(any(), anyString(), eq(".atelier/veilles/agenor.sh")))
+                .thenReturn(RunnerCallResult.backendError("runner_timeout"));
+        mockMvc.perform(as(post(base() + "/" + id + "/test"), aliceToken))
+                .andExpect(jsonPath("$.ok").value(false))
+                .andExpect(jsonPath("$.errorMessage").value(org.hamcrest.Matchers.containsString("n'a pas répondu")));
+        assertThat(watchRepository.findById(UUID.fromString(id)).orElseThrow().getLastErrorCode())
+                .isEqualTo(JarvisWatchProbeRunner.ERR_TRANSPORT);
+
+        when(gateway.readFile(any(), anyString(), eq(".atelier/veilles/agenor.sh")))
+                .thenReturn(RunnerCallResult.backendError("runner_unavailable"));
+        service.test(alice.getId(), subject.getId(), UUID.fromString(id));
+        assertThat(watchRepository.findById(UUID.fromString(id)).orElseThrow().getLastErrorCode())
+                .isEqualTo(JarvisWatchProbeRunner.ERR_OFFLINE);
+
+        when(gateway.readFile(any(), anyString(), eq(".atelier/veilles/agenor.sh")))
+                .thenReturn(new RunnerCallResult(false, "", false, null, 1L, null, "not_found",
+                        "Fichier introuvable : .atelier/veilles/agenor.sh", "", false));
+        assertThat(service.test(alice.getId(), subject.getId(), UUID.fromString(id)).errorMessage())
+                .contains("introuvable").contains("agenor.sh");
+        assertThat(watchRepository.findById(UUID.fromString(id)).orElseThrow().getLastErrorCode())
+                .isEqualTo(JarvisWatchProbeRunner.ERR_SCRIPT_MISSING);
+    }
+
+    @Test
+    void reproposingClearsTheKeptError() throws Exception {
+        String id = propose().id().toString();
+        when(gateway.bash(any(), anyString(), anyString(), isNull(), anyLong(), isNull()))
+                .thenReturn(new RunnerCallResult(true, "", false, 2, 50L, null, null, null, "boom", false));
+        service.test(alice.getId(), subject.getId(), UUID.fromString(id));
+        assertThat(watchRepository.findById(UUID.fromString(id)).orElseThrow().getLastErrorMessage()).contains("boom");
+        assertThat(propose().lastErrorMessage()).isNull();
+    }
+
+    @Test
     void aScriptChangedSinceTheProposalDoesNotRun() throws Exception {
         String id = propose().id().toString();
         when(gateway.readFile(any(), anyString(), eq(".atelier/veilles/agenor.sh")))

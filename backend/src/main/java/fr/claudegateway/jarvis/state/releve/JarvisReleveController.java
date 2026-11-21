@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import fr.claudegateway.atelier.veille.JarvisWatchDtos;
+import fr.claudegateway.atelier.veille.JarvisWatchExceptions;
 import fr.claudegateway.atelier.veille.JarvisWatchService;
 import fr.claudegateway.auth.CurrentUser;
 import fr.claudegateway.jarvis.state.JarvisStateRegistry;
@@ -44,7 +45,8 @@ public class JarvisReleveController {
     /** Une sonde de relevé, telle que l'écran la montre. */
     public record ProbeView(UUID id, UUID workspaceId, String workspaceName, String name, String platform,
             String scope, String command, boolean proposed, boolean active, OffsetDateTime testedAt,
-            String testSummary, OffsetDateTime lastRunAt, String lastRunStatus, boolean broken) {
+            String testSummary, OffsetDateTime lastRunAt, String lastRunStatus, boolean broken, String lastErrorCode,
+            String lastErrorMessage, OffsetDateTime lastErrorAt) {
     }
 
     /** Le relevé d'un client : sa mise en place et ses sondes. */
@@ -78,16 +80,22 @@ public class JarvisReleveController {
     }
 
     @PostMapping("/jarvis/state/clients/{hostId}/releve/validate-all")
-    public ResponseEntity<List<JarvisWatchDtos.ValidateResult>> validateAll(@PathVariable UUID hostId) {
+    public ResponseEntity<?> validateAll(@PathVariable UUID hostId) {
         UUID userId = currentUser.requireId();
         if (hosts.findByIdAndUserId(hostId, userId).isEmpty()) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         }
-        return ResponseEntity.ok(watches.validateAllState(userId, hostId));
+        try {
+            return ResponseEntity.ok(watches.validateAllState(userId, hostId));
+        } catch (JarvisWatchExceptions.WatchConflictException e) {
+            // F-273 / SF-273-01 : poste hors ligne — un refus lisible, une seule fois.
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("code", e.code(), "message", e.getMessage()));
+        }
     }
 
     private static ProbeView probe(JarvisWatchDtos.JarvisWatchView w, String workspaceName) {
         return new ProbeView(w.id(), w.workspaceId(), workspaceName, w.name(), w.platform(), w.scope(), w.command(),
-                w.proposed(), w.active(), w.testedAt(), w.testSummary(), w.lastRunAt(), w.lastRunStatus(), w.broken());
+                w.proposed(), w.active(), w.testedAt(), w.testSummary(), w.lastRunAt(), w.lastRunStatus(), w.broken(),
+                w.lastErrorCode(), w.lastErrorMessage(), w.lastErrorAt());
     }
 }

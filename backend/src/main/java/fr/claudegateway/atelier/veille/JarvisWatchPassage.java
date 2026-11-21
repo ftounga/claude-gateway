@@ -117,6 +117,7 @@ public class JarvisWatchPassage {
                 snapshots.save(snapshot);
             }
             watches.recordOutcome(watch.getId(), watch.getUserId(), finished, status, 0, false);
+            watches.clearError(watch.getId(), watch.getUserId());
             return runs.save(run);
         });
         if (watch.isState()) {
@@ -158,12 +159,16 @@ public class JarvisWatchPassage {
     private JarvisWatchRun failed(JarvisWatch watch, JarvisWatchRun run, JarvisWatchProbeRunner.Outcome outcome) {
         run.setStatus(JarvisWatchRun.FAILED);
         run.setErrorCode(outcome.errorCode());
-        int failures = watch.getConsecutiveFailures() + 1;
-        boolean broken = failures >= BROKEN_AFTER;
+        // F-273 / SF-273-01 : un poste muet ou déconnecté n'est pas une sonde cassée — ni compté, ni « en panne ».
+        boolean hostSide = JarvisWatchProbeRunner.isHostSide(outcome.errorCode());
+        int failures = hostSide ? watch.getConsecutiveFailures() : watch.getConsecutiveFailures() + 1;
+        boolean broken = hostSide ? watch.isBroken() : failures >= BROKEN_AFTER;
         boolean newlyBroken = broken && !watch.isBroken();
         JarvisWatchRun saved = transactions.execute(tx -> {
             watches.recordOutcome(watch.getId(), watch.getUserId(), run.getFinishedAt(), JarvisWatchRun.FAILED,
                     failures, broken);
+            watches.recordError(watch.getId(), watch.getUserId(), outcome.errorCode(),
+                    JarvisWatchProbeRunner.bounded(outcome.errorMessage()), run.getFinishedAt());
             return runs.save(run);
         });
         if (newlyBroken) {

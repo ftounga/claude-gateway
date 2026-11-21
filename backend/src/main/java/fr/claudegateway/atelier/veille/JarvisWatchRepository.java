@@ -71,6 +71,19 @@ public interface JarvisWatchRepository extends JpaRepository<JarvisWatch, UUID> 
     int recordOutcome(@Param("id") UUID id, @Param("userId") UUID userId, @Param("at") OffsetDateTime at,
             @Param("status") String status, @Param("failures") int failures, @Param("broken") boolean broken);
 
+    /** F-273 / SF-273-01 — garde la dernière erreur d'une veille ({@code UPDATE} ciblé, filtré {@code user_id}). */
+    @Modifying
+    @Query("update JarvisWatch w set w.lastErrorCode = :code, w.lastErrorMessage = :message, w.lastErrorAt = :at "
+            + "where w.id = :id and w.userId = :userId")
+    int recordError(@Param("id") UUID id, @Param("userId") UUID userId, @Param("code") String code,
+            @Param("message") String message, @Param("at") OffsetDateTime at);
+
+    /** F-273 / SF-273-01 — un succès efface la dernière erreur. */
+    @Modifying
+    @Query("update JarvisWatch w set w.lastErrorCode = null, w.lastErrorMessage = null, w.lastErrorAt = null "
+            + "where w.id = :id and w.userId = :userId and w.lastErrorCode is not null")
+    int clearError(@Param("id") UUID id, @Param("userId") UUID userId);
+
     /** Purge à la suppression du compte. */
     @Modifying
     @Query("delete from JarvisWatch w where w.userId = :userId")

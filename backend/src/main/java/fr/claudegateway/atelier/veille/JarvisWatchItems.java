@@ -155,13 +155,22 @@ public final class JarvisWatchItems {
             return whole;
         }
         // Du bruit autour du JSON (une ligne d'avertissement d'un outil) : le tableau le plus large.
-        int start = output.indexOf('[');
         int end = output.lastIndexOf(']');
-        if (start < 0 || end <= start) {
-            return Optional.empty();
+        // F-273 / SF-273-01 : une ligne de bruit qui contient elle-même « [ » (« [WARN] … ») ne masque plus la
+        // liste — on essaie chaque « [ » à son tour, borné.
+        int start = output.indexOf('[');
+        for (int tries = 0; start >= 0 && start < end && tries < MAX_ARRAY_STARTS; tries++) {
+            Optional<JsonNode> found = readArray(output.substring(start, end + 1));
+            if (found.isPresent()) {
+                return found;
+            }
+            start = output.indexOf('[', start + 1);
         }
-        return readArray(output.substring(start, end + 1));
+        return Optional.empty();
     }
+
+    /** Débuts de liste essayés au plus dans une sortie bruitée. */
+    static final int MAX_ARRAY_STARTS = 64;
 
     private static Optional<JsonNode> readArray(String text) {
         try {

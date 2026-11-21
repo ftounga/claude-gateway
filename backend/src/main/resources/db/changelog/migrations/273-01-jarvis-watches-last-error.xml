@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-273 / SF-273-01 - L'ERREUR REELLE D'UNE SONDE, GARDEE.
+
+      jarvis_watches.last_error_* : la derniere erreur d'un test ou d'un passage (code ferme, message lisible borne
+      et masque, date), effacee au succes suivant et a la reproposition. Toutes nullables : les veilles existantes
+      ne changent pas.
+
+      Rollback : les colonnes se retirent.
+    -->
+
+    <changeSet id="273-01-jarvis-watches-last-error" author="claude-gateway">
+        <addColumn tableName="jarvis_watches">
+            <column name="last_error_code" type="varchar(32)"/>
+            <column name="last_error_message" type="varchar(500)"/>
+            <column name="last_error_at" type="timestamp with time zone"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="jarvis_watches" columnName="last_error_at"/>
+            <dropColumn tableName="jarvis_watches" columnName="last_error_message"/>
+            <dropColumn tableName="jarvis_watches" columnName="last_error_code"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
