@@ -10,7 +10,7 @@
 
 ## Statut
 
-`in-progress`
+`done`
 
 ## Date de création
 
@@ -53,13 +53,13 @@ Donner à l'agent du terminal un outil `action_rapide` qui ajoute, liste, modifi
 
 ## Critères d'acceptation
 
-- [ ] CA1 `ajouter` avec `sujet: reporting-securite`, `clic: envoyer` range l'action (cible résolue sur le poste) et le dit.
-- [ ] CA2 `lister` rend les actions perso et celles des skills, avec la dernière exécution.
-- [ ] CA3 `modifier` par libellé change seulement les champs fournis ; `sujet: ""` retire la cible ; `sans_suggestion` retire la suggestion.
-- [ ] CA4 `supprimer` par libellé supprime ; libellé inconnu ⇒ erreur lisible, rien ne change.
-- [ ] CA5 L'outil n'est pas déclaré au terminal Teams ni au fil Jarvis ; un appel y est refusé.
-- [ ] CA6 Isolation : l'outil n'écrit que sous le `user_id` du tour et ne voit que les actions visibles dans ce terminal (une action d'autrui n'est jamais désignable).
-- [ ] CA7 Garde du registre des scènes verte (`JarvisSceneRegistryGuardTest`).
+- [x] CA1 `ajouter` avec `sujet: reporting-securite`, `clic: envoyer` range l'action (cible résolue sur le poste) et le dit.
+- [x] CA2 `lister` rend les actions perso et celles des skills, avec la dernière exécution.
+- [x] CA3 `modifier` par libellé change seulement les champs fournis ; `sujet: ""` retire la cible ; `sans_suggestion` retire la suggestion.
+- [x] CA4 `supprimer` par libellé supprime ; libellé inconnu ⇒ erreur lisible, rien ne change.
+- [x] CA5 L'outil n'est pas déclaré au terminal Teams ni au fil Jarvis ; un appel y est refusé.
+- [x] CA6 Isolation : l'outil n'écrit que sous le `user_id` du tour et ne voit que les actions visibles dans ce terminal (une action d'autrui n'est jamais désignable).
+- [x] CA7 Garde du registre des scènes verte (`JarvisSceneRegistryGuardTest`).
 
 ---
 
@@ -119,15 +119,15 @@ Aucun (outil de l'agent).
 
 ### Tests unitaires
 
-- [ ] `QuickActionToolExecutorTest` — ajouter (sujet résolu, clic, jours), lister, modifier par libellé (champs fournis, retrait de cible / suggestion), supprimer, action introuvable, opération inconnue, terminal Teams / Jarvis refusé, catalogue absent ailleurs.
+- [x] `QuickActionToolExecutorTest` — ajouter (sujet résolu, clic, jours), lister, modifier par libellé (champs fournis, retrait de cible / suggestion), supprimer, action introuvable, opération inconnue, terminal Teams / Jarvis refusé, catalogue absent ailleurs.
 
 ### Tests d'intégration
 
-- [ ] `AtelierChatServiceQuickActionToolTest` — un tour où le modèle (bouchon) appelle `action_rapide ajouter` : l'action est rangée pour le `user_id` du tour et visible au `GET` ; l'outil figure dans les outils déclarés du terminal, pas dans ceux du terminal Teams.
+- [x] `AtelierChatServiceQuickActionToolTest` — un tour où le modèle (bouchon) appelle `action_rapide ajouter` : l'action est rangée pour le `user_id` du tour et visible au `GET` ; l'outil figure dans les outils déclarés du terminal, pas dans ceux du terminal Teams.
 
 ### Isolation workspace
 
-- [ ] Applicable — un appel dans le terminal d'Alice ne voit ni ne désigne une action de Bob (même libellé) ; tout ce qui est écrit porte le `user_id` du tour.
+- [x] Applicable — un appel dans le terminal d'Alice ne voit ni ne désigne une action de Bob (même libellé) ; tout ce qui est écrit porte le `user_id` du tour.
 
 ---
 
