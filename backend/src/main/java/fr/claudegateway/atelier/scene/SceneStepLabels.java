@@ -58,6 +58,7 @@ public final class SceneStepLabels {
             case "gouvernance_proposer" -> join(lower(text(input, "type")), text(input, "nom"));
             case "veille_poser" -> join(text(input, "plateforme"), text(input, "nom"));
             case "routine_proposer" -> join(text(input, "nom"), text(input, "rythme"));
+            case "action_rapide" -> join(text(input, "operation"), text(input, "libelle"));
             case "signaler_besoin" -> join(lower(text(input, "type")), text(input, "titre"));
             case "build_presentation", "build_document", "build_spreadsheet", "render_diagram" ->
                     text(input, "filename");
