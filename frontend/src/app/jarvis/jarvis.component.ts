@@ -142,6 +142,7 @@ import { CORRECTION_WINDOW_MS as VOICE_CORRECTION_WINDOW_MS, applyCorrection, pa
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { JarvisOrbComponent, JarvisState } from './jarvis-orb.component';
+import { JarvisSatellitesComponent, satellitesOf } from './jarvis-satellites.component';
 import { JarvisAppUpdate } from './jarvis-app-update';
 import { JarvisListenTrace, errorName } from './jarvis-listen-trace';
 import { JarvisCompanionsComponent } from './jarvis-companions.component';
@@ -244,7 +245,7 @@ export function companionOffer(version: JarvisCompanionVersion, installed: numbe
  */
 @Component({
   selector: 'app-jarvis',
-  imports: [DiscreetVeilComponent, JarvisPieceGalleryComponent, JarvisCockpitComponent, JarvisCompanionsComponent, JarvisCostPanelComponent, JarvisPortraitComponent, JarvisMailboxesComponent, JarvisCalendarsComponent, JarvisClientMailComponent, JarvisStatePanelComponent, JarvisAgendaComponent, JarvisThreadPanelComponent, JarvisMailCardComponent, JarvisCardDetailComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatMenuModule],
+  imports: [DiscreetVeilComponent, JarvisPieceGalleryComponent, JarvisCockpitComponent, JarvisCompanionsComponent, JarvisCostPanelComponent, JarvisPortraitComponent, JarvisMailboxesComponent, JarvisCalendarsComponent, JarvisClientMailComponent, JarvisStatePanelComponent, JarvisAgendaComponent, JarvisThreadPanelComponent, JarvisMailCardComponent, JarvisCardDetailComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSatellitesComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatMenuModule],
   templateUrl: './jarvis.component.html',
   styleUrl: './jarvis.component.scss',
   providers: [JarvisAppUpdate],
@@ -654,6 +655,17 @@ export class JarvisComponent implements OnInit, OnDestroy {
   private readonly autonomy = inject(AutonomyService);
   /** Les travaux du compte lus à la passerelle (tous pods, courses comprises). */
   readonly works = signal<JarvisWork[]>([]);
+  /** F-270 / SF-270-05 (D6) — les satellites : travaux lus + travaux que l'écran vient de lancer ; aucun en présentation. */
+  readonly satellites = computed(() => {
+    if (this.presentation()) {
+      return [];
+    }
+    const names = new Map(this.subjects().map((w) => [w.id, w.name]));
+    return satellitesOf(this.works(), this.delegations().map((d) => ({ id: d.id, label: d.label,
+      name: shortName(d.label, d.chantier, names.get(d.subjectId)) })));
+  });
+  /** F-270 / SF-270-05 — téléphone : satellites allégés. */
+  readonly compactSatellites = signal(typeof window !== 'undefined' && window.innerWidth < 600);
   /** Les commandes enchaînées derrière un travail vivant de leur fil : lancées à sa fin (D4). */
   private queuedWorks: { delegation: FastDelegation; text: string; heardBeforeCut: string | null }[] = [];
   private worksTick = 0;

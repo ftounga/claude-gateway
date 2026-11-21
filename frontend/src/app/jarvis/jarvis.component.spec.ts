@@ -4231,6 +4231,22 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       jarvis.ngOnDestroy();
     }));
 
+  it('F-270 / SF-270-05 — une délégation vivante est un satellite nommé autour du cœur ; plus de liste en phrases',
+    fakeAsync(() => {
+      fastBrain.warm.and.resolveTo(true);
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      flushMicrotasks();
+      const jarvis = fixture.componentInstance;
+      delegate(jarvis, { delegationId: 'd-1', subjectId: 'w-2', label: 'tests de LDIC-325' });
+      fixture.detectChanges();
+      const el = fixture.nativeElement as HTMLElement;
+      expect(el.querySelector('.jv__delegations')).toBeNull();
+      expect([...el.querySelectorAll('app-jarvis-satellites .sat__name')].map((n) => n.textContent?.trim()))
+        .toEqual(['LDIC-325']);
+      jarvis.ngOnDestroy();
+    }));
+
   it('F-235 / SF-235-05 — « annule » arrête la dernière délégation vivante et le dit', fakeAsync(() => {
     const jarvis = fastOn();
     void jarvis.handle('Regarde les tickets');

@@ -980,12 +980,13 @@ valeur en dur ailleurs.
 | Texte des étiquettes et panneaux | `--cg-holo-text` | `#F0954F` | 8,22:1 | **oui** (`--cg-orange-2`) |
 | Cœur incandescent (centre des cœurs) | `--cg-holo-core` | `#FFF3E4` | 17,3:1 | nouveau |
 | **Cerveau principal au travail** (Opus) | `--cg-holo-deep` → centre `--cg-holo-deep-core` | `#9B7BFF` → `#F3EDFF` | 6,01:1 | nouveau |
+| **Exécute sur le poste** (F-270 / F-271 : un travail agit sur le poste) | `--cg-holo-exec` | `#E8B44A` | 9,97:1 | nouveau (or, défaut validé 2026-11-18) |
 | **Connecté / réussi** | `--cg-holo-green` | `#4CF2A0` | 13,1:1 | nouveau |
 | **Attend le PO** (« oui », question, à envoyer, attente) | `--cg-holo-wait` | `#5FD4FF` | 11,1:1 | nouveau |
 | **Alerte** | `--cg-holo-red` | `#FF5A6E` | 6,26:1 | nouveau (`--cg-error` trop sombre sous bloom) |
 | Éteint / déconnecté | `--cg-holo-off` | `#2A4256` | — (forme) | nouveau |
 
-- **Grammaire des couleurs d'état** : **orange** = normal · **violet** = le cerveau principal travaille · **vert** =
+- **Grammaire des couleurs d'état** : **orange** = normal · **violet** = le cerveau principal travaille · **or** = un travail exécute sur le poste · **vert** =
   connecté / réussi · **cyan** = attend le PO · **rouge** = alerte · **gris bleuté** = éteint. Aucune autre
   signification, nulle part (3D, HUD, panneaux, chronologies).
 - **La couleur ne porte jamais seule l'information** (§22 reconduit) : la **forme** dit le type, le **nom** est écrit,

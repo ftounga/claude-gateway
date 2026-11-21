@@ -11,7 +11,7 @@
  */
 
 /** Les rôles de la grammaire des couleurs d'état : une signification chacun, nulle part ailleurs. */
-export type HoloRole = 'normal' | 'normalDim' | 'core' | 'deep' | 'deepCore' | 'green' | 'wait' | 'alert' | 'off'
+export type HoloRole = 'normal' | 'normalDim' | 'core' | 'deep' | 'deepCore' | 'exec' | 'green' | 'wait' | 'alert' | 'off'
   | 'abyss' | 'fog' | 'text';
 
 /** DESIGN_SYSTEM §23 — palette holographique bornée au rendu 3D de `/jarvis`. */
@@ -26,6 +26,8 @@ export const HOLO_COLORS: Readonly<Record<HoloRole, string>> = {
   deep: '#9B7BFF',
   /** Centre du grand cerveau. */
   deepCore: '#F3EDFF',
+  /** F-270 / SF-270-05 — un travail exécute sur le poste (l'or ; défaut validé le 2026-11-18). */
+  exec: '#E8B44A',
   /** Connecté / réussi. */
   green: '#4CF2A0',
   /** Attend le PO (« oui », question, à envoyer, attente) : le cyan, puisque l'orange est la teinte dominante. */
@@ -186,6 +188,7 @@ export function holoCssVars(): Record<string, string> {
     '--cg-holo-core': HOLO_COLORS.core,
     '--cg-holo-deep': HOLO_COLORS.deep,
     '--cg-holo-deep-core': HOLO_COLORS.deepCore,
+    '--cg-holo-exec': HOLO_COLORS.exec,
     '--cg-holo-green': HOLO_COLORS.green,
     '--cg-holo-wait': HOLO_COLORS.wait,
     '--cg-holo-red': HOLO_COLORS.alert,

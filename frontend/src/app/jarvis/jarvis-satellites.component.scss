@@ -1,0 +1,108 @@
+// F-270 / SF-270-05 (D6) — les travaux en fond, en orbite autour du cœur : une perle lumineuse et un nom court chacun.
+:host {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  // Les distances suivent la taille du cœur (cqi = 1 % de sa largeur).
+  container-type: inline-size;
+}
+
+.sat {
+  position: absolute;
+  inset: 0;
+}
+
+// Chaque satellite suit l'orbite (un cercle juste au-delà du cœur) en restant droit : son nom se lit toujours.
+.sat__body {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  offset-path: circle(56cqi at 50cqi 50cqi);
+  offset-rotate: 0deg;
+  offset-anchor: 6px 50%;
+  animation: sat-orbit 60s linear infinite;
+}
+
+.sat__pearl {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--sat-color);
+  box-shadow: 0 0 8px var(--sat-color), 0 0 20px var(--sat-color);
+}
+
+.sat__name {
+  padding: 0 4px;
+  color: var(--sat-color);
+  font: 600 13px/16px Inter, sans-serif;
+  letter-spacing: 0.02em;
+  text-shadow: 0 0 8px color-mix(in srgb, var(--sat-color) 70%, transparent);
+}
+
+// Réfléchit : la perle respire. Exécute : elle bat plus vite. Attend votre oui : elle clignote doucement.
+.sat__body--thinking .sat__pearl { animation: sat-breathe 2.4s ease-in-out infinite; }
+.sat__body--executing .sat__pearl { animation: sat-breathe 1.2s ease-in-out infinite; }
+.sat__body--waiting_yes .sat__pearl { animation: sat-blink 1.6s ease-in-out infinite; }
+// En attente de son tour : une perle creuse.
+.sat__body--queued .sat__pearl {
+  background: transparent;
+  border: 2px solid var(--sat-color);
+  box-shadow: 0 0 8px var(--sat-color);
+}
+// Fini, échec, arrêté : la perle se pose puis s'éteint.
+.sat__body--done,
+.sat__body--failed,
+.sat__body--cancelled {
+  animation: sat-orbit 60s linear infinite, sat-fade 20s ease-in forwards;
+}
+
+.sat--compact .sat__pearl {
+  width: 10px;
+  height: 10px;
+}
+
+.sat--compact .sat__name {
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.sat__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@keyframes sat-orbit {
+  from { offset-distance: 0%; }
+  to { offset-distance: 100%; }
+}
+
+@keyframes sat-breathe {
+  0%, 100% { opacity: 0.75; scale: 0.9; }
+  50% { opacity: 1; scale: 1.15; }
+}
+
+@keyframes sat-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@keyframes sat-fade {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sat__body,
+  .sat__pearl {
+    animation: none !important;
+  }
+}
