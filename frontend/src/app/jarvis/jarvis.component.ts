@@ -142,7 +142,8 @@ import { CORRECTION_WINDOW_MS as VOICE_CORRECTION_WINDOW_MS, applyCorrection, pa
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { JarvisOrbComponent, JarvisState } from './jarvis-orb.component';
-import { JarvisSatellitesComponent, satellitesOf } from './jarvis-satellites.component';
+import { JarvisSatellitesComponent, satellitesOf, strongestPhase } from './jarvis-satellites.component';
+import { JarvisChantierStepsComponent, featuredChantier } from './jarvis-chantier-steps.component';
 import { JarvisAppUpdate } from './jarvis-app-update';
 import { JarvisListenTrace, errorName } from './jarvis-listen-trace';
 import { JarvisCompanionsComponent } from './jarvis-companions.component';
@@ -245,7 +246,7 @@ export function companionOffer(version: JarvisCompanionVersion, installed: numbe
  */
 @Component({
   selector: 'app-jarvis',
-  imports: [DiscreetVeilComponent, JarvisPieceGalleryComponent, JarvisCockpitComponent, JarvisCompanionsComponent, JarvisCostPanelComponent, JarvisPortraitComponent, JarvisMailboxesComponent, JarvisCalendarsComponent, JarvisClientMailComponent, JarvisStatePanelComponent, JarvisAgendaComponent, JarvisThreadPanelComponent, JarvisMailCardComponent, JarvisCardDetailComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSatellitesComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatMenuModule],
+  imports: [DiscreetVeilComponent, JarvisPieceGalleryComponent, JarvisCockpitComponent, JarvisCompanionsComponent, JarvisCostPanelComponent, JarvisPortraitComponent, JarvisMailboxesComponent, JarvisCalendarsComponent, JarvisClientMailComponent, JarvisStatePanelComponent, JarvisAgendaComponent, JarvisThreadPanelComponent, JarvisMailCardComponent, JarvisCardDetailComponent, JarvisNightComponent, JarvisReplayComponent, JarvisConstellationComponent, JarvisOrbComponent, JarvisSatellitesComponent, JarvisChantierStepsComponent, JarvisSceneComponent, JarvisStage3dComponent, MarkdownPipe, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatMenuModule],
   templateUrl: './jarvis.component.html',
   styleUrl: './jarvis.component.scss',
   providers: [JarvisAppUpdate],
@@ -664,6 +665,14 @@ export class JarvisComponent implements OnInit, OnDestroy {
     return satellitesOf(this.works(), this.delegations().map((d) => ({ id: d.id, label: d.label,
       name: shortName(d.label, d.chantier, names.get(d.subjectId)) })));
   });
+  /**
+   * F-271 / SF-271-05 (D8) — la couleur du travail : le cœur prend en halo la teinte du travail le plus « fort » en cours
+   * (exécute = or > attend votre oui > réfléchit = violet) ; le premier plan (écoute, parole) reste celui du cœur.
+   */
+  readonly workTint = computed(() => strongestPhase(this.satellites())?.toLowerCase() ?? null);
+  /** F-271 / SF-271-05 — le chantier en constellation sous le cœur ; aucun sur téléphone (D9) ni en présentation. */
+  readonly chantierWork = computed(() => (this.presentation() || this.compactSatellites() ? null
+    : featuredChantier(this.works())));
   /** F-270 / SF-270-05 — téléphone : satellites allégés. */
   readonly compactSatellites = signal(typeof window !== 'undefined' && window.innerWidth < 600);
   /** Les commandes enchaînées derrière un travail vivant de leur fil : lancées à sa fin (D4). */
@@ -3822,7 +3831,12 @@ export class JarvisComponent implements OnInit, OnDestroy {
     }
     // F-240 / SF-240-01 — la fin d'une délégation dite : sa longueur et sa durée entrent dans la mesure de l'échange.
     const timed = this.timedHooks();
-    void this.say(announcementText(item), timed.hooks).then(async () => {
+    // F-271 / SF-271-05 (D7) — une fin annoncée qui cite des tickets (« LDIC-325 et LDIC-330 sont prêts ») montre leurs
+    // pancartes au premier mot, comme une ligne 🎙 d'un tour direct (faits extraits du tour délégué, F-247 / F-248).
+    const spokenText = announcementText(item);
+    const hooks = item.subjectId ? this.opusCardHooks(spokenText, item.subjectId, new OralStream(), timed.hooks)
+      : timed.hooks;
+    void this.say(spokenText, hooks).then(async () => {
       const elapsed = timed.elapsed();
       // F-240 / SF-240-02 (D6) — l'invitation ciblée suit la fin dite (jamais sur une confirmation : écartée avant).
       let invited = false;

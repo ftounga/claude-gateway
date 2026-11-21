@@ -4273,6 +4273,49 @@ describe('L’écran Jarvis (F-231 / SF-231-02)', () => {
       jarvis.ngOnDestroy();
     }));
 
+  it('F-271 / SF-271-05 — le cœur prend la teinte du travail en halo ; le chantier en cours en constellation',
+    fakeAsync(() => {
+      const fixture = TestBed.createComponent(JarvisComponent);
+      fixture.detectChanges();
+      flushMicrotasks();
+      const jarvis = fixture.componentInstance;
+      jarvis.compactSatellites.set(false);
+      jarvis.works.set([{ id: 'course:1', origin: 'COURSE', subjectId: 'w-1', subjectName: 'data-platform', chantier: 13,
+        name: 'LDIC-325', label: 'LDIC-325 — topic SNS', phase: 'EXECUTING', since: '2026-11-21T08:00:00Z',
+        endedAt: null, steps: [{ name: 'SNS', state: 'DONE' }, { name: 'IAM', state: 'CURRENT' }] }]);
+      fixture.detectChanges();
+      const el = fixture.nativeElement as HTMLElement;
+      expect(el.querySelector('.jv__orb-button')?.getAttribute('data-work')).toBe('executing');
+      expect(Array.from(el.querySelectorAll('.cst__name')).map((n) => n.textContent?.trim())).toEqual(['SNS', 'IAM']);
+      // Téléphone : pas de constellation (D9) ; rien ne tourne : pas de halo.
+      jarvis.compactSatellites.set(true);
+      jarvis.works.set([]);
+      fixture.detectChanges();
+      expect(jarvis.chantierWork()).toBeNull();
+      expect(el.querySelector('.jv__orb-button')?.hasAttribute('data-work')).toBeFalse();
+      expect(el.querySelectorAll('.cst__name').length).withContext('constellation retirée').toBe(0);
+      jarvis.ngOnDestroy();
+      fixture.destroy();
+    }));
+
+  it('F-271 / SF-271-05 (D7) — la fin annoncée d’un travail en fond demande les pancartes de ses tickets',
+    fakeAsync(() => {
+      const jarvis = fastOn();
+      const byKeys = spyOn(jarvis['cardClient'], 'byKeys').and.resolveTo([]);
+      voice.speak.and.callFake(async (_p: string, _s?: string | null, hooks?: { onPlaying?: () => void }) => {
+        hooks?.onPlaying?.();
+      });
+      delegate(jarvis, { delegationId: 'd-1', subjectId: 'w-1', label: 'tickets du sprint' });
+      const running = handlers!;
+      running.onDone({ reply: '🎙 LDIC-325 et LDIC-330 sont prêts, LDIC-331 attend Adam.', actions: [], messageId: 'm' });
+      flushMicrotasks();
+      tick(3_000);
+      flushMicrotasks();
+      expect(byKeys).toHaveBeenCalled();
+      expect(byKeys.calls.mostRecent().args[0]).toEqual(jasmine.arrayContaining(['LDIC-325', 'LDIC-330', 'LDIC-331']));
+      jarvis.ngOnDestroy();
+    }));
+
   it('F-270 / SF-270-04 (D7) — « arrête CAGIP » arrête ce travail-là, sur son fil ; un nom inconnu est dit',
     fakeAsync(() => {
       const jarvis = fastOn();

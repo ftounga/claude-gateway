@@ -173,10 +173,13 @@
     @if (!presentation()) {
     <app-jarvis-constellation class="jv__constellation" [subjectId]="subjectId()" [speaking]="state() === 'parole'"
                               (choose)="touchSubject($event)">
-      <button type="button" class="jv__orb-button" (click)="talk()" [attr.aria-label]="statusLabel()">
+      <button type="button" class="jv__orb-button" (click)="talk()" [attr.aria-label]="statusLabel()"
+              [attr.data-work]="workTint()">
         <app-jarvis-orb class="jv__orb" [state]="state()" [level]="orbLevel" />
         <!-- F-270 / SF-270-05 (D6) — les travaux en fond, en orbite autour du cœur : un nom court, une teinte. -->
         <app-jarvis-satellites [items]="satellites()" [compact]="compactSatellites()" />
+        <!-- F-271 / SF-271-05 — le chantier en cours, ses étapes en étoiles sous le cœur (noms courts). -->
+        <app-jarvis-chantier-steps [work]="chantierWork()" />
       </button>
     </app-jarvis-constellation>
     } @else {

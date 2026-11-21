@@ -22,13 +22,27 @@ public final class JarvisWorks {
      * phase ({@link JarvisWorkPhase}), départ et fin (ou {@code null}).
      */
     public record Work(String id, Origin origin, UUID subjectId, String subjectName, Integer chantier, String name,
-            String label, JarvisWorkPhase phase, Instant since, Instant endedAt, Course course) {
+            String label, JarvisWorkPhase phase, Instant since, Instant endedAt, Course course,
+            java.util.List<Step> steps) {
 
         /** Un travail sans course (délégation, tour direct). */
         public Work(String id, Origin origin, UUID subjectId, String subjectName, Integer chantier, String name,
                 String label, JarvisWorkPhase phase, Instant since, Instant endedAt) {
-            this(id, origin, subjectId, subjectName, chantier, name, label, phase, since, endedAt, null);
+            this(id, origin, subjectId, subjectName, chantier, name, label, phase, since, endedAt, null, null);
         }
+
+        /** Le même travail, avec les étapes de son chantier (F-271 / SF-271-05). */
+        public Work withSteps(java.util.List<Step> list) {
+            return new Work(id, origin, subjectId, subjectName, chantier, name, label, phase, since, endedAt, course,
+                    list == null || list.isEmpty() ? null : java.util.List.copyOf(list));
+        }
+    }
+
+    /** L'état d'une étoile de la constellation : à faire, en cours, faite, bloquée (F-271 / SF-271-05). */
+    public enum StepState { TODO, CURRENT, DONE, BLOCKED }
+
+    /** Une étape du chantier, vue de la scène : un nom court (jamais une phrase) et son état. */
+    public record Step(String name, StepState state) {
     }
 
     /**

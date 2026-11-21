@@ -69,6 +69,31 @@
   background: transparent;
   cursor: pointer;
 
+  // F-271 / SF-271-05 (D8) — la couleur du travail, en halo derrière le cœur : exécute (or), attend votre oui (cyan),
+  // réfléchit (violet). Rien quand aucun travail ne tourne ; le premier plan (écoute, parole) reste celui du cœur.
+  &::before {
+    content: '';
+    position: absolute;
+    inset: -14%;
+    border-radius: 50%;
+    background: radial-gradient(circle, transparent 46%, var(--jv-work-halo, transparent) 60%, transparent 72%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--jv-dur-slow, 1.2s) ease;
+  }
+
+  &[data-work='executing'] { --jv-work-halo: color-mix(in srgb, var(--cg-holo-exec) 55%, transparent); }
+  &[data-work='waiting_yes'] { --jv-work-halo: color-mix(in srgb, var(--cg-holo-wait) 45%, transparent); }
+  &[data-work='thinking'],
+  &[data-work='queued'] { --jv-work-halo: color-mix(in srgb, var(--cg-holo-deep) 50%, transparent); }
+
+  &[data-work]::before {
+    opacity: 1;
+    animation: jv-work-halo 3.2s ease-in-out infinite;
+  }
+
+  &[data-work='executing']::before { animation-duration: 1.8s; }
+
   &:focus-visible {
     outline: 2px solid var(--cg-accent);
     outline-offset: 8px;
@@ -558,4 +583,16 @@
 
 .jv__interview-stop {
   color: var(--cg-cream);
+}
+
+// F-271 / SF-271-05 — le halo du travail respire (plus vite quand il exécute).
+@keyframes jv-work-halo {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jv__orb-button[data-work]::before {
+    animation: none;
+  }
 }

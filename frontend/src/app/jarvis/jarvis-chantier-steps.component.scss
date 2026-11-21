@@ -1,0 +1,97 @@
+// F-271 / SF-271-05 — le chantier en constellation : les étapes en étoiles sous le cœur, un nom court chacune.
+:host {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.cst {
+  position: absolute;
+  inset: 0;
+}
+
+.cst__links {
+  position: absolute;
+  top: -40%;
+  left: -40%;
+  width: 180%;
+  height: 180%;
+  overflow: visible;
+
+  polyline {
+    fill: none;
+    stroke: var(--cg-holo-text);
+    stroke-width: 0.4;
+    stroke-dasharray: 1.2 1.6;
+    opacity: 0.6;
+  }
+}
+
+// Chaque étoile est centrée sur sa position ; son nom se lit dessous, droit.
+.cst__star {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  transform: translate(-50%, -6px);
+  white-space: nowrap;
+}
+
+.cst__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--cst-color);
+  box-shadow: 0 0 8px var(--cst-color);
+}
+
+.cst__name {
+  color: var(--cst-color);
+  font: 600 12px/16px Inter, sans-serif;
+  letter-spacing: 0.02em;
+  text-shadow: 0 0 8px color-mix(in srgb, var(--cst-color) 60%, transparent);
+}
+
+// À faire : une étoile creuse. En cours : elle bat (or, exécute). Bloquée : elle clignote.
+.cst__star--todo .cst__dot {
+  background: transparent;
+  border: 2px solid var(--cst-color);
+  box-shadow: none;
+}
+
+.cst__star--current .cst__dot {
+  width: 12px;
+  height: 12px;
+  box-shadow: 0 0 8px var(--cst-color), 0 0 20px var(--cst-color);
+  animation: cst-beat 1.2s ease-in-out infinite;
+}
+
+.cst__star--blocked .cst__dot {
+  animation: cst-blink 1.6s ease-in-out infinite;
+}
+
+.cst__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@keyframes cst-beat {
+  0%, 100% { opacity: 0.8; scale: 0.9; }
+  50% { opacity: 1; scale: 1.2; }
+}
+
+@keyframes cst-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cst__dot {
+    animation: none !important;
+  }
+}

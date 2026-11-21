@@ -52,6 +52,7 @@ class JarvisWorksIntegrationTest {
     @Autowired private WorkspaceRepository workspaceRepository;
     @Autowired private ChantierAutonomyRunRepository runRepository;
     @Autowired private JwtService jwtService;
+    @Autowired private fr.claudegateway.atelier.journey.SubjectJourneyService journeys;
 
     private final AtomicReference<Instant> now = new AtomicReference<>();
     private final Clock clock = new Clock() {
@@ -196,6 +197,35 @@ class JarvisWorksIntegrationTest {
         assertThat(b.course().byUser()).isFalse();
         JarvisWorks.Work t = list.stream().filter(w -> "LDIC-330".equals(w.name())).findFirst().orElseThrow();
         assertThat(t.course().byUser()).isTrue();
+        assertThat(works.list(bob.getId())).isEmpty();
+    }
+
+    @Test
+    @DisplayName("SF-271-05 : un travail sur un chantier porte ses étapes (nom court, état) ; par clé de ticket aussi")
+    void workCarriesTheStepsOfItsChantier() throws Exception {
+        works.setJourneys(journeys);
+        journeys.setMode(alice.getId(), subject, "GUIDE", "LDIC-325 — topic SNS");
+        journeys.submitDiagnosis(alice.getId(), subject, "topic absent", "aws sns list-topics", "ELEVEE");
+        journeys.confirmDiagnosis(alice.getId(), subject);
+        journeys.setPlan(alice.getId(), subject, fr.claudegateway.atelier.journey.JourneyPlan.fromToolInput(
+                new com.fasterxml.jackson.databind.ObjectMapper().readTree("[{\"title\":\"Créer le topic SNS\","
+                        + "\"risk\":\"REVERSIBLE\"},{\"title\":\"Donner le droit IAM\",\"risk\":\"REVERSIBLE\"},"
+                        + "{\"title\":\"Ouvrir la MR\",\"risk\":\"EXTERNE\"}]")));
+        journeys.validatePlan(alice.getId(), subject, null);
+        journeys.updateStep(alice.getId(), subject, null, 1, "FAIT", null, null);
+        runRepository.save(run(alice.getId(), subject, 1, "LDIC-325 — topic SNS", AutonomyRunStatus.RUNNING));
+        UUID id = UUID.randomUUID();
+        store.direct(alice.getId(), id, subject, "data-platform", null, "plan de LDIC-325"); // sans numéro : par la clé
+
+        List<JarvisWorks.Work> list = works.list(alice.getId());
+        JarvisWorks.Work course = list.stream().filter(w -> w.origin() == JarvisWorks.Origin.COURSE).findFirst()
+                .orElseThrow();
+        assertThat(course.steps()).extracting(JarvisWorks.Step::name).containsExactly("SNS", "IAM", "MR");
+        assertThat(course.steps()).extracting(JarvisWorks.Step::state).containsExactly(JarvisWorks.StepState.DONE,
+                JarvisWorks.StepState.CURRENT, JarvisWorks.StepState.TODO);
+        JarvisWorks.Work direct = list.stream().filter(w -> w.id().equals(id.toString())).findFirst().orElseThrow();
+        assertThat(direct.name()).isEqualTo("LDIC-325");
+        assertThat(direct.steps()).hasSize(3);
         assertThat(works.list(bob.getId())).isEmpty();
     }
 

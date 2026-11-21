@@ -176,6 +176,14 @@ export interface JarvisWork {
   endedAt: string | null;
   /** F-271 / SF-271-04 — une course autonome : progression, issue brute, raison courte (dite, jamais montrée). */
   course?: JarvisCourse | null;
+  /** F-271 / SF-271-05 — les étapes du chantier du travail : un nom court et un état (la constellation). */
+  steps?: JarvisStep[] | null;
+}
+
+/** F-271 / SF-271-05 — une étape vue de la scène : un nom court, jamais une phrase. */
+export interface JarvisStep {
+  name: string;
+  state: 'TODO' | 'CURRENT' | 'DONE' | 'BLOCKED';
 }
 
 /** F-271 / SF-271-04 — ce qu'une course autonome dit d'elle (passerelle). */

@@ -64,7 +64,94 @@ public class JarvisWorksService {
         }
         out.addAll(courses(userId, now));
         out.sort(Comparator.comparing(JarvisWorks.Work::since));
-        return out.size() <= MAX_WORKS ? out : out.subList(out.size() - MAX_WORKS, out.size());
+        List<JarvisWorks.Work> kept = out.size() <= MAX_WORKS ? out : out.subList(out.size() - MAX_WORKS, out.size());
+        return withSteps(userId, kept);
+    }
+
+    // ------------------------------------------------------------------ F-271 / SF-271-05 : la constellation
+
+    /** Au plus, les étoiles d'un chantier (au-delà, la scène se lirait mal). */
+    static final int MAX_STEPS = 12;
+
+    /** Les chantiers du compte ; facultatif (sans lui : aucune étape). */
+    private fr.claudegateway.atelier.journey.SubjectJourneyService journeys;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setJourneys(@org.springframework.context.annotation.Lazy
+            fr.claudegateway.atelier.journey.SubjectJourneyService journeys) {
+        this.journeys = journeys;
+    }
+
+    /**
+     * Chaque travail sur un chantier (numéro connu, ou clé de ticket d'un seul chantier ouvert) porte les étapes de son
+     * plan : un nom court et un état. Un même chantier n'est lu qu'une fois. Best-effort : sans plan lisible, rien.
+     */
+    List<JarvisWorks.Work> withSteps(UUID userId, List<JarvisWorks.Work> works) {
+        if (journeys == null || works.isEmpty()) {
+            return works;
+        }
+        Map<String, List<JarvisWorks.Step>> read = new HashMap<>();
+        List<JarvisWorks.Work> out = new ArrayList<>(works.size());
+        for (JarvisWorks.Work w : works) {
+            UUID subject = w.subjectId();
+            Integer chantier = w.chantier();
+            if (chantier == null) {
+                java.util.Set<String> keys = fr.claudegateway.atelier.journey.ChantierTicket.keysIn(w.name());
+                if (keys.size() == 1) {
+                    List<fr.claudegateway.atelier.journey.SubjectJourneyService.TicketChantier> found =
+                            journeys.openChantiersWithTicket(userId, keys.iterator().next());
+                    if (found.size() == 1) {
+                        subject = found.get(0).workspaceId();
+                        chantier = found.get(0).number();
+                    }
+                }
+            }
+            if (subject == null || chantier == null) {
+                out.add(w);
+                continue;
+            }
+            UUID s = subject;
+            int c = chantier;
+            boolean running = w.phase() == JarvisWorkPhase.EXECUTING;
+            List<JarvisWorks.Step> steps = read.computeIfAbsent(s + "/" + c + "/" + running,
+                    k -> stepsOf(userId, s, c, running));
+            out.add(w.withSteps(steps));
+        }
+        return out;
+    }
+
+    /** Les étapes du plan du chantier {@code chantier} ; la première à faire est « en cours » quand il s'exécute. */
+    List<JarvisWorks.Step> stepsOf(UUID userId, UUID subjectId, int chantier, boolean running) {
+        try {
+            fr.claudegateway.atelier.journey.SubjectJourney view = journeys.forLane(userId, subjectId, chantier);
+            if (view == null || !view.isGuided() || view.getChantierNumber() != chantier) {
+                return List.of();
+            }
+            fr.claudegateway.atelier.journey.JourneyPlan plan =
+                    fr.claudegateway.atelier.journey.JourneyPlan.fromJson(view.getPlanJson());
+            List<JarvisWorks.Step> out = new ArrayList<>();
+            boolean current = false;
+            int n = 0;
+            for (fr.claudegateway.atelier.journey.JourneyPlan.Step step : plan.steps()) {
+                if (++n > MAX_STEPS) {
+                    break;
+                }
+                JarvisWorks.StepState state = switch (step.status()) {
+                    case FAIT, VERIFIE -> JarvisWorks.StepState.DONE;
+                    case BLOQUE, ECHEC -> JarvisWorks.StepState.BLOCKED;
+                    case A_FAIRE -> JarvisWorks.StepState.TODO;
+                };
+                if (state == JarvisWorks.StepState.TODO && running && !current) {
+                    state = JarvisWorks.StepState.CURRENT;
+                    current = true;
+                }
+                out.add(new JarvisWorks.Step(StepShortName.of(step.title(), n), state));
+            }
+            return out;
+        } catch (RuntimeException e) {
+            log.debug("Étapes du chantier illisibles ({})", e.getClass().getSimpleName());
+            return List.of();
+        }
     }
 
     /** Le résultat d'une annonce de tour direct. */
@@ -206,7 +293,7 @@ public class JarvisWorksService {
                         new JarvisWorks.Course(r.getStepsDone(), r.getStepsTotal(), r.getStatus().name(),
                                 JarvisWorks.shortReason(r.getStopReason()),
                                 fr.claudegateway.atelier.autonomy.AutonomyTurnRunner.TAKEN_BACK
-                                        .equals(r.getStopReason()))));
+                                        .equals(r.getStopReason())), null));
             }
             return out;
         } catch (RuntimeException e) {
