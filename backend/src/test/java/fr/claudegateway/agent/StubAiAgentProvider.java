@@ -54,6 +54,9 @@ public class StubAiAgentProvider implements AiAgentProvider {
      * le modèle a réellement reçu.
      */
     public final List<String> effectiveEfforts = new java.util.ArrayList<>();
+    /** F-276 / SF-276-01 : la réponse précédente annoncée par chaque requête ({@code null} = aucune). */
+    public final List<String> previousResponseIds = java.util.Collections.synchronizedList(new ArrayList<>());
+    private int responseSeq = 0;
 
     public final List<AgentReasoning> reasoningSnapshots =
             java.util.Collections.synchronizedList(new ArrayList<>());
@@ -117,6 +120,8 @@ public class StubAiAgentProvider implements AiAgentProvider {
         throwMalformedTimes = 0;
         nextRunaway = null;
         idSeq = 0;
+        previousResponseIds.clear();
+        responseSeq = 0;
     }
 
     /** Empile un tour « appel d'outil » (input clé/valeur). */
@@ -333,6 +338,7 @@ public class StubAiAgentProvider implements AiAgentProvider {
     @Override
     public AgentTurn nextTurn(AgentTurnRequest request) {
         this.lastRequest = request;
+        previousResponseIds.add(request.previousResponseId());
         messageSnapshots.add(String.valueOf(request.messages()));
         requestSnapshots.add(new ArrayList<>(request.messages()));
         reasoningSnapshots.add(request.reasoning());
@@ -373,11 +379,15 @@ public class StubAiAgentProvider implements AiAgentProvider {
         }
         toolBelts.add(List.copyOf(belt));
         AgentTurn next = script.poll();
-        if (next != null) {
-            return next;
+        if (next == null) {
+            // Script épuisé : renvoyer un tour final par défaut (évite une boucle infinie en test).
+            next = new AgentTurn("(fin)", List.of(), true, 1, 1);
         }
-        // Script épuisé : renvoyer un tour final par défaut (évite une boucle infinie en test).
-        return new AgentTurn("(fin)", List.of(), true, 1, 1);
+        // F-276 / SF-276-01 : chaque réponse a un identifiant, comme chez le fournisseur.
+        return next.diagnostics().responseId() != null ? next
+                : next.withDiagnostics(new AgentCallDiagnostics("resp_" + (++responseSeq),
+                        next.diagnostics().cacheMissReason(), next.diagnostics().cacheMissedTokens(),
+                        next.diagnostics().thinkingReplayed()));
     }
 
     /**

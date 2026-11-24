@@ -300,7 +300,7 @@ class AnthropicAgentProviderTest {
     @Test
     void theRefusalRetryKillSwitchLeavesTheRefusal() {
         buildWith(new AgentApiFeaturesProperties(null, null, null, null, null, null, null, null, null, null, null,
-                false, null));
+                false, null, null));
         server.expect(ExpectedCount.once(), requestTo(URL))
                 .andRespond(withSuccess(refusal("cyber", null, ""), MediaType.APPLICATION_JSON));
 
@@ -402,7 +402,7 @@ class AnthropicAgentProviderTest {
     @Test
     void theKillSwitchTurnsTheFallbackOff() {
         buildWith(new AgentApiFeaturesProperties(false, null, null, null, null, null, null, null, null, null, null,
-                null, null));
+                null, null, null));
         server.expect(requestTo(URL))
                 .andExpect(jsonPath("$.fallbacks").doesNotExist())
                 .andRespond(withSuccess("""
@@ -2571,7 +2571,7 @@ class AnthropicAgentProviderTest {
     @Test
     void theKillSwitchLeavesARunawayToTheOutputCap() {
         buildWith(new AgentApiFeaturesProperties(null, null, null, null, null, null, null, null, false, null,
-                null, null, null));
+                null, null, null, null));
         runawayClock();
         server.expect(requestTo(URL)).andRespond(withSuccess(RUNAWAY_SSE, MediaType.TEXT_EVENT_STREAM));
 
@@ -2587,7 +2587,7 @@ class AnthropicAgentProviderTest {
     void aThresholdAboveTheCapIsNotWatched() {
         // Seuil au-dessus du plafond de l'appel (32 768) : rien à surveiller.
         buildWith(new AgentApiFeaturesProperties(null, null, null, null, null, null, null, null, null, 40_000,
-                null, null, null));
+                null, null, null, null));
         runawayClock();
         server.expect(requestTo(URL)).andRespond(withSuccess(RUNAWAY_SSE, MediaType.TEXT_EVENT_STREAM));
 

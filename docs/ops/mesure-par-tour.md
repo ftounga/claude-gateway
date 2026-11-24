@@ -125,3 +125,40 @@ FROM atelier_turn_measures
 WHERE occurred_at > now() - interval '7 days'
 GROUP BY 1 ORDER BY 2 DESC;
 ```
+
+## Ce que dit le fournisseur (F-276 / SF-276-01)
+
+Chaque appel demande le **diagnostic de cache officiel** (`diagnostics.previous_message_id`, chaîné à la réponse précédente du même fil). La mesure range :
+- au 1er appel : `first_cache_miss_reason` et `first_cache_missed_tokens` ;
+- au 1er appel : `thinking_replayed` (blocs envoyés) et `thinking_dropped` (blocs écartés) ;
+- sur tout le tour : `thinking_dropped_total`.
+
+Les valeurs de `first_cache_miss_reason` :
+- **causes de rupture** : `messages_changed`, `system_changed`, `tools_changed`, `model_changed` ;
+- **pas de comparaison possible** : `previous_message_not_found` (pas de précédent connu, ou trop ancien), `unavailable` ;
+- **rien n'a divergé** : `none` ;
+- **comparaison inachevée** : `pending` ;
+- **diagnostic non demandé** : `NULL` (coupe-circuit `APP_AGENT_CACHE_DIAGNOSTICS=false`, ou tour d'avant F-276).
+
+**Où le cache casse au 1er appel d'un tour, sur 7 jours :**
+
+```sql
+SELECT first_cache_miss_reason AS cause, count(*) AS tours,
+       round(avg(first_cache_missed_tokens)) AS tokens_perdus_moy,
+       round(avg(first_pass_cache_write)) AS ecrit_1er_appel_moy
+FROM atelier_turn_measures
+WHERE occurred_at > now() - interval '7 days' AND first_cache_miss_reason IS NOT NULL
+GROUP BY 1 ORDER BY 2 DESC;
+```
+
+**Le raisonnement des tours passés atteint-il le modèle ?** La cible est 0 bloc écarté, hors paliers et compactions.
+
+```sql
+SELECT date_trunc('day', occurred_at) AS jour, count(*) AS tours,
+       sum(thinking_replayed) AS envoyes_1er_appel, sum(thinking_dropped) AS ecartes_1er_appel,
+       count(*) FILTER (WHERE thinking_dropped > 0) AS tours_avec_ecart,
+       sum(thinking_dropped_total) AS ecartes_tour
+FROM atelier_turn_measures
+WHERE occurred_at > now() - interval '7 days' AND thinking_replayed IS NOT NULL
+GROUP BY 1 ORDER BY 1;
+```

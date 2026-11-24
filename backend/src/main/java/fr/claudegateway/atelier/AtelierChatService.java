@@ -3998,6 +3998,15 @@ public class AtelierChatService implements RelayInterruptTarget {
         // fournisseur a mis en cache), l'édition de contexte qu'il a pu y appliquer, et le surplus des
         // résultats coupés au stockage.
         List<AgentMessage> lastSentMessages = null;
+        // F-276 / SF-276-01 : ce que le fournisseur dit des appels du tour. Le 1er appel se chaîne à la
+        // dernière réponse du tour précédent du même fil, chaque appel suivant à la réponse d'avant.
+        String previousResponseId = turnMeasureWriter == null ? null
+                : turnMeasureWriter.previousResponseId(userId, workspaceId, workspace.getTurnChantier());
+        String firstCacheMissReason = null;
+        Long firstCacheMissedTokens = null;
+        Integer firstThinkingReplayed = null;
+        Integer firstThinkingDropped = null;
+        int thinkingDroppedTotal = 0;
         boolean contextEditedInTurn = false;
         long resultCutChars = 0L;
         boolean interrupted = false;
@@ -4220,7 +4229,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                 }
                 AgentTurnRequest turnRequest =
                         new AgentTurnRequest(model, system, messages, tools, apiKey, sent,
-                                contextPolicy, turnMode);
+                                contextPolicy, turnMode).withPreviousResponseId(previousResponseId);
                 if (turnMeasureWriter != null) {
                     // Copie des références seulement : la liste vivante s'allonge après l'appel.
                     lastSentMessages = new ArrayList<>(messages);
@@ -4325,8 +4334,18 @@ public class AtelierChatService implements RelayInterruptTarget {
                 }
             }
             totalContextTokens += turn.inputTokens();
+            // F-276 / SF-276-01 : le diagnostic du fournisseur, et la réponse à laquelle chaîner la suivante.
+            fr.claudegateway.agent.AgentCallDiagnostics callDiagnostics = turn.diagnostics();
+            if (callDiagnostics.responseId() != null) {
+                previousResponseId = callDiagnostics.responseId();
+            }
+            thinkingDroppedTotal += Math.max(0, turn.droppedThinkingBlocks());
             if (measuredPasses == 0) {
                 firstPassCacheWrite = turn.cacheWriteTokens();
+                firstCacheMissReason = callDiagnostics.cacheMissReason();
+                firstCacheMissedTokens = callDiagnostics.cacheMissedTokens();
+                firstThinkingReplayed = callDiagnostics.thinkingReplayed();
+                firstThinkingDropped = Math.max(0, turn.droppedThinkingBlocks());
             } else {
                 laterCacheWrite += turn.cacheWriteTokens();
             }
@@ -5075,7 +5094,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                     webSearchRequests, runnerCounts == null ? 0 : runnerCounts[0],
                     runnerCounts == null ? 0 : runnerCounts[1], workspace.getTurnChantier(),
                     ribbonOfTurn(lastSentMessages, ribbonDivergence,
-                            resultCutChars + storedTrace.droppedChars())));
+                            resultCutChars + storedTrace.droppedChars()),
+                    new fr.claudegateway.atelier.measure.TurnMeasure.Provider(firstCacheMissReason,
+                            firstCacheMissedTokens, firstThinkingReplayed, firstThinkingDropped,
+                            thinkingDroppedTotal, previousResponseId)));
         }
         // F-125 / SF-125-01 : le marqueur de fin de tour parle au produit, pas au lecteur. Les
         // contrôles de fin de tour l'ont déjà lu sur `finalText` (plus haut, et en rejeu sur un

@@ -24,6 +24,8 @@ public class TurnMeasureWriter {
 
     private static final int MAX_MODEL_CHARS = 64;
     private static final int MAX_STOP_CHARS = 64;
+    private static final int MAX_REASON_CHARS = 40;
+    private static final int MAX_RESPONSE_ID_CHARS = 80;
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -36,6 +38,7 @@ public class TurnMeasureWriter {
         try {
             TurnMeasure.Ribbon ribbon = measure.ribbon();
             RibbonDivergence divergence = ribbon == null ? null : ribbon.divergence();
+            TurnMeasure.Provider provider = measure.provider();
             jdbcTemplate.update("INSERT INTO atelier_turn_measures (id, user_id, workspace_id, "
                             + "host_id, model, occurred_at, duration_ms, iterations, stop_cause, "
                             + "max_context_tokens, total_context_tokens, first_pass_cache_write, "
@@ -43,8 +46,10 @@ public class TurnMeasureWriter {
                             + "cache_write_tokens, web_search_requests, runner_refusals, "
                             + "runner_busy_waits, chantier_number, ribbon_fingerprint, "
                             + "prefix_divergence_index, prefix_lost_chars, prefix_divergence_cause, "
-                            + "replay_cut_chars) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, "
-                            + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            + "replay_cut_chars, first_cache_miss_reason, first_cache_missed_tokens, "
+                            + "thinking_replayed, thinking_dropped, thinking_dropped_total, last_response_id) "
+                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, "
+                            + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     UUID.randomUUID(), measure.userId(), measure.workspaceId(), measure.hostId(),
                     bounded(measure.model(), MAX_MODEL_CHARS),
                     Timestamp.from(measure.occurredAt()), measure.durationMs(), measure.iterations(),
@@ -58,7 +63,13 @@ public class TurnMeasureWriter {
                     fingerprint(ribbon), divergence == null ? null : divergence.index(),
                     divergence == null ? null : nonNegative(divergence.lostChars()),
                     divergence == null || divergence.cause() == null ? null : divergence.cause().name(),
-                    ribbon == null ? null : nonNegative(ribbon.replayCutChars()));
+                    ribbon == null ? null : nonNegative(ribbon.replayCutChars()),
+                    provider == null ? null : bounded(provider.firstCacheMissReason(), MAX_REASON_CHARS),
+                    provider == null ? null : nonNegative(provider.firstCacheMissedTokens()),
+                    provider == null ? null : provider.thinkingReplayed(),
+                    provider == null ? null : provider.thinkingDropped(),
+                    provider == null ? null : provider.thinkingDroppedTotal(),
+                    provider == null ? null : bounded(provider.lastResponseId(), MAX_RESPONSE_ID_CHARS));
         } catch (RuntimeException e) {
             log.warn("Mesure du tour non enregistrée (workspace={}) : {}", measure.workspaceId(),
                     e.getMessage());
@@ -88,6 +99,32 @@ public class TurnMeasureWriter {
             return rows.isEmpty() ? null : rows.get(0);
         } catch (RuntimeException e) {
             log.debug("Empreinte du tour précédent illisible (workspace={}) : {}", workspaceId, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Identifiant de la dernière réponse du <b>dernier tour mesuré du même fil</b> (F-276 / SF-276-01) —
+     * même utilisateur, même terminal, même chantier ({@code null} = fil commun) : le premier appel du tour
+     * s'y chaîne pour le diagnostic de cache. {@code null} s'il n'y en a pas ou sur panne.
+     */
+    public String previousResponseId(UUID userId, UUID workspaceId, Integer chantierNumber) {
+        if (userId == null || workspaceId == null) {
+            return null;
+        }
+        try {
+            List<String> rows = chantierNumber == null
+                    ? jdbcTemplate.query("SELECT last_response_id FROM atelier_turn_measures WHERE user_id = ? "
+                                    + "AND workspace_id = ? AND chantier_number IS NULL "
+                                    + "ORDER BY occurred_at DESC LIMIT 1",
+                            (rs, i) -> rs.getString(1), userId, workspaceId)
+                    : jdbcTemplate.query("SELECT last_response_id FROM atelier_turn_measures WHERE user_id = ? "
+                                    + "AND workspace_id = ? AND chantier_number = ? "
+                                    + "ORDER BY occurred_at DESC LIMIT 1",
+                            (rs, i) -> rs.getString(1), userId, workspaceId, chantierNumber);
+            return rows.isEmpty() ? null : rows.get(0);
+        } catch (RuntimeException e) {
+            log.debug("Réponse du tour précédent illisible (workspace={}) : {}", workspaceId, e.getMessage());
             return null;
         }
     }

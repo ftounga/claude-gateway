@@ -429,7 +429,7 @@ public class AnthropicAgentProvider implements AiAgentProvider {
                 ? request.reasoning()
                 : new AgentReasoning(true, effort);
         return new AgentTurnRequest(target, request.system(), messages, request.tools(), request.apiKey(),
-                reasoning, request.contextPolicy(), request.mode(), request.shape());
+                reasoning, request.contextPolicy(), request.mode(), request.shape(), request.previousResponseId());
     }
 
     /**
@@ -445,7 +445,7 @@ public class AnthropicAgentProvider implements AiAgentProvider {
                 served.cacheWriteTokens() + refused.cacheWriteTokens(),
                 served.webSearchRequests() + refused.webSearchRequests(), false, null, served.servedModel(), parts,
                 served.narration(), served.droppedThinkingBlocks(), served.paused(), served.contextEdited(),
-                served.runawayRelaunches());
+                served.runawayRelaunches(), served.diagnostics());
     }
 
     /** Corps de requête prêt à partir, calculé <b>une fois</b> et partagé streamé/non streamé. */
@@ -487,6 +487,14 @@ public class AnthropicAgentProvider implements AiAgentProvider {
             body.put("tools", toApiTools(request.tools(), shape));
         }
         applyReasoning(body, request.reasoning());
+        // F-276 / SF-276-01 : le diagnostic de cache du fournisseur, relayé — chaque appel le demande
+        // (l'empreinte n'est gardée que pour les requêtes qui le portent), chaîné à la réponse précédente
+        // de la conversation quand elle est connue. Ne bloque ni ne facture rien.
+        if (features.cacheDiagnosticsEnabled()) {
+            Map<String, Object> diagnostics = new HashMap<>();
+            diagnostics.put("previous_message_id", request.previousResponseId());
+            body.put("diagnostics", diagnostics);
+        }
         if (request.reasoning().disabled()) {
             // F-235 / SF-235-01 (D2) : raisonnement éteint — un appel court où chaque dixième de seconde compte.
             // Aucune des capacités ci-dessous (repli serveur, notes de progression, liaison du raisonnement,
@@ -1035,6 +1043,9 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         private String model;
         /** Blocs de raisonnement écartés par le fournisseur (D5), annoncés par le message. */
         private JsonNode inputTransformations;
+        /** Identifiant de la réponse et diagnostic de cache (F-276 / SF-276-01), portés par {@code message_start}. */
+        private String messageId;
+        private JsonNode diagnostics;
         private boolean completed;
         /** Détecteur d'emballement (F-172 / SF-172-07), {@code null} hors surveillance. */
         private RunawayDetector detector;
@@ -1107,6 +1118,13 @@ public class AnthropicAgentProvider implements AiAgentProvider {
                     JsonNode transformations = event.path("message").path("input_transformations");
                     if (transformations.isArray()) {
                         inputTransformations = transformations.deepCopy();
+                    }
+                    String id = event.path("message").path("id").asText("");
+                    if (!id.isEmpty()) {
+                        messageId = id;
+                    }
+                    if (event.path("message").has("diagnostics")) {
+                        diagnostics = event.path("message").get("diagnostics").deepCopy();
                     }
                     JsonNode ctx = event.path("message").path("context_management");
                     if (ctx.isObject()) {
@@ -1201,6 +1219,12 @@ public class AnthropicAgentProvider implements AiAgentProvider {
                 }
             }
             ObjectNode message = MAPPER.createObjectNode();
+            if (messageId != null) {
+                message.put("id", messageId);
+            }
+            if (diagnostics != null) {
+                message.set("diagnostics", diagnostics);
+            }
             ArrayNode content = message.putArray("content");
             blocks.forEach(content::add);
             message.put("stop_reason", stopReason == null ? "" : stopReason);
@@ -1565,7 +1589,59 @@ public class AnthropicAgentProvider implements AiAgentProvider {
     }
 
     private AgentTurn toTurn(JsonNode response, Prepared prepared) {
-        return toTurn(response, prepared.model(), prepared.progressUpdates(), prepared.refusal());
+        return toTurn(response, prepared.model(), prepared.progressUpdates(), prepared.refusal())
+                .withDiagnostics(callDiagnostics(response, prepared.body()));
+    }
+
+    /**
+     * Ce que le fournisseur dit de l'appel (F-276 / SF-276-01) : l'identifiant de sa réponse, la cause
+     * de rupture du cache s'il l'a nommée, et le nombre de blocs de raisonnement envoyés. Des types et
+     * des nombres — jamais de contenu. {@code cacheMissReason} vaut {@code null} si le diagnostic n'a
+     * pas été demandé, {@code none} si rien n'a divergé, {@code pending} si la comparaison courait encore.
+     */
+    static AgentCallDiagnostics callDiagnostics(JsonNode response, Map<String, Object> body) {
+        String reason = null;
+        Long missed = null;
+        if (body != null && body.containsKey("diagnostics")) {
+            JsonNode diagnostics = response == null ? null : response.get("diagnostics");
+            if (diagnostics == null || diagnostics.isNull() || !diagnostics.isObject()) {
+                reason = "none";
+            } else {
+                JsonNode cause = diagnostics.get("cache_miss_reason");
+                if (cause == null || cause.isNull() || !cause.isObject()) {
+                    reason = "pending";
+                } else {
+                    reason = cause.path("type").asText("inconnue");
+                    if (cause.path("cache_missed_input_tokens").isNumber()) {
+                        missed = cause.path("cache_missed_input_tokens").asLong();
+                    }
+                }
+            }
+        }
+        String id = response == null ? null : response.path("id").asText(null);
+        return new AgentCallDiagnostics(id, reason, missed, thinkingBlocksSent(body));
+    }
+
+    /** Blocs {@code thinking} et {@code redacted_thinking} présents dans les messages envoyés. */
+    static int thinkingBlocksSent(Map<String, Object> body) {
+        Object messages = body == null ? null : body.get("messages");
+        if (!(messages instanceof List<?> list)) {
+            return 0;
+        }
+        int count = 0;
+        for (Object message : list) {
+            if (message instanceof Map<?, ?> map && map.get("content") instanceof List<?> content) {
+                for (Object block : content) {
+                    if (block instanceof Map<?, ?> b) {
+                        Object type = b.get("type");
+                        if ("thinking".equals(type) || "redacted_thinking".equals(type)) {
+                            count++;
+                        }
+                    }
+                }
+            }
+        }
+        return count;
     }
 
     private AgentTurn toTurn(JsonNode response, String requestedModel, boolean progressUpdates,

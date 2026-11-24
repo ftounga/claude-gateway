@@ -64,7 +64,8 @@ public record AgentApiFeaturesProperties(
         Integer runawayTokens,
         Integer runawayTokensPerSecond,
         Boolean refusalRetry,
-        String refusalRetryModel) {
+        String refusalRetryModel,
+        Boolean cacheDiagnostics) {
 
     static final int DEFAULT_STREAMED_MAX_TOKENS = 32_768;
     static final int DEFAULT_ESCALATED_MAX_TOKENS = 65_536;
@@ -105,12 +106,13 @@ public record AgentApiFeaturesProperties(
         refusalRetry = refusalRetry == null ? Boolean.TRUE : refusalRetry;
         refusalRetryModel = refusalRetryModel == null || refusalRetryModel.isBlank()
                 ? DEFAULT_REFUSAL_RETRY_MODEL : refusalRetryModel.trim();
+        cacheDiagnostics = cacheDiagnostics == null ? Boolean.TRUE : cacheDiagnostics;
     }
 
     /** Réglages par défaut — ceux d'un environnement qui ne configure rien. */
     public static AgentApiFeaturesProperties defaults() {
         return new AgentApiFeaturesProperties(null, null, null, null, null, null, null, null, null, null, null,
-                null, null);
+                null, null, null);
     }
 
     /** Vrai si la requête vers ce modèle doit porter le repli côté serveur. */
@@ -148,6 +150,14 @@ public record AgentApiFeaturesProperties(
      */
     public boolean refusalRetryFor(String model) {
         return Boolean.TRUE.equals(refusalRetry) && listed(fallbackModels, model);
+    }
+
+    /**
+     * Diagnostic de cache du fournisseur à chaque appel (F-276 / SF-276-01). Coupe-circuit sans
+     * livraison : {@code APP_AGENT_CACHE_DIAGNOSTICS=false} rend la requête d'avant.
+     */
+    public boolean cacheDiagnosticsEnabled() {
+        return Boolean.TRUE.equals(cacheDiagnostics);
     }
 
     static boolean listed(List<String> models, String model) {
