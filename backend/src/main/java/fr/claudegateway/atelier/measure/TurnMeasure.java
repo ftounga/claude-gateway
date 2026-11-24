@@ -65,7 +65,15 @@ public record TurnMeasure(UUID userId, UUID workspaceId, UUID hostId, String mod
      * @param divergence     où et pourquoi le premier appel du tour a quitté le ruban du tour précédent
      * @param replayCutChars caractères retirés au stockage par rapport à ce qui a été envoyé (résultats
      *                       coupés, étapes abandonnées) : ce qu'ajouterait un rejeu intégral
+     * @param ribbonReplayedTurns tours rejoués depuis leur ruban envoyé au 1er appel (F-276 / SF-276-02)
+     * @param ribbonChars    taille du ruban envoyé rangé par ce tour, {@code null} s'il n'est pas rangé
      */
-    public record Ribbon(String fingerprint, RibbonDivergence divergence, Long replayCutChars) {
+    public record Ribbon(String fingerprint, RibbonDivergence divergence, Long replayCutChars,
+            Integer ribbonReplayedTurns, Long ribbonChars) {
+
+        /** Forme d'avant F-276 / SF-276-02 : ni ruban rejoué ni ruban rangé connus. */
+        public Ribbon(String fingerprint, RibbonDivergence divergence, Long replayCutChars) {
+            this(fingerprint, divergence, replayCutChars, null, null);
+        }
     }
 }

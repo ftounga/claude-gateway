@@ -241,6 +241,100 @@ class TurnMeasureWriterIntegrationTest {
         assertThat(writer.previousResponseId(UUID.randomUUID(), thread.workspaceId, 1)).isNull();
     }
 
+    /** Magasin de rubans en mémoire (F-276 / SF-276-02) : l'historique du banc l'est aussi. */
+    private static class MemoryRibbons implements fr.claudegateway.atelier.SentRibbonStore {
+        final Map<UUID, String> byMessage = new java.util.concurrent.ConcurrentHashMap<>();
+
+        @Override
+        public boolean replayEnabled() {
+            return true;
+        }
+
+        @Override
+        public void save(UUID userId, UUID messageId, String json) {
+            byMessage.put(messageId, json);
+        }
+
+        @Override
+        public Map<UUID, String> load(UUID userId, java.util.Collection<UUID> ids) {
+            Map<UUID, String> found = new java.util.HashMap<>();
+            ids.forEach(id -> {
+                if (byMessage.containsKey(id)) {
+                    found.put(id, byMessage.get(id));
+                }
+            });
+            return found;
+        }
+
+        @Override
+        public int purgeBefore(UUID userId, UUID workspaceId, java.time.OffsetDateTime frontier) {
+            return 0;
+        }
+    }
+
+    @Test
+    void withTheSentRibbonTheNextTurnProlongsExactlyWhatWasSent() {
+        Thread thread = new Thread();
+        MemoryRibbons ribbons = new MemoryRibbons();
+        thread.service.setSentRibbonStore(ribbons);
+        thread.provider.enqueueToolCallWithReasoning("bash", "sig-etape", "command", "cat gros.log");
+        thread.provider.enqueueTurn(new fr.claudegateway.agent.AgentTurn("Lu.", List.of(), true, 5, 5, false,
+                List.of(new fr.claudegateway.agent.AgentContentBlock.Reasoning("conclusion", "sig-fin"))));
+        thread.bashReturns("z".repeat(20_000));
+        // Un tour de chantier : sa consigne porte la note de son fil — augmentée, jamais rejouée avant F-276.
+        thread.chat(1, "lis le journal");
+        thread.provider.enqueueFinal("Suite.");
+        thread.chat(1, "et ensuite ?");
+
+        List<List<fr.claudegateway.agent.AgentMessage>> sent = thread.provider.requestSnapshots;
+        assertThat(sent).hasSize(3);
+        List<fr.claudegateway.agent.AgentMessage> lastOfTurn1 = sent.get(1);
+        List<fr.claudegateway.agent.AgentMessage> firstOfTurn2 = sent.get(2);
+        // Append-only : le 1er appel du tour 2 commence par EXACTEMENT le dernier envoi du tour 1…
+        assertThat(firstOfTurn2.subList(0, lastOfTurn1.size())).isEqualTo(lastOfTurn1);
+        // … suivi de sa dernière réponse réelle, raisonnement signé compris.
+        assertThat(firstOfTurn2.get(lastOfTurn1.size())).isEqualTo(fr.claudegateway.agent.AgentMessage.assistant(
+                List.of(new fr.claudegateway.agent.AgentContentBlock.Reasoning("conclusion", "sig-fin"),
+                        new fr.claudegateway.agent.AgentContentBlock.Text("Lu."))));
+        // Le résultat long est rejoué entier (il était coupé à 8 000 caractères).
+        assertThat(thread.sentToolResultLength(1)).isEqualTo(thread.sentToolResultLength(0));
+
+        List<Map<String, Object>> rows = thread.rows();
+        assertThat(rows.get(1).get("prefix_divergence_index")).isEqualTo(-1);
+        assertThat(rows.get(1).get("ribbon_replayed_turns")).isEqualTo(1);
+        assertThat(((Number) rows.get(0).get("ribbon_chars")).longValue()).isGreaterThan(20_000L);
+        assertThat(ribbons.byMessage).hasSize(2);
+    }
+
+    @Test
+    void withoutTheSentRibbonTheReplayIsTheOneOfBefore() {
+        Thread with = new Thread();
+        MemoryRibbons ribbons = new MemoryRibbons();
+        with.service.setSentRibbonStore(new MemoryRibbons() {
+            @Override
+            public boolean replayEnabled() {
+                return false; // Coupe-circuit : le rangement continue, le rejeu est celui d'avant.
+            }
+
+            @Override
+            public void save(UUID userId, UUID messageId, String json) {
+                ribbons.save(userId, messageId, json);
+            }
+        });
+        Thread plain = new Thread();
+        for (Thread thread : List.of(with, plain)) {
+            thread.provider.enqueueToolCall("bash", "command", "cat gros.log");
+            thread.provider.enqueueFinal("Lu.");
+            thread.bashReturns("y".repeat(12_000));
+            thread.chat(null, "lis");
+            thread.provider.enqueueFinal("Suite.");
+            thread.chat(null, "ensuite");
+        }
+
+        assertThat(rendered(with.provider.requestSnapshots)).isEqualTo(rendered(plain.provider.requestSnapshots));
+        assertThat(ribbons.byMessage).hasSize(2);
+    }
+
     @Test
     void theRequestSentIsIdenticalWithAndWithoutTheMeasure() {
         Thread measured = new Thread();
