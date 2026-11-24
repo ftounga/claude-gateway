@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-276 / SF-276-01 - CE QUE LE FOURNISSEUR DIT DU TOUR.
+
+      first_cache_miss_reason : cause de rupture du cache au 1er appel, nommee par le fournisseur
+        (messages_changed, system_changed, tools_changed, model_changed, previous_message_not_found,
+        unavailable), ou none / pending ; null = diagnostic non demande.
+      first_cache_missed_tokens : tokens situes apres la rupture (estimation du fournisseur).
+      thinking_replayed / thinking_dropped : blocs de raisonnement envoyes / ecartes au 1er appel.
+      thinking_dropped_total : blocs ecartes sur tous les appels du tour.
+      last_response_id : identifiant de la derniere reponse du tour (chainage du tour suivant).
+
+      Aucun contenu. Toutes nullables : aucune reprise. Rollback : les six colonnes se retirent.
+    -->
+
+    <changeSet id="276-01-turn-measures-provider-diagnostics" author="claude-gateway">
+        <addColumn tableName="atelier_turn_measures">
+            <column name="first_cache_miss_reason" type="varchar(40)"/>
+            <column name="first_cache_missed_tokens" type="bigint"/>
+            <column name="thinking_replayed" type="int"/>
+            <column name="thinking_dropped" type="int"/>
+            <column name="thinking_dropped_total" type="int"/>
+            <column name="last_response_id" type="varchar(80)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="atelier_turn_measures" columnName="first_cache_miss_reason"/>
+            <dropColumn tableName="atelier_turn_measures" columnName="first_cache_missed_tokens"/>
+            <dropColumn tableName="atelier_turn_measures" columnName="thinking_replayed"/>
+            <dropColumn tableName="atelier_turn_measures" columnName="thinking_dropped"/>
+            <dropColumn tableName="atelier_turn_measures" columnName="thinking_dropped_total"/>
+            <dropColumn tableName="atelier_turn_measures" columnName="last_response_id"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

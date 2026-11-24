@@ -20,16 +20,34 @@ import java.util.List;
  *                  c'est-à-dire le comportement d'avant (panoplie complète)
  * @param shape     forme de l'appel (F-235 / SF-235-01) : plafond de sortie propre, outils du fournisseur,
  *                  outils stricts ; {@code null} ⇒ {@link AgentCallShape#standard()}, le comportement d'avant
+ * @param previousResponseId identifiant de la réponse de l'appel précédent de la même conversation (F-276 /
+ *                  SF-276-01), pour le diagnostic de cache du fournisseur ; {@code null} = aucun
  */
 public record AgentTurnRequest(String model, String system, List<AgentMessage> messages,
         List<AgentTool> tools, String apiKey, AgentReasoning reasoning,
-        AgentContextPolicy contextPolicy, AgentTurnMode mode, AgentCallShape shape) {
+        AgentContextPolicy contextPolicy, AgentTurnMode mode, AgentCallShape shape, String previousResponseId) {
 
     public AgentTurnRequest {
         reasoning = reasoning == null ? AgentReasoning.none() : reasoning;
         contextPolicy = contextPolicy == null ? AgentContextPolicy.none() : contextPolicy;
         mode = mode == null ? AgentTurnMode.ACT : mode;
         shape = shape == null ? AgentCallShape.standard() : shape;
+        previousResponseId = previousResponseId == null || previousResponseId.isBlank() ? null : previousResponseId;
+    }
+
+    /** Forme d'avant F-276 / SF-276-01 : aucun appel précédent connu. */
+    public AgentTurnRequest(String model, String system, List<AgentMessage> messages,
+            List<AgentTool> tools, String apiKey, AgentReasoning reasoning,
+            AgentContextPolicy contextPolicy, AgentTurnMode mode, AgentCallShape shape) {
+        this(model, system, messages, tools, apiKey, reasoning, contextPolicy, mode, shape, null);
+    }
+
+    /**
+     * La même requête, chaînée à la réponse de l'appel précédent de la même conversation (F-276 /
+     * SF-276-01) : le fournisseur peut alors dire où son cache a cassé. {@code null} = aucun.
+     */
+    public AgentTurnRequest withPreviousResponseId(String id) {
+        return new AgentTurnRequest(model, system, messages, tools, apiKey, reasoning, contextPolicy, mode, shape, id);
     }
 
     /** Tour sans forme d'appel — forme conservée pour les appelants qui l'attendent (forme standard). */

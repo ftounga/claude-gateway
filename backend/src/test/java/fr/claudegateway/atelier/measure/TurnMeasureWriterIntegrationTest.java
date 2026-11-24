@@ -212,6 +212,36 @@ class TurnMeasureWriterIntegrationTest {
     }
 
     @Test
+    void eachCallChainsToThePreviousResponseOfItsOwnThread() {
+        Thread thread = new Thread();
+        thread.provider.enqueueToolCall("bash", "command", "ls");
+        thread.provider.enqueueFinal("Chantier 1, premier.");
+        thread.bashReturns("court");
+        thread.chat(1, "un");
+        thread.provider.enqueueFinal("Chantier 2, premier.");
+        thread.chat(2, "deux");
+        thread.provider.enqueueTurn(new fr.claudegateway.agent.AgentTurn("Chantier 1, second.", List.of(), true,
+                5, 5).withDiagnostics(new fr.claudegateway.agent.AgentCallDiagnostics("resp_x", "messages_changed",
+                        23_000L, 4)));
+        thread.chat(1, "un encore");
+
+        // Dans le tour : la 2e passe se chaîne à la 1re. D'un tour à l'autre : au dernier appel du MÊME fil.
+        assertThat(thread.provider.previousResponseIds).containsExactly(null, "resp_1", null, "resp_2");
+        List<Map<String, Object>> rows = thread.rows();
+        assertThat(rows.get(0).get("last_response_id")).isEqualTo("resp_2");
+        assertThat(rows.get(1).get("last_response_id")).isEqualTo("resp_3");
+        assertThat(rows.get(2).get("last_response_id")).isEqualTo("resp_x");
+        assertThat(rows.get(2).get("first_cache_miss_reason")).isEqualTo("messages_changed");
+        assertThat(((Number) rows.get(2).get("first_cache_missed_tokens")).longValue()).isEqualTo(23_000L);
+        assertThat(rows.get(2).get("thinking_replayed")).isEqualTo(4);
+        assertThat(rows.get(2).get("thinking_dropped")).isEqualTo(0);
+        assertThat(rows.get(2).get("thinking_dropped_total")).isEqualTo(0);
+        assertThat(writer.previousResponseId(thread.userId, thread.workspaceId, 1)).isEqualTo("resp_x");
+        assertThat(writer.previousResponseId(thread.userId, thread.workspaceId, null)).isNull();
+        assertThat(writer.previousResponseId(UUID.randomUUID(), thread.workspaceId, 1)).isNull();
+    }
+
+    @Test
     void theRequestSentIsIdenticalWithAndWithoutTheMeasure() {
         Thread measured = new Thread();
         Thread plain = new Thread();

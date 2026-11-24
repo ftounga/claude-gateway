@@ -64,7 +64,28 @@ public record AgentTurn(String text, List<AgentToolCall> toolCalls, boolean fini
         int inputTokens, int outputTokens, boolean truncated, List<AgentContentBlock> reasoning,
         int cacheReadTokens, int cacheWriteTokens, int webSearchRequests, boolean refused,
         String refusalCategory, String servedModel, List<ModelUsage> usageByModel, String narration,
-        int droppedThinkingBlocks, boolean paused, boolean contextEdited, int runawayRelaunches) {
+        int droppedThinkingBlocks, boolean paused, boolean contextEdited, int runawayRelaunches,
+        AgentCallDiagnostics diagnostics) {
+
+    /** Forme d'avant F-276 / SF-276-01 : aucun diagnostic d'appel connu. */
+    public AgentTurn(String text, List<AgentToolCall> toolCalls, boolean finished,
+            int inputTokens, int outputTokens, boolean truncated, List<AgentContentBlock> reasoning,
+            int cacheReadTokens, int cacheWriteTokens, int webSearchRequests, boolean refused,
+            String refusalCategory, String servedModel, List<ModelUsage> usageByModel, String narration,
+            int droppedThinkingBlocks, boolean paused, boolean contextEdited, int runawayRelaunches) {
+        this(text, toolCalls, finished, inputTokens, outputTokens, truncated, reasoning,
+                cacheReadTokens, cacheWriteTokens, webSearchRequests, refused, refusalCategory,
+                servedModel, usageByModel, narration, droppedThinkingBlocks, paused, contextEdited,
+                runawayRelaunches, AgentCallDiagnostics.NONE);
+    }
+
+    /** Le même tour, avec ce que le fournisseur a dit de l'appel (F-276 / SF-276-01). */
+    public AgentTurn withDiagnostics(AgentCallDiagnostics value) {
+        return new AgentTurn(text, toolCalls, finished, inputTokens, outputTokens, truncated, reasoning,
+                cacheReadTokens, cacheWriteTokens, webSearchRequests, refused, refusalCategory,
+                servedModel, usageByModel, narration, droppedThinkingBlocks, paused, contextEdited,
+                runawayRelaunches, value);
+    }
 
     /** Forme sans relance d'emballement (F-172 / SF-172-07 additif). */
     public AgentTurn(String text, List<AgentToolCall> toolCalls, boolean finished,
@@ -100,7 +121,7 @@ public record AgentTurn(String text, List<AgentToolCall> toolCalls, boolean fini
                 truncated, reasoning, cacheReadTokens + cut.cacheReadTokens(),
                 cacheWriteTokens + cut.cacheWriteTokens(), webSearchRequests, refused, refusalCategory,
                 servedModel, parts, narration, droppedThinkingBlocks, paused, contextEdited,
-                runawayRelaunches + 1);
+                runawayRelaunches + 1, diagnostics);
     }
 
     /** Forme sans édition de contexte signalée (F-229 / SF-229-01 additif). */
@@ -233,6 +254,7 @@ public record AgentTurn(String text, List<AgentToolCall> toolCalls, boolean fini
         narration = narration == null ? "" : narration;
         droppedThinkingBlocks = Math.max(0, droppedThinkingBlocks);
         runawayRelaunches = Math.max(0, runawayRelaunches);
+        diagnostics = diagnostics == null ? AgentCallDiagnostics.NONE : diagnostics;
     }
 
     /** Forme sans ventilation de cache — conservée pour les appelants qui l'attendent. */
