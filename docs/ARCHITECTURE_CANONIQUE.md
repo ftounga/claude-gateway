@@ -818,6 +818,11 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     Sans réponse dans `app.atelier.agent.confirm-timeout` (défaut `PT2M`), la commande est **refusée**.
   - ⚠️ Une session en attente de confirmation émet `session.status_idle` : seul un `idle`
     **non `requires_action`** termine un run, sous peine de clore le tour sans exécuter la commande.
+- **atelier_messages — ruban envoyé** (F-276 / SF-276-02, migration `276-02`). Colonne `sent_ribbon` (texte JSON, **nullable**), sur le message assistant d'un tour : les messages que le tour a **envoyés** au fournisseur (consigne augmentée, consignes d'effort, étapes avec raisonnement signé et résultats entiers, précisions, dernière réponse réelle). Le rejeu des tours de la fenêtre tracée la renvoie **à l'octet près**, ce qui rend l'historique append-only : le fournisseur n'écarte plus le raisonnement des tours passés. Sans elle, le rejeu reste celui de `tool_trace`.
+  - **Hors entité** : lue et écrite par `JdbcSentRibbonStore`, filtrée par `user_id`, et jamais chargée avec le fil.
+  - **Bornée** : un ruban de plus de 4 Mo n'est pas rangé.
+  - **Purgée** à la compaction, avant la frontière.
+  - **Coupe-circuit** `APP_ATELIER_REPLAY_SENT_RIBBON=false`.
 - **atelier_messages — mémoire de la trajectoire d'outils** (F-39 / SF-39-03, migration `050`).
   Colonne `tool_trace` (texte, **nullable**) : pour chaque itération du tour, le commentaire de
   l'agent, ses appels d'outils avec leurs arguments et leurs résultats. **Aucune table nouvelle** —
