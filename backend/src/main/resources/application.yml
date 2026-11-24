@@ -283,6 +283,12 @@ app:
     # contradictions. La compaction (F-117) borne deja le volume total. Meme repli que les autres
     # bornes : absent/nul/negatif -> defaut (12), au-dela du plafond lisible (40) -> ramene.
     replayed-trace-turns: ${APP_ATELIER_REPLAYED_TRACE_TURNS:12}
+    # Rejouer le ruban ENVOYE (F-276 / SF-276-02) : chaque tour de la fenetre ci-dessus est rejoue tel qu'il
+    # est parti au fournisseur (consigne augmentee, resultats entiers, raisonnement signe, consignes
+    # d'effort), au lieu d'etre reconstruit depuis la base. Historique append-only : le fournisseur
+    # n'ecarte plus le raisonnement des tours passes. Coupe-circuit sans livraison :
+    # APP_ATELIER_REPLAY_SENT_RIBBON=false (rejeu d'avant ; le rangement continue).
+    replay-sent-ribbon: ${APP_ATELIER_REPLAY_SENT_RIBBON:true}
     # Aide-memoire d'etat de fichier (F-119 / SF-119-05). `true` : une edition (edit_file) d'un fichier
     # que le modele n'a ni lu ni ecrit dans ce fil recoit un rappel LEGER « relis-le avant si tu n'es
     # pas sur de son contenu » — incitation a la lecture-avant-edition, JAMAIS un refus (le disque

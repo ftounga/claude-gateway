@@ -162,3 +162,29 @@ FROM atelier_turn_measures
 WHERE occurred_at > now() - interval '7 days' AND thinking_replayed IS NOT NULL
 GROUP BY 1 ORDER BY 1;
 ```
+
+## Le ruban envoyé (F-276 / SF-276-02)
+
+Chaque tour est rangé tel qu'il est parti au fournisseur (`atelier_messages.sent_ribbon`), puis rejoué à l'identique au tour suivant. La mesure range deux nombres :
+- `ribbon_replayed_turns` : nombre de tours rejoués depuis leur ruban au 1er appel ;
+- `ribbon_chars` : taille du ruban rangé par le tour (`NULL` s'il ne l'a pas été).
+
+Un ruban n'est pas rangé dans trois cas :
+- la conversation a été rebâtie pendant le tour ;
+- le tour s'est arrêté sans réponse complète ;
+- le ruban dépasse 4 Mo.
+
+**Le rejeu à l'identique prend-il, et que pèse-t-il ?**
+
+```sql
+SELECT date_trunc('day', occurred_at) AS jour, count(*) AS tours,
+       count(*) FILTER (WHERE ribbon_chars IS NOT NULL) AS ranges,
+       round(avg(ribbon_replayed_turns), 1) AS tours_rejoues_moy,
+       round(avg(ribbon_chars)) AS taille_moy,
+       round(avg(first_pass_cache_write)) AS ecrit_1er_appel_moy
+FROM atelier_turn_measures
+WHERE occurred_at > now() - interval '7 days'
+GROUP BY 1 ORDER BY 1;
+```
+
+Coupe-circuit : `APP_ATELIER_REPLAY_SENT_RIBBON=false` rétablit le rejeu d'avant. Le rangement continue, ce qui permet de rallumer sans perte.

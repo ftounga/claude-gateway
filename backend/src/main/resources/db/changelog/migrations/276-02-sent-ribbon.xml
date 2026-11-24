@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-276 / SF-276-02 - REJOUER LE RUBAN ENVOYE.
+
+      atelier_messages.sent_ribbon : sur le message assistant d'un tour, les messages que le tour a
+        envoyes au fournisseur (JSON sans perte, AtelierSentRibbon) ; rejoues a l'identique au tour
+        suivant pour que l'historique soit append-only. Efface a la compaction (avant la frontiere).
+      atelier_turn_measures.ribbon_replayed_turns : tours rejoues depuis leur ruban au 1er appel.
+      atelier_turn_measures.ribbon_chars : taille du ruban range par le tour.
+
+      Toutes nullables : aucune reprise (les tours d'avant gardent le rejeu d'avant).
+      Rollback : les trois colonnes se retirent.
+    -->
+
+    <changeSet id="276-02-sent-ribbon" author="claude-gateway">
+        <addColumn tableName="atelier_messages">
+            <column name="sent_ribbon" type="text"/>
+        </addColumn>
+        <addColumn tableName="atelier_turn_measures">
+            <column name="ribbon_replayed_turns" type="int"/>
+            <column name="ribbon_chars" type="bigint"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="atelier_messages" columnName="sent_ribbon"/>
+            <dropColumn tableName="atelier_turn_measures" columnName="ribbon_replayed_turns"/>
+            <dropColumn tableName="atelier_turn_measures" columnName="ribbon_chars"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

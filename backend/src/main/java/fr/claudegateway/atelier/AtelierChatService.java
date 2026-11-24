@@ -3831,6 +3831,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (jarvisMailTools != null) {
             consigne = jarvisMailTools.withNote(userId, workspace, consigne);
         }
+        // F-276 / SF-276-02 : ici commence ce que CE tour ajoute à la conversation — son ruban envoyé.
+        final int ribbonStart = messages.size();
         messages.add(AgentMessage.userText(consigne));
         // F-229 / SF-229-01 : le ruban du premier appel comparé à celui du dernier appel du tour précédent
         // du même fil. Lecture seule : la requête n'en dépend pas. Best-effort.
@@ -3980,7 +3982,10 @@ public class AtelierChatService implements RelayInterruptTarget {
          * le ruban, et le ruban est ce qu'on cherche à garder stable. Tableau d'une case parce que
          * la valeur est relue et réécrite depuis la boucle.
          */
-        final String[] effortInEffect = {reasoning.effort()};
+        // F-276 / SF-276-02 : un ruban rejoué peut porter les consignes d'effort de son tour. Le niveau en
+        // vigueur est alors celui de la DERNIÈRE rejouée : jamais un tour qui resterait, sans le savoir, au
+        // niveau baissé du précédent — une consigne est glissée dès que le niveau voulu en diffère.
+        final String[] effortInEffect = {lastReplayedEffort(messages, reasoning.effort())};
         /** Plus grosse itération observée dans ce tour : majorant de la suivante (D-L8-2). */
         long largestIterationTokens = 0L;
         // F-183 / SF-183-03 : le plafond en DOLLARS d'un tour armé par son lanceur (une routine, sans
@@ -3998,6 +4003,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         // fournisseur a mis en cache), l'édition de contexte qu'il a pu y appliquer, et le surplus des
         // résultats coupés au stockage.
         List<AgentMessage> lastSentMessages = null;
+        // F-276 / SF-276-02 : le ruban du tour — rompu si la conversation est rebâtie pendant le tour ; les
+        // précisions rangées pendant le tour ; la dernière réponse réelle du modèle, à une fin normale.
+        boolean ribbonBroken = false;
+        List<UUID> steerIdsOfTurn = new ArrayList<>();
+        List<AgentContentBlock> finalAnswerBlocks = null;
         // F-276 / SF-276-01 : ce que le fournisseur dit des appels du tour. Le 1er appel se chaîne à la
         // dernière réponse du tour précédent du même fil, chaque appel suivant à la réponse d'avant.
         String previousResponseId = turnMeasureWriter == null ? null
@@ -4173,7 +4183,7 @@ public class AtelierChatService implements RelayInterruptTarget {
             // et datée. Une par message donnait au modèle une rafale de messages utilisateur nus,
             // indiscernables de la demande initiale — le « ressenti messages multiples ».
             String frontierInterjections = takeAndRecordSteers(listener, userId, workspace,
-                    iteration + 1);
+                    iteration + 1, steerIdsOfTurn);
             if (frontierInterjections != null) {
                 messages.add(AgentMessage.userText(frontierInterjections));
                 requestsInTurn++;
@@ -4269,6 +4279,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                     // cette itération (le cas échéant) sont abandonnés — au pire la 1re itération, où
                     // il n'y en a pas ; remplacer toute la liste évite tout tool_use orphelin.
                     messages = buildReplayMessages(userId, workspace);
+                    ribbonBroken = true;
                     log.info("Contexte débordé : fil compacté puis tour relancé une fois (workspace={}).",
                             workspaceId);
                 } catch (fr.claudegateway.agent.AgentMalformedRequestException ex) {
@@ -4285,6 +4296,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                     // le fournisseur juge modifié bloquerait sinon le fil à chaque envoi — le
                     // réassainissement ne touche que la structure. L'omettre est toujours accepté.
                     messages = withoutReasoning(buildReplayMessages(userId, workspace));
+                    ribbonBroken = true;
                     log.warn("Séquence de messages invalide : fil réassaini puis tour relancé une fois "
                             + "(workspace={}).", workspaceId);
                 } catch (fr.claudegateway.agent.AgentRunawayException ex) {
@@ -4475,6 +4487,11 @@ public class AtelierChatService implements RelayInterruptTarget {
                     // plomberie de carte (cas réel CAGIP), elle ne peut pas l'évincer. Déjà défilé côté
                     // SSE ; le persister ici fait converger l'affichage (`done`) et la base.
                     finalText = backgroundText;
+                    // F-276 / SF-276-02 : ce que le modèle a RÉELLEMENT répondu, pour le ruban — pas le texte
+                    // de fond retenu pour l'écran (F-125), qui peut venir d'une étape antérieure.
+                    finalAnswerBlocks = new ArrayList<>(turn.reasoning());
+                    finalAnswerBlocks.add(new AgentContentBlock.Text(
+                            turn.text() != null && !turn.text().isBlank() ? turn.text() : finalText));
                     break;
                 }
                 // 2) Aucun texte de fond de tout le tour (rien, ou seulement de la plomberie de carte) :
@@ -4951,7 +4968,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                 // appel en vol — le geste qui arrête reste l'interruption (F-38 / SF-38-07) —, et
                 // la conversation n'est toujours pas modifiée pendant un appel au fournisseur (D2).
                 String betweenCalls =
-                        takeAndRecordSteers(listener, userId, workspace, iteration + 2);
+                        takeAndRecordSteers(listener, userId, workspace, iteration + 2, steerIdsOfTurn);
                 if (betweenCalls != null) {
                     interjectionsBetweenCalls.add(betweenCalls);
                     requestsInTurn++;
@@ -5083,6 +5100,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         // (F-229 / SF-229-01), le message assistant la persiste plus bas. Même document qu'avant,
         // augmenté de faits sans contenu seulement quand il y a lieu.
         AtelierToolTrace.Stored storedTrace = new AtelierToolTrace(List.copyOf(trace)).store(contextEditedInTurn);
+        // F-276 / SF-276-02 : le ruban envoyé du tour, rangé avec sa réponse plus bas.
+        String sentRibbonJson = sentRibbonJson(ribbonBroken, messages, ribbonStart, finalAnswerBlocks,
+                interrupted || spendCapReached
+                        || (finalText != null && finalText.startsWith(BUDGET_REACHED_REPLY)),
+                finalText, savedUserMessage == null ? null : savedUserMessage.getId(), steerIdsOfTurn);
         if (turnMeasureWriter != null) {
             turnMeasureWriter.write(new fr.claudegateway.atelier.measure.TurnMeasure(userId,
                     workspaceId, workspace.getHostId(), model, java.time.Instant.now(),
@@ -5094,7 +5116,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                     webSearchRequests, runnerCounts == null ? 0 : runnerCounts[0],
                     runnerCounts == null ? 0 : runnerCounts[1], workspace.getTurnChantier(),
                     ribbonOfTurn(lastSentMessages, ribbonDivergence,
-                            resultCutChars + storedTrace.droppedChars()),
+                            resultCutChars + storedTrace.droppedChars(),
+                            replayFacts == null ? null : replayFacts.ribbonTurns,
+                            sentRibbonJson == null ? null : (long) sentRibbonJson.length()),
                     new fr.claudegateway.atelier.measure.TurnMeasure.Provider(firstCacheMissReason,
                             firstCacheMissedTokens, firstThinkingReplayed, firstThinkingDropped,
                             thinkingDroppedTotal, previousResponseId)));
@@ -5192,6 +5216,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                         fr.claudegateway.atelier.nextsteps.NextStepsBlock.attachTo(report.toJson(),
                                 nextSteps, anchoredSteps.chantier()), questionsSnapshot))
                 .build());
+        // F-276 / SF-276-02 : le tour tel qu'il est parti, pour un rejeu à l'identique. Best-effort.
+        if (sentRibbonStore != null && sentRibbonJson != null && assistant != null && assistant.getId() != null) {
+            sentRibbonStore.save(userId, assistant.getId(), sentRibbonJson);
+        }
         // F-162 / SF-162-06 : embed la réponse de l'assistant pour le rappel sémantique — asynchrone,
         // best-effort (NONE par défaut ⇒ ne fait rien).
         embedForRecall(assistant);
@@ -5301,7 +5329,7 @@ public class AtelierChatService implements RelayInterruptTarget {
      * @return le texte à joindre à la conversation, ou {@code null} s'il n'y a rien à joindre
      */
     private String takeAndRecordSteers(AtelierProgressListener listener, UUID userId,
-            Workspace workspace, int readAtStep) {
+            Workspace workspace, int readAtStep, List<UUID> recordedIds) {
         UUID workspaceId = workspace.getId();
         List<AtelierProgressListener.AtelierSteer> taken = listener.takeSteers();
         if (taken.isEmpty()) {
@@ -5318,6 +5346,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                 // F-162 / SF-162-06 : les précisions sont aussi de la parole de l'utilisateur — embeddées
                 // pour le rappel sémantique, best-effort (NONE par défaut ⇒ ne fait rien).
                 embedForRecall(savedSteer);
+                // F-276 / SF-276-02 : la précision part DANS le ruban du tour ; sa ligne ne sera pas rejouée deux fois.
+                if (recordedIds != null && savedSteer != null && savedSteer.getId() != null) {
+                    recordedIds.add(savedSteer.getId());
+                }
                 if (joined.length() > 0) {
                     joined.append("\n\n");
                 }
@@ -5449,7 +5481,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         // F-221 / SF-221-01 : le fil du tour ne relit que le passé commun et le sien, regroupé par tour.
         List<AtelierMessage> thread = threadOf(userId, workspace.getId(), workspace.getTurnChantier(), past);
         int offset = messages.size();
-        messages.addAll(replayableHistory(thread, replayedTraceTurns, facts));
+        java.util.Map<UUID, AtelierSentRibbon> ribbons = sentRibbonsOf(userId, thread);
+        messages.addAll(replayableHistory(thread, replayedTraceTurns, facts, ribbons));
         if (facts != null) {
             facts.summaryPresent = summary != null;
             if (facts.lastTurnStart >= 0) {
@@ -5496,8 +5529,66 @@ public class AtelierChatService implements RelayInterruptTarget {
      * Le ruban du tour à ranger (F-229 / SF-229-01) : l'empreinte de la dernière requête envoyée, la
      * divergence relevée au premier appel et ce que le rangement retire. Jamais d'exception.
      */
+    /**
+     * Le ruban envoyé du tour en JSON (F-276 / SF-276-02), ou {@code null} s'il ne doit pas être rangé.
+     *
+     * <ul>
+     *   <li>Conversation rebâtie pendant le tour (débordement compacté, séquence réassainie) : non rangé.</li>
+     *   <li>Fin normale : les messages du tour suivis de la dernière réponse réelle.</li>
+     *   <li>Arrêt à une frontière d'étape (interruption, budget, plafond) : clos par le texte du tour,
+     *       comme le rejeu d'avant.</li>
+     *   <li>Tout autre arrêt (réponse coupée, refus, emballement, débordement, synthèse forcée) : non
+     *       rangé — rejeu d'avant pour ce tour.</li>
+     * </ul>
+     */
+    static String sentRibbonJson(boolean broken, List<AgentMessage> messages, int start,
+            List<AgentContentBlock> finalAnswer, boolean endsAtBoundary, String finalText, UUID from,
+            List<UUID> steerIds) {
+        if (broken || from == null || messages == null || start < 0 || start >= messages.size()) {
+            return null;
+        }
+        List<AgentMessage> sent = new ArrayList<>(messages.subList(start, messages.size()));
+        boolean endsWithAnswer = "assistant".equals(sent.get(sent.size() - 1).role());
+        if (finalAnswer != null) {
+            if (endsWithAnswer) {
+                return null; // Reprise d'une pause suivie d'une fin : forme non rejouable à coup sûr.
+            }
+            sent.add(AgentMessage.assistant(finalAnswer));
+        } else if (endsAtBoundary) {
+            if (!endsWithAnswer) {
+                String close = stripTurnMetadata(finalText);
+                sent.add(AgentMessage.assistant(List.of(new AgentContentBlock.Text(
+                        close == null || close.isBlank() ? "(tour arrêté)" : close))));
+            }
+        } else {
+            return null;
+        }
+        String json = new AtelierSentRibbon(from, steerIds, sent).toJson();
+        if (json == null) {
+            log.info("Ruban envoyé non rangé : vide ou au-delà de {} caractères.", AtelierSentRibbon.MAX_CHARS);
+        }
+        return json;
+    }
+
+    /** Niveau d'effort en vigueur après {@code messages} : la dernière consigne glissée, sinon {@code root}. */
+    static String lastReplayedEffort(List<AgentMessage> messages, String root) {
+        String effort = root;
+        for (AgentMessage message : messages) {
+            if (message.isEffortDirective()) {
+                effort = message.effort();
+            }
+        }
+        return effort;
+    }
+
     private static fr.claudegateway.atelier.measure.TurnMeasure.Ribbon ribbonOfTurn(List<AgentMessage> lastSent,
             fr.claudegateway.atelier.measure.RibbonDivergence divergence, long replayCutChars) {
+        return ribbonOfTurn(lastSent, divergence, replayCutChars, null, null);
+    }
+
+    private static fr.claudegateway.atelier.measure.TurnMeasure.Ribbon ribbonOfTurn(List<AgentMessage> lastSent,
+            fr.claudegateway.atelier.measure.RibbonDivergence divergence, long replayCutChars,
+            Integer ribbonReplayedTurns, Long ribbonChars) {
         String fingerprint = null;
         try {
             if (lastSent != null) {
@@ -5507,7 +5598,7 @@ public class AtelierChatService implements RelayInterruptTarget {
             log.debug("Empreinte du ruban non calculée (best-effort) : {}", ex.getMessage());
         }
         return new fr.claudegateway.atelier.measure.TurnMeasure.Ribbon(fingerprint, divergence,
-                Math.max(0L, replayCutChars));
+                Math.max(0L, replayCutChars), ribbonReplayedTurns, ribbonChars);
     }
 
     /**
@@ -5523,6 +5614,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         int lastTurnStart = -1;
         /** Trajectoire rangée du dernier tour achevé (document brut), ou {@code null}. */
         String lastTrace;
+        /** Tours rejoués depuis leur ruban envoyé (F-276 / SF-276-02). */
+        int ribbonTurns;
     }
 
     /**
@@ -5555,15 +5648,75 @@ public class AtelierChatService implements RelayInterruptTarget {
         return ChantierThread.byTurn(ChantierThread.visibleTo(past, chantier, openedAt));
     }
 
-    private static List<AgentMessage> replayableHistory(List<AtelierMessage> past, int traceTurns,
+    /**
+     * Les rubans envoyés des tours de la fenêtre tracée (F-276 / SF-276-02), par message assistant. Vide sans
+     * magasin, coupe-circuit ouvert ou panne : le rejeu d'avant s'applique alors à chaque tour.
+     */
+    private java.util.Map<UUID, AtelierSentRibbon> sentRibbonsOf(UUID userId, List<AtelierMessage> thread) {
+        if (sentRibbonStore == null || !sentRibbonStore.replayEnabled() || thread.isEmpty()) {
+            return java.util.Map.of();
+        }
+        int traceFrom = firstTracedIndex(thread, replayedTraceTurns);
+        List<UUID> ids = new ArrayList<>();
+        for (int index = traceFrom; index < thread.size(); index++) {
+            AtelierMessage message = thread.get(index);
+            if ("ASSISTANT".equalsIgnoreCase(message.getRole()) && message.getId() != null) {
+                ids.add(message.getId());
+            }
+        }
+        java.util.Map<UUID, AtelierSentRibbon> ribbons = new java.util.HashMap<>();
+        sentRibbonStore.load(userId, ids).forEach((id, json) -> {
+            AtelierSentRibbon ribbon = AtelierSentRibbon.parse(json);
+            if (ribbon != null) {
+                ribbons.put(id, ribbon);
+            }
+        });
+        return ribbons;
+    }
+
+    static List<AgentMessage> replayableHistory(List<AtelierMessage> past, int traceTurns,
             ReplayFacts facts) {
+        return replayableHistory(past, traceTurns, facts, java.util.Map.of());
+    }
+
+    /**
+     * Le rejeu, avec les rubans envoyés (F-276 / SF-276-02) : un tour de la fenêtre tracée dont le ruban est
+     * connu repart <b>tel qu'il a été envoyé</b> — à l'octet près — à la place de ses lignes (message
+     * utilisateur, précisions, réponse). Une ligne du groupe que le ruban ne porte pas est rejouée après lui,
+     * comme avant. Sans ruban, rien ne change.
+     */
+    static List<AgentMessage> replayableHistory(List<AtelierMessage> past, int traceTurns,
+            ReplayFacts facts, java.util.Map<UUID, AtelierSentRibbon> ribbons) {
         int traceFrom = firstTracedIndex(past, traceTurns);
+        java.util.Map<Integer, RibbonSpan> spans = ribbonSpans(past, traceFrom, ribbons);
         List<AgentMessage> messages = new ArrayList<>(past.size());
         // F-229 / SF-229-01 : où commence chaque tour dans la liste rejouée — un message utilisateur
         // qui suit une réponse (ou ouvre le fil). Relevé seulement, la liste n'en dépend pas.
         int turnStart = -1;
         boolean afterAnswer = true;
         for (int index = 0; index < past.size(); index++) {
+            RibbonSpan span = spans.get(index);
+            if (span != null) {
+                // F-276 / SF-276-02 : le tour tel qu'il est parti. Ses lignes étrangères suivent, comme avant.
+                AtelierMessage answer = past.get(span.end());
+                if (facts != null) {
+                    facts.lastTurnStart = messages.size();
+                    facts.lastTrace = answer.getToolTrace();
+                    facts.ribbonTurns++;
+                }
+                messages.addAll(span.ribbon().messages());
+                for (AtelierMessage extra : span.extras()) {
+                    String text = extra.isLink()
+                            ? fr.claudegateway.jarvis.thread.JarvisLinkService.replay(extra.getContent())
+                            : extra.getContent();
+                    if (text != null && !text.isBlank()) {
+                        messages.add(new AgentMessage("user", List.of(new AgentContentBlock.Text(text))));
+                    }
+                }
+                afterAnswer = true;
+                index = span.end();
+                continue;
+            }
             AtelierMessage message = past.get(index);
             String content = message.getContent();
             if (content == null || content.isBlank()) {
@@ -5599,6 +5752,57 @@ public class AtelierChatService implements RelayInterruptTarget {
                     List.of(new AgentContentBlock.Text(content))));
         }
         return messages;
+    }
+
+    /** Un tour à rejouer depuis son ruban : de la ligne qui l'ouvre ({@code start}) à sa réponse ({@code end}). */
+    record RibbonSpan(int end, AtelierSentRibbon ribbon, List<AtelierMessage> extras) {
+    }
+
+    /**
+     * Où commencent les tours à rejouer depuis leur ruban (F-276 / SF-276-02). Un ruban n'est retenu que si
+     * la ligne qui l'ouvre précède sa réponse dans le fil, sans autre réponse entre les deux, et si le tour
+     * est dans la fenêtre tracée. Les lignes du groupe qui ne sont ni l'ouverture ni une précision du
+     * ruban sont gardées à part ({@code extras}). Toute incohérence rend le rejeu d'avant pour ce tour.
+     */
+    static java.util.Map<Integer, RibbonSpan> ribbonSpans(List<AtelierMessage> past, int traceFrom,
+            java.util.Map<UUID, AtelierSentRibbon> ribbons) {
+        java.util.Map<Integer, RibbonSpan> spans = new java.util.HashMap<>();
+        if (ribbons == null || ribbons.isEmpty()) {
+            return spans;
+        }
+        for (int end = Math.max(0, traceFrom); end < past.size(); end++) {
+            AtelierMessage answer = past.get(end);
+            if (!"ASSISTANT".equalsIgnoreCase(answer.getRole()) || answer.getId() == null) {
+                continue;
+            }
+            AtelierSentRibbon ribbon = ribbons.get(answer.getId());
+            if (ribbon == null) {
+                continue;
+            }
+            int start = -1;
+            for (int i = end - 1; i >= 0; i--) {
+                AtelierMessage row = past.get(i);
+                if ("ASSISTANT".equalsIgnoreCase(row.getRole())) {
+                    break;
+                }
+                if (ribbon.from().equals(row.getId())) {
+                    start = i;
+                    break;
+                }
+            }
+            if (start < 0) {
+                continue;
+            }
+            List<AtelierMessage> extras = new ArrayList<>();
+            for (int i = start + 1; i < end; i++) {
+                AtelierMessage row = past.get(i);
+                if (!ribbon.rows().contains(row.getId())) {
+                    extras.add(row);
+                }
+            }
+            spans.put(start, new RibbonSpan(end, ribbon, List.copyOf(extras)));
+        }
+        return spans;
     }
 
     /**
@@ -9393,6 +9597,17 @@ public class AtelierChatService implements RelayInterruptTarget {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setTurnMeasureWriter(fr.claudegateway.atelier.measure.TurnMeasureWriter writer) {
         this.turnMeasureWriter = writer;
+    }
+
+    /**
+     * Les rubans envoyés (F-276 / SF-276-02). Absent (tests de la boucle), chaque tour est rejoué comme
+     * avant, reconstruit depuis la base. Branché par setter : un second constructeur casserait le contexte.
+     */
+    private SentRibbonStore sentRibbonStore;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setSentRibbonStore(SentRibbonStore store) {
+        this.sentRibbonStore = store;
     }
 
     /**

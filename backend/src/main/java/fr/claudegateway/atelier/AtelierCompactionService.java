@@ -168,6 +168,14 @@ public class AtelierCompactionService {
         this.replayedTraceTurns = atelierProperties.replayedTraceTurns();
     }
 
+    /** Les rubans envoyés (F-276 / SF-276-02), purgés à la frontière. Branché par setter (un seul constructeur). */
+    private SentRibbonStore sentRibbonStore;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setSentRibbonStore(SentRibbonStore store) {
+        this.sentRibbonStore = store;
+    }
+
     /**
      * Consommation d'un appel de compaction (F-117 / SF-117-01), à agréger aux compteurs du tour :
      * la compaction passe ainsi par le décompte d'usage existant, sans chemin de quota séparé ni
@@ -299,6 +307,10 @@ public class AtelierCompactionService {
             workspace.setChatThreadSummary(summary.strip());
             workspace.setChatThreadStartedAt(newBoundary);
             workspaceRepository.save(workspace);
+            // F-276 / SF-276-02 : avant la frontière, plus rien n'est rejoué — leurs rubans envoyés non plus.
+            if (sentRibbonStore != null) {
+                sentRibbonStore.purgeBefore(userId, workspace.getId(), newBoundary);
+            }
             log.info("Fil d'Atelier compacté (workspace={}, poste={}) : ~{} tokens rejoués, "
                     + "{} tour(s) résumé(s), {} gardé(s).", workspace.getId(), workspace.getHostId(),
                     estimated, summarizedTurns, replayable.size() - splitIndex);
