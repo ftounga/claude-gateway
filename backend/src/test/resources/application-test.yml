@@ -14,6 +14,10 @@ spring:
   liquibase:
     change-log: classpath:db/changelog/db.changelog-master.xml
 app:
+  # F-277 : aiguillage Bedrock eteint en tests — aucun appel AWS ; les tests de l'aiguillage le construisent.
+  ai:
+    bedrock:
+      mode: "off"
   # F-110 : travailleur de la file des courriels du client désactivé en tests ; ClientMailOutbox.runOnce() est
   # appelé directement.
   client-mail:

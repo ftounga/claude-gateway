@@ -577,3 +577,35 @@ génération préemptive et une interruption gérée côté serveur. Aucun cadre
 quelques millisecondes ; en échange, un déploiement du backend ne coupe plus la conversation audio, et le tour,
 l'interruption et la préemption reposent sur un cadre éprouvé au lieu d'une quatrième réimplémentation maison.
 Toute logique « moteur d'IA » dans `jarvis-voice` contredit cet ADR.
+
+---
+
+## ADR-022 — AWS Bedrock, second canal d'accès au même modèle Claude, avec bascule automatique (F-277)
+
+**Date** : 2026-11-26
+**Statut** : Acceptée
+**Décideur** : product owner (« profil mondial et bascule automatique, lance et livre en autonome »)
+
+**Contexte.** Le 25/11 à 18:25 UTC, le crédit de l'API Anthropic de la plateforme est épuisé et ne peut pas être
+rechargé (cartes refusées par la console). Toute l'IA de l'application (Atelier, Jarvis, chat, Ask, Radar…) renvoie
+400 « credit balance too low ». Le compte AWS de la plateforme donne accès aux **mêmes modèles Claude** par Bedrock,
+via des profils d'inférence `global.anthropic.<modèle>` (prix identiques à l'API Anthropic ; le profil `eu.` coûte
++10 %).
+
+**Décision.**
+1. **Bedrock est un second canal d'accès au même fournisseur**, pas un second LLM : même famille de modèles, même
+   format de messages, mêmes identifiants servis. Cela **ne contredit pas** l'exclusion du « support multi-LLM
+   runtime » d'ADR-011 : aucun autre modèle (OpenAI, Mistral…) n'entre par ce canal.
+2. **Provider Independence conservée** : le domaine ne voit toujours que `AIProvider` et `AiAgentProvider`. Un
+   aiguillage (`@Primary`) choisit le canal ; le transport Bedrock réutilise la sérialisation et la lecture
+   Anthropic existantes et ne fait qu'adapter l'enveloppe (URL, signature SigV4, champs non supportés, flux
+   `vnd.amazon.eventstream`).
+3. **Modes** `off` / `auto` (défaut) / `bedrock`, disjoncteur de 15 min après une panne de crédit ou de clé ; un
+   client BYOK n'est **jamais** servi sur le compte AWS de la plateforme.
+4. **Capacités absentes de Bedrock** (recherche et lecture web côté serveur, Files API, repli serveur
+   `fallbacks`, diagnostic de cache, contrôle de liaison du raisonnement) : non proposées sur ce canal, jamais
+   réimplémentées (Provider-First).
+
+**Conséquences.** Deux factures fournisseur (Anthropic, AWS) ; `usage_turns.provider` dit quel canal a servi chaque
+tour. Le rapprochement de la facture AWS reste hors périmètre. Les Managed Agents (cloud Anthropic) n'ont pas
+d'équivalent Bedrock et restent sur Anthropic.
