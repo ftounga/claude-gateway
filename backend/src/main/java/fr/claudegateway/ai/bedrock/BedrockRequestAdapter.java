@@ -221,7 +221,10 @@ public final class BedrockRequestAdapter implements ClientHttpRequestInterceptor
                 }
             }
         }
-        if (content.isEmpty()) {
+        // SF-277-03 : seulement si NOUS avons vidé le message. Un message déjà vide est une consigne d'effort
+        // (`role: system`, `content: []`, `output_config`) : la remplir en ferait un message système ordinaire,
+        // que le fournisseur refuse à cette position (« role 'system' must precede… »).
+        if (removed > 0 && content.isEmpty()) {
             content.add(textBlock(SERVER_BLOCKS_OMITTED, null));
         }
         return removed;

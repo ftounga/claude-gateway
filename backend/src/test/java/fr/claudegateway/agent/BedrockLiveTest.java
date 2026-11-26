@@ -71,6 +71,26 @@ class BedrockLiveTest {
         assertThat(turn.outputTokens()).isPositive();
     }
 
+    /**
+     * SF-277-03 — un fil réel de l'Atelier : consignes d'effort (contenu vide) au milieu de la conversation. Le
+     * 26/11, le canal les remplissait d'une note et Bedrock refusait la séquence (« role 'system' must… »).
+     */
+    @Test
+    void midConversationEffortDirectivesAreAccepted() {
+        AnthropicAgentProvider agent = new AnthropicAgentProvider(channel.anthropicProperties(anthropic),
+                AgentApiFeaturesProperties.defaults(), channel.restClientBuilder(RestClient.builder()));
+        AgentTurnRequest request = new AgentTurnRequest("claude-opus-5-5", "Réponds en un mot.",
+                List.of(AgentMessage.effort("high"), AgentMessage.userText("Dis oui."),
+                        AgentMessage.assistant(List.of(new AgentContentBlock.Text("Oui."))),
+                        AgentMessage.effort("low"), AgentMessage.userText("Redis-le.")),
+                List.of(), null);
+
+        StringBuilder screen = new StringBuilder();
+        AgentTurn turn = agent.nextTurn(request, screen::append);
+
+        assertThat(turn.outputTokens()).isPositive();
+    }
+
     @Test
     void chatCompletionNonStreamedAndStreamed() {
         AnthropicProvider chat = new AnthropicProvider(channel.anthropicProperties(anthropic),

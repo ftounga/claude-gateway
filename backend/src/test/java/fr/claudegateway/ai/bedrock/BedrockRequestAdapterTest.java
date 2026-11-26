@@ -98,6 +98,25 @@ class BedrockRequestAdapterTest {
                 .isEqualTo("tool_result");
     }
 
+    /** SF-277-03 : la consigne d'effort (contenu vide + output_config) traverse le canal intacte. */
+    @Test
+    void keepsTheEffortDirectiveEmpty() throws Exception {
+        ObjectNode out = clean("""
+                {"model":"claude-opus-5-5","messages":[
+                  {"role":"user","content":[{"type":"text","text":"bonjour"}]},
+                  {"role":"system","content":[],"output_config":{"effort":"high"}},
+                  {"role":"assistant","content":[{"type":"text","text":"salut"}]},
+                  {"role":"system","content":[],"output_config":{"effort":"low"}},
+                  {"role":"user","content":[{"type":"text","text":"suite"}]}]}
+                """, List.of());
+        for (int i : new int[] {1, 3}) {
+            assertThat(out.path("messages").get(i).path("content").isArray()).isTrue();
+            assertThat(out.path("messages").get(i).path("content")).isEmpty();
+            assertThat(out.path("messages").get(i).path("output_config").path("effort").asText()).isNotBlank();
+        }
+        assertThat(out.toString()).doesNotContain(BedrockRequestAdapter.SERVER_BLOCKS_OMITTED);
+    }
+
     @Test
     void replacesFilesApiSourcesAndKeepsBase64Ones() throws Exception {
         ObjectNode out = clean("""
