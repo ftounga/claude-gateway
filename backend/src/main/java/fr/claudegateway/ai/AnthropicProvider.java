@@ -34,7 +34,10 @@ import org.springframework.web.client.RestClientException;
  * La clé est lue depuis {@link AnthropicProperties} (environnement uniquement). Si elle est absente,
  * chaque appel lève {@link AIProviderUnavailableException} (traduit en 503).</p>
  */
+// F-277 / SF-277-02 : @Fallback — l'injection par interface reçoit l'aiguillage Anthropic/Bedrock ; ce bean reste
+// injectable par son type concret (l'aiguillage le détient) et sert à l'identique quand Anthropic répond.
 @Component
+@org.springframework.context.annotation.Fallback
 public class AnthropicProvider implements AIProvider {
 
     private static final Logger log = LoggerFactory.getLogger(AnthropicProvider.class);
@@ -139,9 +142,21 @@ public class AnthropicProvider implements AIProvider {
 
             spec.body(body).exchange((clientRequest, clientResponse) -> {
                 if (clientResponse.getStatusCode().isError()) {
+                    // F-277 / SF-277-02 : la réponse d'erreur voyage en cause (statut + corps), pour que
+                    // l'aiguillage reconnaisse un crédit épuisé ou une clé refusée. Message inchangé.
+                    byte[] errorBody;
+                    try (java.io.InputStream in = clientResponse.getBody()) {
+                        errorBody = in == null ? new byte[0] : in.readAllBytes();
+                    } catch (IOException ex) {
+                        errorBody = new byte[0];
+                    }
                     throw new AIProviderException(
                             "Échec de l'appel au fournisseur IA (statut "
-                                    + clientResponse.getStatusCode().value() + ").", null);
+                                    + clientResponse.getStatusCode().value() + ").",
+                            new org.springframework.web.client.RestClientResponseException(
+                                    "Réponse d'erreur du fournisseur", clientResponse.getStatusCode(),
+                                    clientResponse.getStatusText(), clientResponse.getHeaders(), errorBody,
+                                    StandardCharsets.UTF_8));
                 }
                 readSseStream(clientResponse.getBody(), onDelta, text, usage);
                 return null;
