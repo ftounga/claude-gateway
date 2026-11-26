@@ -220,6 +220,12 @@
 			<groupId>software.amazon.awssdk</groupId>
 			<artifactId>kms</artifactId>
 		</dependency>
+		<!-- F-277 : signature SigV4 des appels Bedrock (InvokeModel), confinee a fr.claudegateway.ai.bedrock.
+		     Deja presente en transitif (Textract) ; declaree pour ne pas en dependre par accident. -->
+		<dependency>
+			<groupId>software.amazon.awssdk</groupId>
+			<artifactId>http-auth-aws</artifactId>
+		</dependency>
 
 		<dependency>
 			<groupId>com.h2database</groupId>
