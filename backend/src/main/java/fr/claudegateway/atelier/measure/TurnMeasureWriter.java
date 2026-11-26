@@ -48,9 +48,9 @@ public class TurnMeasureWriter {
                             + "prefix_divergence_index, prefix_lost_chars, prefix_divergence_cause, "
                             + "replay_cut_chars, first_cache_miss_reason, first_cache_missed_tokens, "
                             + "thinking_replayed, thinking_dropped, thinking_dropped_total, last_response_id, "
-                            + "ribbon_replayed_turns, ribbon_chars) "
+                            + "ribbon_replayed_turns, ribbon_chars, provider) "
                             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, "
-                            + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     UUID.randomUUID(), measure.userId(), measure.workspaceId(), measure.hostId(),
                     bounded(measure.model(), MAX_MODEL_CHARS),
                     Timestamp.from(measure.occurredAt()), measure.durationMs(), measure.iterations(),
@@ -72,7 +72,9 @@ public class TurnMeasureWriter {
                     provider == null ? null : provider.thinkingDroppedTotal(),
                     provider == null ? null : bounded(provider.lastResponseId(), MAX_RESPONSE_ID_CHARS),
                     ribbon == null ? null : ribbon.ribbonReplayedTurns(),
-                    ribbon == null ? null : nonNegative(ribbon.ribbonChars()));
+                    ribbon == null ? null : nonNegative(ribbon.ribbonChars()),
+                    // F-277 / SF-277-02 : le canal du dernier appel IA de ce fil (cadrage D9).
+                    fr.claudegateway.ai.failover.ServedChannel.last().name());
         } catch (RuntimeException e) {
             log.warn("Mesure du tour non enregistrée (workspace={}) : {}", measure.workspaceId(),
                     e.getMessage());

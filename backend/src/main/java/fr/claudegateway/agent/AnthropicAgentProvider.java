@@ -57,7 +57,10 @@ import fr.claudegateway.ai.AnthropicProperties;
  * <p>Le mapping fournisseur est confiné ici ; le domaine reste neutre. La clé n'est jamais
  * journalisée.</p>
  */
+// F-277 / SF-277-02 : @Fallback — l'injection par interface reçoit l'aiguillage Anthropic/Bedrock ; ce bean reste
+// injectable par son type concret (l'aiguillage le détient) et sert à l'identique quand Anthropic répond.
 @Component
+@org.springframework.context.annotation.Fallback
 public class AnthropicAgentProvider implements AiAgentProvider {
 
     private static final Logger log = LoggerFactory.getLogger(AnthropicAgentProvider.class);

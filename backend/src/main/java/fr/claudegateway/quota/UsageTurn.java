@@ -176,6 +176,15 @@ public class UsageTurn {
     @Builder.Default
     private Origin origin = Origin.GATEWAY;
 
+    /**
+     * Le canal qui a servi le tour (F-277 / SF-277-02) : {@code ANTHROPIC} (défaut, tout l'historique) ou
+     * {@code BEDROCK}.
+     */
+    @Column(name = "provider", nullable = false, length = 16, updatable = false)
+    @jakarta.persistence.Enumerated(jakarta.persistence.EnumType.STRING)
+    @Builder.Default
+    private fr.claudegateway.ai.failover.AiChannel provider = fr.claudegateway.ai.failover.AiChannel.ANTHROPIC;
+
     /** Le poste Jarvis de la dépense (F-244 / SF-244-01), {@code null} hors Jarvis. */
     @Column(name = "jarvis_part", length = 16, updatable = false)
     @jakarta.persistence.Enumerated(jakarta.persistence.EnumType.STRING)

@@ -63,6 +63,8 @@ class UsageTurnWriter {
                 .kind(kind)
                 .origin(label.origin())
                 .jarvisPart(label.jarvisPart())
+                // F-277 / SF-277-02 : le canal du dernier appel IA de ce fil (cadrage D9).
+                .provider(fr.claudegateway.ai.failover.ServedChannel.last())
                 .userId(userId)
                 .workspaceId(workspaceId)
                 .hostId(hostId)

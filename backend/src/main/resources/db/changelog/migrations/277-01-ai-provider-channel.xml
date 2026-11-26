@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-277 / SF-277-02 - QUEL CANAL A SERVI LE TOUR.
+
+      usage_turns.provider : 'ANTHROPIC' (defaut, toutes les lignes existantes) ou 'BEDROCK' (ADR-022).
+      atelier_turn_measures.provider : meme vocabulaire, nullable (lignes anterieures sans valeur).
+      Vocabulaire ferme porte par l'enum Java AiChannel : aucun texte libre n'entre.
+      Rollback : les colonnes se retirent.
+    -->
+
+    <changeSet id="277-01-usage-turns-provider" author="claude-gateway">
+        <addColumn tableName="usage_turns">
+            <column name="provider" type="varchar(16)" defaultValue="ANTHROPIC"><constraints nullable="false"/></column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="usage_turns" columnName="provider"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="277-01-turn-measures-provider" author="claude-gateway">
+        <addColumn tableName="atelier_turn_measures">
+            <column name="provider" type="varchar(16)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="atelier_turn_measures" columnName="provider"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
