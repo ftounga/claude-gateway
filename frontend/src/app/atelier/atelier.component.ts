@@ -163,6 +163,7 @@ import { handoffBlock } from './terminal/handoff-card.component';
 import { proposalBlock } from './terminal/proposal-card.component';
 import { besoinBlock } from './terminal/besoin-card.component';
 import { proofBlock } from './terminal/proof-captures.component';
+import { galleryBlock } from './terminal/gallery-block.component';
 import { audioBlock, videoBlock } from './terminal/video-block';
 import {
   compactionMarkerBlock,
@@ -2630,6 +2631,18 @@ export class AtelierComponent implements OnInit, OnDestroy {
           ];
           this.mirrorLocalSteps();
         }),
+      // UNE GALERIE D'IMAGES (F-278 / SF-278-02) : rangée comme une carte.
+      onGallery: (event) =>
+        this.zone.run(() => {
+          this.cardsOfTurn = [
+            ...this.cardsOfTurn,
+            {
+              afterSteps: this.streaming()?.steps.length ?? 0,
+              block: galleryBlock(event.toolUseId, event.gallery),
+            },
+          ];
+          this.mirrorLocalSteps();
+        }),
       // UNE VIDÉO / DES SONS PUBLIÉS (F-213 / SF-213-02) : rangés comme une carte.
       onVideo: (event) =>
         this.zone.run(() => {
@@ -4709,6 +4722,18 @@ export class AtelierComponent implements OnInit, OnDestroy {
             {
               afterSteps: this.streaming()?.steps.length ?? 0,
               block: proofBlock(event.toolUseId, event.proof),
+            },
+          ];
+          this.mirrorLocalSteps();
+        }),
+      // UNE GALERIE D'IMAGES (F-278 / SF-278-02) : rangée comme une carte.
+      onGallery: (event) =>
+        this.zone.run(() => {
+          this.cardsOfTurn = [
+            ...this.cardsOfTurn,
+            {
+              afterSteps: this.streaming()?.steps.length ?? 0,
+              block: galleryBlock(event.toolUseId, event.gallery),
             },
           ];
           this.mirrorLocalSteps();

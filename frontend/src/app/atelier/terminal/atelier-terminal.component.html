@@ -1020,6 +1020,10 @@
               @if (block.proof; as proof) {
                 <app-proof-captures [proof]="proof" [workspaceId]="projectId"></app-proof-captures>
               }
+              <!-- LA GALERIE D'IMAGES DU POSTE (F-278 / SF-278-02) : carrousel, vignettes, nom, date, légende. -->
+              @if (block.gallery; as gallery) {
+                <app-gallery-block [gallery]="gallery" [workspaceId]="projectId"></app-gallery-block>
+              }
               <!-- UNE VIDÉO / DES SONS PUBLIÉS (F-213 / SF-213-02) : lecteur sur place, chapitres, vitesse. -->
               @if (block.video; as video) {
                 <app-video-block [video]="video" [readOnly]="readOnly" [workspaceId]="projectId"
@@ -1335,6 +1339,9 @@
           }
           @if (block.proof; as proof) {
             <app-proof-captures [proof]="proof" [workspaceId]="projectId"></app-proof-captures>
+          }
+          @if (block.gallery; as gallery) {
+            <app-gallery-block [gallery]="gallery" [workspaceId]="projectId"></app-gallery-block>
           }
           @if (block.video; as video) {
             <app-video-block [video]="video" [readOnly]="readOnly" [workspaceId]="projectId"

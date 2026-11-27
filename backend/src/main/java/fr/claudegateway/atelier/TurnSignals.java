@@ -133,6 +133,11 @@ final class TurnSignals implements AtelierProgressListener {
     }
 
     @Override
+    public void onGallery(String toolUseId, fr.claudegateway.atelier.gallery.GalleryBlock gallery) {
+        delegate.onGallery(toolUseId, gallery);
+    }
+
+    @Override
     public void onVideo(String toolUseId, fr.claudegateway.videos.VideoBlock video) {
         delegate.onVideo(toolUseId, video);
     }

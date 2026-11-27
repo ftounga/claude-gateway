@@ -483,7 +483,7 @@ export interface AtelierFileDiff {
  * (`toThreadItem`) doit les rendre tels quels (F-212 / SF-212-06).
  */
 export const ATELIER_RICH_BLOCK_FIELDS = [
-  'card', 'email', 'page', 'attente', 'handoff', 'proposal', 'besoin', 'proof', 'video', 'audio',
+  'card', 'email', 'page', 'attente', 'handoff', 'proposal', 'besoin', 'proof', 'video', 'audio', 'gallery',
 ] as const;
 
 export type AtelierRichBlockField = (typeof ATELIER_RICH_BLOCK_FIELDS)[number];
@@ -955,6 +955,9 @@ export interface AtelierStreamHandlers {
   /** **Des sons publiés** (F-213 / SF-213-01). Optionnel : un backend antérieur ne l'émet pas. */
   onAudio?: (event: AtelierAudioEvent) => void;
 
+  /** **Une galerie d'images** (F-278 / SF-278-01). Optionnel : un backend antérieur ne l'émet pas. */
+  onGallery?: (event: AtelierGalleryEvent) => void;
+
   /**
    * **Les questions du tour** (F-210 / SF-210-01) : l'instantané complet, à chaque découpage ou changement
    * d'état, puis à la clôture (avec les réponses, SF-210-02). Optionnel : un backend antérieur ne l'émet pas.
@@ -1383,6 +1386,9 @@ export interface AtelierTerminalBlock {
   /** **Des sons publiés par l'agent** (F-213 / SF-213-01/02) : lecteurs compacts empilés. */
   audio?: AtelierTerminalAudio | null;
 
+  /** **Une galerie d'images du poste** (F-278 / SF-278-02) : carrousel, vignettes, nom, date, légende. */
+  gallery?: AtelierGalleryBlock | null;
+
   /**
    * **Un marqueur de flux** (F-162 / SF-162-03) : « Conversation compactée · N tours résumés » ou
    * « Détail rappelé · tour N ». Ce n'est ni une sortie de commande ni une carte — c'est une trace
@@ -1686,6 +1692,31 @@ export interface AtelierProofFile {
   lastLine: number;
   totalLines: number;
   highlights: number[];
+}
+
+/** Une image d'une galerie (F-278) : aperçu servi par `GET /api/workspaces/{id}/gallery/{id}`. */
+export interface AtelierGalleryItem {
+  id: string;
+  name: string;
+  path: string;
+  /** Date ISO (dépôt, nom du fichier) ou texte de l'agent ; `null` si inconnue. */
+  date: string | null;
+  caption: string | null;
+  width: number | null;
+  height: number | null;
+}
+
+/** **Le bloc « Galerie »** (F-278 / SF-278-01) : les images affichées et les écartées. */
+export interface AtelierGalleryBlock {
+  title: string;
+  items: AtelierGalleryItem[];
+  skipped?: { path: string; reason: string }[] | null;
+}
+
+/** Une galerie relayée au fil de l'eau (F-278 / SF-278-01). */
+export interface AtelierGalleryEvent {
+  toolUseId: string;
+  gallery: AtelierGalleryBlock;
 }
 
 /** **Le bloc « Captures de preuve »** (F-212 / SF-212-03 ; fichiers F-268). */

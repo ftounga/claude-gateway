@@ -2740,6 +2740,17 @@ public class AtelierChatService implements RelayInterruptTarget {
     }
 
     /**
+     * La galerie d'images (F-278 / SF-278-01) — par mutateur : absente (formes historiques / tests), l'outil n'est
+     * jamais donné.
+     */
+    private fr.claudegateway.atelier.gallery.GalleryService galleryService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setGalleryService(fr.claudegateway.atelier.gallery.GalleryService service) {
+        this.galleryService = service;
+    }
+
+    /**
      * Les captures de preuve (F-212 / SF-212-03) — par mutateur, comme les autres outils de la gateway :
      * absent (formes historiques / tests), l'outil n'est jamais donné.
      */
@@ -3936,6 +3947,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         java.util.Map<String, fr.claudegateway.pages.PageBlock> pagesOfTurn = new java.util.HashMap<>();
         // F-212 / SF-212-03 : les captures de preuve du tour, par appel — elles survivent au rechargement.
         java.util.Map<String, fr.claudegateway.atelier.proof.ProofBlock> proofsOfTurn = new java.util.HashMap<>();
+        java.util.Map<String, fr.claudegateway.atelier.gallery.GalleryBlock> galleriesOfTurn = new java.util.HashMap<>();
         // F-213 / SF-213-01 : les vidéos et les sons publiés pendant le tour, par appel.
         java.util.Map<String, fr.claudegateway.videos.VideoBlock> videosOfTurn = new java.util.HashMap<>();
         java.util.Map<String, fr.claudegateway.videos.AudioBlock> audiosOfTurn = new java.util.HashMap<>();
@@ -4734,6 +4746,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                     // F-212 / SF-212-03 : les captures de preuve — chaque commande passe la porte et
                     // l'invite comme un bash, puis une seule session sur le poste, rendue en images.
                     outcome = applyProofCapture(userId, workspace, callId, call, listener, deadline, proofsOfTurn);
+                } else if (fr.claudegateway.atelier.gallery.GalleryToolCatalog.isGalleryTool(call.name())) {
+                    // F-278 / SF-278-01 : la galerie d'images du poste — une lecture (politique read_file), rendue
+                    // en carrousel dans le fil ; aucune image ne revient au modèle.
+                    outcome = applyGallery(userId, workspace, callId, call, listener, deadline, galleriesOfTurn);
                 } else if (fr.claudegateway.videos.VideoToolCatalog.isRetoursTool(call.name())) {
                     // F-214 / SF-214-01 : les retours à la seconde, lus par la gateway (lecture seule, user_id).
                     outcome = applyVideoRetours(userId, workspace, call);
@@ -4954,7 +4970,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                             proofsOfTurn.get(callId),
                             // Les blocs vidéo et audio (F-213 / SF-213-01) : le lecteur y survit.
                             videosOfTurn.get(callId),
-                            audiosOfTurn.get(callId)));
+                            audiosOfTurn.get(callId),
+                            // La galerie d'images (F-278 / SF-278-01) : le carrousel y survit.
+                            galleriesOfTurn.get(callId)));
                 }
                 // F-121 / SF-121-11 — LA FILE EST CONSULTÉE ENTRE LES APPELS D'OUTILS, et plus
                 // seulement à la frontière d'itération. Une précision déposée pendant un `bash` de
@@ -6880,6 +6898,103 @@ public class AtelierChatService implements RelayInterruptTarget {
             listener.onProof(callId, captured.block());
         }
         return ToolOutcome.info(captured.modelText());
+    }
+
+    /**
+     * <b>La galerie d'images</b> (F-278 / SF-278-01) : une sélection d'images du poste ({@code images}, ou les plus
+     * récentes d'un {@code dossier}) lue par le runner existant, rangée en aperçus bornés, montrée en carrousel.
+     *
+     * <p>Chaque chemin passe la politique de lecture comme un {@code read_file} : refusé, il est écarté avec sa
+     * raison ; si l'accord est demandé, UNE seule invite couvre la galerie (cadrage D6), sauf « tout autoriser pour
+     * ce message ». Chaque lecture est tracée au journal du poste.</p>
+     */
+    private ToolOutcome applyGallery(UUID userId, Workspace workspace, String callId, AgentToolCall call,
+            AtelierProgressListener listener, long deadline,
+            java.util.Map<String, fr.claudegateway.atelier.gallery.GalleryBlock> galleriesOfTurn) {
+        if (!workspace.isRunnerTarget() || workspace.getHostId() == null || workspace.isTeamsTerminal()) {
+            return ToolOutcome.error(fr.claudegateway.atelier.gallery.GalleryToolCatalog.HOSTED_MESSAGE);
+        }
+        if (galleryService == null) {
+            return ToolOutcome.error("La galerie d'images n'est pas disponible ici. Cite les fichiers en clair.");
+        }
+        JsonNode input = call.input();
+        String title = arg(input, "titre");
+        if (title == null || title.isBlank()) {
+            return ToolOutcome.error("Donne un « titre » à la galerie.");
+        }
+        int max = fr.claudegateway.atelier.gallery.GalleryToolCatalog.MAX_IMAGES;
+        RunnerTarget runnerTarget = RunnerTargets.of(workspace);
+        List<fr.claudegateway.atelier.gallery.GalleryService.Request> requests = new ArrayList<>();
+        JsonNode list = input == null ? null : input.get("images");
+        if (list != null && list.isArray() && !list.isEmpty()) {
+            if (list.size() > max) {
+                return ToolOutcome.error("Au plus " + max + " images par galerie : fais-en plusieurs.");
+            }
+            for (JsonNode item : list) {
+                String path = item == null ? "" : item.path("chemin").asText("").strip();
+                if (!path.isEmpty()) {
+                    requests.add(new fr.claudegateway.atelier.gallery.GalleryService.Request(path,
+                            item.path("legende").asText(null), item.path("date").asText(null)));
+                }
+            }
+        } else if (input != null && !input.path("dossier").asText("").isBlank()) {
+            int count = input.path("nombre").asInt(max);
+            count = Math.max(1, Math.min(max, count));
+            fr.claudegateway.atelier.gallery.GalleryService.Listing listing = galleryService.listFolder(userId,
+                    runnerTarget, callId + "-g", input.path("dossier").asText(""), count);
+            if (listing.error() != null) {
+                return ToolOutcome.error(listing.error());
+            }
+            for (String path : listing.paths()) {
+                requests.add(new fr.claudegateway.atelier.gallery.GalleryService.Request(path, null, null));
+            }
+        }
+        if (requests.isEmpty()) {
+            return ToolOutcome.error("Donne les « images » (avec leur « chemin ») ou un « dossier ».");
+        }
+        // La politique de lecture, chemin par chemin ; une seule invite pour toute la galerie.
+        List<fr.claudegateway.atelier.gallery.GalleryService.Request> allowed = new ArrayList<>();
+        List<fr.claudegateway.atelier.gallery.GalleryBlock.Skipped> refused = new ArrayList<>();
+        boolean needsAsk = false;
+        for (int i = 0; i < requests.size(); i++) {
+            String path = requests.get(i).path();
+            AgentToolCall readCall = new AgentToolCall(callId + "-i" + (i + 1), "read_file",
+                    TASK_MAPPER.createObjectNode().put("path", path));
+            PermissionEffect effect = resolveEffect(userId, workspace, "read_file", readCall);
+            if (effect == PermissionEffect.DENY) {
+                runnerAuditService.recordDenied(userId, runnerTarget, readCall.id(), "read_file",
+                        shorten(path, AUDIT_TARGET_CHARS), RunnerAuditOutcome.DENIED);
+                refused.add(new fr.claudegateway.atelier.gallery.GalleryBlock.Skipped(path, "lecture refusée"));
+                continue;
+            }
+            needsAsk |= effect == PermissionEffect.ASK;
+            allowed.add(requests.get(i));
+        }
+        if (allowed.isEmpty()) {
+            return ToolOutcome.error("Lecture refusée pour toutes les images : " + denyRuleMessage("read_file"));
+        }
+        if (needsAsk && !blanketAllowedTurns.contains(turnKey(userId, workspace))) {
+            RunnerConfirmationGate.Outcome decision = askPermission(userId, workspace.getId(), callId, "read_file",
+                    shorten("Afficher " + allowed.size() + (allowed.size() > 1 ? " images" : " image") + " : "
+                            + allowed.get(0).path() + (allowed.size() > 1 ? " …" : ""), AUDIT_TARGET_CHARS),
+                    listener);
+            if (!decision.decision().allows()) {
+                runnerAuditService.recordDenied(userId, runnerTarget, callId, "read_file",
+                        shorten(allowed.get(0).path(), AUDIT_TARGET_CHARS),
+                        decision.decision() == RunnerConfirmationGate.Decision.TIMEOUT
+                                ? RunnerAuditOutcome.TIMEOUT
+                                : RunnerAuditOutcome.DENIED);
+                return ToolOutcome.error("Galerie : " + deniedMessage(decision) + " Aucune image n'a été lue.");
+            }
+        }
+        fr.claudegateway.atelier.gallery.GalleryService.Result result = galleryService.publish(userId,
+                workspace.getId(), runnerTarget, callId, title, allowed, refused, deadline);
+        if (result.error()) {
+            return ToolOutcome.error(result.modelText());
+        }
+        galleriesOfTurn.put(callId, result.block());
+        listener.onGallery(callId, result.block());
+        return ToolOutcome.info(result.modelText());
     }
 
     /**
@@ -11097,6 +11212,11 @@ public class AtelierChatService implements RelayInterruptTarget {
             // « mettez à jour le poste ».
             if (proofCaptureService != null && !workspace.isTeamsTerminal()) {
                 tools.add(fr.claudegateway.atelier.proof.ProofToolCatalog.tool());
+            }
+            // F-278 / SF-278-01 : la galerie d'images, sur tout poste hors terminal Teams (propriété stable : le
+            // préfixe caché reste intact) ; elle n'utilise que read_file_bytes, connu de tout runner récent.
+            if (galleryService != null && !workspace.isTeamsTerminal()) {
+                tools.add(fr.claudegateway.atelier.gallery.GalleryToolCatalog.tool());
             }
             tools.add(new AgentTool("bash", bashDesc.toString(),
                     Map.of("type", "object", "properties", bashProps, "required", List.of("command"))));

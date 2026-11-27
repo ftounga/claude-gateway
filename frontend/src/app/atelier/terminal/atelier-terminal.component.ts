@@ -198,6 +198,7 @@ import { HandoffCardComponent, HandoffOriginComponent } from './handoff-card.com
 import { ProposalCardComponent } from './proposal-card.component';
 import { BesoinCardComponent } from './besoin-card.component';
 import { ProofCapturesComponent, proofClipboardImages } from './proof-captures.component';
+import { GalleryBlockComponent } from './gallery-block.component';
 import { ClipboardImage } from '../../shared/message-clipboard';
 import { VideoBlockComponent } from './video-block.component';
 import { VideoReviewSend } from '../../shared/videos/video-review.component';
@@ -310,7 +311,7 @@ export function plumeErrorMessage(failure: HttpErrorResponse | null | undefined)
     TerminalActionsPanelComponent, TerminalAttentesBandComponent, TerminalMorningBandComponent, TerminalFilComponent,
     AttenteCardComponent,
     TerminalQuickActionsComponent,
-    HandoffCardComponent, HandoffOriginComponent, ProposalCardComponent, BesoinCardComponent, ProofCapturesComponent, VideoBlockComponent, AudioBlockComponent,
+    HandoffCardComponent, HandoffOriginComponent, ProposalCardComponent, BesoinCardComponent, ProofCapturesComponent, GalleryBlockComponent, VideoBlockComponent, AudioBlockComponent,
     TerminalJourneyChipComponent, TerminalJourneyStripComponent, TerminalJourneyChantiersComponent,
     TerminalChantiersBoardComponent,
     TerminalHandComponent,

@@ -44,6 +44,7 @@ import { handoffBlock } from './handoff-card.component';
 import { proposalBlock } from './proposal-card.component';
 import { besoinBlock } from './besoin-card.component';
 import { proofBlock } from './proof-captures.component';
+import { galleryBlock } from './gallery-block.component';
 import { audioBlock, videoBlock } from './video-block';
 
 /**
@@ -375,6 +376,7 @@ export class TerminalLanePaneComponent implements OnChanges, OnDestroy {
       onPage: (event) => live(() => this.addRich(pageBlock(event.toolUseId, event.page))),
       onProposal: (event) => live(() => this.addRich(proposalBlock(event.toolUseId, event.proposal))),
       onProof: (event) => live(() => this.addRich(proofBlock(event.toolUseId, event.proof))),
+      onGallery: (event) => live(() => this.addRich(galleryBlock(event.toolUseId, event.gallery))),
       onVideo: (event) => live(() => this.addRich(videoBlock(event.toolUseId, event.video))),
       onAudio: (event) => live(() => this.addRich(audioBlock(event.toolUseId, event.audio))),
       onAppRequest: (event) => live(() => this.addRich(besoinBlock(event.toolUseId, event.besoin))),

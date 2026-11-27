@@ -2,7 +2,9 @@ import { DOCUMENT } from '@angular/common';
 import { Injectable, NgZone, inject, signal } from '@angular/core';
 
 /** Clé locale du réglage « Voile discret » (F-259 / SF-259-01) : propre à l'appareil. */
-export const VEIL_SETTINGS_KEY = 'cg.veil';
+// SF-259-02 : clé v2 — le voile devient actif par défaut ; les réglages d'avant (enregistrés quand il était désactivé
+// par défaut) sont ignorés une fois, pour qu'il soit actif partout.
+export const VEIL_SETTINGS_KEY = 'cg.veil.v2';
 
 /** Délais d'inactivité proposés, en minutes (mini-spec : 1, 2, 5, 10 ; 2 par défaut). */
 export const VEIL_DELAYS_MIN: readonly number[] = [1, 2, 5, 10];
@@ -28,7 +30,8 @@ export interface VeilSettings {
   delayMin: number;
 }
 
-export const DEFAULT_VEIL_SETTINGS: VeilSettings = { enabled: false, delayMin: 2 };
+/** SF-259-02 (décision PO du 2026-11-27) : actif par défaut sur tout appareil. */
+export const DEFAULT_VEIL_SETTINGS: VeilSettings = { enabled: true, delayMin: 2 };
 
 /** Lit le réglage stocké ; toute valeur illisible ou hors liste retombe sur le défaut. */
 export function readVeilSettings(raw: string | null): VeilSettings {
@@ -38,7 +41,7 @@ export function readVeilSettings(raw: string | null): VeilSettings {
   try {
     const parsed = JSON.parse(raw) as Partial<VeilSettings>;
     return {
-      enabled: parsed.enabled === true,
+      enabled: parsed.enabled !== false,
       delayMin: VEIL_DELAYS_MIN.includes(Number(parsed.delayMin)) ? Number(parsed.delayMin) : DEFAULT_VEIL_SETTINGS.delayMin,
     };
   } catch {
@@ -56,7 +59,7 @@ const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchsta
  * au retrait, le titre et l'icône que la page veut (même changés entre-temps) sont rétablis.
  *
  * <p>Actif seulement là où un écran le monte (coquille et Jarvis), via {@link attach}/{@link detach}, et seulement
- * si le réglage de l'appareil est activé (désactivé par défaut).</p>
+ * si le réglage de l'appareil est activé (activé par défaut depuis SF-259-02).</p>
  */
 @Injectable({ providedIn: 'root' })
 export class DiscreetVeilService {
@@ -291,7 +294,8 @@ export class DiscreetVeilService {
     try {
       return readVeilSettings(this.doc.defaultView?.localStorage.getItem(VEIL_SETTINGS_KEY) ?? null);
     } catch {
-      return { ...DEFAULT_VEIL_SETTINGS };
+      // Stockage inaccessible : le réglage ne pourrait pas être désactivé, donc le voile reste éteint.
+      return { ...DEFAULT_VEIL_SETTINGS, enabled: false };
     }
   }
 

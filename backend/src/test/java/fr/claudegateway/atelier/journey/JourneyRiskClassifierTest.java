@@ -202,6 +202,15 @@ class JourneyRiskClassifierTest {
     }
 
     @Test
+    @DisplayName("F-278 : la galerie d'images est une LECTURE")
+    void galleryIsARead() {
+        ObjectNode input = new ObjectMapper().createObjectNode();
+        input.put("titre", "Captures").putArray("images").addObject().put("chemin", ".atelier/entrees/a.png");
+        assertThat(JourneyRiskClassifier.classify("galerie_images", input)).isEqualTo(Risk.LECTURE);
+        assertThat(JourneyRiskClassifier.classify("galerie_images", null)).isEqualTo(Risk.LECTURE);
+    }
+
+    @Test
     @DisplayName("F-268 : une preuve qui ne montre que des fichiers est une LECTURE ; une commande fixe la classe")
     void fileProofIsARead() {
         ObjectMapper mapper = new ObjectMapper();
