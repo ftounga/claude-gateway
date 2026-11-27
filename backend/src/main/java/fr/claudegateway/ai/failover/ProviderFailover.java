@@ -58,6 +58,8 @@ public class ProviderFailover {
     private final Clock clock;
     /** Fin d'ouverture du disjoncteur ; {@code null} = fermé. */
     private volatile Instant openUntil;
+    /** Dernière cause d'ouverture du disjoncteur sur ce pod (F-279 / SF-279-01) ; {@code null} = jamais ouvert. */
+    private volatile Cause lastCause;
 
     public ProviderFailover(BedrockProperties properties, Clock clock) {
         this.properties = properties;
@@ -72,6 +74,24 @@ public class ProviderFailover {
 
     public BedrockProperties.Mode mode() {
         return properties.failoverMode();
+    }
+
+    /**
+     * Dernière cause d'ouverture du disjoncteur sur ce pod, ou vide. Reste connue après la fermeture : c'est
+     * {@link #circuitOpen()} qui dit si elle joue encore (F-279 / SF-279-01).
+     */
+    public Optional<Cause> lastCause() {
+        return Optional.ofNullable(lastCause);
+    }
+
+    /** Durée d'ouverture du disjoncteur (F-279 / SF-279-01 : fenêtre du « dernier tour récent »). */
+    public java.time.Duration openDuration() {
+        return properties.openDuration();
+    }
+
+    /** Le canal qui servirait un appel hébergé à cet instant, sur ce pod (F-279 / SF-279-01). */
+    public AiChannel currentChannel() {
+        return currentRoute();
     }
 
     /** Route d'un appel hébergé à cet instant (pour {@link ServedChannel}). */
@@ -152,6 +172,7 @@ public class ProviderFailover {
 
     private void open(Cause cause, boolean reopening) {
         openUntil = clock.instant().plus(properties.openDuration());
+        lastCause = cause;
         log.warn("Disjoncteur IA {} (cause={}) : appels hébergés servis par Bedrock pendant {} min.",
                 reopening ? "rouvert" : "ouvert", cause, properties.openMinutes());
     }

@@ -15,4 +15,11 @@ public interface ProviderCostReportRepository extends JpaRepository<ProviderCost
     List<ProviderCostReport> findByDayGreaterThanEqualAndDayLessThanOrderByDayAsc(LocalDate from, LocalDate to);
 
     Optional<ProviderCostReport> findFirstByOrderByFetchedAtDesc();
+
+    /** La dernière relecture d'une famille de lignes (F-279 : Anthropic {@code COST}/{@code KEY}, ou {@code BEDROCK}). */
+    Optional<ProviderCostReport> findFirstByKindInOrderByFetchedAtDesc(java.util.Collection<String> kinds);
+
+    /** Les lignes d'une famille sur {@code [from, to)} (F-279 / SF-279-01). */
+    List<ProviderCostReport> findByKindAndDayGreaterThanEqualAndDayLessThanOrderByDayAsc(String kind, LocalDate from,
+            LocalDate to);
 }

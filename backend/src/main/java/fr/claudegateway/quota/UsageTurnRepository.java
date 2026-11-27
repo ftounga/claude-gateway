@@ -207,6 +207,23 @@ public interface UsageTurnRepository extends JpaRepository<UsageTurn, UUID> {
             """)
     List<Object[]> costsBetween(@Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to);
 
+    /**
+     * Les coûts calculés des modèles <b>Claude</b> de la PLATEFORME sur {@code [from, to)}, avec leur canal —
+     * {@code [occurredAt, providerCostUsd, provider]} — pour les deux jauges Anthropic / Bedrock (F-279 / SF-279-01).
+     * La voix et l'audio (ElevenLabs, TTS/STT) n'ont pas de modèle Claude : ils en sont exclus. Agrégat de plateforme,
+     * lu par l'administrateur seul ; le service ne rend que des sommes.
+     */
+    @Query("""
+            select t.occurredAt, t.providerCostUsd, t.provider from UsageTurn t
+            where t.occurredAt >= :from and t.occurredAt < :to and t.providerCostUsd is not null
+              and lower(t.model) like '%claude%'
+            """)
+    List<Object[]> claudeCostsBetween(@Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to);
+
+    /** Le dernier tour Claude de la plateforme depuis {@code since} : son canal et son heure (F-279 / SF-279-01). */
+    java.util.Optional<UsageTurn> findFirstByOccurredAtGreaterThanEqualAndModelContainingIgnoreCaseOrderByOccurredAtDesc(
+            OffsetDateTime since, String model);
+
     /** Tours d'un utilisateur, les plus récents d'abord (diagnostic et tests ; isolation `user_id`). */
     List<UsageTurn> findByUserIdOrderByOccurredAtDesc(UUID userId);
 

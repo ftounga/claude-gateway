@@ -37,14 +37,23 @@ public interface BedrockSigner {
     }
 
     static BedrockSigner aws(String region, AwsCredentialsProvider credentialsProvider) {
+        return aws(region, "bedrock", credentialsProvider);
+    }
+
+    /**
+     * Même signataire pour un autre service AWS (F-279 / SF-279-01 : Cost Explorer, service {@code ce},
+     * région {@code us-east-1}).
+     */
+    static BedrockSigner aws(String region, String service, AwsCredentialsProvider credentialsProvider) {
         AwsV4HttpSigner signer = AwsV4HttpSigner.create();
         return (uri, headers, body) -> {
             AwsCredentials credentials;
             try {
                 credentials = credentialsProvider.resolveCredentials();
             } catch (RuntimeException ex) {
-                throw new AIProviderUnavailableException(
-                        "Le canal Bedrock n'est pas configuré (identifiants AWS introuvables).");
+                throw new AIProviderUnavailableException("bedrock".equals(service)
+                        ? "Le canal Bedrock n'est pas configuré (identifiants AWS introuvables)."
+                        : "Identifiants AWS introuvables.");
             }
             SdkHttpRequest request = SdkHttpRequest.builder()
                     .method(SdkHttpMethod.POST)
@@ -55,7 +64,7 @@ public interface BedrockSigner {
                     .identity(credentials)
                     .request(request)
                     .payload(ContentStreamProvider.fromByteArray(body))
-                    .putProperty(AwsV4HttpSigner.SERVICE_SIGNING_NAME, "bedrock")
+                    .putProperty(AwsV4HttpSigner.SERVICE_SIGNING_NAME, service)
                     .putProperty(AwsV4HttpSigner.REGION_NAME, region));
             return signed.request().headers();
         };

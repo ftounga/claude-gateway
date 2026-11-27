@@ -1236,6 +1236,15 @@ app:
       # F-224 / SF-224-06 : identifiant (apikey_...) de la cle API de la passerelle chez Anthropic — un IDENTIFIANT,
       # pas la cle. Pose : l'ecran compare la passerelle a SA cle (perimetre egal). Vide : comparaison a l'organisation.
       gateway-key-id: ${APP_ANTHROPIC_GATEWAY_KEY_ID:}
+    # F-279 / SF-279-01 — La facture AWS Bedrock lue dans Cost Explorer (GetCostAndUsage, us-east-1, SigV4/IRSA),
+    # chaque matin avec la facture Anthropic. Droit requis sur le role IRSA : ce:GetCostAndUsage (voir
+    # docs/ops/bedrock-second-canal.md). Sans le droit : la jauge Bedrock reste sur l'estimation et l'ecran le dit.
+    bedrock-billing:
+      enabled: ${APP_COST_BEDROCK_BILLING_ENABLED:true}
+      endpoint: ${APP_COST_BEDROCK_BILLING_ENDPOINT:https://ce.us-east-1.amazonaws.com}
+    # F-279 : un jour est recale sur la facture s'il est clos (avant-hier ou plus ancien) ; sinon il est estime.
+    providers:
+      settle-days: ${APP_COST_PROVIDERS_SETTLE_DAYS:2}
     provider:
       pricing-version: ${APP_COST_PRICING_VERSION:2026-10-02}
       # Tarifs de repli quand le modele servi est absent de la grille. Un probleme de tarif ne fait
