@@ -262,6 +262,17 @@ public interface AtelierProgressListener {
     }
 
     /**
+     * <b>Une galerie d'images vient d'être rangée</b> (F-278 / SF-278-01) : le bloc « Galerie » (carrousel), admis
+     * dans tout terminal de poste.
+     *
+     * @param toolUseId identifiant de l'appel {@code galerie_images}
+     * @param gallery   les images rangées et leurs métadonnées — jamais les octets
+     */
+    default void onGallery(String toolUseId, fr.claudegateway.atelier.gallery.GalleryBlock gallery) {
+        // Aucun relais : le bloc reste dans la transcription du tour.
+    }
+
+    /**
      * <b>Une vidéo vient d'être publiée</b> (F-213 / SF-213-01) : le bloc « vidéo », admis dans tout terminal.
      *
      * @param toolUseId identifiant de l'appel {@code video_publier}

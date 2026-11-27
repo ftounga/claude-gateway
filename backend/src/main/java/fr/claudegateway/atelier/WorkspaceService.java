@@ -721,6 +721,8 @@ public class WorkspaceService {
         // Les CAPTURES DE PREUVE (F-212 / SF-212-03) : elles s'en vont avec le terminal, hors du
         // préfixe des fichiers de projet ; leurs lignes suivent par cascade sur workspace_id.
         storage.deletePrefix(fr.claudegateway.atelier.proof.ProofCaptureService.prefixOf(userId, id));
+        // F-278 / SF-278-01 : les APERÇUS DES GALERIES s'en vont avec le terminal (aucune ligne en base).
+        storage.deletePrefix(fr.claudegateway.atelier.gallery.GalleryService.prefixOf(userId, id));
         // F-237 / SF-237-03 : les SCHÉMAS CONSERVÉS du sujet, hors du préfixe des fichiers de projet ; leurs lignes
         // suivent par cascade sur workspace_id.
         storage.deletePrefix(fr.claudegateway.diagrams.DiagramRenderService.prefixOf(userId, id));
