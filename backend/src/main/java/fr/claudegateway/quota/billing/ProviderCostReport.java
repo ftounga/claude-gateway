@@ -38,6 +38,9 @@ public class ProviderCostReport {
     /** La consommation du jour d'une clé API. */
     public static final String KEY = "KEY";
 
+    /** Le montant facturé du jour par AWS pour Bedrock, tout le compte (F-279 / SF-279-01, Cost Explorer). */
+    public static final String BEDROCK = "BEDROCK";
+
     @Id
     @GeneratedValue
     @UuidGenerator

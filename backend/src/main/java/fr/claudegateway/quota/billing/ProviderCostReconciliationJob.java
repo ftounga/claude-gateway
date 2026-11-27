@@ -6,7 +6,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * <b>La relecture quotidienne de la facture</b> (F-224 / SF-224-02) : les 31 derniers jours, chaque matin. Inactive
+ * <b>La relecture quotidienne de la facture</b> (F-224 / SF-224-02 ; Bedrock depuis F-279 / SF-279-01) : les 31 derniers jours, chaque matin. Inactive
  * sans clé d'administration. Idempotente (chaque ligne jour × clé est remplacée) : deux pods qui la jouent ne
  * doublent rien. Une panne du fournisseur est journalisée par son type, jamais avec la clé.
  */
@@ -16,9 +16,11 @@ public class ProviderCostReconciliationJob {
     private static final Logger log = LoggerFactory.getLogger(ProviderCostReconciliationJob.class);
 
     private final ProviderCostReconciliationService service;
+    private final ProviderSpendService spend;
 
-    public ProviderCostReconciliationJob(ProviderCostReconciliationService service) {
+    public ProviderCostReconciliationJob(ProviderCostReconciliationService service, ProviderSpendService spend) {
         this.service = service;
+        this.spend = spend;
     }
 
     @Scheduled(cron = "${app.cost.anthropic-admin.cron:0 20 6 * * *}")
@@ -27,6 +29,13 @@ public class ProviderCostReconciliationJob {
             service.refresh(ProviderCostReconciliationService.MAX_DAYS);
         } catch (RuntimeException e) {
             log.warn("Relecture de la facture du fournisseur en échec ({})", e.getClass().getSimpleName());
+        }
+        // F-279 / SF-279-01 : la facture AWS Bedrock, dans son propre bloc — une panne d'un fournisseur n'empêche
+        // pas de relire l'autre.
+        try {
+            spend.refreshBedrock();
+        } catch (RuntimeException e) {
+            log.warn("Relecture de la facture AWS Bedrock en échec ({})", e.getClass().getSimpleName());
         }
     }
 }

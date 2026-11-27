@@ -265,4 +265,19 @@ class ProviderFailoverTest {
         assertThat(ServedChannel.last()).isEqualTo(AiChannel.BEDROCK);
         assertThat(Optional.of(f.currentRoute())).contains(AiChannel.BEDROCK);
     }
+
+    // ---------------------------------------------------------------- F-279 / SF-279-01
+
+    @Test
+    void remembersTheLastCauseAndTellsTheCurrentChannel() {
+        ProviderFailover f = failover("auto");
+        assertThat(f.lastCause()).isEmpty();
+        assertThat(f.currentChannel()).isEqualTo(AiChannel.ANTHROPIC);
+        call(f, anthropicFailing(failure(400, CREDIT_BODY)));
+        assertThat(f.lastCause()).contains(ProviderFailover.Cause.CREDIT);
+        assertThat(f.currentChannel()).isEqualTo(AiChannel.BEDROCK);
+        assertThat(f.openDuration()).isEqualTo(BedrockProperties.defaults().openDuration());
+        assertThat(failover("bedrock").currentChannel()).isEqualTo(AiChannel.BEDROCK);
+        assertThat(failover("off").currentChannel()).isEqualTo(AiChannel.ANTHROPIC);
+    }
 }

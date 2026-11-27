@@ -149,7 +149,7 @@ public class ProviderCostReconciliationService {
         for (ProviderCostReport r : reports.findByDayGreaterThanEqualAndDayLessThanOrderByDayAsc(from, to)) {
             if (ProviderCostReport.COST.equals(r.getKind())) {
                 billed.put(r.getDay(), r.getAmountUsd());
-            } else {
+            } else if (ProviderCostReport.KEY.equals(r.getKind())) {
                 keys.computeIfAbsent(r.getDay(), d -> new ArrayList<>()).add(new Key(r.getApiKeyId(),
                         r.getApiKeyLabel(), r.getAmountUsd(), r.getInputTokens(), r.getOutputTokens(),
                         eur(r.getAmountUsd()), isGatewayKey(r.getApiKeyId())));
@@ -201,7 +201,7 @@ public class ProviderCostReconciliationService {
                     gatewayKeyEur, gatewayGapShown ? gatewayKey.subtract(calc) : null,
                     gatewayGapShown ? gatewayKeyEur.subtract(calcEur) : null));
         }
-        OffsetDateTime last = reports.findFirstByOrderByFetchedAtDesc().map(ProviderCostReport::getFetchedAt)
+        OffsetDateTime last = reports.findFirstByKindInOrderByFetchedAtDesc(List.of(ProviderCostReport.COST, ProviderCostReport.KEY)).map(ProviderCostReport::getFetchedAt)
                 .orElse(null);
         return new Reconciliation(billing.configured(), billing.configured() ? null : SETUP_HINT, last,
                 billedTotal, calculatedTotal, List.copyOf(result), pricing.usdToEur(), billedTotalEur,

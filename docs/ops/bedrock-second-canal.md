@@ -57,6 +57,49 @@ Aucun droit Marketplace n'est requis : l'accès aux modèles Anthropic est déj�
 ⚠️ Si le rôle passe un jour sous Terraform avec `aws_iam_role_policies_exclusive`, il faut reporter cette politique
 dans Terraform, sinon elle sera retirée.
 
+## La facture AWS Bedrock (F-279) — droit Cost Explorer
+
+Les jauges « Anthropic » et « AWS Bedrock » (`GET /api/admin/cost/providers`, écran Coût réel et barre du terminal)
+recalent la jauge Bedrock sur la facture AWS lue dans **Cost Explorer** (`GetCostAndUsage`, région `us-east-1`,
+`UnblendedCost` quotidien des services dont le nom contient « Bedrock », tout le compte). Relecture chaque matin
+à 6 h 20 avec la facture Anthropic, ou sur « Relire maintenant ». Un appel coûte 0,01 $.
+
+**État au 2026-11-27 : le droit n'est PAS posé.** Le rôle `claude-gateway-backend-staging-irsa` n'a que quatre politiques
+inline (bedrock, kms-byok, s3, textract). Tant qu'il manque, la jauge Bedrock reste sur l'estimation de la passerelle
+et l'écran affiche « Recalage indisponible : droit ce:GetCostAndUsage manquant ».
+
+Politique à poser (`ce-read-policy.json`) :
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {"Sid": "CostExplorerReadBedrockBill", "Effect": "Allow",
+     "Action": ["ce:GetCostAndUsage"],
+     "Resource": "*"}
+  ]
+}
+```
+
+Commande (à lancer par le PO ou un opérateur ; la livraison ne la lance pas) :
+
+```bash
+AWS_PROFILE=legalcase-terraform aws iam put-role-policy --role-name claude-gateway-backend-staging-irsa \
+  --policy-name claude-gateway-backend-staging-cost-explorer-policy --policy-document file://ce-read-policy.json
+```
+
+Aucun redémarrage n'est nécessaire : les identifiants IRSA sont relus à chaque appel. Ensuite, « Relire maintenant »
+sur l'écran Coût réel, ou attendre 6 h 20. Vérification :
+
+```sql
+SELECT report_day, amount_usd, fetched_at FROM provider_cost_reports WHERE kind = 'BEDROCK' ORDER BY report_day DESC;
+```
+
+Coupe-circuit : `APP_COST_BEDROCK_BILLING_ENABLED=false` (aucun appel AWS, la jauge reste estimée).
+Ce qui reste inexact, écrit à l'écran : décalage d'environ un jour (les deux derniers jours sont estimés,
+`APP_COST_PROVIDERS_SETTLE_DAYS`), montants hors TVA, conversion $→€ au taux de la passerelle (AWS facture en EUR à son
+propre taux), compte AWS partagé avec legalCase.
+
 ## Vérifier en production
 
 - **Quel canal a servi** :

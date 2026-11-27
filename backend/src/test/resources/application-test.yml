@@ -18,6 +18,10 @@ app:
   ai:
     bedrock:
       mode: "off"
+  # F-279 : aucune relecture Cost Explorer en tests (aucun appel AWS) ; les tests doublent BedrockBillingReport.
+  cost:
+    bedrock-billing:
+      enabled: false
   # F-110 : travailleur de la file des courriels du client désactivé en tests ; ClientMailOutbox.runOnce() est
   # appelé directement.
   client-mail:
