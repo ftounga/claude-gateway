@@ -743,6 +743,12 @@ public class AtelierChatController {
                     turn.publish("proof", new StreamProof(toolUseId, proof));
                 }
 
+                /** La galerie d'images (F-278 / SF-278-01), au fil de l'eau. */
+                @Override
+                public void onGallery(String toolUseId, fr.claudegateway.atelier.gallery.GalleryBlock gallery) {
+                    turn.publish("gallery", new StreamGallery(toolUseId, gallery));
+                }
+
                 /** La vidéo publiée (F-213 / SF-213-01), au fil de l'eau. */
                 @Override
                 public void onVideo(String toolUseId, fr.claudegateway.videos.VideoBlock video) {
@@ -1046,6 +1052,10 @@ public class AtelierChatController {
 
     /** Les captures de preuve relayées au fil de l'eau (F-212 / SF-212-03), rejouées par la transcription. */
     record StreamProof(String toolUseId, fr.claudegateway.atelier.proof.ProofBlock proof) {
+    }
+
+    /** La galerie d'images relayée au fil de l'eau (F-278 / SF-278-01), rejouée par la transcription. */
+    record StreamGallery(String toolUseId, fr.claudegateway.atelier.gallery.GalleryBlock gallery) {
     }
 
     /** La vidéo publiée relayée au fil de l'eau (F-213 / SF-213-01), rejouée par la transcription. */

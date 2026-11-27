@@ -73,7 +73,28 @@ public record AtelierTurnReport(List<Object> blocks, int omittedBlocks, long inp
             fr.claudegateway.atelier.besoin.AppRequestBlock besoin,
             fr.claudegateway.atelier.proof.ProofBlock proof,
             fr.claudegateway.videos.VideoBlock video,
-            fr.claudegateway.videos.AudioBlock audio) {
+            fr.claudegateway.videos.AudioBlock audio,
+            fr.claudegateway.atelier.gallery.GalleryBlock gallery) {
+
+        /**
+         * Forme d'avant F-278 : aucune galerie. Le bloc (F-278 / SF-278-01) n'est porté que par l'appel
+         * {@code galerie_images} ; un relevé ancien (sans le champ) se relit tel quel.
+         */
+        public Block(String tool, String command, String toolUseId, String threadId, String output,
+                boolean hasOutput, boolean error, boolean expanded,
+                fr.claudegateway.teams.block.TeamsBlockCard card,
+                fr.claudegateway.mail.ClientMailReceipt email,
+                fr.claudegateway.pages.PageBlock page,
+                fr.claudegateway.atelier.actions.AttenteBlock attente,
+                SubjectHandoff handoff,
+                fr.claudegateway.atelier.proposal.GovernanceProposalBlock proposal,
+                fr.claudegateway.atelier.besoin.AppRequestBlock besoin,
+                fr.claudegateway.atelier.proof.ProofBlock proof,
+                fr.claudegateway.videos.VideoBlock video,
+                fr.claudegateway.videos.AudioBlock audio) {
+            this(tool, command, toolUseId, threadId, output, hasOutput, error, expanded, card, email, page,
+                    attente, handoff, proposal, besoin, proof, video, audio, null);
+        }
 
         /**
          * Forme d'avant F-213 : ni vidéo ni son. Les blocs (F-213 / SF-213-01) ne sont portés que par les appels
@@ -90,7 +111,7 @@ public record AtelierTurnReport(List<Object> blocks, int omittedBlocks, long inp
                 fr.claudegateway.atelier.besoin.AppRequestBlock besoin,
                 fr.claudegateway.atelier.proof.ProofBlock proof) {
             this(tool, command, toolUseId, threadId, output, hasOutput, error, expanded, card, email, page,
-                    attente, handoff, proposal, besoin, proof, null, null);
+                    attente, handoff, proposal, besoin, proof, null, null, null);
         }
 
         /**
@@ -298,7 +319,9 @@ public record AtelierTurnReport(List<Object> blocks, int omittedBlocks, long inp
                 block.proof(),
                 // Les blocs vidéo et audio (F-213 / SF-213-01) aussi.
                 block.video(),
-                block.audio());
+                block.audio(),
+                // La galerie d'images (F-278 / SF-278-01) aussi.
+                block.gallery());
     }
 
     /**
