@@ -8,6 +8,7 @@ import {
   AdminCostPeriod,
   AdminCostSummary,
   CostReconciliation,
+  ProviderSpend,
 } from './admin-cost.models';
 
 /**
@@ -39,6 +40,16 @@ export class AdminCostService {
     return this.http.post<CostReconciliation>('/api/admin/cost/reconciliation/refresh', {}, {
       params: new HttpParams().set('days', days),
     });
+  }
+
+  /** Les deux pots du mois : Anthropic et AWS Bedrock (F-279 / SF-279-01). */
+  providers(): Observable<ProviderSpend> {
+    return this.http.get<ProviderSpend>('/api/admin/cost/providers');
+  }
+
+  /** [Relire maintenant] : la passerelle relit la facture Anthropic et la facture AWS. */
+  refreshProviders(): Observable<ProviderSpend> {
+    return this.http.post<ProviderSpend>('/api/admin/cost/providers/refresh', {});
   }
 
   /** Les alertes en cours de la semaine. */

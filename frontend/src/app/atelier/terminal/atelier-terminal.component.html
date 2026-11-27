@@ -56,6 +56,9 @@
            pour changer de mode à tout moment. Toujours visible (mobile compris) : c'est un état. -->
       <app-terminal-journey-chip [journey]="journey()" [busy]="journeyBusy()" (modeChange)="onJourneyMode($event)" (showChantiers)="onShowChantiers()"></app-terminal-journey-chip>
       <app-weekly-budget [hostId]="hostId" [compact]="true"></app-weekly-budget>
+      <!-- F-279 / SF-279-02 — ce que le mois a coûté chez Anthropic et chez AWS Bedrock, et le canal en service.
+           Administrateur seul : rien sinon. -->
+      <app-provider-gauges></app-provider-gauges>
       <!-- F-143 / SF-143-01 — et ce que CE PROJET a coûté : la semaine, puis le total. -->
       <app-project-cost [projectId]="projectId" [compact]="true"></app-project-cost>
       <!-- Pastille de moteur (F-39 / SF-39-08, D1) : dit **où le code s'exécute**, jamais un nom de

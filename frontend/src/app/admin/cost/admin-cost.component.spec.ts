@@ -48,13 +48,14 @@ describe('AdminCostComponent', () => {
 
   function setup(): void {
     service = jasmine.createSpyObj<AdminCostService>('AdminCostService', [
-      'summary', 'alerts', 'setDefaultBudget', 'setHostBudget', 'clearHostBudget', 'reconciliation',
-      'refreshReconciliation',
+      'summary', 'alerts', 'setDefaultBudget', 'setHostBudget', 'clearHostBudget', 'reconciliation', 'providers',
+      'refreshReconciliation', 'refreshProviders',
     ]);
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
     service.summary.and.returnValue(of(summary()));
     service.alerts.and.returnValue(of([]));
     service.reconciliation.and.returnValue(of(recon));
+    service.providers.and.returnValue(throwError(() => new HttpErrorResponse({ status: 403 })));
     service.refreshReconciliation.and.returnValue(of(recon));
 
     TestBed.configureTestingModule({
@@ -230,9 +231,10 @@ describe('AdminCostComponent', () => {
 
   it("n'écrit aucun plafond total quand aucun budget n'est posé", () => {
     service = jasmine.createSpyObj<AdminCostService>('AdminCostService', [
-      'summary', 'alerts', 'setDefaultBudget', 'setHostBudget', 'clearHostBudget', 'reconciliation',
+      'summary', 'alerts', 'setDefaultBudget', 'setHostBudget', 'clearHostBudget', 'reconciliation', 'providers',
     ]);
     service.reconciliation.and.returnValue(of(recon));
+    service.providers.and.returnValue(throwError(() => new HttpErrorResponse({ status: 403 })));
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
     service.summary.and.returnValue(of(summary({ budgetEur: null, percent: null })));
     service.alerts.and.returnValue(of([]));
@@ -255,9 +257,10 @@ describe('AdminCostComponent', () => {
     // SF-133-13 : le résumé liste désormais tous les clients. L'écran doit leur proposer le champ,
     // sans quoi la correction backend resterait invisible.
     service = jasmine.createSpyObj<AdminCostService>('AdminCostService', [
-      'summary', 'alerts', 'setDefaultBudget', 'setHostBudget', 'clearHostBudget', 'reconciliation',
+      'summary', 'alerts', 'setDefaultBudget', 'setHostBudget', 'clearHostBudget', 'reconciliation', 'providers',
     ]);
     service.reconciliation.and.returnValue(of(recon));
+    service.providers.and.returnValue(throwError(() => new HttpErrorResponse({ status: 403 })));
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
     service.summary.and.returnValue(of(summary({
       spentEur: 0,
@@ -314,9 +317,10 @@ describe('AdminCostComponent', () => {
   it('n\'affiche aucune part quand le client n\'a pas de budget', () => {
     // Une part inventée serait pire que pas de part du tout.
     service = jasmine.createSpyObj<AdminCostService>('AdminCostService', [
-      'summary', 'alerts', 'setDefaultBudget', 'setHostBudget', 'clearHostBudget', 'reconciliation',
+      'summary', 'alerts', 'setDefaultBudget', 'setHostBudget', 'clearHostBudget', 'reconciliation', 'providers',
     ]);
     service.reconciliation.and.returnValue(of(recon));
+    service.providers.and.returnValue(throwError(() => new HttpErrorResponse({ status: 403 })));
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
     service.alerts.and.returnValue(of([]));
     service.summary.and.returnValue(of(summary({
