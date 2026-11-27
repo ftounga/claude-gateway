@@ -34,6 +34,7 @@
     "close_blocker": { "scene": "S11", "cible": "S11", "libelle": "Attente levée" },
     "email_me": { "scene": "S1", "cible": "S1", "libelle": "Courriel pour vous" },
     "capturer_preuves": { "scene": "S1", "cible": "S1", "libelle": "Preuves capturées" },
+    "galerie_images": { "scene": "S1", "cible": "S1", "libelle": "Galerie d'images", "pluriel": "{n} galeries d'images" },
     "page_publish": { "scene": "S7", "cible": "S7", "libelle": "Page publiée" },
     "page_pdf": { "scene": "S7", "cible": "S7", "libelle": "PDF d'une page" },
     "page_lire": { "scene": "S7", "cible": "S7", "libelle": "Lecture d'une page" },

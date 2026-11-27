@@ -107,6 +107,10 @@ public final class JourneyRiskClassifier {
             // F-210 / SF-210-01 : découper / suivre les questions ne touche rien — une lecture.
             return JourneyPlan.Risk.LECTURE;
         }
+        if (fr.claudegateway.atelier.gallery.GalleryToolCatalog.isGalleryTool(tool)) {
+            // F-278 / SF-278-01 : montrer des images du poste les LIT, rien n'y est exécuté ni écrit.
+            return JourneyPlan.Risk.LECTURE;
+        }
         if (FILE_WRITES.contains(tool)) {
             return isNotesPath(text(input, "path")) ? JourneyPlan.Risk.NOTES : JourneyPlan.Risk.REVERSIBLE;
         }
