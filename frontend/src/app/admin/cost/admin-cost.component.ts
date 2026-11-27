@@ -12,6 +12,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { AdminCostService } from './admin-cost.service';
 import { AdminCostReconciliationComponent } from './admin-cost-reconciliation.component';
+import { AdminCostProvidersComponent } from './admin-cost-providers.component';
 import {
   AdminCostAlert,
   AdminCostClient,
@@ -48,6 +49,7 @@ import {
     MatInputModule,
     MatProgressBarModule,
     AdminCostReconciliationComponent,
+    AdminCostProvidersComponent,
   ],
   templateUrl: './admin-cost.component.html',
   styleUrl: './admin-cost.component.scss',

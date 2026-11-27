@@ -127,3 +127,49 @@ export interface AdminCostBudgets {
   defaultAmountEur: number | null;
   hosts: { hostId: string; amountEur: number; updatedAt: string }[];
 }
+
+/** F-279 / SF-279-01 — le canal d'accès à Claude. */
+export type AiChannel = 'ANTHROPIC' | 'BEDROCK';
+
+/** Une jauge du mois : ce qu'un pot a consommé, recalé sur la facture puis estimé. */
+export interface ProviderGauge {
+  provider: AiChannel;
+  label: string;
+  /** PREPAID = crédit acheté d'avance (Anthropic) ; POSTPAID = facture en fin de mois (AWS). */
+  billing: 'PREPAID' | 'POSTPAID';
+  spentEur: number;
+  billedEur: number;
+  estimatedEur: number;
+  /** Le dernier jour recalé sur la facture (AAAA-MM-JJ), ou `null`. */
+  billedThrough: string | null;
+  calculatedEur: number;
+  /** Facture − calcul sur les jours recalés, ou `null` sans jour recalé. */
+  gapEur: number | null;
+  status: 'RECALE' | 'ESTIME';
+  statusNote: string;
+  lastFetchedAt: string | null;
+}
+
+/** Le canal qui sert en ce moment. */
+export interface ProviderChannel {
+  mode: 'OFF' | 'AUTO' | 'BEDROCK';
+  current: AiChannel;
+  circuitOpen: boolean;
+  cause: string | null;
+  /** Bedrock sert en relais d'Anthropic. */
+  relay: boolean;
+  creditExhausted: boolean;
+  lastServed: AiChannel | null;
+  lastServedAt: string | null;
+}
+
+/** Les deux pots du mois (`GET /api/admin/cost/providers`). */
+export interface ProviderSpend {
+  month: string;
+  gauges: ProviderGauge[];
+  totalEur: number;
+  usdToEur: number;
+  channel: ProviderChannel;
+  caveats: string[];
+  settleDays: number;
+}

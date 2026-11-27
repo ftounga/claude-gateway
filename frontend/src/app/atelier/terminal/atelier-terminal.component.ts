@@ -34,6 +34,8 @@ import {
 } from '../../shared/forge-breadcrumb/forge-breadcrumb.component';
 import { LiveBadgeComponent } from '../../shared/live-badge/live-badge.component';
 import { WeeklyBudgetComponent } from '../../shared/weekly-budget/weekly-budget.component';
+import { ProviderGaugesComponent } from '../../shared/provider-gauges/provider-gauges.component';
+import { ProviderSpendService } from '../../core/services/provider-spend.service';
 import { WeeklyBudgetService } from '../../core/services/weekly-budget.service';
 import { ProjectCostComponent } from '../../shared/project-cost/project-cost.component';
 import { ProjectCostService } from '../../core/services/project-cost.service';
@@ -325,7 +327,7 @@ export function plumeErrorMessage(failure: HttpErrorResponse | null | undefined)
     AtelierSlashVeillesComponent, TerminalVeillesBandComponent, TerminalJarvisAbsenceComponent,
     MatButtonToggleModule, MatIconModule, MatMenuModule, MatProgressBarModule, MatProgressSpinnerModule,
     MatTooltipModule, RouterLink,
-    WeeklyBudgetComponent, ProjectCostComponent, DictationButtonComponent,
+    WeeklyBudgetComponent, ProviderGaugesComponent, ProjectCostComponent, DictationButtonComponent,
     TerminalNextStepsComponent, TerminalPlumeComponent, TerminalQuestionTracksComponent,
     CopyBlockComponent, MessageBlocksPipe,
   ],
@@ -492,6 +494,8 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     // tait s'il n'y a pas de droit de lecture.
     if (value) {
       this.weeklyBudget.load();
+      // F-279 / SF-279-02 : les deux pots du mois (relus au plus toutes les 5 min, rien sans droit).
+      this.providerSpend.load();
       // F-143 / SF-143-01 : ce que ce projet a coûté, lu une fois et partagé avec la Forge.
       this.projectCosts.load();
     }
@@ -2725,6 +2729,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   /** Le budget de la semaine, partagé avec la Forge (F-133 / SF-133-15). */
   private readonly weeklyBudget = inject(WeeklyBudgetService);
+  private readonly providerSpend = inject(ProviderSpendService);
   /** F-165 / SF-165-02 : la lecture de l'économie du fil pour la commande vue `/cout` (aucun tour). */
   private readonly atelierCost = inject(AtelierCostService);
   private readonly atelierContext = inject(AtelierContextService);
