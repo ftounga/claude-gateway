@@ -46,7 +46,9 @@ describe('DiscreetVeilService (F-259 / SF-259-01)', () => {
 
   it('est désactivé par défaut, délai 2 min ; une valeur illisible ou hors liste retombe sur le défaut', () => {
     expect(readVeilSettings(null)).toEqual(DEFAULT_VEIL_SETTINGS);
-    expect(DEFAULT_VEIL_SETTINGS).toEqual({ enabled: false, delayMin: 2 });
+    expect(DEFAULT_VEIL_SETTINGS).toEqual({ enabled: true, delayMin: 2 });
+    expect(readVeilSettings(JSON.stringify({ enabled: false, delayMin: 5 }))).toEqual({ enabled: false, delayMin: 5 });
+    expect(readVeilSettings(JSON.stringify({ delayMin: 5 }))).toEqual({ enabled: true, delayMin: 5 });
     expect(readVeilSettings('{pas du json')).toEqual(DEFAULT_VEIL_SETTINGS);
     expect(readVeilSettings(JSON.stringify({ enabled: true, delayMin: 3 }))).toEqual({ enabled: true, delayMin: 2 });
     expect(readVeilSettings(JSON.stringify({ enabled: true, delayMin: 10 }))).toEqual({ enabled: true, delayMin: 10 });

@@ -21,21 +21,21 @@ describe('DiscreetVeilSettingsComponent (F-259 / SF-259-01)', async () => {
 
   afterEach(() => localStorage.removeItem(VEIL_SETTINGS_KEY));
 
-  it('montre le voile désactivé par défaut, délai 2 min grisé', async () => {
+  it('montre le voile activé par défaut, délai 2 min réglable (SF-259-02)', async () => {
     localStorage.removeItem(VEIL_SETTINGS_KEY);
     await build();
-    expect(el<HTMLInputElement>('.veil-settings__enabled input').checked).toBeFalse();
+    expect(el<HTMLInputElement>('.veil-settings__enabled input').checked).toBeTrue();
     expect(el<HTMLElement>('.veil-settings__delay').textContent).toContain('2 min');
-    expect(el<HTMLElement>('mat-select').getAttribute('aria-disabled')).toBe('true');
+    expect(el<HTMLElement>('mat-select').getAttribute('aria-disabled')).toBe('false');
   });
 
-  it('cocher active le voile et l’écrit sur l’appareil', async () => {
+  it('décocher désactive le voile et l’écrit sur l’appareil', async () => {
     localStorage.removeItem(VEIL_SETTINGS_KEY);
     await build();
     el<HTMLInputElement>('.veil-settings__enabled input').click();
     fixture.detectChanges();
-    expect(TestBed.inject(DiscreetVeilService).settings().enabled).toBeTrue();
-    expect(JSON.parse(localStorage.getItem(VEIL_SETTINGS_KEY)!)).toEqual({ enabled: true, delayMin: 2 });
+    expect(TestBed.inject(DiscreetVeilService).settings().enabled).toBeFalse();
+    expect(JSON.parse(localStorage.getItem(VEIL_SETTINGS_KEY)!)).toEqual({ enabled: false, delayMin: 2 });
   });
 
   it('lit le réglage enregistré (activé, 5 min)', async () => {
