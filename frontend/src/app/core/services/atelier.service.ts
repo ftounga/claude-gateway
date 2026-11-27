@@ -64,6 +64,7 @@ import {
   AtelierGovernanceProposal,
   AtelierAppRequest,
   AtelierProofBlock,
+  AtelierGalleryBlock,
   AtelierTerminalAudio,
   AtelierTerminalVideo,
   TeamsAccess,
@@ -629,6 +630,8 @@ export class AtelierService {
       /** Carte « Enregistrer ce besoin ? » (F-205 / SF-205-02). */
       besoin?: AtelierAppRequest;
       proof?: AtelierProofBlock;
+      /** Galerie d'images (F-278 / SF-278-01). */
+      gallery?: AtelierGalleryBlock;
       /** Vidéo et sons publiés (F-213 / SF-213-01). */
       video?: AtelierTerminalVideo;
       audio?: AtelierTerminalAudio;
@@ -805,6 +808,11 @@ export class AtelierService {
       // LES CAPTURES DE PREUVE (F-212 / SF-212-03). Sans image, rien — pas de bloc creux.
       if (Array.isArray(payload.proof?.captures) && payload.proof.captures.length > 0) {
         handlers.onProof?.({ toolUseId: payload.toolUseId ?? '', proof: payload.proof });
+      }
+    } else if (event === 'gallery') {
+      // UNE GALERIE D'IMAGES (F-278 / SF-278-01). Sans image, rien — pas de bloc creux.
+      if (Array.isArray(payload.gallery?.items) && payload.gallery.items.length > 0) {
+        handlers.onGallery?.({ toolUseId: payload.toolUseId ?? '', gallery: payload.gallery });
       }
     } else if (event === 'video') {
       // UNE VIDÉO PUBLIÉE (F-213 / SF-213-01). Sans identifiant, rien — pas de bloc creux.
